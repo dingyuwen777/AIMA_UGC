@@ -928,3 +928,104 @@ def test_publish_all_real_run_creates_embedded_bitable_before_sync(
     assert captured["target_document_url"] == "https://feishu.example/doc"
     assert captured["publish_kwargs"] == {"embed_representative_bitable": True}
     assert events == ["publish", "sync"]
+
+
+def test_report_retry_fails_closed_when_local_publication_digest_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """已有外部资源身份时，本地重新生成结果漂移不得继续复用旧资源。"""
+
+    current = tmp_path / "current.xlsx"
+    previous = tmp_path / "previous.xlsx"
+    current.write_bytes(b"current")
+    previous.write_bytes(b"previous")
+    output_dir = tmp_path / "output"
+    settings = PlatformSettings(
+        data_dir=tmp_path / "data",
+        log_dir=tmp_path / "logs",
+        secret_dir=tmp_path / "secrets",
+    )
+    monkeypatch.setattr(
+        publication_module,
+        "_load_publisher_config",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        publication_module,
+        "prepare_representative_report",
+        lambda **_kwargs: type(
+            "Preparation",
+            (),
+            {"rows": (), "selection_run": type("Selection", (), {"selected": ()})()},
+        )(),
+    )
+
+    def fake_generate(**kwargs: object):
+        target = Path(kwargs["output_dir"])  # type: ignore[arg-type]
+        target.mkdir(parents=True, exist_ok=True)
+        markdown = target / "report.md"
+        word = target / "report.docx"
+        charts = target / "report-charts.xlsx"
+        markdown.write_text("attempt-2", encoding="utf-8")
+        word.write_bytes(b"attempt-2-word")
+        charts.write_bytes(b"attempt-2-charts")
+        return publication_module.ReportGenerationSummary(
+            source_excel_path=current,
+            template_path=tmp_path / "template.md",
+            markdown_path=markdown,
+            word_path=word,
+            content_rows=1,
+            label_rows=1,
+            comment_rows=0,
+            start_date="2026-09-01",
+            end_date="2026-09-09",
+            word_chart_count=0,
+            chart_workbook_path=charts,
+        )
+
+    monkeypatch.setattr(publication_module, "generate_excel_report", fake_generate)
+    monkeypatch.setattr(
+        publication_module,
+        "build_selected_representative_rows",
+        lambda *_args, **_kwargs: (
+            {
+                "声音内容/连接": "内容\nhttps://example.test/1",
+                "声音截图": None,
+                "来源": "抖音",
+                "发布时间": "2026-09-01",
+                "一级标签": "产品体验",
+                "二级标签": "骑行体验",
+                "用户情绪": "正面",
+                "处理建议": "",
+                "处理进展": "",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        publication_module,
+        "_publish_generated_report",
+        lambda *_args, **_kwargs: pytest.fail("digest 漂移后不得继续外部发布"),
+    )
+
+    values: dict[str, object] = {"prepared_publication_digest": "0" * 64}
+
+    class _Checkpoint:
+        def get(self, key: str) -> object | None:
+            return values.get(key)
+
+        def set(self, key: str, value: object | None) -> None:
+            values[key] = value
+
+    with pytest.raises(publication_module.FeishuReportPublicationSnapshotMismatch):
+        publish_all_report_to_feishu(
+            input_path=current,
+            previous_input_path=previous,
+            output_dir=output_dir,
+            report_date_range=(date(2026, 9, 1), date(2026, 9, 9)),
+            settings=settings,
+            environ={},
+            dry_run=False,
+            idempotency_key="feishu-report:job-1",
+            checkpoint=_Checkpoint(),
+        )
