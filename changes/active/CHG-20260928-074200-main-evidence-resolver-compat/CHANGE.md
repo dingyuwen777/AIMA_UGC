@@ -30,7 +30,7 @@ data_changes: []
 # 变更摘要
 
 - 要解决的问题：PR #637 合并后，main 的 CI / Runtime / Tooling 在 Evidence Resolver 启动阶段因系统 Python 不接受无括号多异常语法而直接失败，未进入设计好的 fail-closed 回退。
-- 拟议修改：恢复 bootstrap Python 兼容语法；在三个 workflow 中把 Resolver 进程自身失败降级为 reusable=false，继续原 changed-scope / Runtime / Tooling 真实验证；增加 system-python compile 门禁与结构回归。
+- 拟议修改：用异常类型 tuple 常量 + except 常量保持 bootstrap Python 兼容且避免 Ruff 的 Python 3.14 formatter 再写回新语法；在三个 workflow 中把 Resolver 进程自身失败降级为 reusable=false，继续原 changed-scope / Runtime / Tooling 真实验证；增加 system-python compile 门禁与结构回归。
 - 预期结果：main 同 tree 时正常复用；Resolver 查询、执行或兼容性异常时只关闭复用，不把优化控制面本身变成阻断 main 的单点故障。
 
 # 背景、现状与问题
@@ -114,7 +114,7 @@ main 会持续在 Resolver step 失败；CI Gate / Compose Golden Path 无法取
 
 ## 最小充分方案
 
-1. 将多异常 except 恢复为括号 tuple。
+1. 将多异常类型定义为模块级 tuple 常量，并使用 except 常量；既兼容 bootstrap Python，也不会被 Python 3.14 Ruff formatter 改回无括号新语法。
 2. 三个 Resolver workflow 调用先写临时 output；成功才转写 GITHUB_OUTPUT，失败则写 reusable=false/reason=resolver_execution_failed 并继续。
 3. CI 在 setup-python 之前增加 system python3 -m py_compile，验证控制面 bootstrap 兼容。
 4. 增加兼容与 workflow fallback 回归。
@@ -125,7 +125,7 @@ main 会持续在 Resolver step 失败；CI Gate / Compose Golden Path 无法取
 
 | 决策 | 依据证据 | 原因 |
 | --- | --- | --- |
-| D1 兼容括号语法 | E2、E3 | 直接切断当前 SyntaxError |
+| D1 异常 tuple 常量 + except 常量 | E2、E3 | 兼容 bootstrap Python，并避免 Ruff 3.14 formatter 把括号写法重新改坏 |
 | D2 workflow process fallback | E2、E4 | 未来脚本启动失败也不会阻断真实验证 |
 | D3 bootstrap compile gate | E3 | merge 前覆盖脚本实际执行 Runtime |
 | D4 不改 impact mapping | E1、E5 | 当前缺陷与测试选择逻辑无关 |
@@ -150,7 +150,7 @@ main 会持续在 Resolver step 失败；CI Gate / Compose Golden Path 无法取
 - [x] 调查当前实现和失败日志。
 - [x] 确认根因和两条复发路径。
 - [x] 建立失败回归：Python 3.12 grammar + workflow process-failure fallback。
-- [x] 完成最小实现：兼容 except + 三个 workflow 安全降级 + bootstrap py_compile。
+- [x] 完成最小实现：异常 tuple 常量 + 三个 workflow 安全降级 + bootstrap py_compile；独立 Review 发现并修复 Tooling job 边界被文本替换吞掉的问题。
 - [x] 同步文档。
 - [x] PR current-head CI / Review 作为 Ready 后 merge gate，由 GitHub Actions 新鲜执行。
 - [x] post-merge main / archive / issue closure 按 #636 / AC7 明确延后到 merge 后执行。
@@ -198,7 +198,7 @@ main 会持续在 Resolver step 失败；CI Gate / Compose Golden Path 无法取
 
 - [x] upstream_re_read：已重读 #636 / AC1、AC5、AC7、main 失败日志与三个 workflow。
 - [x] change_coverage：兼容语法、进程级 fallback、bootstrap compile、回归和文档均已覆盖。
-- [x] reverse_audit：CI / Runtime / Tooling 的 Resolver 失败都只关闭 reuse；PostgreSQL / Full-stack / Runtime / Tooling 原真实验证路径未删除。
+- [x] reverse_audit：CI / Runtime / Tooling 的 Resolver 失败都只关闭 reuse；PostgreSQL / Full-stack / Runtime / Tooling 原真实验证路径未删除；Linux 与 Windows Tooling 通过独立 job 结构回归防止 gate job 吞并平台证据。
 - [x] unresolved_cleared：无 not_satisfied；仅 merge 后才能验证的 R1 按 #636 / AC7 正式记录为 explicitly_deferred。
 
 # 完成证据与状态
