@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-172120-replay-rule-reconciliation
 title: 历史重筛按最新品牌车型规则收敛有效结果
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: feature/649-replay-rule-reconciliation
 created: 2026-09-28
