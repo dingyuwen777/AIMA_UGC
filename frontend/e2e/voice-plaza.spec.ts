@@ -440,6 +440,41 @@ test('导入记录查看声音时不继承会话中陈旧筛选', async ({ page 
   expect(url.searchParams.get('search')).toBeNull()
 })
 
+test('旧 secondary-only 深链在目录加载后迁移为等价父子筛选且不静默放宽', async ({ page }) => {
+  const migratedList = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return request.method() === 'GET'
+      && url.pathname === '/api/v1/contents'
+      && url.searchParams.getAll('primary_labels').includes('产品体验')
+      && url.searchParams.getAll('secondary_labels').includes('续航表现')
+  })
+  const migratedCount = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    if (request.method() !== 'POST' || url.pathname !== '/api/v1/contents/count') return false
+    const body = request.postDataJSON() as { filters?: {
+      primary_labels?: string[]
+      secondary_labels?: string[]
+    } }
+    return body.filters?.primary_labels?.includes('产品体验') === true
+      && body.filters?.secondary_labels?.includes('续航表现') === true
+  })
+
+  await page.goto('/voice-plaza?secondary_label=续航表现')
+  await Promise.all([migratedList, migratedCount])
+
+  const filters = page.locator('section.filters')
+  await expect(filters.getByLabel('一级标签', { exact: true })).toContainText('已选 1 个一级标签')
+  await expect(filters.getByLabel('二级标签', { exact: true })).toContainText('已选 1 个二级标签')
+
+  const persisted = await page.evaluate(() => JSON.parse(
+    sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+  ))
+  expect(persisted.filters).toMatchObject({
+    primaryLabels: ['产品体验'],
+    secondaryLabels: ['续航表现'],
+  })
+})
+
 test('loads backend filter options and submits voice type with dependent labels', async ({ page }) => {
   await page.goto('/voice-plaza')
 
