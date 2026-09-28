@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-144700-usage-review-guidance
 title: 同步 USAGE Code Review 双模式指令
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: docs/646-usage-review-guidance
 created: 2026-09-28
@@ -75,11 +75,11 @@ Requirement Source：GitHub Issue #646。当前 Code Review 使用说明缺少�
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 完整只审核模板 | #646 / AC1 | not_satisfied | implementation pending |
-| R2 | 完整审核并合并模板 | #646 / AC2 | not_satisfied | implementation pending |
-| R3 | 保留 Review 后直接修复 | #646 / AC3 | not_satisfied | implementation pending |
-| R4 | 不降低治理门禁 | #646 / AC4 | not_satisfied | canonical comparison pending |
-| R5 | 快捷指令同步 | #646 / AC5 | not_satisfied | implementation pending |
+| R1 | 完整只审核模板 | #646 / AC1 | satisfied | Section 10.1 已按用户最终文本写入 |not_satisfied | implementation pending |
+| R2 | 完整审核并合并模板 | #646 / AC2 | satisfied | Section 10.2 已按用户最终文本写入 |not_satisfied | implementation pending |
+| R3 | 保留 Review 后直接修复 | #646 / AC3 | satisfied | Section 10.3 保留原独立修复模式 |not_satisfied | implementation pending |
+| R4 | 不降低治理门禁 | #646 / AC4 | satisfied | 双模板保留 blocking Finding、current HEAD、required CI、权限、Branch Protection 与 post-merge finalization |not_satisfied | canonical comparison pending |
+| R5 | 快捷指令同步 | #646 / AC5 | satisfied | Section 18 已同步只审核 / 审核并合并 / Review 并修复 |not_satisfied | implementation pending |
 | R6 | 端到端交付 | #646 / AC6 | explicitly_deferred | post-merge lifecycle |
 
 # 计划改动
@@ -120,30 +120,33 @@ Requirement Source：GitHub Issue #646。当前 Code Review 使用说明缺少�
 
 # 完成审计
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] unresolved_cleared
+- [x] upstream_re_read
+- [x] change_coverage
+- [x] reverse_audit
+- [x] unresolved_cleared
 
 # 完成证据与状态
 
 ## 新鲜证据
 
-- Requirement Source #646 已建立。
-- 当前阶段：Change 初始化；USAGE 修改和验证待执行。
+- Requirement Source #646 已重读；AC1-AC5 与用户最终双模板一致。
+- USAGE 文档提交：`54665a0725c26a35a136f2e0e0e05c1fee5088b7`。
+- 两仓 Section 10 已定向读取并确认逐字一致。
+- Section 18 已确认存在“只审核 / 审核并合并 / Review 并修复”快捷入口。
+- canonical Ownership 审计：未修改 Review/Coding/Router 规则，USAGE 仅做人类入口。
 
 ## 未验证内容与剩余风险
 
-- 最终双模板文本尚未写入。
-- 两仓一致性、独立 Review、CI、merge/post-merge 尚未完成。
+- current-head CI 与 independent Review 尚未在 ready revision 上完成。
+- merge/main-fresh/Change Archive/Issue Closure/cleanup 尚未完成。
 
 ## 交付状态
 
-- implementation: incomplete
-- delivery: early PR pending
-- validation: incomplete
+- implementation: complete
+- delivery: PR ready candidate
+- validation: document-level checks complete; current-head CI pending
 - main_fresh: not_applicable before merge
 - change_archive: not_applicable before merge
-- requirement_closure: open
+- requirement_closure: #646 open
 - cleanup: pending
 - end_to_end: incomplete
