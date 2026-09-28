@@ -401,6 +401,56 @@ class FeishuBitableClient:
             raise FeishuAPIError("飞书 Wiki 节点不是可用的多维表", api_code=0)
         return obj_token.strip()
 
+    def find_table_by_name(self, name: str) -> FeishuTableInfo | None:
+        """按精确名称查找当前 Base 的唯一数据表，用于创建请求结果不确定后的恢复。"""
+
+        table_name = name.strip()
+        if not table_name:
+            raise ValueError("飞书数据表名称不能为空")
+        app_token = self.resolve_app_token()
+        page_token: str | None = None
+        matches: list[FeishuTableInfo] = []
+        while True:
+            params: dict[str, str | int] = {"page_size": 100}
+            if page_token is not None:
+                params["page_token"] = page_token
+            payload = self._request(
+                "GET",
+                f"open-apis/bitable/v1/apps/{app_token}/tables",
+                params=params,
+            )
+            data = payload.get("data")
+            if not isinstance(data, dict):
+                raise FeishuAPIError("飞书数据表列表响应缺少 data", api_code=0)
+            items = data.get("items", [])
+            if not isinstance(items, list):
+                raise FeishuAPIError("飞书数据表列表响应 items 格式错误", api_code=0)
+            for item in items:
+                if not isinstance(item, dict) or item.get("name") != table_name:
+                    continue
+                table_id = item.get("table_id")
+                if not isinstance(table_id, str) or not table_id.strip():
+                    raise FeishuAPIError("飞书数据表列表响应缺少 table_id", api_code=0)
+                matches.append(
+                    FeishuTableInfo(
+                        table_id=table_id.strip(),
+                        name=table_name,
+                        skipped_fields=(),
+                        app_token=app_token,
+                        bitable_block_token=f"{app_token}_{table_id.strip()}",
+                        url=f"https://feishu.cn/base/{app_token}?table={table_id.strip()}",
+                    )
+                )
+            if data.get("has_more") is not True:
+                break
+            raw_page_token = data.get("page_token")
+            if not isinstance(raw_page_token, str) or not raw_page_token:
+                raise FeishuAPIError("飞书数据表列表分页响应缺少 page_token", api_code=0)
+            page_token = raw_page_token
+        if len(matches) > 1:
+            raise FeishuSyncError("稳定发布名称命中多个飞书数据表，已停止自动恢复")
+        return matches[0] if matches else None
+
     def create_table_from_current(
         self,
         *,
@@ -1101,6 +1151,7 @@ class FeishuBitableClient:
                     data=data,
                     files=files,
                     allow_auth_retry=auth_round == 0,
+                    ambiguous_retryable=False,
                 )
             except FeishuAPIError as exc:
                 if exc.status_code == 401 and auth_round == 0:
@@ -1141,8 +1192,13 @@ class FeishuBitableClient:
         allow_auth_retry: bool,
         data: Mapping[str, str] | None = None,
         files: Mapping[str, object] | None = None,
+        ambiguous_retryable: bool = True,
     ) -> dict[str, object]:
         del allow_auth_retry
+        method_upper = method.upper()
+        internal_retry_safe = method_upper in {"GET", "HEAD", "OPTIONS"} or path.endswith(
+            "open-apis/auth/v3/tenant_access_token/internal"
+        )
         for attempt in range(self._config.max_retries + 1):
             try:
                 if self._before_request is not None:
@@ -1159,10 +1215,10 @@ class FeishuBitableClient:
                     request_kwargs["files"] = files
                 response = self._client.request(method, path, **request_kwargs)
             except httpx.HTTPError as exc:
-                if attempt >= self._config.max_retries:
+                if not internal_retry_safe or attempt >= self._config.max_retries:
                     raise FeishuAPIError(
                         "飞书网络请求失败",
-                        retryable=True,
+                        retryable=ambiguous_retryable,
                         http_method=method,
                         endpoint=path,
                     ) from exc
@@ -1170,13 +1226,13 @@ class FeishuBitableClient:
                 continue
             if response.status_code not in range(200, 300):
                 retryable = response.status_code in _RETRYABLE_STATUS_CODES
-                if retryable and attempt < self._config.max_retries:
+                if retryable and internal_retry_safe and attempt < self._config.max_retries:
                     self._sleep(_retry_delay(attempt, response.headers.get("Retry-After")))
                     continue
                 raise FeishuAPIError(
                     f"飞书请求失败: HTTP {response.status_code}",
                     status_code=response.status_code,
-                    retryable=retryable,
+                    retryable=retryable and ambiguous_retryable,
                     http_method=method,
                     endpoint=path,
                 )
@@ -1186,6 +1242,7 @@ class FeishuBitableClient:
                 raise FeishuAPIError(
                     "飞书响应不是合法 JSON",
                     status_code=response.status_code,
+                    retryable=ambiguous_retryable and not internal_retry_safe,
                     http_method=method,
                     endpoint=path,
                 ) from exc
@@ -1205,14 +1262,19 @@ class FeishuBitableClient:
                     endpoint=path,
                 )
             if isinstance(code, int) and code != 0:
-                if code in {1254290, 1254291} and attempt < self._config.max_retries:
+                retryable_code = code in {1254290, 1254291}
+                if (
+                    retryable_code
+                    and internal_retry_safe
+                    and attempt < self._config.max_retries
+                ):
                     self._sleep(_retry_delay(attempt))
                     continue
                 raise FeishuAPIError(
                     "飞书业务请求失败",
                     status_code=response.status_code,
                     api_code=code,
-                    retryable=code in {1254290, 1254291},
+                    retryable=retryable_code and ambiguous_retryable,
                     http_method=method,
                     endpoint=path,
                 )
