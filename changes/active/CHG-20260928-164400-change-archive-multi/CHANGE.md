@@ -105,12 +105,12 @@ PR #580 已于 2026-09-28 合并到 `main`，merge commit 为 `07c0c7dc7e1bf4cc7
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 支持同一 merged PR 的多个 Active Change | run 36396828934 / AC1 | satisfied | `select_changes()` + `archive_changes()` |
-| R2 | 保持 merged revision/current-main 身份绑定 | E5 / AC2 | satisfied | 逐 Change 复用 `merged_source_at_revision()` + `archive_change()` |
-| R3 | 保持生命周期最小冻结 | E5 / AC3 | satisfied | 继续复用 `freeze_lifecycle()` / `_verify_lifecycle_only()` |
-| R4 | 多 Change exact staged diff allowlist | E6 / AC4 | satisfied | Workflow `items[] → expected.txt → diff -u actual.txt` |
-| R5 | 0/1/N Change 与 rerun 幂等兼容 | E5 / AC5 | satisfied | 既有单 Change tests + 新增 batch tests |
-| R6 | 不降低权限、schema、status、drift 等安全门禁 | E3、E5、E6 / AC6 | satisfied | 原 helper 与 Workflow security boundary 保留 |
+| R1 | 支持同一 merged PR 的多个 Active Change | external:https://github.com/dingyuwen777/AIMA_UGC/actions/runs/36396828934 | satisfied | `select_changes()` + `archive_changes()` |
+| R2 | 保持 merged revision/current-main 身份绑定 | scripts/quality/archive_change_after_merge.py | satisfied | 逐 Change 复用 `merged_source_at_revision()` + `archive_change()` |
+| R3 | 保持生命周期最小冻结 | scripts/quality/archive_change_after_merge.py | satisfied | 继续复用 `freeze_lifecycle()` / `_verify_lifecycle_only()` |
+| R4 | 多 Change exact staged diff allowlist | .github/workflows/change-archive.yml | satisfied | Workflow `items[] → expected.txt → diff -u actual.txt` |
+| R5 | 0/1/N Change 与 rerun 幂等兼容 | user:continue-pr580-delivery / AC5 | satisfied | 既有单 Change tests + 新增 batch tests |
+| R6 | 不降低权限、schema、status、drift 等安全门禁 | user:continue-pr580-delivery / AC6 | satisfied | 原 helper 与 Workflow security boundary 保留 |
 | R7 | PR #580 两个遗留 Active Change 真正归档 | user:continue-pr580-delivery / AC7 | explicitly_deferred | post-merge lifecycle；依赖本修复先进入 main 后由 repository-native automation 恢复 |
 
 # 计划改动
