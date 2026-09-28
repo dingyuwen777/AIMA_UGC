@@ -20,6 +20,7 @@ import {
   platformLabel,
   relevanceLabel,
 } from '../../../format'
+import type { LegacyLabelCompatibility } from '../../../store'
 
 const props = withDefaults(defineProps<{
   search: string
@@ -39,12 +40,14 @@ const props = withDefaults(defineProps<{
   competitionScopes?: ContentFilterSnapshotCompetitionScopesItem[]
   filterOptions: ContentFilterOptionsResponse | null
   filterOptionsLoading: boolean
+  legacyLabelCompatibility?: LegacyLabelCompatibility | null
 }>(), {
   brandIds: () => [],
   vehicleModelIds: () => [],
   competitionScopes: () => [],
   primaryLabels: () => [],
   secondaryLabels: () => [],
+  legacyLabelCompatibility: null,
 })
 
 const emit = defineEmits<{
@@ -98,6 +101,18 @@ const primaryLabelSummary = computed(() => {
 const secondaryLabelSummary = computed(() => {
   if (secondaryOptionsDisabled.value) return props.primaryLabels.length ? '筛选项暂不可用' : '请先选择一级标签'
   return props.secondaryLabels.length ? `已选 ${props.secondaryLabels.length} 个二级标签` : '全部二级标签'
+})
+const legacyLabelCompatibilityText = computed(() => {
+  const legacy = props.legacyLabelCompatibility
+  if (!legacy) return ''
+  const conditions: string[] = []
+  if (legacy.primaryLabels.length) {
+    conditions.push(`一级「${legacy.primaryLabels.join('、')}」`)
+  }
+  if (legacy.secondaryLabels.length) {
+    conditions.push(`二级「${legacy.secondaryLabels.join('、')}」`)
+  }
+  return `当前保留旧版兼容筛选：${conditions.join(' AND ')}。该组合继续按原查询语义生效；重新选择标签并查询后切换到当前层级规则。`
 })
 const platformOptions = Object.values(PlatformName)
 const relevanceOptions = Object.values(ContentRelevance)
@@ -318,6 +333,14 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
       </div>
     </div>
 
+    <p
+      v-if="legacyLabelCompatibilityText"
+      class="legacy-label-warning"
+      role="status"
+    >
+      {{ legacyLabelCompatibilityText }}
+    </p>
+
     <footer class="filter-footer">
       <div class="filter-summary">
         <span>当前条件：</span><span class="filter-chip filter-chip--primary">{{ platform ? platformLabel(platform) : '全部平台' }}</span><span class="filter-chip">{{ brandIds.length ? `已选 ${brandIds.length} 个品牌` : '全部品牌' }}</span><span class="filter-chip">{{ vehicleModelIds.length ? `已选 ${vehicleModelIds.length} 款车型` : '全部车型' }}</span><span class="filter-chip">{{ competitionLabel }}</span><span class="filter-chip">{{ primaryLabels.length ? `已选 ${primaryLabels.length} 个一级标签` : '全部一级标签' }}</span><span class="filter-chip">{{ secondaryLabels.length ? `已选 ${secondaryLabels.length} 个二级标签` : '全部二级标签' }}</span><button
@@ -378,6 +401,7 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
 .multi-select--disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); }
 .multi-select--disabled summary { cursor: not-allowed; }
 .filter-hint { display: none; margin: 0; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
+.legacy-label-warning { margin: 0; padding: 8px 10px; border-radius: 6px; color: var(--aima-warning-text); background: var(--aima-warning-soft); font-size: 12px; line-height: 18px; }
 .filter-footer { display: flex; min-width: 0; min-height: 45px; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--aima-border); }
 .filter-summary { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--aima-text-muted); font-size: 12px; }
 .filter-chip { max-width: 100%; padding: 4px 10px; border: 0; border-radius: 4px; color: var(--aima-text-muted); background: var(--aima-color-bg-hover); font: inherit; overflow-wrap: anywhere; }
