@@ -112,15 +112,16 @@ function hydrateRouteFilters(): void {
   const primaryLabels = routeValues(route.query.primary_labels)
   const legacyPrimaryLabels = routeValues(route.query.primary_label)
   const restoredPrimaryLabels = primaryLabels.length ? primaryLabels : legacyPrimaryLabels
-  if (restoredPrimaryLabels.length) {
-    store.filters.primaryLabels = [...new Set(restoredPrimaryLabels)]
-    changed = true
-  }
   const secondaryLabels = routeValues(route.query.secondary_labels)
   const legacySecondaryLabels = routeValues(route.query.secondary_label)
   const restoredSecondaryLabels = secondaryLabels.length ? secondaryLabels : legacySecondaryLabels
-  if (restoredSecondaryLabels.length) {
-    store.filters.secondaryLabels = [...new Set(restoredSecondaryLabels)]
+  if (restoredPrimaryLabels.length || restoredSecondaryLabels.length) {
+    store.restoreLabelFilters(
+      restoredPrimaryLabels,
+      restoredSecondaryLabels,
+      (primaryLabels.length === 0 && legacyPrimaryLabels.length > 0)
+        || (secondaryLabels.length === 0 && legacySecondaryLabels.length > 0),
+    )
     changed = true
   }
 
@@ -333,6 +334,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:competition-scopes="store.filters.competitionScopes"
         :filter-options="store.filterOptions"
         :filter-options-loading="store.filterOptionsLoading"
+        :legacy-label-compatibility="store.legacyLabelCompatibility"
         @search="search"
         @reset="reset"
       />
