@@ -123,7 +123,9 @@ Issue #640 / AC1–AC9 来自用户 2026-09-28 的工作台截图与明确交付
 | 布局粒度 | 复用 Contract 已允许的 4–12 列并按 1 列取整；高度继续 48–160 行按 1 行取整 | 用户要求自由缩放，当前 Contract 已具备范围 | 无公共 Contract/Schema 变化 |
 | 模块独立性 | 各卡片按容器宽度重排；错误按钮只重试自身 | 新截图和现有调用链 | 全局筛选/周期刷新仍按产品规则更新三模块 |
 
-# 修改方案与决策依据
+# 计划改动
+
+## 修改方案与决策依据
 
 ## 最小充分方案
 
@@ -199,7 +201,9 @@ Issue #640 / AC1–AC9 来自用户 2026-09-28 的工作台截图与明确交付
 - [x] reverse_audit：已从页面筛选、日期、重试、缩放和排序入口反查 Store/API/Contract/PostgreSQL 支持；也从快照聚合、active Scheme/人工事实、响应身份和布局 Contract 反查当前三个页面消费者及 Unit/Browser/PostgreSQL 回归。
 - [x] unresolved_cleared：无 `not_satisfied`；R9 仅按正式交付顺序后置 Review、最终 PR HEAD CI、merge、main-fresh 与原生归档，不降低或豁免任何合并门禁。
 
-# Review、CI 与交付记录
+# 完成证据与状态
+
+## Review、CI 与交付记录
 
 - 当前状态：生产实现、文档、本地分层验证、Completion Audit 和两阶段独立 Review 已完成，Change 保持 `ready_for_review`；等待最终提交 CI、合并与归档。
 - 本地证据：Frontend lint/typecheck/build；Store 10 tests；Workbench Browser 18 tests；完整 Browser Mock 159 tests；PostgreSQL Workbench 4 tests；Ruff/Mypy、Contract/Docs/Secret gate 均通过。Windows 完整 Backend Unit 为 1354 passed、13 skipped、3 个既有 POSIX host-prep 测试因 `geteuid/chown` 不可用失败，Linux CI 是该边界的正式证据。
