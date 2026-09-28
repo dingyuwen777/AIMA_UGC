@@ -571,10 +571,57 @@ test('keeps stable filters and content usable when dynamic filter options are un
   for (const label of ['平台', '相关性', '状态']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeEnabled()
   }
-  for (const label of ['情感', '发声类型', '内容类型', '一级标签', '二级标签']) {
+  for (const label of ['情感', '发声类型', '内容类型']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeDisabled()
   }
+  for (const label of ['一级标签', '二级标签']) {
+    await expect(filters.getByLabel(label, { exact: true })).toHaveAttribute('aria-disabled', 'true')
+  }
   await expect(page.getByText(item.title)).toBeVisible()
+})
+
+test('一级标签多选约束二级候选，父级取消后失效二级不会进入查询', async ({ page }) => {
+  await page.goto('/voice-plaza')
+  const filters = page.locator('section.filters')
+  const primarySummary = filters.getByLabel('一级标签', { exact: true })
+  const secondarySummary = filters.getByLabel('二级标签', { exact: true })
+  const primaryField = filters.locator('.filter-row--tertiary .field').nth(0)
+  const secondaryField = filters.locator('.filter-row--tertiary .field').nth(1)
+
+  await expect(secondarySummary).toHaveAttribute('aria-disabled', 'true')
+  await expect(secondarySummary).toContainText('请先选择一级标签')
+
+  await primarySummary.click()
+  await primaryField.getByRole('checkbox', { name: '产品体验' }).check()
+  await expect(secondarySummary).toHaveAttribute('aria-disabled', 'false')
+
+  await secondarySummary.click()
+  await expect(secondaryField.getByRole('checkbox', { name: '续航表现' })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '通勤体验' })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toHaveCount(0)
+
+  await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
+  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toBeVisible()
+  await secondaryField.getByRole('checkbox', { name: '续航表现' }).check()
+  await secondaryField.getByRole('checkbox', { name: '实际续航表现' }).check()
+  await expect(secondarySummary).toContainText('已选 2 个二级标签')
+
+  await primaryField.getByRole('checkbox', { name: '产品体验' }).uncheck()
+  await expect(secondaryField.getByRole('checkbox', { name: '续航表现' })).toHaveCount(0)
+  await expect(secondarySummary).toContainText('已选 1 个二级标签')
+
+  const requestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return request.method() === 'GET'
+      && url.pathname === '/api/v1/contents'
+      && url.searchParams.getAll('primary_labels').includes('电池、续航与充电')
+  })
+  await page.getByRole('button', { name: '查询' }).click()
+  const request = await requestPromise
+  const url = new URL(request.url())
+  expect(url.searchParams.getAll('primary_labels')).toEqual(['电池、续航与充电'])
+  expect(url.searchParams.getAll('secondary_labels')).toEqual(['实际续航表现'])
+  expect(url.searchParams.getAll('secondary_labels')).not.toContain('续航表现')
 })
 
 test('restores the applied platform filter after leaving and reloading the page', async ({ page }) => {
