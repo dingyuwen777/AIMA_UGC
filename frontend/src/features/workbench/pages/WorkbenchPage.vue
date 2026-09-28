@@ -129,9 +129,12 @@ function voicePlazaQuery(
   if (filters.platforms.length === 1) query.platform = filters.platforms[0]
   if (filters.sentiments.length === 1) query.sentiment = filters.sentiments[0]
   if (filters.voiceTypes.length === 1) query.voice_type = filters.voiceTypes[0]
-  if (extra.primaryLabel) query.primary_label = extra.primaryLabel
-  else if (filters.primaryLabels.length === 1) query.primary_label = filters.primaryLabels[0]
-  if (filters.secondaryLabels.length === 1) query.secondary_label = filters.secondaryLabels[0]
+  if (extra.primaryLabel) {
+    query.primary_labels = [extra.primaryLabel]
+  } else {
+    if (filters.primaryLabels.length) query.primary_labels = [...filters.primaryLabels]
+    if (filters.secondaryLabels.length) query.secondary_labels = [...filters.secondaryLabels]
+  }
   if (filters.brandIds.length) query.brand_ids = [...filters.brandIds]
   if (filters.vehicleModelIds.length) query.vehicle_model_ids = [...filters.vehicleModelIds]
   if (extra.contentId) query.content_id = extra.contentId
