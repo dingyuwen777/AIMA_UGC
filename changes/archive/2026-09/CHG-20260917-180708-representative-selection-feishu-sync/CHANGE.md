@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260917-180708-representative-selection-feishu-sync
 title: 代表性正负面内容筛选与飞书多维表同步
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/merge-BOLL2-main
 created: 2026-09-17

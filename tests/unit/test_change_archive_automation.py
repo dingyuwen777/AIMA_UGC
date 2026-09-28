@@ -288,6 +288,53 @@ def test_archive_changes_rerun_is_idempotent_per_change(tmp_path: Path) -> None:
     assert [item.reason for item in result.items] == ["already_archived", "already_archived"]
 
 
+def test_batch_result_exposes_legacy_top_level_identity_for_one_changed_item() -> None:
+    """历史单 Change workflow rerun 可继续读取顶层 source/target。"""
+    module = _load_archiver()
+    result_type = module["ArchiveBatchResult"]
+    item_type = module["ArchiveResult"]
+    payload = result_type(
+        items=(
+            item_type(
+                changed=True,
+                change_id="CHG-20260903-a",
+                source="changes/active/CHG-20260903-a/CHANGE.md",
+                target="changes/archive/2026-09/CHG-20260903-a/CHANGE.md",
+                reason="archived",
+            ),
+        ),
+        reason="archived_or_already_archived",
+    ).as_dict()
+
+    assert payload["change_id"] == "CHG-20260903-a"
+    assert payload["source"] == "changes/active/CHG-20260903-a/CHANGE.md"
+    assert payload["target"] == "changes/archive/2026-09/CHG-20260903-a/CHANGE.md"
+
+
+def test_rerun_attempt_processes_one_remaining_active_change_at_a_time(tmp_path: Path) -> None:
+    """历史多 Change run 的 rerun 每次只处理一个仍 active 的 Change。"""
+    module = _load_archiver()
+    selected = (
+        ("CHG-20260903-a", "changes/active/CHG-20260903-a/CHANGE.md"),
+        ("CHG-20260903-b", "changes/active/CHG-20260903-b/CHANGE.md"),
+    )
+    _write(tmp_path / selected[0][1], _change(selected[0][0]))
+    _write(tmp_path / selected[1][1], _change(selected[1][0]))
+
+    assert module["_selected_paths_for_run"](tmp_path, selected, run_attempt=1) == (
+        selected[0][1],
+        selected[1][1],
+    )
+    assert module["_selected_paths_for_run"](tmp_path, selected, run_attempt=2) == (
+        selected[0][1],
+    )
+
+    (tmp_path / selected[0][1]).unlink()
+    assert module["_selected_paths_for_run"](tmp_path, selected, run_attempt=3) == (
+        selected[1][1],
+    )
+
+
 def test_single_change_helper_still_rejects_multiple_changes() -> None:
     """单 Change helper 保持防误用边界，批量调用必须显式使用 archive_changes。"""
     module = _load_archiver()

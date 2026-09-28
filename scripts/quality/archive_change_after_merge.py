@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -77,10 +78,16 @@ class ArchiveBatchResult:
         return any(item.changed for item in self.items)
 
     def as_dict(self) -> dict[str, object]:
+        changed_items = tuple(item for item in self.items if item.changed)
+        legacy_item = changed_items[0] if len(changed_items) == 1 else None
         return {
             "changed": self.changed,
             "change_ids": [item.change_id for item in self.items if item.change_id is not None],
             "items": [item.as_dict() for item in self.items],
+            # 兼容历史单 Change workflow rerun；新 workflow 只消费 items[]。
+            "change_id": None if legacy_item is None else legacy_item.change_id,
+            "source": None if legacy_item is None else legacy_item.source,
+            "target": None if legacy_item is None else legacy_item.target,
             "reason": self.reason,
         }
 
@@ -430,6 +437,41 @@ def archive_changes(
     return ArchiveBatchResult(items=tuple(results), reason="archived_or_already_archived")
 
 
+def _github_run_attempt() -> int:
+    """读取 GitHub rerun attempt；非 GitHub 环境按首次运行处理。"""
+
+    raw = os.environ.get("GITHUB_RUN_ATTEMPT", "1").strip()
+    try:
+        attempt = int(raw)
+    except ValueError as exc:
+        raise ArchiveChangeError("GITHUB_RUN_ATTEMPT 不是合法正整数") from exc
+    if attempt < 1:
+        raise ArchiveChangeError("GITHUB_RUN_ATTEMPT 必须大于等于 1")
+    return attempt
+
+
+def _selected_paths_for_run(
+    root: Path,
+    selected: Sequence[tuple[str, str]],
+    *,
+    run_attempt: int,
+) -> tuple[str, ...]:
+    """历史失败 run 重跑时一次恢复一个仍 active 的 Change。
+
+    GitHub rerun 固定使用原事件时的 workflow YAML。旧版 YAML 只接受一组
+    source/target，因此 rerun attempt>1 时逐个处理仍 active 的 Change；首次运行
+    和当前新版 workflow 仍保持批量归档。
+    """
+
+    paths = tuple(source_relative for _change_id, source_relative in selected)
+    if run_attempt <= 1 or len(paths) <= 1:
+        return paths
+    for source_relative in paths:
+        if (root / source_relative).is_file():
+            return (source_relative,)
+    return paths
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """构造自动归档 CLI 参数。"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -449,17 +491,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         changed_paths = load_changed_paths(arguments.changed_paths_file)
         selected = select_changes(changed_paths)
+        run_paths = _selected_paths_for_run(
+            root,
+            selected,
+            run_attempt=_github_run_attempt(),
+        )
         expected_sources = {
             source_relative: merged_source_at_revision(
                 root,
                 revision=arguments.merged_revision,
                 source_relative=source_relative,
             )
-            for _change_id, source_relative in selected
+            for source_relative in run_paths
         }
         result = archive_changes(
             root,
-            changed_paths=changed_paths,
+            changed_paths=run_paths,
             merged_at=arguments.merged_at,
             expected_sources=expected_sources,
         )
