@@ -834,6 +834,7 @@ class FeishuReportPublisher:
             "上传飞书原生文档图表图片",
             "POST",
             "/open-apis/drive/v1/medias/upload_all",
+            ambiguous_retryable=False,
             data={
                 "file_name": file_name,
                 "parent_type": "docx_image",
@@ -1111,6 +1112,7 @@ class FeishuReportPublisher:
         path: str,
         *,
         authenticated: bool = True,
+        ambiguous_retryable: bool = True,
         **kwargs: Any,
     ) -> Mapping[str, Any]:
         headers = dict(kwargs.pop("headers", {}))
@@ -1121,7 +1123,7 @@ class FeishuReportPublisher:
         except httpx.HTTPError as exc:
             raise FeishuApiError(
                 self._redact(f"{operation}：网络请求失败 ({type(exc).__name__})"),
-                retriable=True,
+                retriable=ambiguous_retryable,
                 http_method=method,
                 endpoint=path,
             ) from exc
@@ -1130,7 +1132,8 @@ class FeishuReportPublisher:
         except ValueError as exc:
             raise FeishuApiError(
                 f"{operation}：飞书返回非 JSON 响应，HTTP {response.status_code}",
-                retriable=response.status_code == 429 or response.status_code >= 500,
+                retriable=ambiguous_retryable
+                and (response.status_code == 429 or response.status_code >= 500),
                 status_code=response.status_code,
                 http_method=method,
                 endpoint=path,
@@ -1145,7 +1148,7 @@ class FeishuReportPublisher:
         code = payload.get("code")
         if response.is_error or code not in {0, None}:
             message = self._redact(str(payload.get("msg", "unknown error")))
-            retriable = (
+            retriable = ambiguous_retryable and (
                 response.status_code == 429
                 or response.status_code >= 500
                 or code in _RETRIABLE_API_CODES
