@@ -334,6 +334,43 @@ def test_list_route_accepts_repeated_brand_and_competition_filters() -> None:
     assert service.last_query.competition_scopes == ("owned_only", "mixed")
 
 
+def test_list_route_accepts_repeated_label_filters_and_legacy_singular_values() -> None:
+    """标签 plural Query 保留数组，legacy singular 在 Contract 边界归一化。"""
+
+    service = _ContentService()
+    client = _client(service)
+    response = client.get(
+        "/api/v1/contents",
+        params=[
+            ("primary_labels", "产品体验"),
+            ("primary_labels", "服务体验"),
+            ("secondary_labels", "续航表现"),
+            ("secondary_labels", "门店服务"),
+        ],
+    )
+
+    assert response.status_code == 200
+    assert service.last_query is not None
+    assert service.last_query.primary_labels == ("产品体验", "服务体验")
+    assert service.last_query.secondary_labels == ("续航表现", "门店服务")
+    assert service.last_query.primary_label is None
+    assert service.last_query.secondary_label is None
+
+    legacy = client.get(
+        "/api/v1/contents",
+        params={
+            "primary_label": "产品体验",
+            "secondary_label": "续航表现",
+        },
+    )
+
+    assert legacy.status_code == 200
+    assert service.last_query.primary_labels == ("产品体验",)
+    assert service.last_query.secondary_labels == ("续航表现",)
+    assert service.last_query.primary_label is None
+    assert service.last_query.secondary_label is None
+
+
 def test_filter_options_returns_backend_values_and_historical_sources() -> None:
     """声音广场筛选目录通过独立 Contract 返回，不改变 active Taxonomy 语义。"""
 
