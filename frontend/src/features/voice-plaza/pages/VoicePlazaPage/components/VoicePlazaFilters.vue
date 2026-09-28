@@ -401,7 +401,7 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
 .multi-select--disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); }
 .multi-select--disabled summary { cursor: not-allowed; }
 .filter-hint { display: none; margin: 0; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
-.legacy-label-warning { margin: 0; padding: 8px 10px; border-radius: 6px; color: var(--aima-warning-text); background: var(--aima-warning-soft); font-size: 12px; line-height: 18px; }
+.legacy-label-warning { margin: 0; padding: 8px 10px; border-radius: 6px; color: var(--aima-text-muted); background: var(--aima-primary-soft); box-shadow: inset 0 0 0 1px var(--aima-border); font-size: 12px; line-height: 18px; }
 .filter-footer { display: flex; min-width: 0; min-height: 45px; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--aima-border); }
 .filter-summary { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--aima-text-muted); font-size: 12px; }
 .filter-chip { max-width: 100%; padding: 4px 10px; border: 0; border-radius: 4px; color: var(--aima-text-muted); background: var(--aima-color-bg-hover); font: inherit; overflow-wrap: anywhere; }
