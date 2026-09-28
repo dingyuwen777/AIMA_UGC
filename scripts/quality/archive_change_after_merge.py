@@ -46,7 +46,7 @@ class ChangeMetadata:
 
 @dataclass(frozen=True)
 class ArchiveResult:
-    """表示一次归档尝试的稳定结果。"""
+    """表示单个 Change 归档尝试的稳定结果。"""
 
     changed: bool
     change_id: str | None
@@ -61,6 +61,28 @@ class ArchiveResult:
             "change_id": self.change_id,
             "source": self.source,
             "target": self.target,
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
+class ArchiveBatchResult:
+    """表示同一 merged PR 中 0..N 个 Change 的确定性归档结果。"""
+
+    items: tuple[ArchiveResult, ...]
+    reason: str
+
+    @property
+    def changed(self) -> bool:
+        return any(item.changed for item in self.items)
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "changed": self.changed,
+            "change_ids": [
+                item.change_id for item in self.items if item.change_id is not None
+            ],
+            "items": [item.as_dict() for item in self.items],
             "reason": self.reason,
         }
 
@@ -87,19 +109,33 @@ def load_changed_paths(path: Path) -> tuple[str, ...]:
     return tuple(values)
 
 
-def select_change(changed_paths: Sequence[str]) -> tuple[str, str] | None:
-    """从 merged PR changed files 中唯一选择 current Change 的 Active 路径。"""
-    matches: list[tuple[str, str]] = []
+def select_changes(changed_paths: Sequence[str]) -> tuple[tuple[str, str], ...]:
+    """从 merged PR changed files 中确定性选择全部 Active Change 路径。"""
+
+    matches: dict[str, str] = {}
     for relative in changed_paths:
-        match = ACTIVE_CHANGE_PATTERN.fullmatch(_normalise_path(relative))
-        if match is not None:
-            matches.append((match.group("change_id"), _normalise_path(relative)))
+        normalized = _normalise_path(relative)
+        match = ACTIVE_CHANGE_PATTERN.fullmatch(normalized)
+        if match is None:
+            continue
+        change_id = match.group("change_id")
+        previous = matches.get(change_id)
+        if previous is not None and previous != normalized:
+            raise ArchiveChangeError(f"同一 Change ID 出现多个 Active 路径：{change_id}")
+        matches[change_id] = normalized
+    return tuple(sorted(matches.items(), key=lambda item: item[1]))
+
+
+def select_change(changed_paths: Sequence[str]) -> tuple[str, str] | None:
+    """兼容单 Change 调用；多个 Change 应改用 select_changes/archive_changes。"""
+
+    matches = select_changes(changed_paths)
     if not matches:
         return None
     if len(matches) != 1:
         joined = ", ".join(path for _, path in matches)
         raise ArchiveChangeError(
-            "一个 Implementation PR 只能由归档自动化确定性处理一个 Active Change；"
+            "单 Change helper 只能处理一个 Active Change；"
             f"当前发现 {len(matches)} 个：{joined}"
         )
     return matches[0]
@@ -360,6 +396,43 @@ def archive_change(
     )
 
 
+def archive_changes(
+    root: Path,
+    *,
+    changed_paths: Sequence[str],
+    merged_at: str,
+    expected_sources: dict[str, str] | None = None,
+) -> ArchiveBatchResult:
+    """批量归档同一 merged PR 明确携带的全部 Active Change。"""
+
+    selected = select_changes(changed_paths)
+    if not selected:
+        return ArchiveBatchResult(items=(), reason="not_applicable_no_active_change")
+    if expected_sources is None:
+        raise ArchiveChangeError("缺少 merged revision 的 Active Change 内容，无法确认归属")
+
+    results: list[ArchiveResult] = []
+    for change_id, source_relative in selected:
+        expected_source = expected_sources.get(source_relative)
+        if expected_source is None:
+            raise ArchiveChangeError(
+                f"缺少 merged revision 的 Active Change 内容：{source_relative}"
+            )
+        result = archive_change(
+            root,
+            changed_paths=(source_relative,),
+            merged_at=merged_at,
+            expected_source=expected_source,
+        )
+        if result.change_id != change_id:
+            raise ArchiveChangeError(
+                f"批量归档结果身份不一致：{change_id} != {result.change_id or '<none>'}"
+            )
+        results.append(result)
+
+    return ArchiveBatchResult(items=tuple(results), reason="archived_or_already_archived")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """构造自动归档 CLI 参数。"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -378,19 +451,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     root = Path(arguments.root).resolve()
     try:
         changed_paths = load_changed_paths(arguments.changed_paths_file)
-        selected = select_change(changed_paths)
-        expected_source = None
-        if selected is not None:
-            expected_source = merged_source_at_revision(
+        selected = select_changes(changed_paths)
+        expected_sources = {
+            source_relative: merged_source_at_revision(
                 root,
                 revision=arguments.merged_revision,
-                source_relative=selected[1],
+                source_relative=source_relative,
             )
-        result = archive_change(
+            for _change_id, source_relative in selected
+        }
+        result = archive_changes(
             root,
             changed_paths=changed_paths,
             merged_at=arguments.merged_at,
-            expected_source=expected_source,
+            expected_sources=expected_sources,
         )
     except (ArchiveChangeError, OSError) as exc:
         print(f"CHANGE_ARCHIVE_ERROR: {exc}", file=sys.stderr)
@@ -400,10 +474,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.json:
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     else:
+        change_ids = ",".join(
+            str(change_id) for change_id in payload["change_ids"]
+        ) or "-"
         print(
             "Change Archive："
             f"pr=#{arguments.pr_number} changed={str(result.changed).lower()} "
-            f"change={result.change_id or '-'} reason={result.reason}"
+            f"changes={change_ids} reason={result.reason}"
         )
     return 0
 
