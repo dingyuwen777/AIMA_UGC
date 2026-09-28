@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-115743-report-strategy-feishu-publication
 title: 报告策略页面与飞书发布 Job 前后端接通
 level: L3
-status: ready_for_review
+status: in_progress
 owner: chatgpt
 branch: feature/merge-BOLL2-main
 created: 2026-09-20
@@ -93,7 +93,7 @@ data_changes:
 | 范围与执行 | 复用现有报告编排、Durable Job Runtime 与 Worker Registry | E2、E3 | 不新增平行队列或复制报告业务 |
 | 文件与数据 | XLSX 存入受控 Artifact，Job Payload 只保存稳定 ID 与参数 | E1、E2 | 不暴露本地路径或文件字节 |
 | 外部写入 | Dry Run 默认阻断飞书写入，真实发布需显式关闭 | E4 | 不生成伪造链接或静默写入 |
-| 外部副作用恢复 | Job Payload 每个 checkpoint 立即 fenced 持久化，Feishu API 使用稳定 client_token/request_id，Bitable Upsert 复用稳定键 | E6 | Attempt 重试从已确认身份继续，避免重复创建 |
+| 外部副作用恢复 | 两个 Job 都使用 fenced durable checkpoint；代表性首次筛选结果冻结后重试不再调用 LLM；报告在首次飞书副作用前冻结本地发布输入 digest；Bitable 创建型 POST 不在客户端内盲重试并用稳定表名/Upsert key 回读对账 | E6 | Attempt 重试只复用已确认身份；本地结果漂移或无法对账的媒体上传 fail closed，避免重复或混合外部资源 |
 | 镜像并发 | PostgreSQL `FOR UPDATE SKIP LOCKED` claim + expires_at + token CAS，并在长同步期间独立会话续租 | E7 | 多实例只允许一个有效消费者；Lease 丢失会在下一次请求前阻断后续 mutation，旧实例不能越权写回 |
 | 接口与权限 | 使用专用管理员 multipart API 与 Job 查询入口 | E1、E5 | 权限由后端校验，前端不执行长任务 |
 | 兼容与回滚 | 保持现有报告口径和 Renderer；代码可回滚 | E3、E4 | 不改变历史报告语义 |
@@ -104,7 +104,7 @@ data_changes:
 2. 上传先保存受控 Artifact，再入队通用 Job；Worker 从 Artifact 读入临时目录并校验 SHA-256。
 3. 报告路径复用 `prepare_representative_report()` 与统一报告 Renderer；Dry Run 在发布器之前返回，不调用任何飞书写入。
 4. 前端只通过 generated client 的 Feature API 调用 HTTP，使用 3 秒轮询并在组件卸载时停止轮询；POST 成功后先保存 job_id，首个 GET 失败仍继续轮询。
-5. 报告外部副作用使用跨 Attempt durable checkpoint；镜像同步在 PostgreSQL 中 claim 后才访问飞书。
+5. 报告与代表性发布都使用跨 Attempt durable checkpoint；代表性结果首次筛选后冻结，报告本地发布输入用 digest fencing；Bitable 创建型 POST 的响应不确定性由稳定表名/Upsert 回读收敛，无法可靠对账的媒体上传 fail closed；镜像同步在 PostgreSQL 中 claim 后才访问飞书。
 
 ## 备选方案与取舍
 
@@ -135,7 +135,7 @@ data_changes:
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
 | Contract / OpenAPI | required | OpenAPI 生成、generated client 类型和 Contract 检查 |
-| Behavior / Unit | required | 报告编排、Dry Run、Job Payload/Handler、Artifact、飞书发布回归 |
+| Behavior / Unit | required | 报告编排、Dry Run、两个 Job checkpoint、代表性结果冻结、报告 digest fencing、创建型 POST failure injection、Artifact、飞书发布回归 |
 | User / Workflow Acceptance | required | 管理员报告策略 Browser E2E：上传、日期校验、Job 轮询、Dry Run 结果 |
 | Build / Runtime | required | Frontend lint、typecheck、build；后端目标 pytest/编译 |
 | External Provider Probe | not_applicable | 普通验证不调用真实飞书/付费 LLM；真实租户权限需人工执行 |
@@ -164,7 +164,7 @@ data_changes:
 - [x] upstream_re_read：已重新核对用户确认的双 Excel/日期/Dry Run 要求、现有报告入口、Job Runtime、Artifact 边界和管理员 Contract。
 - [x] change_coverage：R1—R7 均已映射到 API、Worker、前端、Contract、测试或文档证据。
 - [x] reverse_audit：已从前端上传动作反查 API/Artifact/Job/Worker/结果轮询，并从 Worker 报告编排反查页面入口和 Dry Run 边界。
-- [x] unresolved_cleared：前一轮 Review 的外部资源 checkpoint/重试收敛、镜像 claim fencing（含可续租心跳与慢同步竞争）、首个 GET 失败恢复四条行为线程均有最终回归；前端 query cache-buster 与页面恢复边界已记录，真实飞书租户 Probe 仍明确不适用。
+- [ ] unresolved_cleared：正在完成外部副作用 retry 根机制的剩余投影回归与新鲜 CI；完成代表性 Job checkpoint、创建型 POST ambiguous failure、报告 digest fencing 的 re-review 后再勾选。
 
 # 完成证据与状态
 
