@@ -1090,3 +1090,49 @@ def test_report_publication_generated_at_is_stable_across_retry() -> None:
     assert first is not None
     assert second == first
     assert values["prepared_generated_at"] == first.isoformat()
+
+
+def test_report_publication_digest_ignores_office_package_timestamps(
+    tmp_path: Path,
+) -> None:
+    """Word/XLSX 包时间戳变化不能被误判为报告业务结果漂移。"""
+
+    markdown = tmp_path / "report.md"
+    markdown.write_text("# 报告\n\n稳定内容\n", encoding="utf-8")
+    word = tmp_path / "report.docx"
+    charts = tmp_path / "report-charts.xlsx"
+    word.write_bytes(b"word-package-attempt-1")
+    charts.write_bytes(b"chart-package-attempt-1")
+    report = publication_module.ReportGenerationSummary(
+        source_excel_path=tmp_path / "source.xlsx",
+        template_path=tmp_path / "template.md",
+        markdown_path=markdown,
+        word_path=word,
+        content_rows=1,
+        label_rows=1,
+        comment_rows=0,
+        start_date="2026-09-01",
+        end_date="2026-09-09",
+        word_chart_count=0,
+        chart_workbook_path=charts,
+    )
+    rows = (
+        {
+            "声音内容/连接": "内容\nhttps://example.test/1",
+            "声音截图": None,
+            "来源": "抖音",
+            "发布时间": "2026-09-01",
+            "一级标签": "产品体验",
+            "二级标签": "骑行体验",
+            "用户情绪": "正面",
+            "处理建议": "",
+            "处理进展": "",
+        },
+    )
+
+    first = publication_module._prepared_publication_digest(report, rows)  # noqa: SLF001
+    word.write_bytes(b"word-package-attempt-2-with-new-zip-times")
+    charts.write_bytes(b"chart-package-attempt-2-with-new-zip-times")
+    second = publication_module._prepared_publication_digest(report, rows)  # noqa: SLF001
+
+    assert second == first
