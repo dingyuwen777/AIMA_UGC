@@ -40,14 +40,19 @@ const primaryLabelOptions = computed<WorkbenchSelectOption[]>(() =>
     label: item.primary_label,
   })),
 )
-const secondaryLabelOptions = computed<WorkbenchSelectOption[]>(() =>
-  (props.taxonomy?.labels ?? []).flatMap((item) =>
-    item.secondary_labels.map((value) => ({
-      value,
-      label: `${item.primary_label} / ${value}`,
-    })),
-  ),
-)
+const secondaryLabelOptions = computed<WorkbenchSelectOption[]>(() => {
+  const selected = new Set(props.modelValue.primaryLabels)
+  const options = new Map<string, WorkbenchSelectOption>()
+  for (const item of props.taxonomy?.labels ?? []) {
+    if (selected.size > 0 && !selected.has(item.primary_label)) continue
+    for (const value of item.secondary_labels) {
+      if (!options.has(value)) {
+        options.set(value, { value, label: `${item.primary_label} / ${value}` })
+      }
+    }
+  }
+  return [...options.values()]
+})
 const brandOptions = computed<WorkbenchSelectOption[]>(() =>
   props.brands.map((item) => ({ value: item.id, label: item.display_name })),
 )
@@ -64,6 +69,21 @@ function updateArray(
   value: string[],
 ): void {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
+}
+
+/** 一级标签变化时只保留仍属于所选父级的二级标签。 */
+function updatePrimaryLabels(value: string[]): void {
+  const selected = new Set(value)
+  const allowed = new Set(
+    (props.taxonomy?.labels ?? [])
+      .filter((item) => selected.size === 0 || selected.has(item.primary_label))
+      .flatMap((item) => item.secondary_labels),
+  )
+  emit('update:modelValue', {
+    ...props.modelValue,
+    primaryLabels: [...value],
+    secondaryLabels: props.modelValue.secondaryLabels.filter((item) => allowed.has(item)),
+  })
 }
 
 /** 一次性写回日期对，防止两个同步事件各自读取旧 props 覆盖另一个端点。 */
@@ -113,7 +133,7 @@ function updateDateRange(value: { from: string; to: string }): void {
       label="一级标签"
       :model-value="modelValue.primaryLabels"
       :options="primaryLabelOptions"
-      @update:model-value="updateArray('primaryLabels', $event)"
+      @update:model-value="updatePrimaryLabels"
     />
     <WorkbenchMultiSelect
       label="二级标签"

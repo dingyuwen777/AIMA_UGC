@@ -129,9 +129,18 @@ function voicePlazaQuery(
   if (filters.platforms.length === 1) query.platform = filters.platforms[0]
   if (filters.sentiments.length === 1) query.sentiment = filters.sentiments[0]
   if (filters.voiceTypes.length === 1) query.voice_type = filters.voiceTypes[0]
-  if (extra.primaryLabel) query.primary_label = extra.primaryLabel
-  else if (filters.primaryLabels.length === 1) query.primary_label = filters.primaryLabels[0]
-  if (filters.secondaryLabels.length === 1) query.secondary_label = filters.secondaryLabels[0]
+  const primaryLabels = extra.primaryLabel ? [extra.primaryLabel] : filters.primaryLabels
+  if (primaryLabels.length) query.primary_labels = [...primaryLabels]
+  if (filters.secondaryLabels.length) {
+    const selectedPrimary = new Set(primaryLabels)
+    const allowedSecondary = new Set(
+      (store.taxonomy?.labels ?? [])
+        .filter((item) => selectedPrimary.size === 0 || selectedPrimary.has(item.primary_label))
+        .flatMap((item) => item.secondary_labels),
+    )
+    const secondaryLabels = filters.secondaryLabels.filter((item) => allowedSecondary.has(item))
+    if (secondaryLabels.length) query.secondary_labels = [...secondaryLabels]
+  }
   if (filters.brandIds.length) query.brand_ids = [...filters.brandIds]
   if (filters.vehicleModelIds.length) query.vehicle_model_ids = [...filters.vehicleModelIds]
   if (extra.contentId) query.content_id = extra.contentId

@@ -71,8 +71,8 @@ export interface VoicePlazaFilters {
   relevance: '' | ContentRelevance
   voiceType: string
   sentiment: string
-  primaryLabel: string
-  secondaryLabel: string
+  primaryLabels: string[]
+  secondaryLabels: string[]
   publishedFrom: string
   publishedTo: string
   sourceIdentifier: string
@@ -89,8 +89,8 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   relevance: '',
   voiceType: '',
   sentiment: '',
-  primaryLabel: '',
-  secondaryLabel: '',
+  primaryLabels: [],
+  secondaryLabels: [],
   publishedFrom: '',
   publishedTo: '',
   sourceIdentifier: '',
@@ -112,6 +112,8 @@ interface PersistedVoicePlazaSearch {
 function copyFilters(source: VoicePlazaFilters): VoicePlazaFilters {
   return {
     ...source,
+    primaryLabels: [...source.primaryLabels],
+    secondaryLabels: [...source.secondaryLabels],
     brandIds: [...source.brandIds],
     vehicleModelIds: [...source.vehicleModelIds],
     competitionScopes: [...source.competitionScopes],
@@ -139,6 +141,17 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     const values = raw as Record<string, unknown>
     const stringValue = (key: keyof VoicePlazaFilters): string =>
       typeof values[key] === 'string' ? values[key] : ''
+    /** 优先恢复新数组；旧会话只有单值字段时平滑迁移为一项数组。 */
+    const labelValues = (
+      key: 'primaryLabels' | 'secondaryLabels',
+      legacyKey: 'primaryLabel' | 'secondaryLabel',
+    ): string[] => {
+      if (isStringArray(values[key])) {
+        return [...new Set(values[key].map((item) => item.trim()).filter(Boolean))]
+      }
+      const legacy = typeof values[legacyKey] === 'string' ? values[legacyKey].trim() : ''
+      return legacy ? [legacy] : []
+    }
     const platform = Object.values(PlatformNameValues).includes(values.platform as PlatformName)
       ? values.platform as PlatformName
       : ''
@@ -162,8 +175,8 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
         relevance,
         voiceType: stringValue('voiceType'),
         sentiment: stringValue('sentiment'),
-        primaryLabel: stringValue('primaryLabel'),
-        secondaryLabel: stringValue('secondaryLabel'),
+        primaryLabels: labelValues('primaryLabels', 'primaryLabel'),
+        secondaryLabels: labelValues('secondaryLabels', 'secondaryLabel'),
         publishedFrom: stringValue('publishedFrom'),
         publishedTo: stringValue('publishedTo'),
         sourceIdentifier: stringValue('sourceIdentifier'),
@@ -294,8 +307,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       relevance: appliedFilters.relevance || undefined,
       voice_type: appliedFilters.voiceType.trim() || undefined,
       sentiment: appliedFilters.sentiment.trim() || undefined,
-      primary_label: appliedFilters.primaryLabel.trim() || undefined,
-      secondary_label: appliedFilters.secondaryLabel.trim() || undefined,
+      primary_labels: appliedFilters.primaryLabels.length ? [...appliedFilters.primaryLabels] : undefined,
+      secondary_labels: appliedFilters.secondaryLabels.length ? [...appliedFilters.secondaryLabels] : undefined,
       published_from: beijingDayBoundary(appliedFilters.publishedFrom, 'start'),
       published_to: beijingDayBoundary(appliedFilters.publishedTo, 'end'),
       source_identifier: appliedFilters.sourceIdentifier.trim() || undefined,
