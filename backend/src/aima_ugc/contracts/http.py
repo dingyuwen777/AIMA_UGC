@@ -1219,6 +1219,10 @@ class ContentFilterSnapshot(BaseModel):
             primary_labels.append(self.primary_label)
         if self.secondary_label is not None and self.secondary_label not in secondary_labels:
             secondary_labels.append(self.secondary_label)
+        if len(primary_labels) > 100:
+            raise ValueError("primary_labels 归一化后不能超过 100 个")
+        if len(secondary_labels) > 200:
+            raise ValueError("secondary_labels 归一化后不能超过 200 个")
         self.primary_labels = tuple(primary_labels)
         self.secondary_labels = tuple(secondary_labels)
         self.primary_label = None
