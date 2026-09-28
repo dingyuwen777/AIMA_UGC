@@ -142,20 +142,6 @@ def publish_all_report_to_feishu(
     if progress is not None:
         progress(60)
 
-    representative_rows = build_selected_representative_rows(
-        preparation.selection_run.selected,
-        report_rows=preparation.rows,
-    )
-    if not dry_run and checkpoint is not None:
-        current_digest = _prepared_publication_digest(report, representative_rows)
-        frozen_digest = checkpoint.get("prepared_publication_digest")
-        if frozen_digest is None:
-            checkpoint.set("prepared_publication_digest", current_digest)
-        elif not isinstance(frozen_digest, str) or frozen_digest != current_digest:
-            raise FeishuReportPublicationSnapshotMismatch(
-                "报告重试的本地生成结果与首次外部发布输入不一致，已停止继续写飞书"
-            )
-
     if dry_run:
         if progress is not None:
             progress(100)
@@ -166,6 +152,20 @@ def publish_all_report_to_feishu(
             representative_sync=None,
             representative_count=len(preparation.rows),
         )
+
+    representative_rows = build_selected_representative_rows(
+        preparation.selection_run.selected,
+        report_rows=preparation.rows,
+    )
+    if checkpoint is not None:
+        current_digest = _prepared_publication_digest(report, representative_rows)
+        frozen_digest = checkpoint.get("prepared_publication_digest")
+        if frozen_digest is None:
+            checkpoint.set("prepared_publication_digest", current_digest)
+        elif not isinstance(frozen_digest, str) or frozen_digest != current_digest:
+            raise FeishuReportPublicationSnapshotMismatch(
+                "报告重试的本地生成结果与首次外部发布输入不一致，已停止继续写飞书"
+            )
 
     assert publisher_config is not None
     if idempotency_key is None and checkpoint is None:
