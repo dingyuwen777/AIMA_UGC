@@ -92,7 +92,7 @@ const trend = {
   previous_date_from: '2026-07-30',
   previous_date_to: '2026-08-28',
   total_count: 120,
-  daily_average: 4,
+  daily_average: 4.49,
   peak_day: '2026-09-20',
   peak_count: 12,
   period_change_rate: 0.12,
@@ -335,6 +335,7 @@ describe('工作台状态与 Figma 基线', () => {
 
     expect(html).toContain('工作台')
     expect(html).toContain('基于当前 active Taxonomy')
+    expect(html).toContain('用户心智图')
     expect(html).toContain('外观设计')
     expect(html).toContain('电池、续航与充电')
     expect(html).toContain('混合')
@@ -343,5 +344,6 @@ describe('工作台状态与 Figma 基线', () => {
     expect(html).not.toContain('工作台开发中')
     expect(html).not.toContain('品牌印象')
     expect(html).not.toContain('设计审美')
+    expect(html).not.toContain('日均声量</span><strong>4.49')
   })
 })

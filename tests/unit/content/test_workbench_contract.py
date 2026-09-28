@@ -9,6 +9,7 @@ from aima_ugc.contracts.workbench import (
     WorkbenchLayoutModule,
     WorkbenchLayoutUpdateRequest,
     WorkbenchQuery,
+    WorkbenchStreamQuery,
 )
 from pydantic import ValidationError
 
@@ -20,6 +21,17 @@ def test_workbench_query_rejects_reversed_period_and_duplicate_filter_values() -
         WorkbenchQuery(date_from=date(2026, 9, 10), date_to=date(2026, 9, 1))
     with pytest.raises(ValidationError):
         WorkbenchQuery(sentiments=("正面", "正面"))
+
+
+def test_workbench_stream_query_has_bounded_cursor_page() -> None:
+    """声音流必须用有限页和不透明游标遍历范围，不能靠固定最新 30 条循环。"""
+
+    query = WorkbenchStreamQuery(limit=100, cursor="signed-cursor")
+
+    assert query.limit == 100
+    assert query.cursor == "signed-cursor"
+    with pytest.raises(ValidationError):
+        WorkbenchStreamQuery(limit=501)
 
 
 def test_workbench_layout_requires_complete_unique_module_set() -> None:
