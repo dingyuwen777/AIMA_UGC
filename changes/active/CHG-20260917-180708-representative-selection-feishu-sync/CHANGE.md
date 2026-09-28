@@ -30,7 +30,7 @@ affected_paths:
   - backend/src/aima_ugc/bootstrap/representative_selection_publication.py
   - backend/src/aima_ugc/modules/administration/feishu_mirror_tables.py
   - migrations/versions/20260923_0060_feishu_bitable_mirrors.py
-  - migrations/versions/20260924_0062_feishu_mirror_claims.py
+  - migrations/versions/20260928_0072_feishu_mirror_claims.py
   - backend/src/aima_ugc/entrypoints/representative_selection_main.py
   - backend/src/aima_ugc/platform/config/settings.py
   - tests/unit/analysis/
@@ -121,7 +121,7 @@ data_changes:
 | 数据与迁移 | 为镜像增加 claim/lease/fencing 字段和 Alembic upgrade/downgrade；本地运行审计和新飞书表写入只在显式模式产生 | E2 | migration 可回滚，外部写入仍保留显式开关 |
 | 错误与失败语义 | 字段预检、回读不一致和外部失败均 fail closed；LLM/网络失败保留稳定错误摘要 | E2、E3 | 不隐藏部分成功或 Secret |
 | 兼容性 | 保持已有 Excel、平台 ID、报告和 Dry Run 行为；`xhs` 文档缩写统一为 `xiaohongshu` | E1、E3、E4 | 旧输入和离线调用继续可用 |
-| 部署与回滚 | 发布前执行 0060→0062 migration；回滚先停止镜像 Worker，再执行 0062→0060_feishu downgrade；外部写入按稳定幂等键恢复 | E2、E3 | claim 续租、过期后由新 Worker 接管，旧 Worker 不能写回 |
+| 部署与回滚 | 基于 main 已有 0061→0071 migration，发布前执行 0072 claim migration；回滚先停止镜像 Worker，再执行 0072→0071 downgrade；外部写入按稳定幂等键恢复 | E2、E3 | claim 续租、过期后由新 Worker 接管，旧 Worker 不能写回 |
 
 # 修改方案与决策依据
 
@@ -158,7 +158,7 @@ data_changes:
 | R6 | 每次写入在同一 Base 内新建按生成时间命名的数据表，旧表和旧记录不更新、不删除 | user:follow-up-confirmation / AC6 | satisfied | `create_table_from_current()` 和新表写入/回读测试 |
 | R7 | 飞书字段动态读取、类型转换、写入前快照和写入后回读核验 | user:confirmed-requirements / AC7 | satisfied | 字段映射、类型转换、快照和回读测试 |
 | R8 | Secret 不进入日志或运行结果，默认 Dry Run | user:security-boundary / AC8 | satisfied | Secret 文件边界、默认入口和稳定错误输出测试 |
-| R9 | 复用锁定的第三方依赖；为镜像 claim 接入 0060→0062 Migration、独立 Worker Runtime、可续租 Lease 和 fencing，并复用管理员发布 API/Contract | #580 / AC9 | satisfied | Requirement Source `docs/appendix/14_管理员配置飞书发布按钮接入方案.md`；`20260923_0060_feishu_bitable_mirrors.py`、`20260924_0062_feishu_mirror_claims.py`、`feishu_bitable_mirror.py`、`feishu_bitable_mirrors.py`；0061 声音广场 migration 已移出本 PR；慢同步 Lease 回归与 review threads `2769479400`、`2769479407` 共同证明边界 |
+| R9 | 复用锁定的第三方依赖；在 main 已有声音广场 migration 链上接入飞书镜像 claim 的 0072 Migration、独立 Worker Runtime、可续租 Lease 和 fencing，并复用管理员发布 API/Contract | #580 / AC9 | satisfied | Requirement Source `docs/appendix/14_管理员配置飞书发布按钮接入方案.md`；镜像表 `20260923_0060_feishu_bitable_mirrors.py`、claim migration `20260928_0072_feishu_mirror_claims.py`、main 基线 `0061→0071`、`feishu_bitable_mirror.py`、`feishu_bitable_mirrors.py`；慢同步 Lease 回归与 review threads `2769479400`、`2769479407` 共同证明边界 |
 | R10 | 运行入口、配置、README 和测试同步 | user:confirmed-implementation-plan / AC10 | satisfied | 独立入口、配置、模块文档和相关测试 |
 | R11 | 已完成 Dry Run 后可只同步已有结果，避免重复调用大模型 | user:follow-up-confirmation / AC11 | satisfied | `--write-feishu-from-run` 和入口测试 |
 | R12 | 支持直接使用飞书 `/base/` 链接中的 app_token，不强制依赖 Wiki Token | user:follow-up-confirmation / AC12 | satisfied | `AIMA_FEISHU_APP_TOKEN` 及 Base 直连测试 |
@@ -182,7 +182,7 @@ data_changes:
 | --- | --- | --- |
 | 行为 / Unit | required | Excel Sheet/去重、候选池、Prompt、四组选择、配置和不足数量目标测试 |
 | 外部 Adapter Mock | required | Token、字段、创建/写入/回读和失败边界 Mock 测试 |
-| PostgreSQL / Migration | required | 0060→0062 upgrade、0062 downgrade、再 upgrade；两个独立 Session claim/renew 并发验证 |
+| PostgreSQL / Migration | required | main 基线 0061→0071 上升级 0072、0072 downgrade、再 upgrade；两个独立 Session claim/renew 并发验证 |
 | API / Runtime | required | Job Payload checkpoint、lease fencing、管理 API 和 Worker 重试回归 |
 | Frontend / E2E | required | 报告策略首个 GET 失败后的 job_id 恢复和构建/E2E |
 | Build / Runtime | required | Ruff format/check、Mypy、目标 pytest |
@@ -203,7 +203,7 @@ data_changes:
 | --- | --- | --- |
 | 主要风险 | 外部飞书字段或权限变化导致写入失败 | 写入前动态预检，失败时不开始批量写入；写入后回读 |
 | 兼容性 | 保持已有 Excel、平台 ID、报告和 Dry Run 行为 | 相关单元/API 测试与文档同步 |
-| 数据 / Migration | 需要 0062 | 镜像 claim 字段通过 Alembic 管理，升级/降级均可重复验证 |
+| 数据 / Migration | 需要 0072 | 镜像 claim 字段通过 Alembic 管理，基于 main 0071 升级/降级均可重复验证 |
 | 部署 / 运行 | 需要先升级 Schema 并运行常驻镜像 Worker | Worker 使用 claim/lease/fencing，真实写入仍显式开启 |
 | 回滚 / 恢复 | 代码与 migration 可按顺序回滚，外部旧表不被修改 | Job Payload checkpoint、稳定 client_token 和 Bitable Upsert 键支持重试收敛 |
 
@@ -212,7 +212,7 @@ data_changes:
 - **长期文档**：同步 imports、analysis、reporting README 和报告 Appendix 导航，确保真实仓库文件链接可点击。
 - **依赖 / Runtime**：复用锁定的 Python/Node 工具链；PR 已实际依赖 Playwright 前端 E2E 和现有常驻 Worker 运行时。
 - **配置 / Secret**：增加/明确飞书和报告非 Secret 配置读取边界，Secret 仍通过外部文件读取。
-- **部署 / Release**：先执行 Alembic migration，再滚动重启镜像 Worker；回滚按 0062→0060_feishu 逆序执行。真实飞书写入仍由人工显式触发。
+- **部署 / Release**：先执行 main 基线 migration，再执行 0072，最后滚动重启镜像 Worker；回滚按 0072→0071 逆序执行。真实飞书写入仍由人工显式触发。
 - **兼容 / 消费方通知**：现有离线入口、报告统计和稳定平台 ID 保持兼容。
 
 # 完成审计
@@ -233,7 +233,7 @@ data_changes:
 | V3 | Windows 本地 Node 工具链 | `npm run lint`、`npm run build`；`npm run test:e2e -- admin-configuration-release2.spec.ts` | lint/build 通过；8 passed | 前端类型、构建、query cache-buster mock 和首个 GET 失败恢复 |
 | V4 | Windows 本地 `.uv-venv` | Ruff、Mypy 目标源文件 | 全部通过 | 静态质量和类型边界 |
 | V5 | 仓库质量脚本 | `check_docs.py`、`check_architecture.py`、`check_table_ownership.py`、`check_change_completion.py --require-active-ready`、`scan_secrets.py`、`check_agent_governance.py` | 全部通过 | 文档、架构、表 Owner、Secret、Agent governance 和 Active Change 门禁 |
-| V6 | GitHub Actions（上一轮提交 `f1255499`） | CI run `35974601442`：Requirement Traceability `107552005101`、PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、CI Gate `107555251372` | 上一轮全部通过；本轮修复后的新 HEAD required CI 待复跑 | 旧 HEAD 的完整质量门禁；新 HEAD 需重新证明 0060→0062 migration、claim renew 和慢同步 fencing |
+| V6 | GitHub Actions（上一轮提交 `f1255499`） | CI run `35974601442`：Requirement Traceability `107552005101`、PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、CI Gate `107555251372` | 上一轮全部通过；本轮修复后的新 HEAD required CI 待复跑 | 旧 HEAD 的完整质量门禁；新 HEAD 需重新证明 main 0071→0072 migration、claim renew 和慢同步 fencing |
 
 ## 未验证内容与剩余风险
 

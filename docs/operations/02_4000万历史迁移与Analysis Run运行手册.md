@@ -1,6 +1,6 @@
 # 4000 万历史迁移与 Analysis Run 运行手册
 
-本文负责**当前已经实现的软件怎样安全运行、排障和进入生产 Go/No-Go**。软件能力已完成；公司服务器容量门禁、生产写授权、正式 4000 万执行与全量对账仍未完成，当前状态见 [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../roadmap/03_4000万历史数据迁移实施方案.md)。
+本文负责**当前已经实现的软件怎样安全运行、排障和进入生产 Go/No-Go**。软件能力已完成；公司服务器容量门禁、生产写授权、正式 4000 万执行与全量对账仍未完成，当前状态见 [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../roadmap/02_4000万历史数据迁移实施方案.md)。
 
 精确字段以 Pydantic Contract、SQLAlchemy Table、Alembic Migration 和生成 OpenAPI/Client 为准；本文不复制第二套 Schema。
 
@@ -116,7 +116,7 @@ uploading（仅本地）
 文件成功才调用 finalize。服务端仍逐 Item 校验大小、SHA-256、冻结清单和 Campaign 状态，因此前端
 并发不会绕过 Artifact/取消边界。
 
-导入阶段按冻结的 `chunk_rows` 和 `max_in_flight_jobs` 有界调度。不同文件可以并行；同一文件保持稳定 Chunk 顺序，避免跨 Chunk 的首行身份顺序漂移。取消、人工重试、Lease 接管和终态回调继续复用 PostgreSQL Job Runtime 的 Lease/Fencing/Deadline 语义。
+导入阶段按 Campaign 冻结的 `chunk_rows` 切分，并按当前代码管理的 Job 窗口有界调度。不同文件可以并行；同一文件保持稳定 Chunk 顺序，避免跨 Chunk 的首行身份顺序漂移。取消、人工重试、Lease 接管和终态回调继续复用 PostgreSQL Job Runtime 的 Lease/Fencing/Deadline 语义。
 
 页面运行中只轮询 Campaign 汇总，不重复读取全部 Chunk。Item/冲突页面可以是有界预览；完整逐行事实仍以 PostgreSQL 账本为准。
 
@@ -538,4 +538,4 @@ analysis_content_runs
 
 - `tests/**/test_stage12_*.py`
 - [`frontend/e2e-fullstack/stage12-historical-analysis.spec.ts`](../../frontend/e2e-fullstack/stage12-historical-analysis.spec.ts)
-- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../roadmap/02_4000万历史数据迁移实施方案.md)

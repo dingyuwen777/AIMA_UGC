@@ -162,6 +162,7 @@ class PostgresBrandVehicleHttpService:
                         display_name=body.display_name,
                         role=body.role,
                         status=body.status,
+                        aliases=body.aliases,
                         actor_ref=principal.principal_id,
                     )
                 except LookupError as exc:
@@ -180,6 +181,7 @@ class PostgresBrandVehicleHttpService:
                         "status": brand.status,
                         "role": brand.role,
                         "catalog_version": brand.catalog_version,
+                        "aliases_replaced": body.aliases is not None,
                     },
                 )
                 return _brand_response(repository, brand)

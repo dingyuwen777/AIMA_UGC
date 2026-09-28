@@ -257,6 +257,8 @@ class AnalysisSchemeDefinitionRequest(BaseModel):
             raise ValueError("prompt_template 必须且只能包含一个 Taxonomy 占位符")
         if "无法判断" not in self.sentiments or "无法判断" not in self.voice_types:
             raise ValueError("情感和发声类型都必须显式包含“无法判断”")
+        if "正面" not in self.sentiments:
+            raise ValueError("情感必须显式包含“正面”，用于工作台正向率统一口径")
         if self.labels.get("无法分类") != ("无法判断",):
             raise ValueError("标签必须显式包含“无法分类 / 无法判断”")
         if len(self.sentiments) != len(set(self.sentiments)):

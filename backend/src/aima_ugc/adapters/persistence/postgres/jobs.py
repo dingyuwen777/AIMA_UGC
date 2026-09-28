@@ -135,6 +135,36 @@ class PostgresJobRepository:
             raise LeaseLostError("job lease is no longer current")
         return _row_to_job(row)
 
+    def pool_pressure(
+        self,
+        *,
+        lease_owners: set[str],
+        queued_limit: int,
+        now: datetime,
+    ) -> tuple[int, set[str]]:
+        """只读可领取 Job 和指定 Worker 的在途 Lease，供进程池有界伸缩。"""
+
+        if queued_limit < 1:
+            raise ValueError("queued_limit 必须为正整数")
+        queued = self._session.execute(
+            select(jobs_table.c.id)
+            .where(jobs_table.c.status == "queued", jobs_table.c.available_at <= now)
+            .limit(queued_limit)
+        ).all()
+        busy = (
+            set(
+                self._session.execute(
+                    select(jobs_table.c.lease_owner).where(
+                        jobs_table.c.status == "running",
+                        jobs_table.c.lease_owner.in_(lease_owners),
+                    )
+                ).scalars()
+            )
+            if lease_owners
+            else set()
+        )
+        return len(queued), busy
+
     def list_events(self, job_id: UUID) -> list[JobAttemptEvent]:
         rows = self._session.execute(
             select(job_attempt_events_table)
@@ -149,6 +179,7 @@ class PostgresJobRepository:
         supported_job_types: tuple[str, ...],
         worker_id: str,
         lease_seconds: int,
+        minimum_priority: int | None = None,
     ) -> JobRecord | None:
         """原子认领 queued Job，或接管 Deadline 尚未到达的过期 Lease。"""
         if lease_seconds <= 0:
@@ -169,6 +200,10 @@ class PostgresJobRepository:
                     FROM jobs AS j, job_clock AS c
                     WHERE j.cancel_requested_at IS NULL
                       AND j.job_type = ANY(CAST(:supported_job_types AS text[]))
+                      AND (
+                          CAST(:minimum_priority AS integer) IS NULL
+                          OR j.priority >= CAST(:minimum_priority AS integer)
+                      )
                       AND (
                           (
                               j.status = 'queued'
@@ -237,6 +272,7 @@ class PostgresJobRepository:
                     "worker_id": worker_id,
                     "lease_token": new_token,
                     "lease_seconds": lease_seconds,
+                    "minimum_priority": minimum_priority,
                 },
             )
             .mappings()
@@ -471,9 +507,12 @@ class PostgresJobRepository:
         lease_token: str,
         error_code: str,
         retry_delay_seconds: int,
+        retry_delay_cap_seconds: int | None = None,
     ) -> JobRecord:
         if retry_delay_seconds < 0:
             raise ValueError("retry_delay_seconds must be nonnegative")
+        if retry_delay_cap_seconds is not None and retry_delay_cap_seconds < 0:
+            raise ValueError("retry_delay_cap_seconds must be nonnegative")
         row = (
             self._session.execute(
                 text(
@@ -489,10 +528,14 @@ class PostgresJobRepository:
                     END,
                     available_at = CASE
                         WHEN j.attempt < j.max_attempts
-                            THEN c.now_at + make_interval(
-                                secs => :retry_delay_seconds
-                                    * power(2, GREATEST(j.attempt - 1, 0))
-                            )
+                            THEN c.now_at + make_interval(secs => CASE
+                                WHEN CAST(:retry_delay_cap_seconds AS DOUBLE PRECISION) IS NULL THEN
+                                    :retry_delay_seconds * power(2, GREATEST(j.attempt - 1, 0))
+                                ELSE LEAST(
+                                    :retry_delay_seconds * power(2, GREATEST(j.attempt - 1, 0)),
+                                    CAST(:retry_delay_cap_seconds AS DOUBLE PRECISION)
+                                )
+                            END)
                         ELSE j.available_at
                     END,
                     attempt_started_at = CASE
@@ -532,6 +575,7 @@ class PostgresJobRepository:
                     "lease_token": lease_token,
                     "error_code": error_code,
                     "retry_delay_seconds": retry_delay_seconds,
+                    "retry_delay_cap_seconds": retry_delay_cap_seconds,
                 },
             )
             .mappings()

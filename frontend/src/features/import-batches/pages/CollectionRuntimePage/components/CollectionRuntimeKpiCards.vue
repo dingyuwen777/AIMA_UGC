@@ -27,17 +27,19 @@ function value(value: number | undefined): string {
       <strong>{{ value(summary?.completed_today_count) }}</strong>
     </article>
     <article class="kpi-card kpi-card--primary">
-      <span>今日入库内容</span>
+      <span>今日任务入库量</span>
       <strong>{{ value(summary?.contents_ingested_today) }}</strong>
+      <small>各任务累计，可能包含重复内容</small>
     </article>
   </section>
 </template>
 
 <style scoped>
 .kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
-.kpi-card { display: flex; height: 92px; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-lg); background: var(--aima-surface); overflow: hidden; }
+.kpi-card { display: flex; min-height: 108px; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-lg); background: var(--aima-surface); overflow: hidden; }
 .kpi-card span { color: var(--aima-text-muted); font-size: 13px; font-weight: 500; line-height: 20px; }
 .kpi-card strong { font-size: 28px; line-height: 36px; }
+.kpi-card small { color: var(--aima-text-muted); font-size: 11px; line-height: 15px; }
 .kpi-card--blue strong { color: var(--aima-color-info); }
 .kpi-card--green strong { color: var(--aima-color-success); }
 .kpi-card--primary strong { color: var(--aima-primary); }

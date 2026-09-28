@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from collections.abc import Iterator
 from dataclasses import asdict
 from datetime import datetime
 from itertools import zip_longest
@@ -15,10 +14,9 @@ from time import perf_counter
 from typing import cast
 from uuid import UUID, uuid4
 
-from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
@@ -42,6 +40,13 @@ from aima_ugc.adapters.persistence.postgres.import_lineage import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
+from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
+    defer_voice_plaza_projection,
+    flush_deferred_voice_plaza_projection,
+)
+from aima_ugc.adapters.persistence.postgres.workload_slots import (
+    acquire_foreground_write_priority,
+)
 from aima_ugc.adapters.providers.imports.historical_chunk import (
     HistoricalChunkDescriptor,
     HistoricalInvalidRow,
@@ -77,9 +82,15 @@ from aima_ugc.modules.ingestion.xlsx_security import (
 )
 from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolver
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
+from aima_ugc.platform.capacity import (
+    AdaptiveBatchController,
+    detect_resources,
+    select_job_window,
+)
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.logging import log_event
+from aima_ugc.platform.logging.timing import StageTimings
 from aima_ugc.platform.storage import (
     ArtifactRecord,
     ArtifactService,
@@ -101,6 +112,7 @@ class PostgresHistoricalImportJobExecutor:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
+        self._sql_batch_tuner = AdaptiveBatchController(lower=250, upper=500)
         self._browser = HistoricalDirectoryBrowser(runtime.settings.historical_import_root)
         self._artifacts = ArtifactService(
             metadata=PostgresArtifactMetadataGateway(runtime.database.new_session),
@@ -157,7 +169,10 @@ class PostgresHistoricalImportJobExecutor:
                         )
                     repository.schedule_snapshot_jobs(
                         payload.campaign_id,
-                        max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
+                        max_in_flight=self._runtime.job_window(
+                            "historical",
+                            ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                        ),
                     )
             finally:
                 session.close()
@@ -255,9 +270,11 @@ class PostgresHistoricalImportJobExecutor:
 
             profile = cast(dict[str, object], campaign["profile_snapshot"])
             conversion_started = perf_counter()
+            chunk_publish_seconds = 0.0
             with TemporaryDirectory(prefix="aima-historical-snapshot-") as directory:
                 work_dir = Path(directory)
                 frozen_path = work_dir / "source.xlsx"
+                frozen_copy_started = perf_counter()
                 with frozen_path.open("xb") as destination:
                     copied = self._runtime.artifact_store.copy_to(
                         source_artifact.storage_key,
@@ -268,24 +285,31 @@ class PostgresHistoricalImportJobExecutor:
                     or copied.byte_size != source_artifact.byte_size
                 ):
                     raise InvalidXlsxError("Historical Source Artifact 完整性校验失败")
+                frozen_copy_ms = int((perf_counter() - frozen_copy_started) * 1000)
+                archive_validation_started = perf_counter()
                 validate_xlsx_archive(frozen_path)
+                archive_validation_ms = int((perf_counter() - archive_validation_started) * 1000)
 
                 def publish(descriptor: HistoricalChunkDescriptor) -> None:
+                    nonlocal chunk_publish_seconds
+                    publish_started = perf_counter()
                     self._publish_chunk(
                         source_item=item,
                         descriptor=descriptor,
                         fence=fence,
                     )
+                    chunk_publish_seconds += perf_counter() - publish_started
                     context.heartbeat(progress=min(90, 20 + descriptor.ordinal))
 
+                reader_mapper_started = perf_counter()
                 summary = convert_historical_excel_to_chunks(
                     input_path=frozen_path,
-                    output_dir=work_dir / "chunks",
                     profile_name=_required_string(profile, "profile"),
                     observed_at=cast(datetime, campaign["created_at"]),
                     chunk_rows=_required_int(profile, "chunk_rows"),
                     publish=publish,
                 )
+                reader_mapper_and_publish_seconds = perf_counter() - reader_mapper_started
                 temporary_bytes = _directory_bytes(work_dir)
             conversion_ms = int((perf_counter() - conversion_started) * 1000)
             if context.cancel_requested():
@@ -316,7 +340,10 @@ class PostgresHistoricalImportJobExecutor:
                         )
                     repository.schedule_snapshot_jobs(
                         cast(UUID, item["campaign_id"]),
-                        max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
+                        max_in_flight=self._runtime.job_window(
+                            "historical",
+                            ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                        ),
                     )
                     repository.finalize_preflight(cast(UUID, item["campaign_id"]))
             finally:
@@ -336,6 +363,12 @@ class PostgresHistoricalImportJobExecutor:
                 chunk_count=summary.chunks,
                 source_snapshot_ms=source_snapshot_ms,
                 conversion_ms=conversion_ms,
+                frozen_copy_ms=frozen_copy_ms,
+                archive_validation_ms=archive_validation_ms,
+                reader_mapper_ms=max(
+                    0, int((reader_mapper_and_publish_seconds - chunk_publish_seconds) * 1000)
+                ),
+                chunk_publish_ms=int(chunk_publish_seconds * 1000),
                 finalization_ms=int((perf_counter() - finalization_started) * 1000),
                 duration_ms=int((perf_counter() - execution_started) * 1000),
                 temporary_bytes=temporary_bytes,
@@ -360,7 +393,40 @@ class PostgresHistoricalImportJobExecutor:
             ValueError,
         ):
             return JobHandlerResult.failed("historical_snapshot_invalid")
-        except OSError:
+        except FileNotFoundError as exc:
+            missing_bound_artifact = (
+                source_artifact is not None
+                and not self._runtime.artifact_store.exists(source_artifact.storage_key)
+            )
+            log_event(
+                self._runtime.logger,
+                logging.WARNING,
+                "historical_import.snapshot_io_failed",
+                "历史源文件快照发生 I/O 错误",
+                job_id=str(fence.job_id),
+                campaign_item_id=str(payload.campaign_item_id),
+                source_artifact_id=(str(item["artifact_id"]) if item["artifact_id"] else None),
+                error_type=type(exc).__name__,
+                error_errno=exc.errno,
+                missing_bound_artifact=missing_bound_artifact,
+                duration_ms=int((perf_counter() - execution_started) * 1000),
+            )
+            if missing_bound_artifact:
+                return JobHandlerResult.failed("historical_source_artifact_missing")
+            return JobHandlerResult.retry("historical_snapshot_io_failed")
+        except OSError as exc:
+            log_event(
+                self._runtime.logger,
+                logging.WARNING,
+                "historical_import.snapshot_io_failed",
+                "历史源文件快照发生 I/O 错误，等待统一 Job 重试",
+                job_id=str(fence.job_id),
+                campaign_item_id=str(payload.campaign_item_id),
+                source_artifact_id=(str(item["artifact_id"]) if item["artifact_id"] else None),
+                error_type=type(exc).__name__,
+                error_errno=exc.errno,
+                duration_ms=int((perf_counter() - execution_started) * 1000),
+            )
             return JobHandlerResult.retry("historical_snapshot_io_failed")
 
     def import_chunk(
@@ -373,10 +439,11 @@ class PostgresHistoricalImportJobExecutor:
         """当前 Chunk 与 Brand/Vehicle Snapshot 强配对后进入 Content Owner。"""
 
         execution_started = perf_counter()
+        evidence_timings = StageTimings()
         try:
             loading_started = perf_counter()
             item, artifact, campaign_id = self._load_import_chunk(payload, fence)
-            campaign_snapshot = self._campaign_filter_payload(campaign_id)
+            campaign_snapshot, frozen_chunk_rows = self._campaign_import_snapshot(campaign_id)
             filter_snapshot = BrandVehicleFilterSnapshot.model_validate(campaign_snapshot)
             if item["status"] == "succeeded":
                 return JobHandlerResult.succeeded(
@@ -384,10 +451,11 @@ class PostgresHistoricalImportJobExecutor:
                 )
             if context.cancel_requested():
                 return JobHandlerResult.cancelled()
+            resolver = BrandVehicleResolver(filter_snapshot.catalog)
             contents = _read_bounded_canonical_artifact(
                 reader=self._canonical_reader,
                 artifact=artifact,
-                max_rows=self._runtime.settings.historical_chunk_rows,
+                max_rows=frozen_chunk_rows,
             )
             loading_ms = int((perf_counter() - loading_started) * 1000)
             canonical_row_ordinals, invalid_rows = _chunk_row_facts(item)
@@ -397,12 +465,22 @@ class PostgresHistoricalImportJobExecutor:
 
             session = self._runtime.database.new_session()
             transaction_started = perf_counter()
+            sql_insert_rows = 500
+            foreground_wait_ms = 0
             try:
                 with session.begin():
                     jobs = PostgresJobRepository(session)
                     jobs.validate_current_execution(fence)
+                    foreground_priority = acquire_foreground_write_priority(
+                        session,
+                        resources=detect_resources(),
+                    )
+                    foreground_wait_ms = foreground_priority.wait_ms
                     lock_historical_campaign_cancel_gate(session, campaign_id, shared=True)
                     repository = PostgresHistoricalImportRepository(session)
+                    # 共享取消门已阻止 Campaign 在本事务内进入 cancelling。
+                    # 业务写入期间不锁父行，避免同一 Campaign 的不同 Chunk 被串行化；
+                    # 调度阶段再由 schedule_import_jobs 锁父行并结清状态。
                     campaign = repository.get_campaign(campaign_id)
                     if campaign is None:
                         return JobHandlerResult.failed("historical_campaign_not_found")
@@ -439,13 +517,36 @@ class PostgresHistoricalImportJobExecutor:
                         invalid_rows=invalid_rows,
                         policy_version=policy_version,
                         filter_snapshot=filter_snapshot,
+                        resolver=resolver,
                     )
                     row_preparation_ms = int((perf_counter() - row_preparation_started) * 1000)
-                    writer = (
-                        PostgresHistoricalContentRepository(session)
-                        if policy_version == "historical-fill-only.v1"
-                        else PostgresStandardContentRepository(session)
-                    )
+                    if policy_version == "historical-fill-only.v1":
+                        resources = detect_resources()
+                        sql_insert_rows, reason, previous = self._sql_batch_tuner.choose(resources)
+                        if previous != sql_insert_rows:
+                            log_event(
+                                self._runtime.logger,
+                                logging.INFO,
+                                "capacity.historical_sql_batch_selected",
+                                "历史入库 SQL 批量调整",
+                                campaign_id=str(campaign_id),
+                                previous_rows=previous,
+                                selected_rows=sql_insert_rows,
+                                reason=reason,
+                                available_memory_mib=(
+                                    resources.memory_available_bytes // (1024 * 1024)
+                                    if resources.memory_available_bytes is not None
+                                    else None
+                                ),
+                            )
+                        writer = PostgresHistoricalContentRepository(
+                            session, insert_batch_rows=sql_insert_rows
+                        )
+                    else:
+                        writer = PostgresStandardContentRepository(session)
+                    # 声音广场筛选目录的共享计数行只在事务末尾更新，
+                    # 避免其他 Chunk 等待本事务的来源账本、证据及调度收尾。
+                    defer_voice_plaza_projection(session)
                     content_ingestion_started = perf_counter()
                     summary = writer.ingest_rows(
                         batch_id=payload.batch_id,
@@ -460,25 +561,57 @@ class PostgresHistoricalImportJobExecutor:
                         batch_id=payload.batch_id,
                         rows=rows,
                         filter_snapshot=filter_snapshot,
+                        resolver=resolver,
+                        timings=evidence_timings,
                     )
                     evidence_ms = int((perf_counter() - evidence_started) * 1000)
                     finalization_started = perf_counter()
                     repository.complete_chunk(payload.chunk_item_id, stats=asdict(summary))
+                    scheduling_started = perf_counter()
                     source_batches = repository.source_batches(campaign_id)
                     repository.schedule_import_jobs(
                         campaign_id=campaign_id,
                         source_batches=source_batches,
-                        max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
+                        max_in_flight=self._runtime.job_window(
+                            "historical",
+                            ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                        ),
                     )
+                    repository.mark_campaign_running(campaign_id)
+                    scheduling_ms = int((perf_counter() - scheduling_started) * 1000)
+                    refresh_started = perf_counter()
                     status = repository.refresh_batch_and_campaign(
                         campaign_id=campaign_id,
                         batch_id=payload.batch_id,
                     )
+                    status_refresh_ms = int((perf_counter() - refresh_started) * 1000)
                     jobs.lock_current_execution(fence)
                     finalization_ms = int((perf_counter() - finalization_started) * 1000)
+                    projection_started = perf_counter()
+                    projection_content_ids = tuple(
+                        session.scalars(
+                            select(processing_import_batch_items_table.c.content_id)
+                            .where(
+                                processing_import_batch_items_table.c.campaign_item_id
+                                == payload.chunk_item_id,
+                                processing_import_batch_items_table.c.content_id.is_not(None),
+                            )
+                            .distinct()
+                        )
+                    )
+                    projection_content_count = flush_deferred_voice_plaza_projection(
+                        session, projection_content_ids
+                    )
+                    projection_refresh_ms = int((perf_counter() - projection_started) * 1000)
             finally:
                 session.close()
             transaction_ms = int((perf_counter() - transaction_started) * 1000)
+            if policy_version == "historical-fill-only.v1":
+                self._sql_batch_tuner.succeeded(
+                    size=sql_insert_rows,
+                    rows=len(rows),
+                    duration_ms=content_ingestion_ms,
+                )
             log_event(
                 self._runtime.logger,
                 logging.INFO,
@@ -500,9 +633,18 @@ class PostgresHistoricalImportJobExecutor:
                 loading_ms=loading_ms,
                 row_preparation_ms=row_preparation_ms,
                 content_ingestion_ms=content_ingestion_ms,
+                sql_insert_rows=(
+                    sql_insert_rows if policy_version == "historical-fill-only.v1" else None
+                ),
                 evidence_ms=evidence_ms,
+                evidence_stage_ms=evidence_timings.stage_ms,
                 finalization_ms=finalization_ms,
+                scheduling_ms=scheduling_ms,
+                status_refresh_ms=status_refresh_ms,
+                projection_content_count=projection_content_count,
+                projection_refresh_ms=projection_refresh_ms,
                 transaction_ms=transaction_ms,
+                foreground_wait_ms=foreground_wait_ms,
                 duration_ms=int((perf_counter() - execution_started) * 1000),
             )
             return JobHandlerResult.succeeded(
@@ -523,9 +665,22 @@ class PostgresHistoricalImportJobExecutor:
             return JobHandlerResult.failed("historical_chunk_invalid")
         except OSError:
             return JobHandlerResult.retry("historical_chunk_io_failed")
+        except OperationalError as exc:
+            log_event(
+                self._runtime.logger,
+                logging.WARNING,
+                "historical_import.chunk_database_retry",
+                "历史数据 Chunk 数据库事务将重试",
+                job_id=str(fence.job_id),
+                chunk_item_id=str(payload.chunk_item_id),
+                sqlstate=getattr(exc.orig, "sqlstate", None),
+                evidence_stage_ms=evidence_timings.stage_ms,
+            )
+            self._sql_batch_tuner.database_retry()
+            return JobHandlerResult.retry("historical_chunk_database_transient")
 
-    def _campaign_filter_payload(self, campaign_id: UUID) -> dict[str, object]:
-        """只读取已冻结的 Campaign JSON Snapshot，不触碰实时 Brand/Vehicle 目录。"""
+    def _campaign_import_snapshot(self, campaign_id: UUID) -> tuple[dict[str, object], int]:
+        """读取 Campaign 冻结的目录与 Chunk 行数，避免运行配置漂移影响重试。"""
 
         session = self._runtime.database.new_session()
         try:
@@ -533,7 +688,11 @@ class PostgresHistoricalImportJobExecutor:
                 campaign = PostgresHistoricalImportRepository(session).get_campaign(campaign_id)
                 if campaign is None:
                     raise ValueError("Historical Campaign 不存在")
-                return cast(dict[str, object], campaign["keyword_pack_snapshot"])
+                profile = cast(dict[str, object], campaign["profile_snapshot"])
+                return (
+                    cast(dict[str, object], campaign["keyword_pack_snapshot"]),
+                    _required_int(profile, "chunk_rows"),
+                )
         finally:
             session.close()
 
@@ -666,10 +825,11 @@ class PostgresHistoricalImportJobExecutor:
             session.close()
 
         artifact = self._canonical_for_historical_item(chunk_item_id)
+        reused_artifact = artifact is not None
         if artifact is None:
             try:
                 artifact = self._canonical_writer.write(
-                    _iter_temporary_canonical_jsonl(descriptor.path),
+                    descriptor.contents,
                     parent=CanonicalArtifactParent(
                         historical_import_campaign_item_id=chunk_item_id
                     ),
@@ -680,11 +840,15 @@ class PostgresHistoricalImportJobExecutor:
                 artifact = self._canonical_for_historical_item(chunk_item_id)
                 if artifact is None:
                     raise
-        _assert_canonical_matches_descriptor(
-            reader=self._canonical_reader,
-            artifact=artifact,
-            descriptor=descriptor,
-        )
+                reused_artifact = True
+        if reused_artifact:
+            # 首次写入已由 Writer 完整校验 Mapper 的逐行 Canonical；只有
+            # 崩溃恢复复用旧 Artifact 时才需要再次证明本轮输出完全相同。
+            _assert_canonical_matches_descriptor(
+                reader=self._canonical_reader,
+                artifact=artifact,
+                descriptor=descriptor,
+            )
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -733,6 +897,7 @@ class PostgresHistoricalImportJobExecutor:
         invalid_rows: tuple[HistoricalInvalidRow, ...],
         policy_version: str,
         filter_snapshot: BrandVehicleFilterSnapshot,
+        resolver: BrandVehicleResolver,
     ) -> tuple[HistoricalBatchRow, ...]:
         if policy_version == "historical-fill-only.v1":
             operation = "historical_excel_import"
@@ -740,7 +905,6 @@ class PostgresHistoricalImportJobExecutor:
             operation = "excel_import"
         else:
             raise ValueError("Data Import Campaign 写入策略不受支持")
-        resolver = BrandVehicleResolver(filter_snapshot.catalog)
         resolved = tuple(
             (
                 ordinal,
@@ -814,6 +978,8 @@ def _append_historical_brand_vehicle_evidence(
     batch_id: UUID,
     rows: tuple[HistoricalBatchRow, ...],
     filter_snapshot: BrandVehicleFilterSnapshot,
+    resolver: BrandVehicleResolver,
+    timings: StageTimings,
 ) -> None:
     """按行账本把同一冻结 Snapshot 的 Resolver 结果写回 Brand/Vehicle Evidence。"""
 
@@ -824,79 +990,87 @@ def _append_historical_brand_vehicle_evidence(
     }
     if not candidate_by_ordinal:
         return
-    ledgers = tuple(
-        session.execute(
-            select(
-                processing_import_batch_items_table.c.source_row_ordinal,
-                processing_import_batch_items_table.c.content_id,
-                processing_import_batch_items_table.c.outcome,
-                contents_table.c.current_version,
-            )
-            .join(
-                contents_table,
-                contents_table.c.id == processing_import_batch_items_table.c.content_id,
-            )
-            .where(
-                processing_import_batch_items_table.c.batch_id == batch_id,
-                processing_import_batch_items_table.c.source_row_ordinal.in_(
-                    tuple(candidate_by_ordinal)
-                ),
-                processing_import_batch_items_table.c.content_id.is_not(None),
-            )
-        ).mappings()
-    )
+    with timings.measure("ledger_read"):
+        ledgers = tuple(
+            session.execute(
+                select(
+                    processing_import_batch_items_table.c.source_row_ordinal,
+                    processing_import_batch_items_table.c.content_id,
+                    processing_import_batch_items_table.c.outcome,
+                    contents_table.c.current_version,
+                )
+                .join(
+                    contents_table,
+                    contents_table.c.id == processing_import_batch_items_table.c.content_id,
+                )
+                .where(
+                    processing_import_batch_items_table.c.batch_id == batch_id,
+                    processing_import_batch_items_table.c.source_row_ordinal.in_(
+                        tuple(candidate_by_ordinal)
+                    ),
+                    processing_import_batch_items_table.c.content_id.is_not(None),
+                )
+            ).mappings()
+        )
     vehicle_repository = PostgresVehicleCatalogRepository(session)
     brand_repository = PostgresBrandVehicleRepository(session)
-    resolver = BrandVehicleResolver(filter_snapshot.catalog)
     initial_vehicle_entries = []
     initial_brand_entries = []
     existing_entries = []
     created_at = beijing_now()
-    for ledger in ledgers:
-        ordinal = cast(int, ledger["source_row_ordinal"])
-        content = candidate_by_ordinal[ordinal]
-        resolution = resolve_canonical_brand_vehicle(
-            filter_snapshot,
-            content,
-            resolver=resolver,
-        )
-        if not resolution.matched:
-            raise ValueError("Historical candidate 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
-        content_id = cast(UUID, ledger["content_id"])
-        content_version = cast(int, ledger["current_version"])
-        vehicle_evidence = tuple(
-            ContentVehicleEvidence(
-                id=uuid4(),
-                content_id=content_id,
-                content_version=content_version,
-                vehicle_model_id=evidence.entity_id,
-                source="import",
-                matched_text=evidence.matched_text,
-                source_field=evidence.source_field,
-                catalog_version=filter_snapshot.catalog.catalog_version,
-                confidence=1.0,
-                is_manual_locked=False,
-                is_active=True,
-                created_at=created_at,
+    with timings.measure("resolve"):
+        for ledger in ledgers:
+            ordinal = cast(int, ledger["source_row_ordinal"])
+            content = candidate_by_ordinal[ordinal]
+            resolution = resolve_canonical_brand_vehicle(
+                filter_snapshot,
+                content,
+                resolver=resolver,
             )
-            for evidence in resolution.vehicle_evidence
+            if not resolution.matched:
+                raise ValueError("Historical candidate 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
+            content_id = cast(UUID, ledger["content_id"])
+            content_version = cast(int, ledger["current_version"])
+            vehicle_evidence = tuple(
+                ContentVehicleEvidence(
+                    id=uuid4(),
+                    content_id=content_id,
+                    content_version=content_version,
+                    vehicle_model_id=evidence.entity_id,
+                    source="import",
+                    matched_text=evidence.matched_text,
+                    source_field=evidence.source_field,
+                    catalog_version=filter_snapshot.catalog.catalog_version,
+                    confidence=1.0,
+                    is_manual_locked=False,
+                    is_active=True,
+                    created_at=created_at,
+                )
+                for evidence in resolution.vehicle_evidence
+            )
+            if ledger["outcome"] == "created" and content_version == 1:
+                initial_vehicle_entries.append((content_id, content_version, vehicle_evidence))
+                initial_brand_entries.append(
+                    (content_id, content_version, resolution.brand_evidence)
+                )
+            else:
+                existing_entries.append((content_id, content_version, resolution, vehicle_evidence))
+    with timings.measure("vehicle_initial"):
+        vehicle_repository.append_initial_import_evidence_batch(
+            entries=tuple(initial_vehicle_entries)
         )
-        if ledger["outcome"] == "created" and content_version == 1:
-            initial_vehicle_entries.append((content_id, content_version, vehicle_evidence))
-            initial_brand_entries.append((content_id, content_version, resolution.brand_evidence))
-        else:
-            existing_entries.append((content_id, content_version, resolution, vehicle_evidence))
-    vehicle_repository.append_initial_import_evidence_batch(entries=tuple(initial_vehicle_entries))
-    brand_repository.append_initial_automatic_brand_evidence_batch(
-        entries=tuple(initial_brand_entries),
-        catalog_snapshot=filter_snapshot.catalog,
-        return_snapshots=False,
-    )
+    with timings.measure("brand_initial"):
+        brand_repository.append_initial_automatic_brand_evidence_batch(
+            entries=tuple(initial_brand_entries),
+            catalog_snapshot=filter_snapshot.catalog,
+            return_snapshots=False,
+        )
     vehicle_repository.append_import_evidence_batch(
         entries=tuple(
             (content_id, content_version, vehicle_evidence)
             for content_id, content_version, _, vehicle_evidence in existing_entries
-        )
+        ),
+        timings=timings,
     )
     brand_repository.replace_automatic_brand_evidence_batch(
         entries=tuple(
@@ -904,6 +1078,7 @@ def _append_historical_brand_vehicle_evidence(
             for content_id, content_version, resolution, _ in existing_entries
         ),
         catalog_snapshot=filter_snapshot.catalog,
+        timings=timings,
     )
 
 
@@ -937,7 +1112,7 @@ def historical_job_terminal_callback(session: Session, job: JobRecord) -> None:
         if campaign is not None and campaign["status"] == "snapshotting":
             repository.schedule_snapshot_jobs(
                 campaign_id,
-                max_in_flight=_campaign_max_in_flight(campaign),
+                max_in_flight=select_job_window(detect_resources()),
             )
             repository.finalize_preflight(campaign_id)
         return
@@ -960,7 +1135,7 @@ def historical_job_terminal_callback(session: Session, job: JobRecord) -> None:
         repository.schedule_import_jobs(
             campaign_id=campaign_id,
             source_batches=repository.source_batches(campaign_id),
-            max_in_flight=_campaign_max_in_flight(campaign),
+            max_in_flight=select_job_window(detect_resources()),
         )
     repository.refresh_batch_and_campaign(
         campaign_id=campaign_id,
@@ -999,27 +1174,16 @@ def _source_entry(root: Path | None, path: Path) -> HistoricalDirectoryEntry:
     )
 
 
-def _iter_temporary_canonical_jsonl(path: Path) -> Iterator[CanonicalContentV1]:
-    """逐行验证 Mapper 临时输出，交给共享 Canonical Writer。"""
-
-    with path.open("rb") as source:
-        for raw_line in source:
-            try:
-                yield CanonicalContentV1.model_validate_json(raw_line)
-            except ValidationError as exc:
-                raise ValueError("Historical Mapper 输出不是合法 CanonicalContentV1") from exc
-
-
 def _read_bounded_canonical_artifact(
     *,
     reader: CanonicalArtifactReader,
     artifact: ArtifactRecord,
     max_rows: int,
 ) -> tuple[CanonicalContentV1, ...]:
-    """在共享 Reader 完整预检后，最多保留一个批准 Chunk 的 Canonical。"""
+    """事务外完整验证并装入有界 Chunk，不再为流式输出重复解析。"""
 
     rows: list[CanonicalContentV1] = []
-    for content in reader.read(artifact):
+    for content in reader.read_for_bounded_staging(artifact):
         rows.append(content)
         if len(rows) > max_rows:
             raise ValueError("Historical Canonical Artifact 行数超过冻结上限")
@@ -1082,7 +1246,7 @@ def _assert_canonical_matches_descriptor(
     sentinel = object()
     for existing, expected in zip_longest(
         reader.read(artifact),
-        _iter_temporary_canonical_jsonl(descriptor.path),
+        descriptor.contents,
         fillvalue=sentinel,
     ):
         if existing != expected:
@@ -1133,11 +1297,6 @@ def _directory_bytes(path: Path) -> int:
     """统计单个 Snapshot Attempt 的有界临时文件占用。"""
 
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
-
-
-def _campaign_max_in_flight(campaign: RowMapping) -> int:
-    profile = cast(dict[str, object], campaign["profile_snapshot"])
-    return _required_int(profile, "max_in_flight_jobs")
 
 
 __all__ = [

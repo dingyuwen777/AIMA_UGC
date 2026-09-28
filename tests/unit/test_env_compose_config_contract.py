@@ -13,6 +13,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 HISTORICAL_RUNTIME_INTERPOLATION = "${AIMA_HISTORICAL_IMPORT_ROOT:-/data/aima-historical-input}"
 _COMPOSE_INTERPOLATION_PATTERN = re.compile(r"\$\{(AIMA_[A-Z0-9_]+)(?::-[^}]*)?\}")
+CODE_OWNED_RUNTIME_KEYS = (
+    "AIMA_HISTORICAL_CHUNK_ROWS",
+    "AIMA_HISTORICAL_MAX_SCAN_FILES",
+    "AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH",
+    "AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS",
+    "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS",
+)
 
 
 def _load_local_runtime() -> ModuleType:
@@ -96,6 +103,9 @@ def test_source_launcher_preserves_inherited_runtime_overrides(
 
     assert environment["AIMA_LOG_LEVEL"] == "DEBUG"
     assert environment["AIMA_HISTORICAL_CHUNK_ROWS"] == "777"
+    from aima_ugc.platform.config import load_settings
+
+    assert load_settings(environment, base_dir=tmp_path).historical_chunk_rows == 4_000
 
 
 def test_removed_analysis_shard_env_is_rejected_as_unknown(tmp_path: Path) -> None:
@@ -119,6 +129,19 @@ def test_env_examples_cover_all_public_compose_interpolations() -> None:
 
     assert interpolated <= local_keys
     assert interpolated <= production_keys
+
+
+def test_code_owned_runtime_sizing_is_absent_from_env_and_compose() -> None:
+    """部署模板和 Compose 不应再维护运行容量的第二套数值。"""
+
+    local = _env_keys(ROOT / "env.local.example")
+    production = _env_keys(ROOT / "env.production.example")
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+    for key in CODE_OWNED_RUNTIME_KEYS:
+        assert key not in local
+        assert key not in production
+        assert key not in compose
 
 
 def test_compose_uses_one_configurable_historical_runtime_root() -> None:
@@ -155,29 +178,37 @@ def test_env_examples_expose_only_real_runtime_boundaries() -> None:
 
 
 def test_runtime_documentation_uses_env_local_for_local_compose() -> None:
-    """长期运行文档必须把本地源码、本地 Compose 与服务器 Compose 的 env 入口写清楚。"""
+    """总入口与专项 Owner 必须分别说明本地和服务器 Compose 的 env 入口。"""
 
     documentation = (ROOT / "docs" / "02_环境运行与部署.md").read_text(encoding="utf-8")
     windows_guide = (
-        ROOT / "docs" / "guides" / "03_Windows Docker Desktop Compose运行.md"
+        ROOT / "docs" / "guides" / "03_Windows_Docker_Desktop_Compose运行.md"
     ).read_text(encoding="utf-8")
-
-    local_linux = "docker compose --env-file env.local up -d --build --wait"
-    local_windows = (
-        "docker compose -f compose.yaml -f compose.windows.yaml --env-file env.local "
-        "up -d --build --wait"
+    production_guide = (ROOT / "docs" / "operations" / "01_生产部署与离线Release方案.md").read_text(
+        encoding="utf-8"
     )
-    production = "docker compose --env-file env.production up -d --build --wait"
+
+    local_linux = "python scripts/deploy/start_compose.py --env-file env.local"
+    local_linux_stop = "python scripts/deploy/stop_compose.py --env-file env.local"
+    local_windows = "python .\\scripts\\deploy\\start_compose.py --env-file .\\env.local"
+    local_windows_stop = "python .\\scripts\\deploy\\stop_compose.py --env-file .\\env.local"
+    production = "python3 start_compose.py --env-file /data/AIMA_UGC/env.production"
+    production_stop = "python3 stop_compose.py --env-file /data/AIMA_UGC/env.production"
 
     assert local_linux in documentation
+    assert local_linux_stop in documentation
     assert local_windows in documentation
-    assert production in documentation
+    assert local_windows_stop in documentation
+    assert "docs/guides/03_Windows_Docker_Desktop_Compose运行.md" in documentation
+    assert "docs/operations/01_生产部署与离线Release方案.md" in documentation
     assert "env.local **只属于源码开发 launcher 的输入界面" not in documentation
 
     assert "copy env.local.example env.local" in windows_guide
     assert "Copy-Item env.local.example env.local" in windows_guide
     assert local_windows in windows_guide
-    assert production in windows_guide
+    assert local_windows_stop in windows_guide
+    assert production in production_guide
+    assert production_stop in production_guide
 
 
 def test_windows_tooling_validates_the_local_compose_env() -> None:

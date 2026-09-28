@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 PROVIDER_RAW_RETENTION = timedelta(days=30)
 IMPORT_SOURCE_RETENTION = timedelta(days=7)
+UNIFIED_IMPORT_SOURCE_KINDS = ("data-import.source", "historical-import.source")
 EXPORT_RETENTION = timedelta(days=7)
 FEISHU_PUBLICATION_INPUT_RETENTION = timedelta(days=7)
 ORPHAN_RETENTION = timedelta(days=1)
@@ -51,6 +52,7 @@ __all__ = [
     "EXPORT_RETENTION",
     "FEISHU_PUBLICATION_INPUT_RETENTION",
     "IMPORT_SOURCE_RETENTION",
+    "UNIFIED_IMPORT_SOURCE_KINDS",
     "MEDIA_CACHE_ITEM_MAX_BYTES",
     "MEDIA_CACHE_MAX_BYTES",
     "MEDIA_CACHE_RETENTION",

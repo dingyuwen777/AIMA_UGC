@@ -494,6 +494,7 @@ export const BrandUpdateRequestStatus = {
 } as const;
 
 export interface BrandUpdateRequest {
+  aliases?: string[] | null;
   display_name?: string | null;
   role?: BrandUpdateRequestRole;
   status?: BrandUpdateRequestStatus;
@@ -597,14 +598,24 @@ export interface CanonicalReplayAllCreateRequest {
   idempotency_key: string;
 }
 
+export type CanonicalReplayAllCreatedResponsePlanningStatus = typeof CanonicalReplayAllCreatedResponsePlanningStatus[keyof typeof CanonicalReplayAllCreatedResponsePlanningStatus];
+
+
+export const CanonicalReplayAllCreatedResponsePlanningStatus = {
+  queued: 'queued',
+  planned: 'planned',
+} as const;
+
 /**
- * 全历史 Replay 已冻结并排队后的有界摘要。
+ * 全历史 Replay 的快速受理或已完成规划摘要。
  */
 export interface CanonicalReplayAllCreatedResponse {
   /** @minimum 0 */
   artifact_count: number;
   artifacts_per_run?: 100;
+  /** Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。 */
   batch_size?: 1000;
+  planning_status?: CanonicalReplayAllCreatedResponsePlanningStatus;
   request_id: string;
   /** @minimum 0 */
   run_count: number;
@@ -644,6 +655,7 @@ export interface CanonicalReplayCreateRequest {
      */
   artifact_ids: string[];
   /**
+     * Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。
      * @minimum 1
      * @maximum 1000
      */
@@ -785,6 +797,7 @@ export interface CanonicalReplayRunResponse {
   artifact_count: number;
   artifact_ids: string[];
   /**
+     * 该 Run 持久化的自适应起始批量提示。
      * @minimum 1
      * @maximum 1000
      */
@@ -1289,6 +1302,7 @@ export interface CollectionRuntimeItemResponse {
   progress: number;
   record_id: string;
   record_type: CollectionRuntimeRecordType;
+  revocation_recomputed_content_count?: number | null;
   source_filename?: string | null;
   stage: string;
   started_at?: string | null;
@@ -2167,6 +2181,17 @@ export const DataImportRevocationPreviewResponseIneligibleReason = {
   reversible_evidence_missing: 'reversible_evidence_missing',
 } as const;
 
+export type DataImportRevocationPreviewResponseStatus = typeof DataImportRevocationPreviewResponseStatus[keyof typeof DataImportRevocationPreviewResponseStatus];
+
+
+export const DataImportRevocationPreviewResponseStatus = {
+  not_requested: 'not_requested',
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+} as const;
+
 /**
  * 执行撤销前的只读影响预览。
  */
@@ -2174,18 +2199,38 @@ export interface DataImportRevocationPreviewResponse {
   already_revoked: boolean;
   campaign_id: string;
   eligible: boolean;
+  error_code?: string | null;
   impact: DataImportRevocationImpactResponse;
   ineligible_reason?: DataImportRevocationPreviewResponseIneligibleReason;
+  job_id?: string | null;
+  /** @minimum 0 */
+  recomputed_content_count?: number;
+  status: DataImportRevocationPreviewResponseStatus;
 }
 
+export type DataImportRevocationResponseStatus = typeof DataImportRevocationResponseStatus[keyof typeof DataImportRevocationResponseStatus];
+
+
+export const DataImportRevocationResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+} as const;
+
 /**
- * 已经提交的不可变撤销事实。
+ * 撤销请求与执行状态；只有 succeeded 才表示撤销真正完成。
  */
 export interface DataImportRevocationResponse {
   already_revoked: boolean;
   campaign_id: string;
+  error_code?: string | null;
   impact: DataImportRevocationImpactResponse;
-  revoked_at: string;
+  job_id?: string | null;
+  /** @minimum 0 */
+  recomputed_content_count?: number;
+  revoked_at?: string | null;
+  status: DataImportRevocationResponseStatus;
 }
 
 /**
@@ -2502,6 +2547,8 @@ export const HistoricalCampaignStatus = {
   succeeded: 'succeeded',
   partial_failed: 'partial_failed',
   failed: 'failed',
+  revoking: 'revoking',
+  revoked: 'revoked',
 } as const;
 
 export interface HistoricalCampaignResponse {
@@ -3226,6 +3273,176 @@ export interface VehicleModelUpdateRequest {
   status?: VehicleModelUpdateRequestStatus;
 }
 
+export interface WorkbenchDailyPointResponse {
+  /** @minimum 0 */
+  count: number;
+  day: string;
+}
+
+export interface WorkbenchLabelResponse {
+  primary_label: string;
+  secondary_label: string;
+}
+
+export type WorkbenchModuleId = typeof WorkbenchModuleId[keyof typeof WorkbenchModuleId];
+
+
+export const WorkbenchModuleId = {
+  'sound-stream': 'sound-stream',
+  'brand-mind': 'brand-mind',
+  'ugc-trend': 'ugc-trend',
+} as const;
+
+export interface WorkbenchLayoutModule {
+  /**
+     * @minimum 4
+     * @maximum 12
+     */
+  column_span: number;
+  module_id: WorkbenchModuleId;
+  /**
+     * @minimum 0
+     * @maximum 20
+     */
+  order: number;
+  /**
+     * @minimum 48
+     * @maximum 160
+     */
+  row_units: number;
+  visible?: boolean;
+}
+
+export interface WorkbenchLayoutResponse {
+  /**
+     * @minItems 3
+     * @maxItems 3
+     */
+  modules: WorkbenchLayoutModule[];
+  /** @minimum 0 */
+  revision: number;
+  schema_version?: 1;
+  updated_at?: string | null;
+}
+
+export interface WorkbenchLayoutUpdateRequest {
+  /**
+     * @minItems 3
+     * @maxItems 3
+     */
+  modules: WorkbenchLayoutModule[];
+  /** @minimum 0 */
+  revision: number;
+}
+
+export interface WorkbenchMindSecondaryResponse {
+  secondary_label: string;
+  /** @minimum 0 */
+  user_count: number;
+}
+
+export interface WorkbenchMindDimensionResponse {
+  change_summary: string;
+  positive_rate?: number | null;
+  primary_label: string;
+  secondary_labels: WorkbenchMindSecondaryResponse[];
+  /** @minimum 0 */
+  user_count: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  user_share: number;
+  user_share_change_pp?: number | null;
+}
+
+export interface WorkbenchMindResponse {
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  analysis_coverage_rate: number;
+  analysis_scheme_version_id: string;
+  /** @minimum 0 */
+  analyzed_count: number;
+  as_of: string;
+  date_from: string;
+  date_to: string;
+  dimensions: WorkbenchMindDimensionResponse[];
+  /** @minimum 0 */
+  identified_user_count: number;
+  previous_date_from: string;
+  previous_date_to: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  taxonomy_sha256: string;
+  /** @minimum 0 */
+  unidentified_content_count: number;
+}
+
+export interface WorkbenchSentimentStatResponse {
+  /** @minimum 0 */
+  count: number;
+  sentiment: string;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  share: number;
+}
+
+export interface WorkbenchStreamItemResponse {
+  analysis_current: boolean;
+  author_display_name?: string | null;
+  content_id: string;
+  labels?: WorkbenchLabelResponse[];
+  platform: PlatformName;
+  published_at?: string | null;
+  sentiment?: string | null;
+  text?: string | null;
+  title?: string | null;
+  vehicle_names?: string[];
+  voice_type?: string | null;
+}
+
+export interface WorkbenchStreamResponse {
+  analysis_scheme_version_id: string;
+  as_of: string;
+  items: WorkbenchStreamItemResponse[];
+  /** @pattern ^[0-9a-f]{64}$ */
+  taxonomy_sha256: string;
+}
+
+export interface WorkbenchTrendResponse {
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  analysis_coverage_rate: number;
+  analysis_scheme_version_id: string;
+  /** @minimum 0 */
+  analyzed_count: number;
+  as_of: string;
+  daily: WorkbenchDailyPointResponse[];
+  /** @minimum 0 */
+  daily_average: number;
+  date_from: string;
+  date_to: string;
+  /** @minimum 0 */
+  peak_count: number;
+  peak_day?: string | null;
+  period_change_rate?: number | null;
+  positive_rate?: number | null;
+  positive_rate_change_pp?: number | null;
+  previous_date_from: string;
+  previous_date_to: string;
+  sentiments: WorkbenchSentimentStatResponse[];
+  summary: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  taxonomy_sha256: string;
+  /** @minimum 0 */
+  total_count: number;
+}
+
 export type ListAuditEventsParams = {
 /**
  * @minimum 0
@@ -3615,6 +3832,104 @@ formData.append(`file`, bodyCreateFeishuRepresentativeSelection.file);
 }
 
 
+export type GetWorkbenchMindParams = {
+date_from?: string | null;
+date_to?: string | null;
+/**
+ * @maxItems 5
+ */
+platforms?: PlatformName[];
+/**
+ * @maxItems 100
+ */
+brand_ids?: string[];
+/**
+ * @maxItems 100
+ */
+vehicle_model_ids?: string[];
+/**
+ * @maxItems 50
+ */
+voice_types?: string[];
+/**
+ * @maxItems 50
+ */
+sentiments?: string[];
+/**
+ * @maxItems 100
+ */
+primary_labels?: string[];
+/**
+ * @maxItems 200
+ */
+secondary_labels?: string[];
+};
+
+export type GetWorkbenchStreamParams = {
+date_from?: string | null;
+date_to?: string | null;
+/**
+ * @maxItems 5
+ */
+platforms?: PlatformName[];
+/**
+ * @maxItems 100
+ */
+brand_ids?: string[];
+/**
+ * @maxItems 100
+ */
+vehicle_model_ids?: string[];
+/**
+ * @maxItems 50
+ */
+voice_types?: string[];
+/**
+ * @maxItems 50
+ */
+sentiments?: string[];
+/**
+ * @maxItems 100
+ */
+primary_labels?: string[];
+/**
+ * @maxItems 200
+ */
+secondary_labels?: string[];
+};
+
+export type GetWorkbenchTrendParams = {
+date_from?: string | null;
+date_to?: string | null;
+/**
+ * @maxItems 5
+ */
+platforms?: PlatformName[];
+/**
+ * @maxItems 100
+ */
+brand_ids?: string[];
+/**
+ * @maxItems 100
+ */
+vehicle_model_ids?: string[];
+/**
+ * @maxItems 50
+ */
+voice_types?: string[];
+/**
+ * @maxItems 50
+ */
+sentiments?: string[];
+/**
+ * @maxItems 100
+ */
+primary_labels?: string[];
+/**
+ * @maxItems 200
+ */
+secondary_labels?: string[];
+};
 
 export const getUpdateAnalysisSchemeDraftUrl = (versionId: string,) => {
 
@@ -8038,6 +8353,206 @@ export const mergeVehicleModel = async (vehicleModelId: string,
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: VehicleModelResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetWorkbenchLayoutUrl = () => {
+
+
+
+
+  return `/api/v1/workbench/layout`
+}
+
+/**
+ * @summary Get Workbench Layout
+ */
+export const getWorkbenchLayout = async ( options?: RequestInit): Promise<WorkbenchLayoutResponse> => {
+
+  const res = await fetch(getGetWorkbenchLayoutUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WorkbenchLayoutResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getUpdateWorkbenchLayoutUrl = () => {
+
+
+
+
+  return `/api/v1/workbench/layout`
+}
+
+/**
+ * @summary Update Workbench Layout
+ */
+export const updateWorkbenchLayout = async (workbenchLayoutUpdateRequest: WorkbenchLayoutUpdateRequest, options?: RequestInit): Promise<WorkbenchLayoutResponse> => {
+
+  const res = await fetch(getUpdateWorkbenchLayoutUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(workbenchLayoutUpdateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WorkbenchLayoutResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetWorkbenchMindUrl = (params?: GetWorkbenchMindParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    const explodeParameters = ["platforms","brand_ids","vehicle_model_ids","voice_types","sentiments","primary_labels","secondary_labels"];
+
+    if (Array.isArray(value) && explodeParameters.includes(key)) {
+      value.forEach((v) => {
+        normalizedParams.append(key, v === null ? 'null' : String(v));
+      });
+      return;
+    }
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/workbench/mind?${stringifiedParams}` : `/api/v1/workbench/mind`
+}
+
+/**
+ * @summary Get Workbench Mind
+ */
+export const getWorkbenchMind = async (params?: GetWorkbenchMindParams, options?: RequestInit): Promise<WorkbenchMindResponse> => {
+
+  const res = await fetch(getGetWorkbenchMindUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WorkbenchMindResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetWorkbenchStreamUrl = (params?: GetWorkbenchStreamParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    const explodeParameters = ["platforms","brand_ids","vehicle_model_ids","voice_types","sentiments","primary_labels","secondary_labels"];
+
+    if (Array.isArray(value) && explodeParameters.includes(key)) {
+      value.forEach((v) => {
+        normalizedParams.append(key, v === null ? 'null' : String(v));
+      });
+      return;
+    }
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/workbench/stream?${stringifiedParams}` : `/api/v1/workbench/stream`
+}
+
+/**
+ * @summary Get Workbench Stream
+ */
+export const getWorkbenchStream = async (params?: GetWorkbenchStreamParams, options?: RequestInit): Promise<WorkbenchStreamResponse> => {
+
+  const res = await fetch(getGetWorkbenchStreamUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WorkbenchStreamResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetWorkbenchTrendUrl = (params?: GetWorkbenchTrendParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    const explodeParameters = ["platforms","brand_ids","vehicle_model_ids","voice_types","sentiments","primary_labels","secondary_labels"];
+
+    if (Array.isArray(value) && explodeParameters.includes(key)) {
+      value.forEach((v) => {
+        normalizedParams.append(key, v === null ? 'null' : String(v));
+      });
+      return;
+    }
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/workbench/trend?${stringifiedParams}` : `/api/v1/workbench/trend`
+}
+
+/**
+ * @summary Get Workbench Trend
+ */
+export const getWorkbenchTrend = async (params?: GetWorkbenchTrendParams, options?: RequestInit): Promise<WorkbenchTrendResponse> => {
+
+  const res = await fetch(getGetWorkbenchTrendUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WorkbenchTrendResponse = body ? JSON.parse(body) : {}
   return data
 }
 

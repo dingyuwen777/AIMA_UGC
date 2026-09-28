@@ -21,6 +21,7 @@ class JobDefinition:
     handler: Callable[[BaseModel, JobExecutionContextProtocol], JobHandlerResult]
     retry_on_timeout: bool
     terminal_callback: Callable[[Session, JobRecord], None] | None
+    retry_delay_cap_seconds: int | None
 
 
 class JobRegistry:
@@ -38,9 +39,12 @@ class JobRegistry:
         handler: Callable[[BaseModel, JobExecutionContextProtocol], JobHandlerResult],
         retry_on_timeout: bool,
         terminal_callback: Callable[[Session, JobRecord], None] | None = None,
+        retry_delay_cap_seconds: int | None = None,
     ) -> None:
         if job_type in self._definitions:
             raise ValueError(f"job type already registered: {job_type}")
+        if retry_delay_cap_seconds is not None and retry_delay_cap_seconds < 0:
+            raise ValueError("retry_delay_cap_seconds must be nonnegative")
         self._definitions[job_type] = JobDefinition(
             job_type=job_type,
             payload_version=payload_version,
@@ -48,6 +52,7 @@ class JobRegistry:
             handler=handler,
             retry_on_timeout=retry_on_timeout,
             terminal_callback=terminal_callback,
+            retry_delay_cap_seconds=retry_delay_cap_seconds,
         )
 
     @property

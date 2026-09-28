@@ -875,11 +875,11 @@ uv run alembic check
 
 ## 17. 常见排障顺序
 
-### 编辑车型保存很慢
+### 新增 / 编辑车型保存很慢
 
-车型保存由 API 的管理员服务在一个数据库事务里更新车型、写审计并查询返回信息；整体 HTTP
+车型保存由 API 的管理员服务在一个数据库事务里校验品牌、修改目录、写审计并查询返回信息；整体 HTTP
 耗时无法指出等待发生在哪一步。先用浏览器响应的 `x-request-id` 在 `api.log` 中关联整体
-`api.request_slow` 与 `administration.vehicle_model_update_slow`。后者当前仅在车型更新耗时达到
+`api.request_slow` 与 `administration.vehicle_model_create_slow` / `administration.vehicle_model_update_slow`。两类事件当前都只在对应保存操作耗时达到
 1000 毫秒时记录；阈值和阶段边界以
 [`backend/src/aima_ugc/bootstrap/administration_http.py`](../../backend/src/aima_ugc/bootstrap/administration_http.py)
 及 [`backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py)
@@ -888,12 +888,14 @@ uv run alembic check
 `stage_ms` 中未出现的可选阶段表示该次请求未执行该操作，不表示耗时为零。
 
 阶段含义：`session_create` 是创建数据库 Session，`db_checkout` 是取得连接，
-`vehicle_lock` 是查找并锁定车型，`brand_check` 是校验并锁定品牌，
-`catalog_version` 是推进目录版本，`model_update` 是更新车型行，
+`brand_check` 是校验并锁定品牌，`catalog_version` 是推进目录版本；新增路径用
+`model_insert`，编辑路径先有 `vehicle_lock` 再用 `model_update`；
 `alias_replace` 是替换别名，`audit` 是写管理员审计，
 `response_projection` 是查询返回所需的别名及引用状态，`commit` 是事务提交。
 若 `vehicle_lock`、`brand_check` 或 `catalog_version` 明显偏高，应在同一时段进一步检查
-PostgreSQL 锁等待与阻塞会话；仅凭阶段耗时不能断言锁是唯一根因。
+PostgreSQL 锁等待与阻塞会话；仅凭阶段耗时不能断言锁是唯一根因。active Brand 校验使用的是
+能够继续阻止品牌停用/删除、但与外键 KEY SHARE 兼容的最弱充分行锁；如果仍出现长等待，应继续
+用 PostgreSQL 阻塞链证明真正持锁者，不要把锁重新加重或单纯延长 Job Lease。
 日志不包含车型名、别名或请求正文。修改目录本身不会触发历史重筛。
 
 ### 页面没有内容

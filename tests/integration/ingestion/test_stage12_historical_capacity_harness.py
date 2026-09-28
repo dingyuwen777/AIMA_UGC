@@ -61,9 +61,11 @@ def capacity_database() -> Iterator[str]:
         admin.dispose()
 
 
+@pytest.mark.parametrize("source_kind", ("server_path", "local_upload"))
 def test_capacity_harness_records_bounded_end_to_end_evidence(
     tmp_path: Path,
     capacity_database: str,
+    source_kind: str,
 ) -> None:
     environment = os.environ.copy()
     environment["AIMA_DB_NAME"] = capacity_database
@@ -81,6 +83,8 @@ def test_capacity_harness_records_bounded_end_to_end_evidence(
             "100",
             "--max-in-flight",
             "2",
+            "--source-kind",
+            source_kind,
         ],
         cwd=ROOT,
         env=environment,
@@ -94,7 +98,9 @@ def test_capacity_harness_records_bounded_end_to_end_evidence(
     assert report["schema_version"] == "stage12-historical-capacity.v1"
     assert report["input"]["rows"] == 220
     assert report["input"]["files"] == 1
+    assert report["input"]["source_kind"] == source_kind
     assert report["configuration"]["chunk_rows"] == 100
+    assert report["configuration"]["requested_chunk_rows"] == 100
     assert report["configuration"]["max_in_flight_jobs"] == 2
     assert report["campaign"]["status"] == "succeeded"
     assert report["campaign"]["terminal_rows"] == 220

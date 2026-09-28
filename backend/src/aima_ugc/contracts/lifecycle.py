@@ -37,6 +37,10 @@ class DataImportRevocationPreviewResponse(BaseModel):
     already_revoked: bool
     ineligible_reason: DataImportRevocationIneligibleReason | None = None
     impact: DataImportRevocationImpactResponse
+    status: Literal["not_requested", "queued", "running", "succeeded", "failed"]
+    job_id: UUID | None = None
+    recomputed_content_count: int = Field(default=0, ge=0)
+    error_code: str | None = None
 
 
 class DataImportRevokeRequest(BaseModel):
@@ -58,14 +62,18 @@ class DataImportRevokeRequest(BaseModel):
 
 
 class DataImportRevocationResponse(BaseModel):
-    """已经提交的不可变撤销事实。"""
+    """撤销请求与执行状态；只有 succeeded 才表示撤销真正完成。"""
 
     model_config = ConfigDict(extra="forbid")
 
     campaign_id: UUID
     already_revoked: bool
     impact: DataImportRevocationImpactResponse
-    revoked_at: datetime
+    status: Literal["queued", "running", "succeeded", "failed"]
+    job_id: UUID | None = None
+    recomputed_content_count: int = Field(default=0, ge=0)
+    error_code: str | None = None
+    revoked_at: datetime | None = None
 
 
 __all__ = [

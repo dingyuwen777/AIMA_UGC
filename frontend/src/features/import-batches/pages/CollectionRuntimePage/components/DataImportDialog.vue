@@ -55,6 +55,7 @@ const activeStatuses = [
   'queued',
   'running',
   'cancelling',
+  'revoking',
 ]
 
 const historicalCampaignStatusLabels: Record<HistoricalCampaignStatus, string> = {
@@ -69,6 +70,8 @@ const historicalCampaignStatusLabels: Record<HistoricalCampaignStatus, string> =
   succeeded: '导入完成',
   partial_failed: '部分导入失败',
   failed: '导入失败',
+  revoking: '正在撤销',
+  revoked: '已撤销',
 }
 
 const historicalItemStatusLabels: Record<HistoricalCampaignItemStatus, string> = {
@@ -120,8 +123,20 @@ const canViewContents = computed(() => {
   ) > 0
 })
 const canPreviewRevocation = computed(() =>
-  ['succeeded', 'partial_failed'].includes(store.selectedHistoricalCampaign?.status ?? ''),
+  ['succeeded', 'partial_failed', 'revoking', 'revoked'].includes(
+    store.selectedHistoricalCampaign?.status ?? '',
+  ),
 )
+// 历史撤销事实不可改写；旧版预览漏算时，以 Worker 实际重组量展示终态。
+const completedRevocationEstimateMismatch = computed(() => {
+  const preview = store.historicalRevocationPreview
+  const actualCount = preview?.recomputed_content_count ?? 0
+  return Boolean(
+    preview?.already_revoked &&
+    actualCount > 0 &&
+    actualCount !== preview.impact.affected_content_count,
+  )
+})
 const preflightIndeterminate = computed(
   () => store.selectedHistoricalCampaign?.status === 'discovering',
 )
@@ -168,9 +183,15 @@ async function pollCampaign(): Promise<void> {
   ) return
   pollInFlight = true
   try {
-    await store.refreshHistoricalCampaignSummary(campaign.id)
+    await store.refreshHistoricalCampaignLive(campaign.id)
+    if (store.selectedHistoricalCampaign?.status === 'revoking') {
+      await store.previewHistoricalRevocation()
+    }
     if (!activeStatuses.includes(store.selectedHistoricalCampaign?.status ?? '')) {
       await store.refreshHistoricalCampaign(campaign.id)
+      if (store.historicalRevocationPreview?.status === 'succeeded') {
+        notice.value = '撤销完成。'
+      }
     }
   } catch {
     notice.value = '导入任务状态刷新失败，页面会继续重试。'
@@ -354,9 +375,9 @@ async function revokeImport(): Promise<void> {
   }
   const result = await store.revokeHistoricalImport(revocationReason.value)
   if (!result) return
-  notice.value = result.already_revoked
+  notice.value = result.status === 'succeeded'
     ? '这次导入此前已经撤销。'
-    : `撤销完成：影响 ${result.impact.affected_content_count} 条内容，共享来源仍保留 ${result.impact.retained_shared_content_count} 条。`
+    : '撤销请求已提交，服务器正在分批处理。'
 }
 
 function viewCampaignContents(): void {
@@ -699,7 +720,16 @@ function viewCampaignContents(): void {
           <div class="section-heading">
             <strong>撤销影响</strong><span>{{ store.historicalRevocationPreview.already_revoked ? '已经撤销' : '仅影响本次导入的来源贡献' }}</span>
           </div>
-          <div class="revocation-facts">
+          <div
+            v-if="completedRevocationEstimateMismatch"
+            class="revocation-facts"
+          >
+            <span>实际重组内容<b>{{ store.historicalRevocationPreview.recomputed_content_count }}</b></span>
+          </div>
+          <div
+            v-else
+            class="revocation-facts"
+          >
             <span>受影响内容<b>{{ store.historicalRevocationPreview.impact.affected_content_count }}</b></span>
             <span>撤销后隐藏<b>{{ store.historicalRevocationPreview.impact.hidden_content_count }}</b></span>
             <span>其它来源保留<b>{{ store.historicalRevocationPreview.impact.retained_shared_content_count }}</b></span>
@@ -709,7 +739,23 @@ function viewCampaignContents(): void {
             v-if="store.historicalRevocationPreview.already_revoked"
             tone="info"
           >
-            这次导入已经撤销；导入记录、来源证据和审计历史仍会保留。
+            这次导入已经撤销；
+            <template v-if="completedRevocationEstimateMismatch">
+              创建撤销时的影响预估与后台实际处理量不一致，以上展示实际处理量。
+            </template>
+            导入记录、来源证据和审计历史仍会保留。
+          </AimaFeedbackBanner>
+          <AimaFeedbackBanner
+            v-else-if="['queued', 'running'].includes(store.historicalRevocationPreview.status)"
+            tone="info"
+          >
+            正在撤销，已处理 {{ store.historicalRevocationPreview.recomputed_content_count ?? 0 }} / {{ store.historicalRevocationPreview.impact.affected_content_count }} 条内容。
+          </AimaFeedbackBanner>
+          <AimaFeedbackBanner
+            v-else-if="store.historicalRevocationPreview.status === 'failed'"
+            tone="warning"
+          >
+            撤销暂时失败，已完成的批次会保留；点击重试后从断点继续。
           </AimaFeedbackBanner>
           <AimaFeedbackBanner
             v-else-if="!store.historicalRevocationPreview.eligible"
@@ -910,7 +956,7 @@ function viewCampaignContents(): void {
             :disabled="store.revokingHistorical"
             @click="confirmRevocation"
           >
-            {{ store.revokingHistorical ? '正在撤销…' : '撤销本次导入' }}
+            {{ store.revokingHistorical ? '正在提交…' : store.historicalRevocationPreview.status === 'failed' ? '重试撤销' : '撤销本次导入' }}
           </AimaButton>
           <AimaButton
             v-if="canViewContents"

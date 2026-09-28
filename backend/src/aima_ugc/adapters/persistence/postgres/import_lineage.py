@@ -94,6 +94,55 @@ def _ensure_import_lineage(
 ) -> tuple[UUID, UUID]:
     """允许正式写入与后续 Replay 幂等复用同一已完成非计费来源。"""
 
+    existing = _completed_import_lineage(session, request, attempt_id, raw_artifact)
+    if existing is not None:
+        return existing
+
+    repository = PostgresProviderRepository(session)
+    persisted_request = repository.create_or_get_request(request)
+    # 多个 Replay 分片可能同时首次使用同一来源。锁定 Request 后重新读取，
+    # 避免另一事务刚完成 Attempt 时仍按 reserved 状态再次准备而触发冲突。
+    session.execute(
+        select(provider_requests_table.c.id)
+        .where(provider_requests_table.c.id == persisted_request.id)
+        .with_for_update()
+    ).scalar_one()
+    existing = _completed_import_lineage(session, request, attempt_id, raw_artifact)
+    if existing is not None:
+        return existing
+    prepared = ProviderPersistenceService(repository).prepare_non_billable_attempt(
+        request=request,
+        attempt_id=attempt_id,
+    )
+    dispatching = repository.mark_dispatching(prepared.attempt.id)
+    if dispatching.dispatch_started_at is None:
+        raise RuntimeError("Import Attempt 未进入 dispatching")
+    # 开始时间由数据库生成，应用与数据库时钟可能有微小偏差；非计费来源的
+    # 完成时间必须至少覆盖同一 Attempt 已持久化的创建和开始时间。
+    completed_at = max(beijing_now(), dispatching.created_at, dispatching.dispatch_started_at)
+    repository.finalize_dispatch(
+        attempt=ProviderAttemptV1(
+            attempt_id=dispatching.id,
+            provider_request_id=prepared.request.id,
+            attempt_no=dispatching.attempt_no,
+            dispatch_status="completed",
+            dispatch_started_at=dispatching.dispatch_started_at,
+            completed_at=completed_at,
+            raw_artifact_id=raw_artifact.id,
+            billing=ProviderBillingV1(status="not_billable"),
+            created_at=dispatching.created_at,
+        ),
+        raw_artifact_id=raw_artifact.id,
+    )
+    return prepared.request.id, dispatching.id
+
+
+def _completed_import_lineage(
+    session: Session,
+    request: ProviderRequestV1,
+    attempt_id: UUID,
+    raw_artifact: ArtifactRecord,
+) -> tuple[UUID, UUID] | None:
     existing = (
         session.execute(
             select(
@@ -138,33 +187,7 @@ def _ensure_import_lineage(
         ):
             raise ValueError("Import Provider lineage 与当前确定性来源不一致")
         return existing["request_id"], attempt_id
-
-    repository = PostgresProviderRepository(session)
-    prepared = ProviderPersistenceService(repository).prepare_non_billable_attempt(
-        request=request,
-        attempt_id=attempt_id,
-    )
-    dispatching = repository.mark_dispatching(prepared.attempt.id)
-    if dispatching.dispatch_started_at is None:
-        raise RuntimeError("Import Attempt 未进入 dispatching")
-    # 开始时间由数据库生成，应用与数据库时钟可能有微小偏差；非计费来源的
-    # 完成时间必须至少覆盖同一 Attempt 已持久化的创建和开始时间。
-    completed_at = max(beijing_now(), dispatching.created_at, dispatching.dispatch_started_at)
-    repository.finalize_dispatch(
-        attempt=ProviderAttemptV1(
-            attempt_id=dispatching.id,
-            provider_request_id=prepared.request.id,
-            attempt_no=dispatching.attempt_no,
-            dispatch_status="completed",
-            dispatch_started_at=dispatching.dispatch_started_at,
-            completed_at=completed_at,
-            raw_artifact_id=raw_artifact.id,
-            billing=ProviderBillingV1(status="not_billable"),
-            created_at=dispatching.created_at,
-        ),
-        raw_artifact_id=raw_artifact.id,
-    )
-    return prepared.request.id, dispatching.id
+    return None
 
 
 __all__ = ["ensure_campaign_import_lineage", "ensure_single_import_lineage"]

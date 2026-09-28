@@ -98,9 +98,12 @@ from aima_ugc.modules.ingestion.historical_tables import (
     processing_import_batch_item_conflicts_table,
     processing_import_batch_items_table,
 )
+from aima_ugc.modules.ingestion.replay_shard_tables import canonical_replay_run_shards_table
+from aima_ugc.modules.ingestion.reversal_shard_tables import reversal_shards_table
 from aima_ugc.modules.ingestion.revocation_tables import (
     historical_import_campaign_revocations_table,
     historical_import_revocation_content_versions_table,
+    historical_import_revocation_requests_table,
 )
 from aima_ugc.modules.ingestion.tables import (
     processing_import_batches_table,
@@ -135,6 +138,7 @@ from aima_ugc.modules.vehicles.tables import (
     vehicle_model_aliases_table,
     vehicle_models_table,
 )
+from aima_ugc.modules.workbench.tables import workbench_layouts_table
 from aima_ugc.platform.database.metadata import metadata
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
@@ -165,6 +169,7 @@ __all__ = [
     "canonical_replay_all_requests_table",
     "canonical_replay_content_changes_table",
     "canonical_replay_run_artifacts_table",
+    "canonical_replay_run_shards_table",
     "canonical_replay_runs_table",
     "canonical_replay_seen_content_table",
     "canonical_replay_validation_proofs_table",
@@ -172,6 +177,8 @@ __all__ = [
     "historical_import_campaign_items_table",
     "historical_import_campaign_revocations_table",
     "historical_import_revocation_content_versions_table",
+    "historical_import_revocation_requests_table",
+    "reversal_shards_table",
     "historical_import_campaigns_table",
     "collection_candidate_ingestions_table",
     "collection_candidates_table",
@@ -208,6 +215,7 @@ __all__ = [
     "voice_plaza_filter_catalog_entries_table",
     "voice_plaza_filter_catalog_table",
     "voice_plaza_projection_state_table",
+    "workbench_layouts_table",
     "content_versions_table",
     "contents_table",
     "identity_external_identities_table",

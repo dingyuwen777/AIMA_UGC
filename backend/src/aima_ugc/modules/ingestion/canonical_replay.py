@@ -16,20 +16,31 @@ from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 
 from .brand_vehicle_filter import BrandVehicleFilterSnapshot
 
+CANONICAL_REPLAY_PLAN_JOB_TYPE = "ingestion.canonical-replay-plan.v1"
+CANONICAL_REPLAY_PLAN_JOB_PAYLOAD_VERSION = "ingestion.canonical-replay-plan.v1"
 CANONICAL_REPLAY_JOB_TYPE = "ingestion.canonical-replay.v1"
 CANONICAL_REPLAY_JOB_PAYLOAD_VERSION = "ingestion.canonical-replay.v1"
+CANONICAL_REPLAY_BACKGROUND_PRIORITY = -30
 CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS = 86_400
 CANONICAL_REPLAY_JOB_MAX_ATTEMPTS = 10
 CANONICAL_REPLAY_ARTIFACTS_PER_RUN: Final[Literal[100]] = 100
 CANONICAL_REPLAY_FAST_BATCH_SIZE: Final[Literal[1000]] = 1000
 CANONICAL_REPLAY_REVERSAL_JOB_TYPE = "ingestion.canonical-replay-reversal.v1"
 CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION = "ingestion.canonical-replay-reversal.v1"
+CANONICAL_REPLAY_CANCELLATION_JOB_TYPE = "ingestion.canonical-replay-cancellation.v1"
+CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION = "ingestion.canonical-replay-cancellation.v1"
+# 取消协调只处理短批次；锁忙时将指数退避封顶为 5 秒，约一小时后显式报失败。
+CANONICAL_REPLAY_CANCELLATION_JOB_PRIORITY = 20
+CANONICAL_REPLAY_CANCELLATION_JOB_MAX_ATTEMPTS = 720
+CANONICAL_REPLAY_CANCELLATION_JOB_TIMEOUT_SECONDS = 600
+CANONICAL_REPLAY_CANCELLATION_RETRY_DELAY_CAP_SECONDS = 5
 
 CanonicalReplaySourceKind = Literal[
     "excel_import_v2",
     "data_import_canonical_chunk_v2",
     "tikhub_search_attempt_v1",
 ]
+CanonicalReplayPlanningStatus = Literal["queued", "running", "planned", "failed", "cancelled"]
 CanonicalReplayLifecycleStatus = Literal[
     "active",
     "cancelling",
@@ -64,6 +75,9 @@ class CanonicalReplayAllRequestRecord:
     batch_size: int
     created_by: str
     created_at: datetime
+    accepted_before: datetime
+    planning_status: CanonicalReplayPlanningStatus
+    planner_job_id: UUID | None
     reversible: bool
     lifecycle_status: CanonicalReplayLifecycleStatus
     reversal_job_id: UUID | None
@@ -133,6 +147,19 @@ def load_filter_snapshot(value: object) -> BrandVehicleFilterSnapshot:
     return _FILTER_SNAPSHOT_ADAPTER.validate_python(value)
 
 
+class CanonicalReplayPlanJobPayload(BaseModel):
+    """全历史 Replay 规划 Job 冻结受理时间边界与点击时目录快照。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["ingestion.canonical-replay-plan.v1"] = (
+        "ingestion.canonical-replay-plan.v1"
+    )
+    request_id: UUID
+    accepted_before: datetime
+    filter_snapshot: dict[str, object]
+
+
 class CanonicalReplayJobPayload(BaseModel):
     """Job 只携带稳定 Run 身份；大输入和快照保存在 Ingestion Owner 表。"""
 
@@ -151,6 +178,32 @@ class CanonicalReplayReversalJobPayload(BaseModel):
         "ingestion.canonical-replay-reversal.v1"
     )
     request_id: UUID
+
+
+class CanonicalReplayCancellationJobPayload(BaseModel):
+    """持久取消协调保存父请求身份与审计所需的安全元数据。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["ingestion.canonical-replay-cancellation.v1"] = (
+        "ingestion.canonical-replay-cancellation.v1"
+    )
+    request_id: UUID
+    actor_ref: str | None = None
+    http_request_id: str | None = None
+    requested_at: datetime | None = None
+
+
+class CanonicalReplayPlanJobExecutor(Protocol):
+    """在当前 Fence 下把已受理的全历史请求规划成有界 Replay Run。"""
+
+    def execute(
+        self,
+        *,
+        payload: CanonicalReplayPlanJobPayload,
+        fence: JobExecutionFence,
+        context: JobExecutionContextProtocol,
+    ) -> JobHandlerResult: ...
 
 
 class CanonicalReplayJobExecutor(Protocol):
@@ -175,6 +228,36 @@ class CanonicalReplayReversalJobExecutor(Protocol):
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult: ...
+
+
+class CanonicalReplayCancellationJobExecutor(Protocol):
+    """逐批通知子 Job 取消并推进撤回屏障。"""
+
+    def execute(
+        self,
+        *,
+        payload: CanonicalReplayCancellationJobPayload,
+        fence: JobExecutionFence,
+        context: JobExecutionContextProtocol,
+    ) -> JobHandlerResult: ...
+
+
+class CanonicalReplayPlanJobHandler:
+    """把统一 Job Runtime 委托给全历史 Replay Planner。"""
+
+    def __init__(self, executor: CanonicalReplayPlanJobExecutor) -> None:
+        self._executor = executor
+
+    def __call__(
+        self,
+        payload: BaseModel,
+        context: JobExecutionContextProtocol,
+    ) -> JobHandlerResult:
+        if not isinstance(payload, CanonicalReplayPlanJobPayload):
+            raise TypeError("Canonical Replay Planner 收到错误 Payload 类型")
+        if context.cancel_requested():
+            return JobHandlerResult.cancelled()
+        return self._executor.execute(payload=payload, fence=context.fence, context=context)
 
 
 class CanonicalReplayJobHandler:
@@ -209,6 +292,40 @@ class CanonicalReplayReversalJobHandler:
         if not isinstance(payload, CanonicalReplayReversalJobPayload):
             raise TypeError("Canonical Replay Reversal Handler 收到错误 Payload 类型")
         return self._executor.execute(payload=payload, fence=context.fence, context=context)
+
+
+class CanonicalReplayCancellationJobHandler:
+    """把取消协调交给统一持久 Job Runtime。"""
+
+    def __init__(self, executor: CanonicalReplayCancellationJobExecutor) -> None:
+        self._executor = executor
+
+    def __call__(
+        self,
+        payload: BaseModel,
+        context: JobExecutionContextProtocol,
+    ) -> JobHandlerResult:
+        if not isinstance(payload, CanonicalReplayCancellationJobPayload):
+            raise TypeError("Canonical Replay Cancellation Handler 收到错误 Payload 类型")
+        return self._executor.execute(payload=payload, fence=context.fence, context=context)
+
+
+def register_canonical_replay_plan_job(
+    registry: JobRegistry,
+    handler: CanonicalReplayPlanJobHandler,
+    *,
+    terminal_callback: Callable[[Session, JobRecord], None] | None = None,
+) -> None:
+    """注册全历史 Replay 规划 Job；扫描与子 Run 创建不占用 HTTP 请求。"""
+
+    registry.register(
+        job_type=CANONICAL_REPLAY_PLAN_JOB_TYPE,
+        payload_version=CANONICAL_REPLAY_PLAN_JOB_PAYLOAD_VERSION,
+        payload_model=CanonicalReplayPlanJobPayload,
+        handler=handler,
+        retry_on_timeout=True,
+        terminal_callback=terminal_callback,
+    )
 
 
 def register_canonical_replay_job(
@@ -247,29 +364,66 @@ def register_canonical_replay_reversal_job(
     )
 
 
+def register_canonical_replay_cancellation_job(
+    registry: JobRegistry,
+    handler: CanonicalReplayCancellationJobHandler,
+    *,
+    terminal_callback: Callable[[Session, JobRecord], None] | None = None,
+) -> None:
+    """注册可恢复的子任务取消协调 Job。"""
+
+    registry.register(
+        job_type=CANONICAL_REPLAY_CANCELLATION_JOB_TYPE,
+        payload_version=CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION,
+        payload_model=CanonicalReplayCancellationJobPayload,
+        handler=handler,
+        retry_on_timeout=False,
+        terminal_callback=terminal_callback,
+        retry_delay_cap_seconds=CANONICAL_REPLAY_CANCELLATION_RETRY_DELAY_CAP_SECONDS,
+    )
+
+
 __all__ = [
     "CANONICAL_REPLAY_ARTIFACTS_PER_RUN",
+    "CANONICAL_REPLAY_BACKGROUND_PRIORITY",
     "CANONICAL_REPLAY_FAST_BATCH_SIZE",
     "CANONICAL_REPLAY_JOB_MAX_ATTEMPTS",
+    "CANONICAL_REPLAY_PLAN_JOB_PAYLOAD_VERSION",
+    "CANONICAL_REPLAY_PLAN_JOB_TYPE",
     "CANONICAL_REPLAY_JOB_PAYLOAD_VERSION",
     "CANONICAL_REPLAY_JOB_TIMEOUT_SECONDS",
     "CANONICAL_REPLAY_JOB_TYPE",
     "CANONICAL_REPLAY_REVERSAL_JOB_PAYLOAD_VERSION",
     "CANONICAL_REPLAY_REVERSAL_JOB_TYPE",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_PAYLOAD_VERSION",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_TYPE",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_MAX_ATTEMPTS",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_PRIORITY",
+    "CANONICAL_REPLAY_CANCELLATION_JOB_TIMEOUT_SECONDS",
+    "CANONICAL_REPLAY_CANCELLATION_RETRY_DELAY_CAP_SECONDS",
     "CanonicalReplayArtifactRecord",
     "CanonicalReplayAllRequestRecord",
     "CanonicalReplayCounters",
     "CanonicalReplayLifecycleStatus",
+    "CanonicalReplayPlanningStatus",
     "CanonicalReplayJobExecutor",
+    "CanonicalReplayPlanJobExecutor",
+    "CanonicalReplayPlanJobHandler",
+    "CanonicalReplayPlanJobPayload",
     "CanonicalReplayJobHandler",
     "CanonicalReplayJobPayload",
     "CanonicalReplayReversalJobExecutor",
     "CanonicalReplayReversalJobHandler",
     "CanonicalReplayReversalJobPayload",
+    "CanonicalReplayCancellationJobExecutor",
+    "CanonicalReplayCancellationJobHandler",
+    "CanonicalReplayCancellationJobPayload",
     "CanonicalReplayRunRecord",
     "CanonicalReplaySourceKind",
     "dump_filter_snapshot",
     "load_filter_snapshot",
     "register_canonical_replay_job",
+    "register_canonical_replay_plan_job",
     "register_canonical_replay_reversal_job",
+    "register_canonical_replay_cancellation_job",
 ]

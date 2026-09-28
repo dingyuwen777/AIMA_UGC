@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import AppShell from '../../../../app/layouts/AppShell.vue'
-import type {
-  AnalysisContentRunResponse,
-  ContentRelevanceReviewResponse,
-  DataExportResponse,
-  ExportColumnKey,
+import {
+  PlatformName,
+  type AnalysisContentRunResponse,
+  type ContentRelevanceReviewResponse,
+  type DataExportResponse,
+  type ExportColumnKey,
 } from '../../../../generated/api/client'
 import TaskProgressBar from '../../../../shared/TaskProgressBar.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
@@ -71,12 +72,72 @@ const detailOpen = computed({
   set: (open: boolean) => { if (!open) store.closeDetail() },
 })
 
-onMounted(() => {
-  const sourceIdentifier = route.query.source_identifier
-  if (typeof sourceIdentifier === 'string') {
-    store.filters.sourceIdentifier = sourceIdentifier
-    store.applyFilters()
+/** 把 Router Query 的单值/数组统一为非空字符串数组，供工作台深链恢复使用。 */
+function routeValues(value: unknown): string[] {
+  if (typeof value === 'string') return value.trim() ? [value.trim()] : []
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+}
+
+/** 从真实可表达的声音广场筛选字段恢复工作台深链，不解析未知参数。 */
+function hydrateRouteFilters(): void {
+  const deepLinkKeys = [
+    'source_identifier', 'sentiment', 'voice_type', 'primary_label', 'secondary_label',
+    'published_from', 'published_to', 'platform', 'brand_ids', 'vehicle_model_ids', 'content_id',
+  ]
+  if (deepLinkKeys.some((key) => routeValues(route.query[key]).length > 0)) {
+    // 深链是完整入口；会话里遗留的其他条件不能隐式排除本次目标内容。
+    store.resetFilters()
   }
+  let changed = false
+  const setString = (
+    queryKey: string,
+    filterKey: 'sourceIdentifier' | 'sentiment' | 'voiceType' | 'primaryLabel'
+      | 'secondaryLabel' | 'publishedFrom' | 'publishedTo',
+  ): void => {
+    const value = routeValues(route.query[queryKey])[0]
+    if (!value) return
+    store.filters[filterKey] = value
+    changed = true
+  }
+
+  setString('source_identifier', 'sourceIdentifier')
+  setString('sentiment', 'sentiment')
+  setString('voice_type', 'voiceType')
+  setString('primary_label', 'primaryLabel')
+  setString('secondary_label', 'secondaryLabel')
+  setString('published_from', 'publishedFrom')
+  setString('published_to', 'publishedTo')
+
+  const platform = routeValues(route.query.platform)[0]
+  if (platform && Object.values(PlatformName).includes(platform as PlatformName)) {
+    store.filters.platform = platform as PlatformName
+    changed = true
+  }
+
+  const brandIds = routeValues(route.query.brand_ids)
+  if (brandIds.length) {
+    store.filters.brandIds = brandIds
+    changed = true
+  }
+  const vehicleModelIds = routeValues(route.query.vehicle_model_ids)
+  if (vehicleModelIds.length) {
+    store.filters.vehicleModelIds = vehicleModelIds
+    changed = true
+  }
+
+  if (changed) store.applyFilters()
+}
+
+/** 工作台笔记深链直接打开对应 Content 详情，跨分页时仍能定位真实记录。 */
+watch(() => route.query.content_id, (value) => {
+  const contentId = routeValues(value)[0]
+  if (!contentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contentId)) return
+  if (store.detailId !== contentId) void store.openDetail(contentId)
+}, { immediate: true })
+
+onMounted(() => {
+  hydrateRouteFilters()
   void refreshPage().finally(() => store.startPolling())
 })
 onBeforeUnmount(() => {

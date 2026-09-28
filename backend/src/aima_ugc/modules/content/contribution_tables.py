@@ -1,6 +1,16 @@
 """Content Owner 的来源贡献账本；为可逆生命周期操作保留 before/after Delta。"""
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, Table, Text, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Table,
+    Text,
+    Uuid,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 
 from aima_ugc.platform.database.metadata import metadata
@@ -31,6 +41,12 @@ content_source_contributions_table = Table(
     CheckConstraint("version_after >= 1", name="version_after_positive"),
     CheckConstraint("jsonb_typeof(delta) = 'object'", name="delta_object"),
     info={"owner": "content"},
+)
+
+Index(
+    "ix_content_source_contributions_attempt_content",
+    content_source_contributions_table.c.provider_attempt_id,
+    content_source_contributions_table.c.content_id,
 )
 
 

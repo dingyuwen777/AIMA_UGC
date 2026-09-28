@@ -13,6 +13,9 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, bindparam, insert, or_, select, tuple_, update
+from sqlalchemy import cast as sql_cast
+from sqlalchemy import column as sql_column
+from sqlalchemy import values as sql_values
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -923,28 +926,38 @@ class PostgresContentRepository:
         return tuple(author_ids)
 
     def _execute_grouped_content_updates(self, rows: list[dict[str, Any]]) -> None:
-        """按列集合分组 executemany，保持不同 observed_fields 的更新语义。"""
+        """按列集合分组集合更新，避免大批次对每条 Content 发送一条 UPDATE。"""
 
         grouped: dict[frozenset[str], list[dict[str, Any]]] = {}
         for row in rows:
             columns = frozenset(row).difference({"record_id"})
             grouped.setdefault(columns, []).append(row)
         for columns, values in grouped.items():
-            statement = (
-                update(contents_table)
-                .where(contents_table.c.id == bindparam("_batch_content_id"))
-                .values({column: bindparam(column) for column in columns})
-            )
-            self._session.execute(
-                statement,
-                [
-                    {
-                        "_batch_content_id": value["record_id"],
-                        **{column: value[column] for column in columns},
-                    }
-                    for value in values
-                ],
-            )
+            selected_columns = tuple(sorted(columns))
+            for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+                batch_values = sql_values(
+                    sql_column("target_content_id", contents_table.c.id.type),
+                    *(sql_column(name, contents_table.c[name].type) for name in selected_columns),
+                    name="content_updates",
+                ).data(
+                    tuple(
+                        (row["record_id"], *(row[name] for name in selected_columns))
+                        for row in chunk
+                    )
+                )
+                self._session.execute(
+                    update(contents_table)
+                    .where(
+                        contents_table.c.id
+                        == sql_cast(batch_values.c.target_content_id, contents_table.c.id.type)
+                    )
+                    .values(
+                        {
+                            name: sql_cast(batch_values.c[name], contents_table.c[name].type)
+                            for name in selected_columns
+                        }
+                    )
+                )
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> PostgresIngestionResult:
         attempt_id, raw_id = _source_ids(observation)

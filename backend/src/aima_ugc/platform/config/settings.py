@@ -35,10 +35,11 @@ class PlatformSettings(BaseModel):
     secret_dir: Path
     external_secret_dir: Path | None = None
     historical_import_root: Path | None = None
-    historical_chunk_rows: int = Field(default=1000, ge=100, le=2000)
+    # 运行容量与目录安全边界只由代码管理；旧 env 值不得在不同机器上造成行为漂移。
+    historical_chunk_rows: int = Field(default=4_000, ge=100, le=4_000)
     historical_max_scan_files: int = Field(default=10_000, ge=1, le=100_000)
     historical_max_directory_depth: int = Field(default=8, ge=1, le=32)
-    historical_max_in_flight_jobs: int = Field(default=2, ge=1, le=16)
+    historical_max_in_flight_jobs: int | None = Field(default=None, ge=1)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_max_bytes: int = Field(default=20_971_520, gt=0)
     log_backup_count: int = Field(default=10, ge=0)
@@ -54,19 +55,21 @@ class PlatformSettings(BaseModel):
     llm_timeout_seconds: float = Field(default=60.0, gt=0, le=1800)
     llm_max_connections: int = Field(default=10, ge=1, le=100)
     llm_validation_retries: int = Field(default=1, ge=0, le=3)
-    analysis_run_max_in_flight_jobs: int = Field(default=2, ge=1, le=16)
+    analysis_run_max_in_flight_jobs: int | None = Field(default=None, ge=1)
+    # 飞书多维表发布配置；与身份登录配置并存，Secret 仍只保存文件引用。
     feishu_base_url: str = Field(default="https://open.feishu.cn", min_length=1)
-    feishu_app_id: str | None = None
     feishu_app_token: str | None = None
     feishu_wiki_token: str | None = None
     feishu_table_id: str | None = None
     feishu_app_secret_filename: str = Field(default="feishu_app_secret", min_length=1)
     feishu_timeout_seconds: float = Field(default=30.0, gt=0, le=1800)
     feishu_max_retries: int = Field(default=3, ge=0, le=8)
+    feishu_dry_run: bool = True
     # ── 飞书身份接入（单 ③）───────────────────────────────────────────────
     # ⚠️ 这一组**全部可选**：一个都不配时 `feishu_app_id is None`，进程沿用开发身份，
     # 行为与接入前逐字一致（既有测试与本地开发不受影响）。
     # App Secret **不在这里**：配置只保存"引用"（文件名），内容由 platform/security 读。
+    feishu_app_id: str | None = None
     feishu_app_secret_ref: str = Field(default=DEFAULT_FEISHU_APP_SECRET_REF, min_length=1)
     feishu_admin_group_id: str | None = None
     feishu_user_group_id: str | None = None
@@ -152,25 +155,17 @@ class PlatformSettings(BaseModel):
         if self.feishu_app_id is None:
             return self
 
-        if self.feishu_app_id != self.feishu_app_id.strip():
-            raise ValueError("AIMA_FEISHU_APP_ID 不能有首尾空白")
+        # 多维表发布只需要 App ID/Token/Secret，不启用网页登录时允许不配置用户组。
+        # 只有显式填写了任一登录字段，才要求登录三元组完整。
+        login_values = (
+            self.feishu_admin_group_id,
+            self.feishu_user_group_id,
+            self.feishu_redirect_uri,
+        )
+        if not any(value is not None and value.strip() for value in login_values):
+            from aima_ugc.platform.security import validate_secret_ref
 
-        # Report publishing uses an App ID + token/table configuration but does not
-        # enable the authentication resolver. Keep those settings independent from
-        # the login-only group and redirect URI requirements below.
-        publishing_configured = any(
-            value is not None and (not isinstance(value, str) or bool(value.strip()))
-            for value in (self.feishu_app_token, self.feishu_wiki_token, self.feishu_table_id)
-        )
-        login_configured = any(
-            value is not None and bool(value.strip())
-            for value in (
-                self.feishu_admin_group_id,
-                self.feishu_user_group_id,
-                self.feishu_redirect_uri,
-            )
-        )
-        if publishing_configured and not login_configured:
+            validate_secret_ref(self.feishu_app_secret_ref)
             return self
 
         missing = [
@@ -184,6 +179,9 @@ class PlatformSettings(BaseModel):
         ]
         if missing:
             raise ValueError("启用飞书登录必须同时配置 " + "、".join(missing))
+        if self.feishu_app_id != self.feishu_app_id.strip():
+            raise ValueError("AIMA_FEISHU_APP_ID 不能有首尾空白")
+
         # Secret 引用必须是**相对路径**（不能是绝对路径或含 ..），避免读到批准根之外的文件。
         from aima_ugc.platform.security import validate_secret_ref
 
@@ -235,8 +233,6 @@ class PlatformSettings(BaseModel):
                     f"connector {connector.code!r} 的 app_secret_ref 不合法：{exc}"
                 ) from exc
 
-    feishu_dry_run: bool = True
-
     @property
     def artifact_dir(self) -> Path:
         """返回 Local ArtifactStore 的字节根目录。"""
@@ -274,14 +270,12 @@ class PlatformSettings(BaseModel):
 
     @property
     def feishu_app_secret_file(self) -> Path:
-        """返回身份登录使用的 App Secret 文件路径，不读取 Secret 内容。"""
-
+        """返回飞书 App Secret 文件路径，不读取 Secret 内容。"""
         return self.external_secret_root / self.feishu_app_secret_ref
 
     @property
     def feishu_app_secret_path(self) -> Path:
-        """返回报告发布使用的 App Secret 文件路径，不读取 Secret 内容。"""
-
+        """兼容报告发布配置使用的飞书 App Secret 路径别名。"""
         return self.external_secret_root / self.feishu_app_secret_filename
 
     # ── 多企业：解析与查询 ────────────────────────────────────────────────
@@ -319,10 +313,6 @@ _ENV_TO_FIELD = {
     "AIMA_SECRET_DIR": "secret_dir",
     "AIMA_EXTERNAL_SECRET_DIR": "external_secret_dir",
     "AIMA_HISTORICAL_IMPORT_ROOT": "historical_import_root",
-    "AIMA_HISTORICAL_CHUNK_ROWS": "historical_chunk_rows",
-    "AIMA_HISTORICAL_MAX_SCAN_FILES": "historical_max_scan_files",
-    "AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH": "historical_max_directory_depth",
-    "AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS": "historical_max_in_flight_jobs",
     "AIMA_LOG_LEVEL": "log_level",
     "AIMA_LOG_MAX_BYTES": "log_max_bytes",
     "AIMA_LOG_BACKUP_COUNT": "log_backup_count",
@@ -338,15 +328,16 @@ _ENV_TO_FIELD = {
     "AIMA_LLM_TIMEOUT_SECONDS": "llm_timeout_seconds",
     "AIMA_LLM_MAX_CONNECTIONS": "llm_max_connections",
     "AIMA_LLM_VALIDATION_RETRIES": "llm_validation_retries",
-    "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS": "analysis_run_max_in_flight_jobs",
-    "AIMA_FEISHU_BASE_URL": "feishu_base_url",
     "AIMA_FEISHU_APP_ID": "feishu_app_id",
+    "AIMA_FEISHU_BASE_URL": "feishu_base_url",
     "AIMA_FEISHU_APP_TOKEN": "feishu_app_token",
     "AIMA_FEISHU_WIKI_TOKEN": "feishu_wiki_token",
     "AIMA_FEISHU_TABLE_ID": "feishu_table_id",
+    "AIMA_FEISHU_APP_SECRET_FILENAME": "feishu_app_secret_filename",
     "AIMA_FEISHU_APP_SECRET_FILE": "feishu_app_secret_filename",
     "AIMA_FEISHU_TIMEOUT_SECONDS": "feishu_timeout_seconds",
     "AIMA_FEISHU_MAX_RETRIES": "feishu_max_retries",
+    "AIMA_FEISHU_DRY_RUN": "feishu_dry_run",
     "AIMA_FEISHU_APP_SECRET_REF": "feishu_app_secret_ref",
     "AIMA_FEISHU_ADMIN_GROUP_ID": "feishu_admin_group_id",
     "AIMA_FEISHU_USER_GROUP_ID": "feishu_user_group_id",
@@ -356,7 +347,6 @@ _ENV_TO_FIELD = {
     "AIMA_FEISHU_SESSION_TTL_HOURS": "feishu_session_ttl_hours",
     "AIMA_FEISHU_STATE_TTL_SECONDS": "feishu_state_ttl_seconds",
     "AIMA_FEISHU_CONNECTORS": "feishu_connectors_json",
-    "AIMA_FEISHU_DRY_RUN": "feishu_dry_run",
 }
 
 _DEFAULTS = {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from time import perf_counter
 
 from sqlalchemy import Integer, select, text
@@ -24,6 +25,7 @@ from aima_ugc.modules.content.read_model_job import (
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
+from aima_ugc.platform.logging import log_event
 
 from .runtime import PlatformRuntime
 
@@ -157,36 +159,49 @@ def ensure_voice_plaza_projection_backfill_job(
 
     session = runtime.database.new_session()
     try:
+        recovered = False
+        record: JobRecord | None = None
         with session.begin():
             projection = PostgresVoicePlazaProjectionRepository(session)
+            recovered = projection.ensure_state()
             state = projection.get_state(for_update=True)
-            if state.status == "ready":
-                return None
-            jobs = PostgresJobRepository(session)
-            generation = jobs_table.c.payload["generation"].astext.cast(Integer)
-            active_id = session.scalar(
-                select(jobs_table.c.id)
-                .where(
-                    jobs_table.c.job_type == VOICE_PLAZA_PROJECTION_JOB_TYPE,
-                    generation == state.generation,
-                    jobs_table.c.status.in_(("queued", "running")),
+            if state.status != "ready":
+                jobs = PostgresJobRepository(session)
+                generation = jobs_table.c.payload["generation"].astext.cast(Integer)
+                active_id = session.scalar(
+                    select(jobs_table.c.id)
+                    .where(
+                        jobs_table.c.job_type == VOICE_PLAZA_PROJECTION_JOB_TYPE,
+                        generation == state.generation,
+                        jobs_table.c.status.in_(("queued", "running")),
+                    )
+                    .order_by(jobs_table.c.created_at.desc(), jobs_table.c.id.desc())
+                    .limit(1)
                 )
-                .order_by(jobs_table.c.created_at.desc(), jobs_table.c.id.desc())
-                .limit(1)
+                if active_id is not None:
+                    record = jobs.get(active_id)
+                else:
+                    existing_id = session.scalar(
+                        select(jobs_table.c.id)
+                        .where(
+                            jobs_table.c.job_type == VOICE_PLAZA_PROJECTION_JOB_TYPE,
+                            generation == state.generation,
+                        )
+                        .limit(1)
+                    )
+                    if existing_id is not None:
+                        state = projection.restart_generation(state)
+                    record = _enqueue_projection_job(session, state)
+        if recovered:
+            log_event(
+                runtime.logger,
+                logging.WARNING,
+                "voice_plaza_projection.state_recovered",
+                "声音广场投影状态缺失，已恢复并安排完整回填",
+                generation=state.generation,
+                job_id=str(record.id) if record is not None else None,
             )
-            if active_id is not None:
-                return jobs.get(active_id)
-            existing_id = session.scalar(
-                select(jobs_table.c.id)
-                .where(
-                    jobs_table.c.job_type == VOICE_PLAZA_PROJECTION_JOB_TYPE,
-                    generation == state.generation,
-                )
-                .limit(1)
-            )
-            if existing_id is not None:
-                state = projection.restart_generation(state)
-            return _enqueue_projection_job(session, state)
+        return record
     finally:
         session.close()
 

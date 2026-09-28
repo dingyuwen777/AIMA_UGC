@@ -73,15 +73,15 @@ class PostgresReportingHttpService:
                     session,
                     analysis_identity=configuration.identity,
                 )
-                targets = (
-                    content_queries.freeze_targets(filters=target_request.filters)
+                target_statement = (
+                    content_queries.freeze_target_statement(filters=target_request.filters)
                     if target_request.scope == "query" and target_request.filters is not None
-                    else content_queries.freeze_targets(filters=ContentFilterSnapshot())
+                    else content_queries.freeze_target_statement(filters=ContentFilterSnapshot())
                     if target_request.scope == "query"
-                    else content_queries.freeze_targets(content_ids=target_request.content_ids)
+                    else content_queries.freeze_target_statement(
+                        content_ids=target_request.content_ids
+                    )
                 )
-                if not targets:
-                    raise ContentSelectionEmpty
                 export_id = uuid4()
                 job = PostgresJobRepository(session).enqueue(
                     job_type=DATA_EXPORT_JOB_TYPE,
@@ -95,7 +95,6 @@ class PostgresReportingHttpService:
                 )
                 snapshot: dict[str, object] = {
                     "scope": target_request.scope,
-                    "target_count": len(targets),
                     "filters": (
                         target_request.filters.model_dump(mode="json", exclude_none=True)
                         if target_request.filters is not None
@@ -109,18 +108,20 @@ class PostgresReportingHttpService:
                     "requested_by": actor_ref,
                 }
                 columns = resolve_export_columns(cast(tuple[str, ...], request.columns))
-                PostgresDataExportRepository(session).create(
+                target_count = PostgresDataExportRepository(session).create(
                     export_id=export_id,
                     job_id=job.id,
                     request_snapshot=snapshot,
-                    targets=targets,
+                    target_statement=target_statement,
                     columns=columns,
                     column_catalog_version=EXPORT_COLUMN_CATALOG_VERSION,
                 )
+                if target_count == 0:
+                    raise ContentSelectionEmpty
                 return DataExportCreatedResponse(
                     export_id=export_id,
                     job_id=job.id,
-                    target_count=len(targets),
+                    target_count=target_count,
                 )
         finally:
             session.close()

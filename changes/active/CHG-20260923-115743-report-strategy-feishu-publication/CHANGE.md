@@ -35,7 +35,7 @@ affected_paths:
   - contracts/openapi/openapi.json
   - tests/unit/platform/
   - frontend/e2e/admin-configuration-release2.spec.ts
-  - migrations/versions/20260924_0062_feishu_mirror_claims.py
+  - migrations/versions/20260928_0072_feishu_mirror_claims.py
   - docs/
 contracts:
   - FeishuPublicationCreatedResponse
@@ -67,7 +67,7 @@ data_changes:
 | E4 | Dry Run 必须不调用飞书写入，真实链接不能伪造 | `platform/config/settings.py`、`test_feishu_report_publication.py` | 默认 `AIMA_FEISHU_DRY_RUN=true`，结果 URL 为空 |
 | E5 | 页面需要异步状态、成功摘要和失败反馈 | `ReportStrategyPanel.vue`、`admin-configuration-release2.spec.ts` | POST 返回 Job，页面轮询 GET 直至终态 |
 | E6 | 外部发布会跨多个飞书资源产生副作用，重试必须复用已确认身份并按稳定 token 幂等 | `report_publisher.py`、Job Payload checkpoint | 不从头创建 Word/XLSX/Sheet/Docx/Bitable |
-| E7 | 常驻镜像可能多实例并发运行，普通 due 扫描不能保证单消费者 | `feishu_bitable_mirrors.py`、0062 migration | claim/lease/fencing 与旧 Worker 写回保护 |
+| E7 | 常驻镜像可能多实例并发运行，普通 due 扫描不能保证单消费者 | `feishu_bitable_mirrors.py`、0072 migration | claim/lease/fencing 与旧 Worker 写回保护 |
 
 # 目标、成功标准与非目标
 
@@ -139,7 +139,7 @@ data_changes:
 | User / Workflow Acceptance | required | 管理员报告策略 Browser E2E：上传、日期校验、Job 轮询、Dry Run 结果 |
 | Build / Runtime | required | Frontend lint、typecheck、build；后端目标 pytest/编译 |
 | External Provider Probe | not_applicable | 普通验证不调用真实飞书/付费 LLM；真实租户权限需人工执行 |
-| Database / Migration | required | 0060→0062 upgrade、0062 downgrade、再 upgrade；PostgreSQL claim/renew 并发和慢同步 fencing 回归 |
+| Database / Migration | required | main 基线 0061→0071 上升级 0072、0072 downgrade、再 upgrade；PostgreSQL claim/renew 并发和慢同步 fencing 回归 |
 | Docs / Governance | required | 文档事实同步、Change Completion、diff check |
 
 # 风险、兼容性、迁移与回滚
@@ -149,14 +149,14 @@ data_changes:
 | LLM/飞书外部失败 | 可能重试或进入稳定失败码 | Worker 复用 retry/fail 语义；checkpoint、stable client_token/request_id 和 Bitable Upsert 键避免重复创建；不把第三方正文返回前端 |
 | Dry Run 误写飞书 | 默认配置阻断发布器；结果 URL 为空 | 只有显式 `AIMA_FEISHU_DRY_RUN=false` 才进入写入路径 |
 | 上传文件安全 | 文件名、扩展名、ZIP 结构、大小和完整性均校验 | Artifact 入库前后双重校验 |
-| 数据迁移 | 需要 0062 | `feishu_bitable_mirrors` claim 字段由 Alembic 管理，回滚先停止 Worker 再逆序 downgrade |
+| 数据迁移 | 需要 0072 | `feishu_bitable_mirrors` claim 字段由 Alembic 管理，回滚先停止 Worker 再逆序 downgrade |
 | 回滚 | 可回滚代码；Dry Run 不产生外部写入 | 已创建的真实飞书新文档/新表不由回滚动作删除；新 Attempt 继续使用已持久化身份 |
 
 # 文档、依赖、部署与发布影响
 
 - 同步产品状态、API 说明、Blueprint、前端 README、Figma 开发指南、Word 报告附录和本 Change。
 - 沿用仓库锁定的 Python/Node/Worker 工具链；Playwright 是前端 E2E 的生产依赖并纳入验证矩阵。
-- 部署先执行 0062 migration，再启动/滚动重启现有报告与镜像 Worker；回滚先停镜像 Worker，再按 0062→0060_feishu 逆序降级。独立的声音广场 0061 migration 不属于本 PR。
+- 部署先完成 main 基线至 0071，再执行 0072 migration，最后启动/滚动重启现有报告与镜像 Worker；回滚先停镜像 Worker，再按 0072→0071 逆序降级。声音广场 0061 已作为 main 基线进入本 PR 的起点。
 - 真实飞书发布前仍需配置 Secret、权限并显式关闭 Dry Run；本轮不代替真实租户验收。
 
 # 完成审计
@@ -176,7 +176,7 @@ data_changes:
 | V4 | Windows 本地 `.uv-venv` | 目标后端 Ruff/Mypy | 相关源文件无错误 | Python 静态质量和类型边界 |
 | V5 | Prompt / 入口兼容性 | analysis taxonomy API + voice taxonomy/relevance unit | 30 passed | 当前受管 Prompt 指针继续满足 v4 taxonomy/voice contract；未把不兼容 v4.6 文件切成全局基线 |
 | V6 | 仓库质量脚本 | docs、architecture、table ownership、Change completion | UTF-8 终端复跑后记录 | 文档、架构、表 Owner 和治理门禁 |
-| V7 | GitHub Actions（上一轮提交 `f1255499`） | CI run `35974601442`：PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、Requirement Traceability `107552005101`、CI Gate `107555251372` | 上一轮全部通过；本轮修复后的新 HEAD required CI 待复跑 | 旧 HEAD 的 Schema/claim/发布验收；新 HEAD 需重新证明 0060→0062、renew 和慢同步 fencing |
+| V7 | GitHub Actions（上一轮提交 `f1255499`） | CI run `35974601442`：PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、Requirement Traceability `107552005101`、CI Gate `107555251372` | 上一轮全部通过；本轮修复后的新 HEAD required CI 待复跑 | 旧 HEAD 的 Schema/claim/发布验收；新 HEAD 需重新证明 main 0071→0072、renew 和慢同步 fencing |
 
 ## 未验证内容与剩余风险
 

@@ -91,7 +91,10 @@ class HighThroughputContentAnalysisPlanJobExecutor:
                                 session,
                                 run_id=payload.run_id,
                                 max_in_flight=(
-                                    self._runtime.settings.analysis_run_max_in_flight_jobs
+                                    self._runtime.job_window(
+                                        "analysis",
+                                        ceiling=self._runtime.settings.analysis_run_max_in_flight_jobs,
+                                    )
                                 ),
                                 request_id=None,
                             )
@@ -124,7 +127,10 @@ class HighThroughputContentAnalysisPlanJobExecutor:
                                 session,
                                 run_id=payload.run_id,
                                 max_in_flight=(
-                                    self._runtime.settings.analysis_run_max_in_flight_jobs
+                                    self._runtime.job_window(
+                                        "analysis",
+                                        ceiling=self._runtime.settings.analysis_run_max_in_flight_jobs,
+                                    )
                                 ),
                                 request_id=None,
                             )
@@ -258,7 +264,9 @@ def create_high_throughput_analysis_job_terminal_callback(
         schedule_high_throughput_analysis_run_shards(
             session,
             run_id=run_id,
-            max_in_flight=runtime.settings.analysis_run_max_in_flight_jobs,
+            max_in_flight=runtime.job_window(
+                "analysis", ceiling=runtime.settings.analysis_run_max_in_flight_jobs
+            ),
             request_id=job.request_id,
         )
         repository.refresh_run(run_id)

@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import closing
 from datetime import datetime
+from itertools import batched, groupby
 from typing import Any, cast
 from uuid import UUID, uuid5
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import cast as sql_cast
+from sqlalchemy import column, delete, insert, select, tuple_, update
+from sqlalchemy import values as sql_values
 from sqlalchemy.engine import RowMapping
 
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.provider_persistence import ProviderPersistenceService
+from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
+from aima_ugc.modules.content.extended_tables import content_external_ids_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.historical_tables import historical_import_campaign_items_table
 from aima_ugc.modules.ingestion.revocation_tables import (
@@ -26,6 +32,49 @@ from .provider import PostgresProviderRepository
 
 class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleRepository):
     """复用 Content Owner Delta 规则，并把撤销重组记录成真实内部 imports 来源。"""
+
+    def next_campaign_contribution_batch(
+        self,
+        campaign_id: UUID,
+        *,
+        after_content_id: UUID | None,
+        content_limit: int,
+        lower_content_id: UUID | None = None,
+        upper_content_id: UUID | None = None,
+    ) -> tuple[tuple[RowMapping, ...], UUID | None]:
+        """断点后读取最多 content_limit 个完整 Content 的来源 Delta。"""
+
+        if content_limit < 1:
+            raise ValueError("撤销批量必须为正数")
+        contribution = content_source_contributions_table
+        campaign_query = self._campaign_contributions_query(campaign_id).order_by(None)
+        if after_content_id is not None:
+            campaign_query = campaign_query.where(contribution.c.content_id > after_content_id)
+        if lower_content_id is not None:
+            campaign_query = campaign_query.where(contribution.c.content_id >= lower_content_id)
+        if upper_content_id is not None:
+            campaign_query = campaign_query.where(contribution.c.content_id < upper_content_id)
+        # 先只排序 UUID 并在数据库侧限页；完整 JSON Delta 只对本批 Content 排序。
+        # 同一 Content 的多条来源贡献必须留在一个事务内，不能直接对 Delta 行 LIMIT。
+        content_page = (
+            campaign_query.with_only_columns(contribution.c.content_id)
+            .distinct()
+            .order_by(contribution.c.content_id)
+            .limit(content_limit)
+            .subquery()
+        )
+        statement = (
+            campaign_query.where(contribution.c.content_id.in_(select(content_page.c.content_id)))
+            .order_by(contribution.c.content_id, contribution.c.created_at, contribution.c.id)
+            .execution_options(stream_results=True, yield_per=500)
+        )
+        result = self._session.execute(statement).mappings()
+        try:
+            contributions = tuple(result)
+        finally:
+            result.close()
+        last_content_id = cast(UUID, contributions[-1]["content_id"]) if contributions else None
+        return contributions, last_content_id
 
     def parent_import_batch_id(self, campaign_id: UUID) -> UUID | None:
         """选择 Campaign 最早的真实 Processing Batch 作为内部撤销 Request 父事实。"""
@@ -51,15 +100,17 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
     def campaign_contribution_platforms(self, campaign_id: UUID) -> tuple[str, ...]:
         """返回真正需要重组 Current 的 Content 平台集合。"""
 
-        contributions = self.list_campaign_contributions(campaign_id)
-        content_ids = tuple({cast(UUID, row["content_id"]) for row in contributions})
-        if not content_ids:
-            return ()
+        content_ids = (
+            self._campaign_contributions_query(campaign_id)
+            .with_only_columns(content_source_contributions_table.c.content_id)
+            .order_by(None)
+            .subquery()
+        )
         return tuple(
             cast(str, value)
             for value in self._session.scalars(
                 select(contents_table.c.platform)
-                .where(contents_table.c.id.in_(content_ids))
+                .join(content_ids, contents_table.c.id == content_ids.c.content_id)
                 .distinct()
                 .order_by(contents_table.c.platform)
             )
@@ -132,12 +183,80 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
         *,
         revoked_at: datetime,
         lifecycle_sources: dict[str, tuple[UUID, UUID]],
-    ) -> tuple[tuple[UUID, int], ...]:
+    ) -> int:
         """逆序回退 Campaign Delta，并以内部撤销来源追加 Current Version 与追溯记录。"""
 
         if revoked_at.utcoffset() is None:
             raise ValueError("revoked_at 必须包含时区")
-        contributions = self.list_campaign_contributions(campaign_id)
+        completed = 0
+        batch: list[RowMapping] = []
+        content_count = 0
+        with closing(self.iter_campaign_contributions(campaign_id)) as rows:
+            for _, group in groupby(rows, key=lambda row: row["content_id"]):
+                if content_count == 500:
+                    completed += self.apply_campaign_contribution_batch(
+                        campaign_id,
+                        contributions=tuple(batch),
+                        revoked_at=revoked_at,
+                        lifecycle_sources=lifecycle_sources,
+                    )
+                    batch.clear()
+                    content_count = 0
+                batch.extend(group)
+                content_count += 1
+            if batch:
+                completed += self.apply_campaign_contribution_batch(
+                    campaign_id,
+                    contributions=tuple(batch),
+                    revoked_at=revoked_at,
+                    lifecycle_sources=lifecycle_sources,
+                )
+        return completed
+
+    def apply_campaign_contribution_batch(
+        self,
+        campaign_id: UUID,
+        *,
+        contributions: tuple[RowMapping, ...],
+        revoked_at: datetime,
+        lifecycle_sources: dict[str, tuple[UUID, UUID]],
+    ) -> int:
+        """逐批选择集合或完整 Delta 路径，不在内存里保留全部撤销结果。"""
+
+        if all(
+            isinstance(row["delta"], dict)
+            and not row["delta"].get("account")
+            and isinstance(row["delta"].get("collections") or {}, dict)
+            and set(row["delta"].get("collections") or {}) <= {"alternate_ids"}
+            for row in contributions
+        ):
+            return len(
+                self._apply_common_campaign_revocation(
+                    campaign_id,
+                    contributions=contributions,
+                    revoked_at=revoked_at,
+                    lifecycle_sources=lifecycle_sources,
+                )
+            )
+        return len(
+            self._apply_complex_campaign_revocation(
+                campaign_id,
+                contributions=contributions,
+                revoked_at=revoked_at,
+                lifecycle_sources=lifecycle_sources,
+            )
+        )
+
+    def _apply_complex_campaign_revocation(
+        self,
+        campaign_id: UUID,
+        *,
+        contributions: tuple[RowMapping, ...],
+        revoked_at: datetime,
+        lifecycle_sources: dict[str, tuple[UUID, UUID]],
+    ) -> tuple[tuple[UUID, int], ...]:
+        """保留复杂 Delta 的逐 Content 回退语义。"""
+
         by_content: dict[UUID, list[RowMapping]] = defaultdict(list)
         for contribution in contributions:
             by_content[cast(UUID, contribution["content_id"])].append(contribution)
@@ -244,6 +363,196 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
                 )
             )
             versions.append((content_id, version_no))
+        return tuple(versions)
+
+    def _apply_common_campaign_revocation(
+        self,
+        campaign_id: UUID,
+        *,
+        contributions: tuple[RowMapping, ...],
+        revoked_at: datetime,
+        lifecycle_sources: dict[str, tuple[UUID, UUID]],
+    ) -> tuple[tuple[UUID, int], ...]:
+        """按有界批次预读 Current/Version/备用 ID，并集合提交常见撤销写入。"""
+
+        by_content: dict[UUID, list[RowMapping]] = defaultdict(list)
+        for row in contributions:
+            by_content[cast(UUID, row["content_id"])].append(row)
+        versions: list[tuple[UUID, int]] = []
+        content_columns = tuple(sorted(set(_CONTENT_FIELD_COLUMNS.values())))
+        for content_ids_batch in batched(sorted(by_content, key=str), 500, strict=False):
+            content_ids = tuple(content_ids_batch)
+            currents = {
+                cast(UUID, row["id"]): dict(row)
+                for row in self._session.execute(
+                    select(contents_table)
+                    .where(contents_table.c.id.in_(content_ids))
+                    .order_by(contents_table.c.id)
+                    .with_for_update()
+                ).mappings()
+            }
+            version_rows = {
+                cast(UUID, row["content_id"]): row
+                for row in self._session.execute(
+                    select(content_versions_table).where(
+                        tuple_(
+                            content_versions_table.c.content_id,
+                            content_versions_table.c.version_no,
+                        ).in_(
+                            tuple(
+                                (content_id, currents[content_id]["current_version"])
+                                for content_id in content_ids
+                            )
+                        )
+                    )
+                ).mappings()
+            }
+            alternate_rows: dict[UUID, list[dict[str, object]]] = defaultdict(list)
+            for row in self._session.execute(
+                select(content_external_ids_table)
+                .where(content_external_ids_table.c.content_id.in_(content_ids))
+                .order_by(
+                    content_external_ids_table.c.content_id,
+                    content_external_ids_table.c.id_type,
+                )
+            ).mappings():
+                alternate_rows[cast(UUID, row["content_id"])].append(
+                    {str(key): value for key, value in row.items() if key != "content_id"}
+                )
+
+            updates: list[dict[str, object]] = []
+            content_versions: list[dict[str, object]] = []
+            lineage_versions: list[dict[str, object]] = []
+            changed_alternate_ids: list[UUID] = []
+            restored_alternate_ids: list[dict[str, object]] = []
+            for content_id in content_ids:
+                current = currents[content_id]
+                current_version = cast(int, current["current_version"])
+                version_row = version_rows[content_id]
+                author_snapshot = (
+                    dict(cast(dict[str, Any], version_row["author_snapshot"]))
+                    if isinstance(version_row["author_snapshot"], dict)
+                    else None
+                )
+                raw_freshness = current.get("field_observed_at") or {}
+                if not isinstance(raw_freshness, dict):
+                    raise ValueError("Content field_observed_at 必须是对象")
+                freshness = {str(key): str(value) for key, value in raw_freshness.items()}
+                collection_cache = {"alternate_ids": tuple(alternate_rows[content_id])}
+                collection_updates: dict[str, list[dict[str, object]]] = {}
+                ordered = sorted(
+                    by_content[content_id],
+                    key=lambda row: (row["created_at"], str(row["id"])),
+                    reverse=True,
+                )
+                for contribution in ordered:
+                    delta = contribution["delta"]
+                    if delta.get("schema_version") != "content-source-contribution.v1":
+                        raise ValueError("Content 来源贡献 Delta 版本不受支持")
+                    author_snapshot = self._apply_delta(
+                        content_id=content_id,
+                        current=current,
+                        freshness=freshness,
+                        author_snapshot=author_snapshot,
+                        delta=delta,
+                        collection_cache=collection_cache,
+                        collection_updates=collection_updates,
+                    )
+                if "alternate_ids" in collection_updates:
+                    changed_alternate_ids.append(content_id)
+                    restored_alternate_ids.extend(
+                        {"content_id": content_id, **row}
+                        for row in collection_updates["alternate_ids"]
+                    )
+                source = lifecycle_sources.get(cast(str, current["platform"]))
+                if source is None:
+                    raise ValueError("撤销生命周期缺少平台来源")
+                version_no = current_version + 1
+                updates.append(
+                    {
+                        "target_content_id": content_id,
+                        **{column: current[column] for column in content_columns},
+                        "field_observed_at": freshness,
+                        "current_version": version_no,
+                        "updated_at": revoked_at,
+                    }
+                )
+                content_versions.append(
+                    {
+                        "id": uuid5(
+                            campaign_id,
+                            f"revocation-content-version:{content_id}:{version_no}",
+                        ),
+                        "content_id": content_id,
+                        "version_no": version_no,
+                        "content_type": current["content_type"],
+                        "title": current["title"],
+                        "text": current["text"],
+                        "canonical_url": current["canonical_url"],
+                        "share_url": current["share_url"],
+                        "author_snapshot": author_snapshot,
+                        "published_at": current["published_at"],
+                        "source_updated_at": current["source_updated_at"],
+                        "status": current["status"],
+                        "provider_attempt_id": source[0],
+                        "raw_artifact_id": source[1],
+                        "observed_at": revoked_at,
+                    }
+                )
+                lineage_versions.append(
+                    {
+                        "campaign_id": campaign_id,
+                        "content_id": content_id,
+                        "version_no": version_no,
+                        "created_at": revoked_at,
+                    }
+                )
+                versions.append((content_id, version_no))
+
+            if changed_alternate_ids:
+                self._session.execute(
+                    delete(content_external_ids_table).where(
+                        content_external_ids_table.c.content_id.in_(changed_alternate_ids)
+                    )
+                )
+            if restored_alternate_ids:
+                self._session.execute(insert(content_external_ids_table), restored_alternate_ids)
+            if updates:
+                updated_columns = (
+                    *content_columns,
+                    "field_observed_at",
+                    "current_version",
+                    "updated_at",
+                )
+                batch_values = sql_values(
+                    column("target_content_id", contents_table.c.id.type),
+                    *(column(name, contents_table.c[name].type) for name in updated_columns),
+                    name="revocation_values",
+                ).data(
+                    tuple(
+                        (row["target_content_id"], *(row[name] for name in updated_columns))
+                        for row in updates
+                    )
+                )
+                self._session.execute(
+                    update(contents_table)
+                    .where(
+                        contents_table.c.id
+                        == sql_cast(batch_values.c.target_content_id, contents_table.c.id.type)
+                    )
+                    .values(
+                        {
+                            name: sql_cast(batch_values.c[name], contents_table.c[name].type)
+                            for name in updated_columns
+                        }
+                    )
+                )
+                self._session.execute(insert(content_versions_table).values(content_versions))
+                self._session.execute(
+                    insert(historical_import_revocation_content_versions_table).values(
+                        lineage_versions
+                    )
+                )
         return tuple(versions)
 
 

@@ -30,6 +30,9 @@ from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaigns_table,
 )
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
+from aima_ugc.modules.ingestion.revocation_tables import (
+    historical_import_revocation_requests_table,
+)
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.platform.jobs.tables import jobs_table
 
@@ -49,6 +52,7 @@ _CAMPAIGN_ACTIVE_STATUSES = (
     "queued",
     "running",
     "cancelling",
+    "revoking",
 )
 _CAMPAIGN_COMPLETED_STATUSES = ("succeeded", "partial_failed")
 
@@ -242,7 +246,7 @@ class PostgresCollectionRuntimeQueryRepository:
         run = collection_runs_table
         job = jobs_table
         scope_filtered = _scope_filtered_subquery()
-        campaign_source_totals, campaign_chunk_totals = _campaign_progress_subqueries()
+        campaign_source_totals = _campaign_progress_subquery()
 
         import_stage_value = batch.c.stats["stage"].astext
         import_stage = case(
@@ -276,6 +280,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 literal(0).label("filtered_count"),
                 literal(None).cast(JSONB).label("config_snapshot"),
                 literal(None).cast(JSONB).label("canonical_replay_stats"),
+                literal(None).cast(Integer).label("revocation_recomputed_content_count"),
                 batch.c.error_summary,
                 job.c.error_code,
                 batch.c.created_at,
@@ -314,7 +319,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 func.least(
                     100,
                     sql_cast(
-                        func.coalesce(campaign_chunk_totals.c.completed_row_count, 0)
+                        func.coalesce(campaign_source_totals.c.completed_row_count, 0)
                         * 100
                         / campaign.c.total_rows,
                         Integer,
@@ -334,8 +339,9 @@ class PostgresCollectionRuntimeQueryRepository:
         campaign_status = case(
             (campaign.c.status.in_(("uploading", "discovering", "snapshotting")), "running"),
             (campaign.c.status.in_(("ready", "queued")), "queued"),
-            (campaign.c.status.in_(("running", "cancelling")), "running"),
+            (campaign.c.status.in_(("running", "cancelling", "revoking")), "running"),
             (campaign.c.status == "partial_failed", "partial_success"),
+            (campaign.c.status == "revoked", "cancelled"),
             else_=campaign.c.status,
         )
         campaign_import_stats = func.jsonb_build_object(
@@ -352,6 +358,7 @@ class PostgresCollectionRuntimeQueryRepository:
             "rows_rejected",
             _campaign_rows_rejected(campaign.c.stats),
         )
+        revocation_request = historical_import_revocation_requests_table
         campaign_select = select(
             campaign.c.id.label("record_id"),
             literal(None).cast(job.c.id.type).label("job_id"),
@@ -375,6 +382,9 @@ class PostgresCollectionRuntimeQueryRepository:
             literal(0).label("filtered_count"),
             literal(None).cast(JSONB).label("config_snapshot"),
             literal(None).cast(JSONB).label("canonical_replay_stats"),
+            revocation_request.c.recomputed_content_count.label(
+                "revocation_recomputed_content_count"
+            ),
             campaign.c.error_summary,
             literal(None).cast(Text).label("error_code"),
             campaign.c.created_at,
@@ -392,8 +402,8 @@ class PostgresCollectionRuntimeQueryRepository:
                 campaign_source_totals,
                 campaign_source_totals.c.campaign_id == campaign.c.id,
             ).outerjoin(
-                campaign_chunk_totals,
-                campaign_chunk_totals.c.campaign_id == campaign.c.id,
+                revocation_request,
+                revocation_request.c.campaign_id == campaign.c.id,
             )
         )
 
@@ -443,6 +453,7 @@ class PostgresCollectionRuntimeQueryRepository:
                 func.coalesce(scope_filtered.c.filtered_count, 0).label("filtered_count"),
                 run.c.config_snapshot,
                 literal(None).cast(JSONB).label("canonical_replay_stats"),
+                literal(None).cast(Integer).label("revocation_recomputed_content_count"),
                 run.c.error_summary,
                 job.c.error_code,
                 run.c.created_at,
@@ -479,6 +490,7 @@ def _canonical_replay_select() -> Any:
     request = canonical_replay_all_requests_table
     run = canonical_replay_runs_table
     job = jobs_table
+    planner_job = jobs_table.alias("runtime_canonical_replay_planner_job")
     reversal_job = jobs_table.alias("runtime_canonical_replay_reversal_job")
     child = (
         select(
@@ -517,6 +529,10 @@ def _canonical_replay_select() -> Any:
     cancelled_count = func.coalesce(child.c.cancelled_run_count, 0)
     terminal_count = succeeded_count + failed_count + cancelled_count
     replay_status = case(
+        (request.c.planning_status == "queued", "queued"),
+        (request.c.planning_status == "running", "running"),
+        (request.c.planning_status == "failed", "failed"),
+        (request.c.planning_status == "cancelled", "cancelled"),
         (request.c.run_count == 0, "succeeded"),
         (running_count > 0, "running"),
         (and_(queued_count > 0, terminal_count > 0), "running"),
@@ -533,6 +549,10 @@ def _canonical_replay_select() -> Any:
         else_=replay_status,
     )
     replay_progress = case(
+        (
+            request.c.planning_status.in_(("queued", "running", "failed", "cancelled")),
+            func.coalesce(planner_job.c.progress, 0),
+        ),
         (request.c.artifact_count == 0, 100),
         else_=func.least(
             100,
@@ -552,6 +572,9 @@ def _canonical_replay_select() -> Any:
         (request.c.lifecycle_status == "reverting", "reverting"),
         (request.c.lifecycle_status == "reverted", "reverted"),
         (request.c.lifecycle_status == "revert_failed", "revert_failed"),
+        (request.c.planning_status.in_(("queued", "running")), "planning"),
+        (request.c.planning_status == "failed", "failed"),
+        (request.c.planning_status == "cancelled", "cancelled"),
         (public_status == "queued", "queued"),
         (public_status == "running", "replaying"),
         else_=public_status,
@@ -604,7 +627,7 @@ def _canonical_replay_select() -> Any:
     )
     return select(
         request.c.id.label("record_id"),
-        request.c.reversal_job_id.label("job_id"),
+        func.coalesce(request.c.reversal_job_id, request.c.planner_job_id).label("job_id"),
         literal("canonical_replay").label("record_type"),
         public_status.label("public_status"),
         progress.label("progress"),
@@ -625,20 +648,32 @@ def _canonical_replay_select() -> Any:
         literal(0).label("filtered_count"),
         literal(None).cast(JSONB).label("config_snapshot"),
         sql_cast(replay_stats, JSONB).label("canonical_replay_stats"),
+        literal(None).cast(Integer).label("revocation_recomputed_content_count"),
         literal(None).cast(Text).label("error_summary"),
         case(
             (
                 request.c.lifecycle_status == "revert_failed",
                 reversal_job.c.error_code,
             ),
+            (
+                request.c.planning_status == "failed",
+                planner_job.c.error_code,
+            ),
             else_=child.c.error_code,
         ).label("error_code"),
         request.c.created_at,
-        child.c.started_at,
+        func.coalesce(child.c.started_at, planner_job.c.started_at).label("started_at"),
         case(
             (request.c.lifecycle_status == "reverted", request.c.reversed_at),
             (request.c.lifecycle_status == "revert_failed", reversal_job.c.finished_at),
-            (request.c.run_count == 0, request.c.created_at),
+            (
+                request.c.planning_status.in_(("failed", "cancelled")),
+                planner_job.c.finished_at,
+            ),
+            (
+                and_(request.c.planning_status == "planned", request.c.run_count == 0),
+                func.coalesce(planner_job.c.finished_at, request.c.created_at),
+            ),
             (terminal_count == request.c.run_count, child.c.finished_at),
             else_=None,
         ).label("finished_at"),
@@ -651,7 +686,9 @@ def _canonical_replay_select() -> Any:
             sql_cast(request.c.id, Text),
         ).label("search_text"),
     ).select_from(
-        request.outerjoin(child, child.c.request_id == request.c.id).outerjoin(
+        request.outerjoin(child, child.c.request_id == request.c.id)
+        .outerjoin(planner_job, planner_job.c.id == request.c.planner_job_id)
+        .outerjoin(
             reversal_job,
             reversal_job.c.id == request.c.reversal_job_id,
         )
@@ -690,7 +727,7 @@ def _campaign_rows_rejected(stats: Any) -> Any:
     )
 
 
-def _campaign_progress_subqueries() -> tuple[Any, Any]:
+def _campaign_progress_subquery() -> Any:
     item = historical_import_campaign_items_table
     source_progress = case(
         (item.c.status == "discovered", 0),
@@ -701,33 +738,14 @@ def _campaign_progress_subqueries() -> tuple[Any, Any]:
         select(
             item.c.campaign_id.label("campaign_id"),
             func.coalesce(func.sum(source_progress), 0).label("progress_points"),
+            func.coalesce(func.sum(item.c.completed_row_count), 0).label("completed_row_count"),
         )
         .select_from(item.outerjoin(jobs_table, jobs_table.c.id == item.c.job_id))
         .where(item.c.item_kind == "source_file")
         .group_by(item.c.campaign_id)
         .subquery("runtime_campaign_source_progress")
     )
-    chunk_totals = (
-        select(
-            item.c.campaign_id.label("campaign_id"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (
-                            item.c.status.in_(("succeeded", "failed", "cancelled")),
-                            item.c.row_count,
-                        ),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("completed_row_count"),
-        )
-        .where(item.c.item_kind == "chunk")
-        .group_by(item.c.campaign_id)
-        .subquery("runtime_campaign_chunk_progress")
-    )
-    return source_totals, chunk_totals
+    return source_totals
 
 
 def _scope_filtered_subquery() -> Any:
@@ -773,6 +791,9 @@ def _row_to_record(row: RowMapping) -> CollectionRuntimeReadRecord:
         canonical_replay_stats=cast(
             dict[str, object] | None,
             row["canonical_replay_stats"],
+        ),
+        revocation_recomputed_content_count=cast(
+            int | None, row["revocation_recomputed_content_count"]
         ),
         error_summary=cast(str | None, row["error_summary"]),
         error_code=cast(str | None, row["error_code"]),

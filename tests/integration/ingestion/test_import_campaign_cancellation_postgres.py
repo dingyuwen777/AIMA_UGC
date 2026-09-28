@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
-from threading import Event, Thread
+from threading import Barrier, Event, Thread
 from uuid import UUID, uuid4
 
+from aima_ugc.adapters.persistence.postgres.historical_content import (
+    PostgresStandardContentRepository,
+)
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap import historical_import_worker as historical_worker_module
+from aima_ugc.bootstrap import runtime as runtime_module
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
@@ -19,6 +23,7 @@ from aima_ugc.bootstrap.worker import (
 )
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.ingestion.historical_tables import processing_import_batch_items_table
+from aima_ugc.platform.capacity import ResourceSnapshot
 from aima_ugc.platform.config import load_settings
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
@@ -27,7 +32,7 @@ from sqlalchemy import func, select
 from tests.integration.stage3_brand_support import stage3_filter_brand_id
 
 
-def _xlsx() -> bytes:
+def _xlsx(suffix: str = "") -> bytes:
     """生成一行可稳定导入的最小 Excel。"""
 
     workbook = Workbook()
@@ -37,11 +42,11 @@ def _xlsx() -> bytes:
     sheet.append(
         [
             "小红书",
-            "爱玛取消回归",
+            f"爱玛取消回归{suffix}",
             "取消并发不能让 Worker 崩溃",
-            "测试用户",
+            f"测试用户{suffix}",
             "2026-09-09 10:00:00",
-            "https://www.xiaohongshu.com/explore/cancel-regression",
+            f"https://www.xiaohongshu.com/explore/cancel-regression{suffix}",
         ]
     )
     output = BytesIO()
@@ -83,7 +88,7 @@ def _create_local_campaign(client: TestClient, runtime, payload: bytes) -> str:
     return campaign_id
 
 
-def _runtime(tmp_path: Path):
+def _runtime(tmp_path: Path, *, max_in_flight_jobs: int = 1):
     """创建使用真实 PostgreSQL 的隔离 Worker Runtime。"""
 
     settings = load_settings().model_copy(
@@ -92,7 +97,7 @@ def _runtime(tmp_path: Path):
             "log_dir": tmp_path / "logs",
             "historical_import_root": None,
             "historical_chunk_rows": 100,
-            "historical_max_in_flight_jobs": 1,
+            "historical_max_in_flight_jobs": max_in_flight_jobs,
         }
     )
     runtime = create_worker_runtime(settings=settings)
@@ -184,6 +189,103 @@ def test_ready_campaign_can_cancel_before_import_start(tmp_path: Path) -> None:
         assert cancelled.json()["status"] == "cancelled"
         assert cancelled.json()["finished_at"] is not None
         _assert_no_imported_rows(runtime)
+    finally:
+        _cleanup(runtime)
+
+
+def test_distinct_campaign_chunks_enter_content_write_concurrently(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """同一 Campaign 的不同源文件可并行写入，末尾调度仍由父行锁串行结清。"""
+
+    runtime = _runtime(tmp_path, max_in_flight_jobs=2)
+    try:
+        monkeypatch.setattr(
+            runtime_module,
+            "detect_resources",
+            lambda: ResourceSnapshot(4, 8 * 1024**3, 4 * 1024**3, "cgroup_v2"),
+        )
+        client = _client(runtime)
+        brand_id = stage3_filter_brand_id(runtime)
+        payloads = {f"local-{index}.xlsx": _xlsx(str(index)) for index in (1, 2)}
+        created = client.post(
+            "/api/v1/data-import-campaigns/local",
+            json={
+                "client_idempotency_key": f"parallel-chunks-{uuid4()}",
+                "files": [
+                    {"relative_path": name, "byte_size": len(payload)}
+                    for name, payload in payloads.items()
+                ],
+                "brand_ids": [brand_id],
+                "ingestion_policy": "standard_observation",
+            },
+        )
+        assert created.status_code == 201
+        campaign_id = created.json()["campaign_id"]
+        for item in created.json()["upload_items"]:
+            name = item["relative_path"]
+            uploaded = client.put(
+                f"/api/v1/data-import-campaigns/{campaign_id}/items/{item['item_id']}/content",
+                files={
+                    "file": (
+                        name,
+                        payloads[name],
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                },
+            )
+            assert uploaded.status_code == 200
+        finalized = client.post(f"/api/v1/data-import-campaigns/{campaign_id}/finalize")
+        assert finalized.status_code == 202
+
+        workers = [
+            create_job_worker(
+                runtime=runtime,
+                registry=create_collection_job_registry(runtime=runtime),
+                worker_id=f"parallel-chunks-{index}",
+                lease_seconds=120,
+                retry_delay_seconds=0,
+            )
+            for index in (1, 2)
+        ]
+        assert workers[0].run_once() is True
+        assert workers[0].run_once() is True
+        campaign = client.get(f"/api/v1/data-import-campaigns/{campaign_id}").json()
+        assert campaign["status"] == "ready"
+        assert client.post(f"/api/v1/data-import-campaigns/{campaign_id}/start").status_code == 200
+
+        both_inside_content_write = Barrier(2, timeout=10)
+        original_ingest = PostgresStandardContentRepository.ingest_rows
+
+        def synchronized_ingest(self, **kwargs):
+            both_inside_content_write.wait()
+            return original_ingest(self, **kwargs)
+
+        monkeypatch.setattr(PostgresStandardContentRepository, "ingest_rows", synchronized_ingest)
+        errors: list[BaseException] = []
+
+        def process(worker) -> None:
+            try:
+                assert worker.run_once() is True
+            except BaseException as exc:  # pragma: no cover - 在线程结束后统一报告
+                errors.append(exc)
+
+        threads = [Thread(target=process, args=(worker,)) for worker in workers]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=20)
+        assert all(not thread.is_alive() for thread in threads)
+        assert errors == []
+        with runtime.database.engine.begin() as connection:
+            assert connection.scalar(select(func.count()).select_from(contents_table)) == 2
+            assert (
+                connection.scalar(
+                    select(func.count()).select_from(processing_import_batch_items_table)
+                )
+                == 2
+            )
     finally:
         _cleanup(runtime)
 

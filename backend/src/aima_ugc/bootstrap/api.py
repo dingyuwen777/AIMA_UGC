@@ -139,6 +139,14 @@ from aima_ugc.contracts.relevance_review import (
     ContentRelevanceReviewRequest,
     ContentRelevanceReviewResponse,
 )
+from aima_ugc.contracts.workbench import (
+    WorkbenchLayoutResponse,
+    WorkbenchLayoutUpdateRequest,
+    WorkbenchMindResponse,
+    WorkbenchQuery,
+    WorkbenchStreamResponse,
+    WorkbenchTrendResponse,
+)
 from aima_ugc.modules.administration.http import (
     AdministrationConflict,
     AdministrationHttpService,
@@ -203,6 +211,11 @@ from aima_ugc.modules.reporting.http import (
     DataExportNotReady,
     DataExportResourceNotFound,
     ReportingHttpService,
+)
+from aima_ugc.modules.workbench.http import (
+    WorkbenchAnalysisUnavailable,
+    WorkbenchHttpService,
+    WorkbenchLayoutConflict,
 )
 from aima_ugc.platform.health import ReadinessReport
 from aima_ugc.platform.logging import log_event, log_exception_event
@@ -391,6 +404,7 @@ def create_app(
     administration_service: AdministrationHttpService | None = None,
     feishu_publication_service: FeishuPublicationHttpService | None = None,
     product_service: ProductHttpService | None = None,
+    workbench_service: WorkbenchHttpService | None = None,
     identity_resolver: IdentityResolver | None = None,
     analysis_taxonomy_loader: PromptTaxonomyLoader | None = None,
 ) -> FastAPI:
@@ -531,6 +545,16 @@ def create_app(
         from aima_ugc.bootstrap.product_http import PostgresProductHttpService
 
         return PostgresProductHttpService(resolved_runtime)
+
+    def current_workbench_service() -> WorkbenchHttpService:
+        if workbench_service is not None:
+            return workbench_service
+        resolved_runtime = get_runtime()
+        if resolved_runtime is None:
+            raise RuntimeError("Workbench Service 依赖不可用")
+        from aima_ugc.bootstrap.workbench_http import PostgresWorkbenchHttpService
+
+        return PostgresWorkbenchHttpService(resolved_runtime)
 
     def current_principal(request: Request) -> Principal:
         """从唯一 Identity Resolver 取得当前 Principal。"""
@@ -905,6 +929,32 @@ def create_app(
                     message="请检查服务端 Prompt Taxonomy 配置和日志。",
                 ),
             ),
+        )
+
+    @application.exception_handler(WorkbenchAnalysisUnavailable)
+    async def workbench_analysis_unavailable(
+        request: Request,
+        _: WorkbenchAnalysisUnavailable,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=503,
+            request_id=_request_id(request),
+            title="工作台分析口径暂不可用",
+            detail="当前 active Analysis Scheme 无法提供工作台所需的完整分析口径。",
+            code="workbench_analysis_unavailable",
+        )
+
+    @application.exception_handler(WorkbenchLayoutConflict)
+    async def workbench_layout_conflict(
+        request: Request,
+        _: WorkbenchLayoutConflict,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="工作台布局保存冲突",
+            detail="工作台布局已被其他会话更新，请刷新后重新编辑。",
+            code="workbench_layout_conflict",
         )
 
     @application.exception_handler(ContentAnalysisTargetChanged)
@@ -2086,11 +2136,48 @@ def create_app(
         """取消父请求的全部活跃子任务，并排队撤回已提交贡献。"""
 
         principal = current_administrator(request)
-        return current_canonical_replay_service().cancel_and_revoke_all(
-            replay_request_id,
-            actor_ref=principal.principal_id,
-            request_id=_request_id(request),
+        request_id = _request_id(request)
+        started = perf_counter()
+        log_event(
+            _LOGGER,
+            logging.INFO,
+            "canonical_replay.cancel_and_revoke_received",
+            "历史重筛取消并撤回请求已进入应用。",
+            request_id=request_id,
+            replay_request_id=str(replay_request_id),
         )
+        try:
+            response = current_canonical_replay_service().cancel_and_revoke_all(
+                replay_request_id,
+                actor_ref=principal.principal_id,
+                request_id=request_id,
+            )
+        except Exception as exc:
+            log_exception_event(
+                _LOGGER,
+                logging.WARNING,
+                "canonical_replay.cancel_and_revoke_failed",
+                "历史重筛取消并撤回请求处理失败。",
+                error=exc,
+                request_id=request_id,
+                replay_request_id=str(replay_request_id),
+                duration_ms=int((perf_counter() - started) * 1000),
+            )
+            raise
+        log_event(
+            _LOGGER,
+            logging.INFO,
+            "canonical_replay.cancel_and_revoke_accepted",
+            "历史重筛取消并撤回请求已提交。",
+            request_id=request_id,
+            replay_request_id=str(replay_request_id),
+            lifecycle_status=response.lifecycle_status,
+            reversal_job_id=(
+                str(response.reversal_job_id) if response.reversal_job_id is not None else None
+            ),
+            duration_ms=int((perf_counter() - started) * 1000),
+        )
+        return response
 
     @application.post(
         "/api/v1/canonical-replays/all/{replay_request_id}/revoke",
@@ -2404,6 +2491,74 @@ def create_app(
         """读取 active Taxonomy 与当前可见历史值合并后的筛选目录。"""
 
         return current_content_service().get_filter_options()
+
+    @application.get(
+        "/api/v1/workbench/stream",
+        operation_id="getWorkbenchStream",
+        response_model=WorkbenchStreamResponse,
+        responses={503: {"model": HttpErrorResponse}, 500: {"model": HttpErrorResponse}},
+        tags=["workbench"],
+    )
+    def get_workbench_stream(
+        query: Annotated[WorkbenchQuery, Query()],
+    ) -> WorkbenchStreamResponse:
+        return current_workbench_service().get_stream(query)
+
+    @application.get(
+        "/api/v1/workbench/trend",
+        operation_id="getWorkbenchTrend",
+        response_model=WorkbenchTrendResponse,
+        responses={503: {"model": HttpErrorResponse}, 500: {"model": HttpErrorResponse}},
+        tags=["workbench"],
+    )
+    def get_workbench_trend(
+        query: Annotated[WorkbenchQuery, Query()],
+    ) -> WorkbenchTrendResponse:
+        return current_workbench_service().get_trend(query)
+
+    @application.get(
+        "/api/v1/workbench/mind",
+        operation_id="getWorkbenchMind",
+        response_model=WorkbenchMindResponse,
+        responses={503: {"model": HttpErrorResponse}, 500: {"model": HttpErrorResponse}},
+        tags=["workbench"],
+    )
+    def get_workbench_mind(
+        query: Annotated[WorkbenchQuery, Query()],
+    ) -> WorkbenchMindResponse:
+        return current_workbench_service().get_mind(query)
+
+    @application.get(
+        "/api/v1/workbench/layout",
+        operation_id="getWorkbenchLayout",
+        response_model=WorkbenchLayoutResponse,
+        responses={500: {"model": HttpErrorResponse}},
+        tags=["workbench"],
+    )
+    def get_workbench_layout(request: Request) -> WorkbenchLayoutResponse:
+        return current_workbench_service().get_layout(
+            principal_id=current_principal(request).principal_id
+        )
+
+    @application.put(
+        "/api/v1/workbench/layout",
+        operation_id="updateWorkbenchLayout",
+        response_model=WorkbenchLayoutResponse,
+        responses={
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["workbench"],
+    )
+    def update_workbench_layout(
+        body: WorkbenchLayoutUpdateRequest,
+        request: Request,
+    ) -> WorkbenchLayoutResponse:
+        return current_workbench_service().update_layout(
+            body,
+            principal_id=current_principal(request).principal_id,
+        )
 
     @application.get(
         "/api/v1/principal",

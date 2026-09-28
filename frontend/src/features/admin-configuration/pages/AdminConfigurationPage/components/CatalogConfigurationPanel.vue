@@ -12,7 +12,6 @@ import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import {
   addBrand,
-  addBrandAlias,
   addVehicle,
   editBrand,
   editVehicle,
@@ -21,7 +20,6 @@ import {
   mergeVehicle,
   queueAllCanonicalReplays,
   removeBrand,
-  removeBrandAlias,
   removeVehicle,
 } from '../../../api'
 import { formatRuntimeStatus } from '../../../presentation'
@@ -258,9 +256,11 @@ async function confirmReplayAll(): Promise<void> {
     })
     replayConfirmOpen.value = false
     replayIdempotencyKey.value = ''
-    notice.value = result.artifact_count === 0
-      ? '当前没有符合条件的历史 Canonical 数据，无需创建重筛任务。'
-      : `已将 ${result.artifact_count} 个 Canonical 文件拆分为 ${result.run_count} 个重筛任务，可在采集运行中心查看进度与结果。`
+    notice.value = result.planning_status === 'queued'
+      ? '全历史重筛已受理，系统正在后台冻结已受理范围并拆分任务，可在采集运行中心查看后续进度。'
+      : result.artifact_count === 0
+        ? '当前没有符合条件的历史 Canonical 数据，无需创建重筛任务。'
+        : `已将 ${result.artifact_count} 个 Canonical 文件拆分为 ${result.run_count} 个重筛任务，可在采集运行中心查看进度与结果。`
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -274,7 +274,15 @@ function cancelBrandChanges(): void {
   if (current) selectBrand(current)
 }
 
-/** 品牌基础字段与识别词继续分别经过当前正式 API。 */
+/** 用服务端完整投影局部更新品牌目录，避免保存后重读全部品牌与车型。 */
+function upsertBrand(item: BrandResponse): void {
+  const remaining = brands.value.filter((brand) => brand.id !== item.id)
+  brands.value = [...remaining, item].sort((left, right) => (
+    left.display_name.localeCompare(right.display_name) || left.id.localeCompare(right.id)
+  ))
+}
+
+/** 一次业务请求原子保存品牌基础字段和完整识别词集合。 */
 async function saveBrand(): Promise<void> {
   if (!brandFormValid.value || saving.value) return
   const creating = !brandDraft.id
@@ -283,42 +291,24 @@ async function saveBrand(): Promise<void> {
   error.value = null
   notice.value = null
   try {
-    const requestedAliases = aliasInput.values
-    let brandId = brandDraft.id
-    if (!brandId) {
-      const created = await addBrand({
-        display_name: brandDraft.displayName.trim(),
-        role: brandDraft.role,
-        aliases: requestedAliases,
-      })
-      brandId = created.id
-    } else {
-      const current = brands.value.find((item) => item.id === brandId)
-      await editBrand(brandId, {
-        display_name: brandDraft.displayName.trim(),
-        role: brandDraft.role,
-        status: brandDraft.status,
-      })
-      const currentAliases = current?.aliases ?? []
-      const requested = new Set(requestedAliases)
-      await Promise.all(
-        currentAliases
-          .filter((alias) => !requested.has(alias.text))
-          .map((alias) => removeBrandAlias(brandId, alias.id)),
-      )
-      const existing = new Set(currentAliases.map((alias) => alias.text))
-      await Promise.all(
-        requestedAliases
-          .filter((text) => !existing.has(text))
-          .map((text) => addBrandAlias(brandId, { text })),
-      )
-    }
-    selectedBrandId.value = brandId
+    const saved = brandDraft.id
+      ? await editBrand(brandDraft.id, {
+          display_name: brandDraft.displayName.trim(),
+          role: brandDraft.role,
+          status: brandDraft.status,
+          aliases: aliasInput.values,
+        })
+      : await addBrand({
+          display_name: brandDraft.displayName.trim(),
+          role: brandDraft.role,
+          aliases: aliasInput.values,
+        })
+    upsertBrand(saved)
     brandCreateOpen.value = false
+    selectBrand(saved)
     notice.value = aliasInput.duplicatesRemoved > 0
       ? aliasDeduplicatedNotice
       : creating ? '品牌已创建并记录操作。' : '品牌与识别词已更新并记录操作。'
-    await load()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -333,14 +323,14 @@ async function setBrandStatus(item: BrandResponse, status: 'active' | 'deprecate
   error.value = null
   notice.value = null
   try {
-    await editBrand(item.id, {
+    const saved = await editBrand(item.id, {
       display_name: item.display_name,
       role: item.role,
       status,
     })
-    selectedBrandId.value = item.id
+    upsertBrand(saved)
+    selectBrand(saved)
     notice.value = status === 'active' ? '品牌已启用并记录操作。' : '品牌已停用并记录操作。'
-    await load()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {

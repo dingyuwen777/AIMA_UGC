@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import exists, func, insert, literal, select, union
-from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.collection.candidate_tables import (
@@ -32,8 +32,10 @@ from aima_ugc.modules.ingestion.revocation import (
 )
 from aima_ugc.modules.ingestion.revocation_tables import (
     historical_import_campaign_revocations_table,
+    historical_import_revocation_requests_table,
 )
 
+from .content_lifecycle import campaign_contributions_query
 from .content_visibility import content_has_active_source
 
 
@@ -57,7 +59,15 @@ class PostgresImportCampaignRevocationRepository:
     def get_revocation(self, campaign_id: UUID) -> ImportCampaignRevocationRecord | None:
         """读取已经提交的撤销事实。"""
 
-        row = (
+        row = self.get_operation(campaign_id)
+        return None if row is None or row["status"] != "succeeded" else _record(row)
+
+    def get_operation(
+        self, campaign_id: UUID, *, for_update: bool = False
+    ) -> dict[str, object] | None:
+        """读取撤销请求状态；运行中记录不能被当作已完成撤销。"""
+
+        fact = (
             self._session.execute(
                 select(historical_import_campaign_revocations_table).where(
                     historical_import_campaign_revocations_table.c.campaign_id == campaign_id
@@ -66,7 +76,26 @@ class PostgresImportCampaignRevocationRepository:
             .mappings()
             .one_or_none()
         )
-        return None if row is None else _record(row)
+        if fact is None:
+            return None
+        statement = select(historical_import_revocation_requests_table).where(
+            historical_import_revocation_requests_table.c.campaign_id == campaign_id
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        request = self._session.execute(statement).mappings().one_or_none()
+        if request is None:
+            return {
+                **dict(fact),
+                "status": "succeeded",
+                "job_id": None,
+                "raw_artifact_id": None,
+                "checkpoint_content_id": None,
+                "recomputed_content_count": 0,
+                "completed_at": fact["revoked_at"],
+                "error_code": None,
+            }
+        return {**dict(fact), **dict(request)}
 
     def calculate_impact(self, campaign_id: UUID) -> ImportCampaignRevocationImpact:
         """计算可见性影响与可逆证据缺口；这里只读，不修改业务数据。"""
@@ -134,11 +163,11 @@ class PostgresImportCampaignRevocationRepository:
             .mappings()
             .one()
         )
-        return _record(row)
+        return _record(dict(row))
 
 
 def _affected_content_ids(campaign_id: UUID) -> Any:
-    """合并直接文件导入与基于 Campaign 的在线补采贡献，按 Content 去重。"""
+    """合并导入行、在线补采及重筛沿原来源写入的贡献，按 Content 去重。"""
 
     direct = (
         select(processing_import_batch_items_table.c.content_id.label("content_id"))
@@ -175,7 +204,12 @@ def _affected_content_ids(campaign_id: UUID) -> Any:
             ingestion.c.content_id.is_not(None),
         )
     )
-    return union(direct, supplemented)
+    contributions = (
+        campaign_contributions_query(campaign_id)
+        .with_only_columns(content_source_contributions_table.c.content_id.label("content_id"))
+        .order_by(None)
+    )
+    return union(direct, supplemented, contributions)
 
 
 def _unreversible_content_ids(campaign_id: UUID) -> Any:
@@ -249,7 +283,7 @@ def _unreversible_content_ids(campaign_id: UUID) -> Any:
     return union(direct_missing, supplemented_missing)
 
 
-def _record(row: RowMapping) -> ImportCampaignRevocationRecord:
+def _record(row: Mapping[str, object]) -> ImportCampaignRevocationRecord:
     """把数据库行转换成稳定领域记录。"""
 
     return ImportCampaignRevocationRecord(

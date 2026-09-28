@@ -1275,6 +1275,21 @@
       "BrandUpdateRequest": {
         "additionalProperties": false,
         "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
           "display_name": {
             "anyOf": [
               {
@@ -1462,7 +1477,7 @@
       },
       "CanonicalReplayAllCreatedResponse": {
         "additionalProperties": false,
-        "description": "全历史 Replay 已冻结并排队后的有界摘要。",
+        "description": "全历史 Replay 的快速受理或已完成规划摘要。",
         "properties": {
           "artifact_count": {
             "minimum": 0.0,
@@ -1478,8 +1493,18 @@
           "batch_size": {
             "const": 1000,
             "default": 1000,
+            "description": "Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。",
             "title": "Batch Size",
             "type": "integer"
+          },
+          "planning_status": {
+            "default": "planned",
+            "enum": [
+              "queued",
+              "planned"
+            ],
+            "title": "Planning Status",
+            "type": "string"
           },
           "request_id": {
             "format": "uuid",
@@ -1597,6 +1622,7 @@
           },
           "batch_size": {
             "default": 500,
+            "description": "Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。",
             "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Batch Size",
@@ -1740,6 +1766,7 @@
             "type": "array"
           },
           "batch_size": {
+            "description": "该 Run 持久化的自适应起始批量提示。",
             "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Batch Size",
@@ -3279,6 +3306,18 @@
           },
           "record_type": {
             "$ref": "#/components/schemas/CollectionRuntimeRecordType"
+          },
+          "revocation_recomputed_content_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revocation Recomputed Content Count"
           },
           "source_filename": {
             "anyOf": [
@@ -6428,6 +6467,17 @@
             "title": "Eligible",
             "type": "boolean"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "impact": {
             "$ref": "#/components/schemas/DataImportRevocationImpactResponse"
           },
@@ -6445,20 +6495,50 @@
               }
             ],
             "title": "Ineligible Reason"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "recomputed_content_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Recomputed Content Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "not_requested",
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
           }
         },
         "required": [
           "campaign_id",
           "eligible",
           "already_revoked",
-          "impact"
+          "impact",
+          "status"
         ],
         "title": "DataImportRevocationPreviewResponse",
         "type": "object"
       },
       "DataImportRevocationResponse": {
         "additionalProperties": false,
-        "description": "已经提交的不可变撤销事实。",
+        "description": "撤销请求与执行状态；只有 succeeded 才表示撤销真正完成。",
         "properties": {
           "already_revoked": {
             "title": "Already Revoked",
@@ -6469,12 +6549,58 @@
             "title": "Campaign Id",
             "type": "string"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "impact": {
             "$ref": "#/components/schemas/DataImportRevocationImpactResponse"
           },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "recomputed_content_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Recomputed Content Count",
+            "type": "integer"
+          },
           "revoked_at": {
-            "format": "date-time",
-            "title": "Revoked At",
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
             "type": "string"
           }
         },
@@ -6482,7 +6608,7 @@
           "campaign_id",
           "already_revoked",
           "impact",
-          "revoked_at"
+          "status"
         ],
         "title": "DataImportRevocationResponse",
         "type": "object"
@@ -7568,7 +7694,9 @@
           "cancelled",
           "succeeded",
           "partial_failed",
-          "failed"
+          "failed",
+          "revoking",
+          "revoked"
         ],
         "type": "string"
       },
@@ -9766,6 +9894,648 @@
           }
         },
         "title": "VehicleModelUpdateRequest",
+        "type": "object"
+      },
+      "WorkbenchDailyPointResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "count"
+        ],
+        "title": "WorkbenchDailyPointResponse",
+        "type": "object"
+      },
+      "WorkbenchLabelResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "primary_label": {
+            "title": "Primary Label",
+            "type": "string"
+          },
+          "secondary_label": {
+            "title": "Secondary Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "primary_label",
+          "secondary_label"
+        ],
+        "title": "WorkbenchLabelResponse",
+        "type": "object"
+      },
+      "WorkbenchLayoutModule": {
+        "additionalProperties": false,
+        "properties": {
+          "column_span": {
+            "maximum": 12.0,
+            "minimum": 4.0,
+            "title": "Column Span",
+            "type": "integer"
+          },
+          "module_id": {
+            "$ref": "#/components/schemas/WorkbenchModuleId"
+          },
+          "order": {
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Order",
+            "type": "integer"
+          },
+          "row_units": {
+            "maximum": 160.0,
+            "minimum": 48.0,
+            "title": "Row Units",
+            "type": "integer"
+          },
+          "visible": {
+            "default": true,
+            "title": "Visible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "module_id",
+          "order",
+          "column_span",
+          "row_units"
+        ],
+        "title": "WorkbenchLayoutModule",
+        "type": "object"
+      },
+      "WorkbenchLayoutResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/WorkbenchLayoutModule"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Modules",
+            "type": "array"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "revision",
+          "modules"
+        ],
+        "title": "WorkbenchLayoutResponse",
+        "type": "object"
+      },
+      "WorkbenchLayoutUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/WorkbenchLayoutModule"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Modules",
+            "type": "array"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "modules"
+        ],
+        "title": "WorkbenchLayoutUpdateRequest",
+        "type": "object"
+      },
+      "WorkbenchMindDimensionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "change_summary": {
+            "title": "Change Summary",
+            "type": "string"
+          },
+          "positive_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positive Rate"
+          },
+          "primary_label": {
+            "title": "Primary Label",
+            "type": "string"
+          },
+          "secondary_labels": {
+            "items": {
+              "$ref": "#/components/schemas/WorkbenchMindSecondaryResponse"
+            },
+            "title": "Secondary Labels",
+            "type": "array"
+          },
+          "user_count": {
+            "minimum": 0.0,
+            "title": "User Count",
+            "type": "integer"
+          },
+          "user_share": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "User Share",
+            "type": "number"
+          },
+          "user_share_change_pp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Share Change Pp"
+          }
+        },
+        "required": [
+          "primary_label",
+          "user_count",
+          "user_share",
+          "secondary_labels",
+          "change_summary"
+        ],
+        "title": "WorkbenchMindDimensionResponse",
+        "type": "object"
+      },
+      "WorkbenchMindResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_coverage_rate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Analysis Coverage Rate",
+            "type": "number"
+          },
+          "analysis_scheme_version_id": {
+            "format": "uuid",
+            "title": "Analysis Scheme Version Id",
+            "type": "string"
+          },
+          "analyzed_count": {
+            "minimum": 0.0,
+            "title": "Analyzed Count",
+            "type": "integer"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "date_from": {
+            "format": "date",
+            "title": "Date From",
+            "type": "string"
+          },
+          "date_to": {
+            "format": "date",
+            "title": "Date To",
+            "type": "string"
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/WorkbenchMindDimensionResponse"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "identified_user_count": {
+            "minimum": 0.0,
+            "title": "Identified User Count",
+            "type": "integer"
+          },
+          "previous_date_from": {
+            "format": "date",
+            "title": "Previous Date From",
+            "type": "string"
+          },
+          "previous_date_to": {
+            "format": "date",
+            "title": "Previous Date To",
+            "type": "string"
+          },
+          "taxonomy_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          },
+          "unidentified_content_count": {
+            "minimum": 0.0,
+            "title": "Unidentified Content Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "analysis_scheme_version_id",
+          "taxonomy_sha256",
+          "as_of",
+          "date_from",
+          "date_to",
+          "previous_date_from",
+          "previous_date_to",
+          "identified_user_count",
+          "unidentified_content_count",
+          "analyzed_count",
+          "analysis_coverage_rate",
+          "dimensions"
+        ],
+        "title": "WorkbenchMindResponse",
+        "type": "object"
+      },
+      "WorkbenchMindSecondaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "secondary_label": {
+            "title": "Secondary Label",
+            "type": "string"
+          },
+          "user_count": {
+            "minimum": 0.0,
+            "title": "User Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "secondary_label",
+          "user_count"
+        ],
+        "title": "WorkbenchMindSecondaryResponse",
+        "type": "object"
+      },
+      "WorkbenchModuleId": {
+        "enum": [
+          "sound-stream",
+          "brand-mind",
+          "ugc-trend"
+        ],
+        "type": "string"
+      },
+      "WorkbenchSentimentStatResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "sentiment": {
+            "title": "Sentiment",
+            "type": "string"
+          },
+          "share": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Share",
+            "type": "number"
+          }
+        },
+        "required": [
+          "sentiment",
+          "count",
+          "share"
+        ],
+        "title": "WorkbenchSentimentStatResponse",
+        "type": "object"
+      },
+      "WorkbenchStreamItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_current": {
+            "title": "Analysis Current",
+            "type": "boolean"
+          },
+          "author_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Display Name"
+          },
+          "content_id": {
+            "format": "uuid",
+            "title": "Content Id",
+            "type": "string"
+          },
+          "labels": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WorkbenchLabelResponse"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/PlatformName"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "sentiment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentiment"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "vehicle_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Vehicle Names",
+            "type": "array"
+          },
+          "voice_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Type"
+          }
+        },
+        "required": [
+          "content_id",
+          "platform",
+          "analysis_current"
+        ],
+        "title": "WorkbenchStreamItemResponse",
+        "type": "object"
+      },
+      "WorkbenchStreamResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_scheme_version_id": {
+            "format": "uuid",
+            "title": "Analysis Scheme Version Id",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkbenchStreamItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "taxonomy_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "analysis_scheme_version_id",
+          "taxonomy_sha256",
+          "as_of",
+          "items"
+        ],
+        "title": "WorkbenchStreamResponse",
+        "type": "object"
+      },
+      "WorkbenchTrendResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_coverage_rate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Analysis Coverage Rate",
+            "type": "number"
+          },
+          "analysis_scheme_version_id": {
+            "format": "uuid",
+            "title": "Analysis Scheme Version Id",
+            "type": "string"
+          },
+          "analyzed_count": {
+            "minimum": 0.0,
+            "title": "Analyzed Count",
+            "type": "integer"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/WorkbenchDailyPointResponse"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "daily_average": {
+            "minimum": 0.0,
+            "title": "Daily Average",
+            "type": "number"
+          },
+          "date_from": {
+            "format": "date",
+            "title": "Date From",
+            "type": "string"
+          },
+          "date_to": {
+            "format": "date",
+            "title": "Date To",
+            "type": "string"
+          },
+          "peak_count": {
+            "minimum": 0.0,
+            "title": "Peak Count",
+            "type": "integer"
+          },
+          "peak_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Day"
+          },
+          "period_change_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Change Rate"
+          },
+          "positive_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positive Rate"
+          },
+          "positive_rate_change_pp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positive Rate Change Pp"
+          },
+          "previous_date_from": {
+            "format": "date",
+            "title": "Previous Date From",
+            "type": "string"
+          },
+          "previous_date_to": {
+            "format": "date",
+            "title": "Previous Date To",
+            "type": "string"
+          },
+          "sentiments": {
+            "items": {
+              "$ref": "#/components/schemas/WorkbenchSentimentStatResponse"
+            },
+            "title": "Sentiments",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "taxonomy_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          },
+          "total_count": {
+            "minimum": 0.0,
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "analysis_scheme_version_id",
+          "taxonomy_sha256",
+          "as_of",
+          "date_from",
+          "date_to",
+          "previous_date_from",
+          "previous_date_to",
+          "total_count",
+          "daily_average",
+          "peak_count",
+          "analyzed_count",
+          "analysis_coverage_rate",
+          "daily",
+          "sentiments",
+          "summary"
+        ],
+        "title": "WorkbenchTrendResponse",
         "type": "object"
       }
     }
@@ -19770,6 +20540,657 @@
         "summary": "Merge Vehicle Model",
         "tags": [
           "vehicles"
+        ]
+      }
+    },
+    "/api/v1/workbench/layout": {
+      "get": {
+        "operationId": "getWorkbenchLayout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchLayoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Workbench Layout",
+        "tags": [
+          "workbench"
+        ]
+      },
+      "put": {
+        "operationId": "updateWorkbenchLayout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkbenchLayoutUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchLayoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Update Workbench Layout",
+        "tags": [
+          "workbench"
+        ]
+      }
+    },
+    "/api/v1/workbench/mind": {
+      "get": {
+        "operationId": "getWorkbenchMind",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platforms",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "$ref": "#/components/schemas/PlatformName"
+              },
+              "maxItems": 5,
+              "title": "Platforms",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brand_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Brand Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vehicle_model_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Vehicle Model Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "voice_types",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "title": "Voice Types",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sentiments",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "title": "Sentiments",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "primary_labels",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Primary Labels",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "secondary_labels",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "Secondary Labels",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchMindResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Workbench Mind",
+        "tags": [
+          "workbench"
+        ]
+      }
+    },
+    "/api/v1/workbench/stream": {
+      "get": {
+        "operationId": "getWorkbenchStream",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platforms",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "$ref": "#/components/schemas/PlatformName"
+              },
+              "maxItems": 5,
+              "title": "Platforms",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brand_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Brand Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vehicle_model_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Vehicle Model Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "voice_types",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "title": "Voice Types",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sentiments",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "title": "Sentiments",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "primary_labels",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Primary Labels",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "secondary_labels",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "Secondary Labels",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchStreamResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Workbench Stream",
+        "tags": [
+          "workbench"
+        ]
+      }
+    },
+    "/api/v1/workbench/trend": {
+      "get": {
+        "operationId": "getWorkbenchTrend",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platforms",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "$ref": "#/components/schemas/PlatformName"
+              },
+              "maxItems": 5,
+              "title": "Platforms",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brand_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Brand Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vehicle_model_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Vehicle Model Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "voice_types",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "title": "Voice Types",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sentiments",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "title": "Sentiments",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "primary_labels",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Primary Labels",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "secondary_labels",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "Secondary Labels",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchTrendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Workbench Trend",
+        "tags": [
+          "workbench"
         ]
       }
     },

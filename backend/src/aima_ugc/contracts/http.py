@@ -148,7 +148,12 @@ class CanonicalReplayCreateRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=200)
     artifact_ids: tuple[UUID, ...] = Field(min_length=1, max_length=100)
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
-    batch_size: int = Field(default=500, ge=1, le=1000)
+    batch_size: int = Field(
+        default=500,
+        ge=1,
+        le=1000,
+        description="Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。",
+    )
 
     @field_validator("idempotency_key")
     @classmethod
@@ -190,15 +195,19 @@ class CanonicalReplayAllCreateRequest(BaseModel):
 
 
 class CanonicalReplayAllCreatedResponse(BaseModel):
-    """全历史 Replay 已冻结并排队后的有界摘要。"""
+    """全历史 Replay 的快速受理或已完成规划摘要。"""
 
     model_config = ConfigDict(extra="forbid")
 
     request_id: UUID
+    planning_status: Literal["queued", "planned"] = "planned"
     artifact_count: int = Field(ge=0)
     run_count: int = Field(ge=0)
     artifacts_per_run: Literal[100] = 100
-    batch_size: Literal[1000] = 1000
+    batch_size: Literal[1000] = Field(
+        default=1000,
+        description="Replay 自适应控制器的持久起始批量提示，不是运行时硬上限。",
+    )
 
 
 class CanonicalReplayAllOperationResponse(BaseModel):
@@ -252,7 +261,11 @@ class CanonicalReplayRunResponse(BaseModel):
     artifact_count: int = Field(ge=1)
     checkpoint_artifact_ordinal: int = Field(ge=0)
     checkpoint_row_number: int = Field(ge=0)
-    batch_size: int = Field(ge=1, le=1000)
+    batch_size: int = Field(
+        ge=1,
+        le=1000,
+        description="该 Run 持久化的自适应起始批量提示。",
+    )
     stats: CanonicalReplayStatsResponse
     job: JobStatusResponse
     created_by: str
@@ -651,6 +664,7 @@ class CollectionRuntimeItemResponse(BaseModel):
     import_stats: ImportStatsResponse | None = None
     collection_stats: CollectionRunStatsResponse | None = None
     canonical_replay_stats: CanonicalReplayRuntimeStatsResponse | None = None
+    revocation_recomputed_content_count: int | None = Field(default=None, ge=0)
     error_summary: str | None = None
     error_code: str | None = None
     created_at: datetime
@@ -1569,6 +1583,8 @@ type HistoricalCampaignStatus = Literal[
     "succeeded",
     "partial_failed",
     "failed",
+    "revoking",
+    "revoked",
 ]
 type DataImportSourceKind = Literal["local_upload", "server_path"]
 type DataImportIngestionPolicy = Literal["standard_observation", "historical_fill_only"]

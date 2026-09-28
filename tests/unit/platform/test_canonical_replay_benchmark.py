@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from openpyxl import load_workbook
 
 _SCRIPT = Path(__file__).resolve().parents[3] / "scripts/performance/benchmark_canonical_replay.py"
 _SPEC = importlib.util.spec_from_file_location("benchmark_canonical_replay", _SCRIPT)
@@ -30,6 +31,17 @@ def test_scalar_reference_requires_stable_author_fixture(tmp_path: Path) -> None
             rows_per_file=1,
             workers=1,
             scalar_stable_authors=True,
+        )
+
+
+def test_catalog_after_import_requires_a_catalog_fixture(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="catalog_brands"):
+        benchmark_canonical_replay.run_benchmark(
+            work_dir=tmp_path,
+            file_count=1,
+            rows_per_file=1,
+            workers=1,
+            catalog_after_import=True,
         )
 
 
@@ -104,3 +116,54 @@ def test_replay_benchmark_cleans_generated_runtime_after_failure(
         )
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_replay_benchmark_validates_low_hit_fixture_bounds(tmp_path: Path) -> None:
+    """低命中容量场景不能少于已经预置为 Existing 的命中行。"""
+
+    with pytest.raises(ValueError, match="matched_rows_per_file"):
+        benchmark_canonical_replay.run_benchmark(
+            work_dir=tmp_path,
+            file_count=1,
+            rows_per_file=100,
+            workers=1,
+            existing_rows_per_file=20,
+            matched_rows_per_file=10,
+        )
+
+
+def test_replay_benchmark_fixture_can_model_low_hit_input() -> None:
+    """容量夹具可显式构造低命中 raw rows，供 5%/25% 场景复测。"""
+
+    payload = benchmark_canonical_replay._fixture_xlsx(
+        file_index=0,
+        rows_per_file=20,
+        existing_rows_per_file=1,
+        matched_rows_per_file=5,
+        nonce="unit",
+    )
+
+    assert payload
+
+
+def test_replay_benchmark_fixture_can_interleave_existing_new_and_filtered() -> None:
+    """低命中夹具不能总把命中行排在开头，误导首批采样。"""
+
+    from io import BytesIO
+
+    payload = benchmark_canonical_replay._fixture_xlsx(
+        file_index=0,
+        rows_per_file=100,
+        existing_rows_per_file=10,
+        matched_rows_per_file=25,
+        nonce="unit",
+        match_layout="interleaved",
+    )
+    workbook = load_workbook(BytesIO(payload), read_only=True)
+    titles = [row[1] for row in workbook.active.iter_rows(min_row=2, values_only=True)]
+    workbook.close()
+
+    assert sum("预置容量样本" in title for title in titles) == 10
+    assert sum("星曜容量样本" in title for title in titles) == 15
+    assert any("完全无关" in title for title in titles[:10])
+    assert any("星曜" in title or "预置" in title for title in titles[10:30])
