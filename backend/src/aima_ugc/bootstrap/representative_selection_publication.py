@@ -67,43 +67,52 @@ def publish_representative_selection_to_feishu(
     idempotency_key: str | None = None,
     checkpoint: FeishuPublicationCheckpointStore | None = None,
 ) -> FeishuSyncSummary:
-    """读取已打标 Excel，筛选代表性内容并写入新建飞书多维表。"""
+    """读取已打标 Excel；首次筛选后冻结结果，重试只恢复冻结结果再写飞书。"""
 
     if max_per_group <= 0 or selector_pool_size <= 0:
         raise ValueError("筛选数量参数必须大于 0")
     source = Path(input_path)
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    actual_environment = dict(os.environ if environ is None else environ)
-    contents, _ = read_labeled_content_files((source,))
-    candidate_pool = build_candidate_pool(
-        contents,
-        real_user_voice_type=REAL_USER_VOICE_TYPE,
-    )
-    if progress is not None:
-        progress(15)
 
-    audit_path = target_dir / "llm_requests.jsonl"
-    with LLMRequestAuditWriter(audit_path) as audit_writer:
-        llm, raw_llm = _create_llm(
-            settings,
-            audit=audit_writer,
-            environment=actual_environment,
+    frozen_rows = _checkpoint_rows(checkpoint, "representative_rows")
+    if frozen_rows is None:
+        actual_environment = dict(os.environ if environ is None else environ)
+        contents, _ = read_labeled_content_files((source,))
+        candidate_pool = build_candidate_pool(
+            contents,
+            real_user_voice_type=REAL_USER_VOICE_TYPE,
         )
-        try:
-            selection_run = RepresentativeSelectionService(
-                prompt_path=_DEFAULT_PROMPT_PATH,
-                llm=llm,
-                max_per_group=max_per_group,
-                selector_pool_size=selector_pool_size,
-            ).run(candidate_pool.candidates)
-        finally:
-            raw_llm.close()
+        if progress is not None:
+            progress(15)
+
+        audit_path = target_dir / "llm_requests.jsonl"
+        with LLMRequestAuditWriter(audit_path) as audit_writer:
+            llm, raw_llm = _create_llm(
+                settings,
+                audit=audit_writer,
+                environment=actual_environment,
+            )
+            try:
+                selection_run = RepresentativeSelectionService(
+                    prompt_path=_DEFAULT_PROMPT_PATH,
+                    llm=llm,
+                    max_per_group=max_per_group,
+                    selector_pool_size=selector_pool_size,
+                ).run(candidate_pool.candidates)
+            finally:
+                raw_llm.close()
+        frozen_rows = build_selected_representative_rows(selection_run.selected)
+        _checkpoint_set(
+            checkpoint,
+            "representative_rows",
+            [dict(row) for row in frozen_rows],
+        )
     if progress is not None:
         progress(65)
 
-    return publish_selected_representatives_to_feishu(
-        selected=selection_run.selected,
+    return publish_representative_rows_to_feishu(
+        rows=frozen_rows,
         output_dir=target_dir,
         settings=settings,
         progress=progress,
@@ -112,29 +121,13 @@ def publish_representative_selection_to_feishu(
     )
 
 
-def publish_selected_representatives_to_feishu(
-    *,
+def build_selected_representative_rows(
     selected: Sequence[SelectedRepresentative],
-    output_dir: Path,
-    settings: PlatformSettings,
+    *,
     report_rows: Sequence[RepresentativeReportRow] | None = None,
-    target_bitable_block_token: str | None = None,
-    target_document_token: str | None = None,
-    target_document_url: str | None = None,
-    progress: Callable[[int], None] | None = None,
-    idempotency_key: str | None = None,
-    checkpoint: FeishuPublicationCheckpointStore | None = None,
-) -> FeishuSyncSummary:
-    """把已完成筛选的结果发布到新建或文档内嵌的飞书多维表。
+) -> tuple[dict[str, object], ...]:
+    """把已确定的代表性结果冻结成飞书写入行；本函数不产生外部副作用。"""
 
-    ``report_rows`` 是同一轮报告生成得到的第 6 节投影；提供它时，
-    把报告中的行动建议写入多维表“处理建议”字段，避免重新生成或猜测建议。
-    ``target_bitable_block_token`` 来自 Docx 创建块响应；提供它时同时创建
-    模板 Base 中可独立编辑的新表和文档内嵌镜像表，并返回双向镜像身份。
-    """
-
-    target_dir = Path(output_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
     advice_by_identity = _report_action_advice(report_rows)
     screenshot_by_identity = _report_screenshot_paths(report_rows)
     rows = tuple(
@@ -152,6 +145,55 @@ def publish_selected_representatives_to_feishu(
     )
     if not rows:
         raise ValueError("没有可写入的代表性结果，未创建飞书新表")
+    return rows
+
+
+def publish_selected_representatives_to_feishu(
+    *,
+    selected: Sequence[SelectedRepresentative],
+    output_dir: Path,
+    settings: PlatformSettings,
+    report_rows: Sequence[RepresentativeReportRow] | None = None,
+    target_bitable_block_token: str | None = None,
+    target_document_token: str | None = None,
+    target_document_url: str | None = None,
+    progress: Callable[[int], None] | None = None,
+    idempotency_key: str | None = None,
+    checkpoint: FeishuPublicationCheckpointStore | None = None,
+) -> FeishuSyncSummary:
+    """把已完成筛选的结果转换为稳定行后发布到飞书。"""
+
+    return publish_representative_rows_to_feishu(
+        rows=build_selected_representative_rows(selected, report_rows=report_rows),
+        output_dir=output_dir,
+        settings=settings,
+        target_bitable_block_token=target_bitable_block_token,
+        target_document_token=target_document_token,
+        target_document_url=target_document_url,
+        progress=progress,
+        idempotency_key=idempotency_key,
+        checkpoint=checkpoint,
+    )
+
+
+def publish_representative_rows_to_feishu(
+    *,
+    rows: Sequence[Mapping[str, object]],
+    output_dir: Path,
+    settings: PlatformSettings,
+    target_bitable_block_token: str | None = None,
+    target_document_token: str | None = None,
+    target_document_url: str | None = None,
+    progress: Callable[[int], None] | None = None,
+    idempotency_key: str | None = None,
+    checkpoint: FeishuPublicationCheckpointStore | None = None,
+) -> FeishuSyncSummary:
+    """发布已经冻结的飞书行；重试只做外部资源恢复和 Upsert 对账。"""
+
+    if not rows:
+        raise ValueError("没有可写入的代表性结果，未创建飞书新表")
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
     feishu_config = FeishuConfig.from_settings(settings)
     app_secret = read_secret_file(
         settings.external_secret_root / feishu_config.app_secret_file,
@@ -165,7 +207,10 @@ def publish_selected_representatives_to_feishu(
     ) as template_feishu:
         external_table = _checkpoint_table(checkpoint, "external_table")
         if external_table is None:
-            external_table = template_feishu.create_table_from_current(name=table_name)
+            if idempotency_key and idempotency_key.strip():
+                external_table = template_feishu.find_table_by_name(table_name)
+            if external_table is None:
+                external_table = template_feishu.create_table_from_current(name=table_name)
             _checkpoint_set(checkpoint, "external_table", external_table.as_dict())
         embedded_table = _checkpoint_table(checkpoint, "embedded_table")
         if target_bitable_block_token is not None:
@@ -404,6 +449,8 @@ def _content_reference(title: str, content_url: str, content_id: str) -> str:
 
 __all__ = [
     "RepresentativeSelectionPublicationConfigurationError",
+    "build_selected_representative_rows",
+    "publish_representative_rows_to_feishu",
     "publish_selected_representatives_to_feishu",
     "publish_representative_selection_to_feishu",
     "selected_representative_to_row",
@@ -424,6 +471,30 @@ def _checkpoint_set(
 ) -> None:
     if checkpoint is not None:
         checkpoint.set(key, value)
+
+
+def _checkpoint_rows(
+    checkpoint: FeishuPublicationCheckpointStore | None,
+    key: str,
+) -> tuple[dict[str, object], ...] | None:
+    """读取已经冻结的代表性行；结构损坏时失败关闭而不是重新调用 LLM。"""
+
+    if checkpoint is None:
+        return None
+    value = checkpoint.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, list) or not value:
+        raise ValueError("飞书代表性结果 checkpoint 数据损坏")
+    rows: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, Mapping) or any(not isinstance(name, str) for name in item):
+            raise ValueError("飞书代表性结果 checkpoint 数据损坏")
+        row = {str(name): cell for name, cell in item.items()}
+        if isinstance(row.get("声音截图"), str):
+            raise ValueError("独立代表性发布 checkpoint 不允许保存临时截图路径")
+        rows.append(row)
+    return tuple(rows)
 
 
 def _checkpoint_table(
