@@ -75,11 +75,11 @@ Requirement Source：GitHub Issue #646。当前 Code Review 使用说明缺少�
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 完整只审核模板 | #646 / AC1 | satisfied | Section 10.1 已按用户最终文本写入 |not_satisfied | implementation pending |
-| R2 | 完整审核并合并模板 | #646 / AC2 | satisfied | Section 10.2 已按用户最终文本写入 |not_satisfied | implementation pending |
-| R3 | 保留 Review 后直接修复 | #646 / AC3 | satisfied | Section 10.3 保留原独立修复模式 |not_satisfied | implementation pending |
-| R4 | 不降低治理门禁 | #646 / AC4 | satisfied | 双模板保留 blocking Finding、current HEAD、required CI、权限、Branch Protection 与 post-merge finalization |not_satisfied | canonical comparison pending |
-| R5 | 快捷指令同步 | #646 / AC5 | satisfied | Section 18 已同步只审核 / 审核并合并 / Review 并修复 |not_satisfied | implementation pending |
+| R1 | 完整只审核模板 | #646 / AC1 | satisfied | Section 10.1 已按用户最终文本写入 |
+| R2 | 完整审核并合并模板 | #646 / AC2 | satisfied | Section 10.2 已按用户最终文本写入 |
+| R3 | 保留 Review 后直接修复 | #646 / AC3 | satisfied | Section 10.3 保留原独立修复模式 |
+| R4 | 不降低治理门禁 | #646 / AC4 | satisfied | 双模板保留 blocking Finding、current HEAD、required CI、权限、Branch Protection 与 post-merge finalization |
+| R5 | 快捷指令同步 | #646 / AC5 | satisfied | Section 18 已同步只审核 / 审核并合并 / Review 并修复 |
 | R6 | 端到端交付 | #646 / AC6 | explicitly_deferred | post-merge lifecycle |
 
 # 计划改动
