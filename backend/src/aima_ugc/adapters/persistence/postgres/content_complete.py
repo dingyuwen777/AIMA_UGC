@@ -8,7 +8,7 @@ from itertools import batched
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import Table, delete, insert, select, tuple_, update
+from sqlalchemy import Table, delete, func, insert, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -199,10 +199,25 @@ class PostgresCompleteContentRepository:
             observation=observation,
             content_id=result.target_id,
         )
+        visibility_values: dict[str, object]
+        if self._replay_visibility_owner_id is None:
+            visibility_values = {
+                "rule_filter_visible": True,
+                "latest_normal_filter_match_at": func.clock_timestamp(),
+            }
+        elif result.version_created and result.version_no == 1:
+            visibility_values = {
+                "rule_filter_visible": False,
+            }
+        else:
+            visibility_values = {}
         self._session.execute(
             update(contents_table)
             .where(contents_table.c.id == result.target_id)
-            .values(replay_visibility_owner_id=self._replay_visibility_owner_id)
+            .values(
+                replay_visibility_owner_id=self._replay_visibility_owner_id,
+                **visibility_values,
+            )
         )
         return replace(result, contribution_after=contribution_after)
 

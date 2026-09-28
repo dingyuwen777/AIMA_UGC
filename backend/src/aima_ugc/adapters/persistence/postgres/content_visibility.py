@@ -51,11 +51,14 @@ def _campaign_available(
 def content_has_active_source(
     content_id: ColumnElement[UUID],
     *,
+    rule_filter_visible: ColumnElement[bool],
     excluding_campaign_id: UUID | None = None,
 ) -> ColumnElement[bool]:
     """返回可用于 SELECT/COUNT 的统一来源可见性谓词。
 
-    `excluding_campaign_id` 用于撤销预览：目标 Campaign 即使尚未真正写入撤销事实，也按已撤销处理。
+    调用方必须传入与 `content_id` 来自同一 FROM 身份的规则可见性列，
+    避免别名或 CTE 查询隐式引入 `contents` 笛卡尔积。`excluding_campaign_id`
+    用于撤销预览：目标 Campaign 即使尚未真正写入撤销事实，也按已撤销处理。
     历史单文件 Import 等无法映射到 Data Import Campaign 的来源视为不可撤销的有效来源。
     """
 
@@ -206,6 +209,7 @@ def content_has_active_source(
         )
     )
     return and_(
+        rule_filter_visible.is_(True),
         or_(
             direct_import_source,
             collection_candidate_source,

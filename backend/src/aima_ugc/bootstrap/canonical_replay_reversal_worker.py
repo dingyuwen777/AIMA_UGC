@@ -778,6 +778,8 @@ class PostgresCanonicalReplayReversalJobExecutor:
                 )
                 if remaining:
                     raise RuntimeError("Canonical Replay 撤回账本仍有未处理记录")
+                repository = PostgresCanonicalReplayRepository(session)
+                repository.reconcile_rule_filter_after_reversal(request_id)
                 now = beijing_now()
                 session.execute(
                     update(canonical_replay_all_requests_table)
@@ -788,7 +790,7 @@ class PostgresCanonicalReplayReversalJobExecutor:
                     )
                     .values(lifecycle_status="reverted", reversed_at=now)
                 )
-                record = PostgresCanonicalReplayRepository(session).get_all_request(request_id)
+                record = repository.get_all_request(request_id)
                 if record is None or record.lifecycle_status != "reverted":
                     raise LeaseLostError("Canonical Replay 撤回完成状态写入失败")
                 return record
@@ -815,6 +817,7 @@ def canonical_replay_job_terminal_callback(session: Session, job: JobRecord) -> 
     repository = PostgresCanonicalReplayRepository(session)
     run = repository.get(UUID(str(run_id)))
     if run is not None and run.all_request_id is not None:
+        repository.reconcile_all_request_if_ready(run.all_request_id)
         repository.ensure_reversal_job_if_ready(run.all_request_id)
 
 

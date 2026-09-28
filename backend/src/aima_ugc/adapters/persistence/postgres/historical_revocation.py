@@ -21,6 +21,7 @@ from aima_ugc.modules.collection.tables import (
     provider_requests_table,
 )
 from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
+from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
     historical_import_campaigns_table,
@@ -107,10 +108,16 @@ class PostgresImportCampaignRevocationRepository:
         retained = int(
             self._session.scalar(
                 select(func.count())
-                .select_from(affected)
+                .select_from(
+                    affected.join(
+                        contents_table,
+                        contents_table.c.id == affected.c.content_id,
+                    )
+                )
                 .where(
                     content_has_active_source(
                         affected.c.content_id,
+                        rule_filter_visible=contents_table.c.rule_filter_visible,
                         excluding_campaign_id=campaign_id,
                     )
                 )

@@ -325,14 +325,10 @@ def test_rerun_attempt_processes_one_remaining_active_change_at_a_time(tmp_path:
         selected[0][1],
         selected[1][1],
     )
-    assert module["_selected_paths_for_run"](tmp_path, selected, run_attempt=2) == (
-        selected[0][1],
-    )
+    assert module["_selected_paths_for_run"](tmp_path, selected, run_attempt=2) == (selected[0][1],)
 
     (tmp_path / selected[0][1]).unlink()
-    assert module["_selected_paths_for_run"](tmp_path, selected, run_attempt=3) == (
-        selected[1][1],
-    )
+    assert module["_selected_paths_for_run"](tmp_path, selected, run_attempt=3) == (selected[1][1],)
 
 
 def test_single_change_helper_still_rejects_multiple_changes() -> None:

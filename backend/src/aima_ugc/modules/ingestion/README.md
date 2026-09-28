@@ -397,9 +397,9 @@ POST /api/v1/canonical-replays
 → Brand/Vehicle Evidence + checkpoint + 对账统计
 ```
 
-管理员“品牌与车型”页的“重筛入库”使用 `POST /api/v1/canonical-replays/all`。后端自动枚举
-全部合法历史 Canonical，在一个事务中冻结当前全部 active Brand/Vehicle 目录和选择摘要，并按
-100 个 Artifact 一组创建多个既有 Replay Run/Job；每个 Run 持久化兼容提示
+管理员“品牌与车型”页的“重筛入库”使用 `POST /api/v1/canonical-replays/all`。受理事务冻结
+当前全部 active Brand/Vehicle 目录和数据库时间边界并创建 Planner Job；Planner 自动枚举该
+时间边界以前的全部合法历史 Canonical，按 100 个 Artifact 一组创建多个既有 Replay Run/Job；每个 Run 持久化兼容提示
 `batch_size=1000`。所有 Replay Worker 都把持久 `batch_size` 作为起始提示，而不是运行时
 硬上限，并根据有效 CPU、可用内存、相邻档实测吞吐、事务墙钟和前台压力继续升档或回落；
 升级前尚未完成的任务在新 Worker 接管后也使用同一控制器。
@@ -434,6 +434,17 @@ Worker 在第一次写 Content 前预检**全部**所选 Artifact，而不只是
 接管时只对当前 Artifact 从头线性跳过已提交行；未提交事务不会留下去重身份或统计。重复 Replay 不产生
 第二条 Content：同一 Run 的重复输入计入 `duplicates_removed`，数据库已有 Content 计入
 `existing_convergence`，新建 Content 计入 `rows_ingested`。
+
+全量 Replay 的每个匹配 Content 同时进入请求级命中账本；同一 Content 跨 Artifact/Run 只要
+任一 Canonical 命中就保留。只有全部子 Job 成功后，最后一个终态事务才发布这个命中并集：
+所有 Canonical 都未命中的 Content 通过统一 `content_has_active_source` 门禁退出业务读取，
+运行、失败或取消中的请求不发布半完成结果。受理时间之后的普通有效入库优先恢复可见性；
+撤回当前发布快照时重新发布最近一次仍 active 的成功快照。这个过程保留 Raw、Canonical、
+Content Version、来源和审计，不物理删除 `contents`。
+
+普通入库只在既有批量 `INSERT/UPDATE` 中附带规则可见性和正常命中时间，不增加逐条数据库
+往返。终态发布先形成可见性变化集合，再用一次集合 `UPDATE` 修改 Content；派生声音广场投影
+按 1,000 个 ID 分批刷新。页面与导出读取物化状态，不在读取热路径重复计算全历史命中集合。
 
 前端提供全部历史 Canonical 创建入口，并在采集运行中心的请求级详情 Modal 提供取消/撤回与
 进度结果；显式 Artifact 创建、单 Run 查询和取消仍通过管理员 API。Replay 不自动创建 Analysis
