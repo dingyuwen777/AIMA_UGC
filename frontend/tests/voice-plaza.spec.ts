@@ -532,8 +532,8 @@ describe('voice plaza', () => {
           relevance: '',
           voiceType: '',
           sentiment: '',
-          primaryLabel: '',
-          secondaryLabel: '',
+          primaryLabels: [],
+          secondaryLabels: [],
           publishedFrom: '',
           publishedTo: '',
           sourceIdentifier: '',
@@ -577,8 +577,8 @@ describe('voice plaza', () => {
           relevance: '',
           voiceType: '',
           sentiment: '',
-          primaryLabel: '社区反馈',
-          secondaryLabel: '',
+          primaryLabels: ['社区反馈'],
+          secondaryLabels: [],
           publishedFrom: '',
           publishedTo: '',
           sourceIdentifier: '',
@@ -596,6 +596,35 @@ describe('voice plaza', () => {
     expect(html).not.toContain('value="正面"')
   })
 
+  it('只展示所选一级标签的二级候选，并保留一级二级多选摘要', async () => {
+    const html = await renderToString(
+      createSSRApp({
+        render: () => h(VoicePlazaFilters, {
+          search: '',
+          platform: '',
+          contentType: '',
+          analysisStatus: '',
+          relevance: '',
+          voiceType: '',
+          sentiment: '',
+          primaryLabels: ['产品体验'],
+          secondaryLabels: ['续航表现'],
+          publishedFrom: '',
+          publishedTo: '',
+          sourceIdentifier: '',
+          filterOptions,
+          filterOptionsLoading: false,
+        }),
+      }),
+    )
+
+    expect(html).toContain('续航表现')
+    expect(html).toContain('骑行舒适')
+    expect(html).not.toContain('门店服务')
+    expect(html).toContain('已选 1 个一级标签')
+    expect(html).toContain('已选 1 个二级标签')
+  })
+
   it('keeps stable filters enabled while disabling dynamic controls during catalog loading', async () => {
     const html = await renderToString(
       createSSRApp({
@@ -607,8 +636,8 @@ describe('voice plaza', () => {
           relevance: '',
           voiceType: '',
           sentiment: '',
-          primaryLabel: '',
-          secondaryLabel: '',
+          primaryLabels: [],
+          secondaryLabels: [],
           publishedFrom: '',
           publishedTo: '',
           sourceIdentifier: '',
@@ -618,7 +647,8 @@ describe('voice plaza', () => {
       }),
     )
 
-    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(5)
+    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(3)
+    expect(html.match(/aria-disabled="true"/g)?.length ?? 0).toBe(2)
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
@@ -648,8 +678,8 @@ describe('voice plaza', () => {
     await store.refreshFilterOptions()
     store.filters.voiceType = '真实用户发声'
     store.filters.sentiment = '负面'
-    store.filters.primaryLabel = '产品体验'
-    store.filters.secondaryLabel = '续航表现'
+    store.filters.primaryLabels = ['产品体验', '服务体验']
+    store.filters.secondaryLabels = ['续航表现', '门店服务']
     store.filters.brandIds = ['brand-aima']
     store.filters.vehicleModelIds = ['vehicle-q7']
     store.filters.competitionScopes = ['owned_only', 'mixed']
@@ -660,8 +690,8 @@ describe('voice plaza', () => {
     expect(generated.listContents).toHaveBeenCalledWith(expect.objectContaining({
       voice_type: '真实用户发声',
       sentiment: '负面',
-      primary_label: '产品体验',
-      secondary_label: '续航表现',
+      primary_labels: ['产品体验', '服务体验'],
+      secondary_labels: ['续航表现', '门店服务'],
       brand_ids: ['brand-aima'],
       vehicle_model_ids: ['vehicle-q7'],
       competition_scopes: ['owned_only', 'mixed'],
