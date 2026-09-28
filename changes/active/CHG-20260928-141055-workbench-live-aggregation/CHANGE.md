@@ -51,6 +51,10 @@ data_changes:
 
 # 背景、现状与问题
 
+用户在约 921 万条生产数据上观察到工作台声音流覆盖不完整、同步聚合等待和偶发失败；既有实现还缺少动态用户心智图、日均整数展示与统一的短时成功反馈。
+
+# 事实与证据
+
 ## 已确认事实
 
 - `PostgresWorkbenchRepository.stream_rows()` 固定 `limit=30`，SQL 使用 `LIMIT :limit`；前端复制相同 `items` 并对首轮高度取模，因此只循环同一批数据。
@@ -113,6 +117,17 @@ data_changes:
 | Radar | ECharts 动态 `indicator` + ResizeObserver；DOM 详情/选中卡片复用现有选择状态 | 已有 ECharts，无需新依赖 | N 边、响应式、真实数据 |
 | 提示 | `useTransientNotice` 默认 3000ms；错误/警告/进度继续单独持久状态 | 统一普通成功生命周期 | 避免误隐藏可操作状态 |
 
+# 修改方案与决策依据
+
+实现沿用 PostgreSQL、现有持久 Job Runtime、generated client 与 ECharts。声音流使用稳定 keyset cursor 分页；两个聚合模块使用按规范化筛选键保存的可重建 snapshot，把昂贵查询移到 Worker，并以 projection revision、Scheme 和 Taxonomy 判断新鲜度。前端只在相同筛选和相同分析身份下保留最近成功结果。
+
+## 备选方案与取舍
+
+- **同步 SQL 加超时/重试**：仍会在每次首屏和 15 秒补读重复扫描明细，生产数据继续增长时放大数据库争用，因此不采用。
+- **一次性返回全部声音**：无法在数百万匹配内容下保持 HTTP、浏览器内存和渲染有界，因此不采用。
+- **引入 Redis/流式基础设施**：当前 PostgreSQL + Job Runtime 已能提供持久、可恢复、可失效的派生结果；新增基础设施会扩大运维和一致性边界，因此不采用。
+- **当前方案**：复用现有技术栈，用最少的新机制同时切断同步重算、结果丢失和固定 30 条循环三个根因。
+
 # 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
@@ -127,7 +142,7 @@ data_changes:
 | R8 | Contract/Schema/Client/Job/Docs 与依赖边界同步 | #644 / AC8 | satisfied | OpenAPI/Orval clean generation、Alembic 0072、Worker Registry、Product/Blueprint/Operations、Contract/架构/Table Owner/Docs/Secret gates |
 | R9 | 分层验证、Review、CI、合并和收尾 | #644 / AC9 | explicitly_deferred | PR #645 已具备本地验证与两阶段 Review；current-head CI、受保护合并、main-fresh、归档和清理由 Ready 后的强制顺序继续执行 |
 
-# 实施步骤
+# 计划改动
 
 ## 步骤 1：Red 证据与 Contract
 
@@ -173,7 +188,7 @@ data_changes:
 | 构建 / 打包 | required | Ruff/Mypy/Pytest、lint/typecheck/build/E2E |
 | 文档 / 治理 | required | OpenAPI/Schema/Docs/Change/CI/Issue |
 
-# 风险、兼容、迁移与回滚
+# 风险、兼容性、迁移与回滚
 
 - **游标风险**：签名必须绑定完整筛选和 page limit；使用 `(published_at, content_id)` 严格 keyset 并固定 UTC/北京时间边界。
 - **陈旧风险**：响应显式包含状态、source revision、computed_at；UI 只有 freshness 为 fresh 才称为已同步。
@@ -182,7 +197,7 @@ data_changes:
 - **部署**：Migration → Worker → API → Frontend；Worker 首次准备默认 snapshot。
 - **回滚**：回滚应用 revision；新增表保留不影响旧代码/canonical 事实；若必须删除使用后续 migration，不执行生产手工 SQL。
 
-# 文档与交付影响
+# 文档、依赖、部署与发布影响
 
 - Targeted 更新产品工作台行为、Blueprint 的派生读模型/Job/失败语义和 Operations 的迁移顺序。
 - 不新增或升级依赖，不新增 Secret/Provider 配置，不执行本任务外的 Release/Deploy。
