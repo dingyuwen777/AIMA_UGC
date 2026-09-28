@@ -79,9 +79,7 @@ class ArchiveBatchResult:
     def as_dict(self) -> dict[str, object]:
         return {
             "changed": self.changed,
-            "change_ids": [
-                item.change_id for item in self.items if item.change_id is not None
-            ],
+            "change_ids": [item.change_id for item in self.items if item.change_id is not None],
             "items": [item.as_dict() for item in self.items],
             "reason": self.reason,
         }
@@ -135,8 +133,7 @@ def select_change(changed_paths: Sequence[str]) -> tuple[str, str] | None:
     if len(matches) != 1:
         joined = ", ".join(path for _, path in matches)
         raise ArchiveChangeError(
-            "单 Change helper 只能处理一个 Active Change；"
-            f"当前发现 {len(matches)} 个：{joined}"
+            f"单 Change helper 只能处理一个 Active Change；当前发现 {len(matches)} 个：{joined}"
         )
     return matches[0]
 
@@ -474,9 +471,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.json:
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     else:
-        change_ids = ",".join(
-            str(change_id) for change_id in payload["change_ids"]
-        ) or "-"
+        change_ids = ",".join(str(change_id) for change_id in payload["change_ids"]) or "-"
         print(
             "Change Archive："
             f"pr=#{arguments.pr_number} changed={str(result.changed).lower()} "
