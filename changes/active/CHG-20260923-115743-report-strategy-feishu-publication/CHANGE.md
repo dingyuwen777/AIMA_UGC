@@ -7,7 +7,7 @@ status: ready_for_review
 owner: chatgpt
 branch: feature/merge-BOLL2-main
 created: 2026-09-20
-updated: 2026-09-24
+updated: 2026-09-28
 completion_gate: required
 depends_on:
   - CHG-20260917-180708-representative-selection-feishu-sync
@@ -94,7 +94,7 @@ data_changes:
 | 文件与数据 | XLSX 存入受控 Artifact，Job Payload 只保存稳定 ID 与参数 | E1、E2 | 不暴露本地路径或文件字节 |
 | 外部写入 | Dry Run 默认阻断飞书写入，真实发布需显式关闭 | E4 | 不生成伪造链接或静默写入 |
 | 外部副作用恢复 | Job Payload 每个 checkpoint 立即 fenced 持久化，Feishu API 使用稳定 client_token/request_id，Bitable Upsert 复用稳定键 | E6 | Attempt 重试从已确认身份继续，避免重复创建 |
-| 镜像并发 | PostgreSQL `FOR UPDATE SKIP LOCKED` claim + expires_at + token CAS | E7 | 多实例只允许一个有效消费者，过期后旧实例不能写回 |
+| 镜像并发 | PostgreSQL `FOR UPDATE SKIP LOCKED` claim + expires_at + token CAS，并在长同步期间独立会话续租 | E7 | 多实例只允许一个有效消费者；Lease 丢失会在下一次请求前阻断后续 mutation，旧实例不能越权写回 |
 | 接口与权限 | 使用专用管理员 multipart API 与 Job 查询入口 | E1、E5 | 权限由后端校验，前端不执行长任务 |
 | 兼容与回滚 | 保持现有报告口径和 Renderer；代码可回滚 | E3、E4 | 不改变历史报告语义 |
 
@@ -139,7 +139,7 @@ data_changes:
 | User / Workflow Acceptance | required | 管理员报告策略 Browser E2E：上传、日期校验、Job 轮询、Dry Run 结果 |
 | Build / Runtime | required | Frontend lint、typecheck、build；后端目标 pytest/编译 |
 | External Provider Probe | not_applicable | 普通验证不调用真实飞书/付费 LLM；真实租户权限需人工执行 |
-| Database / Migration | required | 0060→0061→0062 upgrade、downgrade -1、再 upgrade；PostgreSQL claim 并发回归 |
+| Database / Migration | required | 0060→0062 upgrade、0062 downgrade、再 upgrade；PostgreSQL claim/renew 并发和慢同步 fencing 回归 |
 | Docs / Governance | required | 文档事实同步、Change Completion、diff check |
 
 # 风险、兼容性、迁移与回滚
@@ -156,7 +156,7 @@ data_changes:
 
 - 同步产品状态、API 说明、Blueprint、前端 README、Figma 开发指南、Word 报告附录和本 Change。
 - 沿用仓库锁定的 Python/Node/Worker 工具链；Playwright 是前端 E2E 的生产依赖并纳入验证矩阵。
-- 部署先执行 0062 migration，再启动/滚动重启现有报告与镜像 Worker。
+- 部署先执行 0062 migration，再启动/滚动重启现有报告与镜像 Worker；回滚先停镜像 Worker，再按 0062→0060_feishu 逆序降级。独立的声音广场 0061 migration 不属于本 PR。
 - 真实飞书发布前仍需配置 Secret、权限并显式关闭 Dry Run；本轮不代替真实租户验收。
 
 # 完成审计
@@ -164,7 +164,7 @@ data_changes:
 - [x] upstream_re_read：已重新核对用户确认的双 Excel/日期/Dry Run 要求、现有报告入口、Job Runtime、Artifact 边界和管理员 Contract。
 - [x] change_coverage：R1—R7 均已映射到 API、Worker、前端、Contract、测试或文档证据。
 - [x] reverse_audit：已从前端上传动作反查 API/Artifact/Job/Worker/结果轮询，并从 Worker 报告编排反查页面入口和 Dry Run 边界。
-- [x] unresolved_cleared：前一轮 Review 的外部资源 checkpoint/重试收敛、镜像 claim fencing、首个 GET 失败恢复三条行为线程均有最终回归；前端 query cache-buster 与页面恢复边界已记录，真实飞书租户 Probe 仍明确不适用。
+- [x] unresolved_cleared：前一轮 Review 的外部资源 checkpoint/重试收敛、镜像 claim fencing（含可续租心跳与慢同步竞争）、首个 GET 失败恢复四条行为线程均有最终回归；前端 query cache-buster 与页面恢复边界已记录，真实飞书租户 Probe 仍明确不适用。
 
 # 完成证据与状态
 
@@ -176,7 +176,7 @@ data_changes:
 | V4 | Windows 本地 `.uv-venv` | 目标后端 Ruff/Mypy | 相关源文件无错误 | Python 静态质量和类型边界 |
 | V5 | Prompt / 入口兼容性 | analysis taxonomy API + voice taxonomy/relevance unit | 30 passed | 当前受管 Prompt 指针继续满足 v4 taxonomy/voice contract；未把不兼容 v4.6 文件切成全局基线 |
 | V6 | 仓库质量脚本 | docs、architecture、table ownership、Change completion | UTF-8 终端复跑后记录 | 文档、架构、表 Owner 和治理门禁 |
-| V7 | GitHub Actions（提交 `f1255499`） | CI run `35974601442`：PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、Requirement Traceability `107552005101`、CI Gate `107555251372` | 全部通过；Developer Tooling、Runtime Acceptance、Release suites 同步通过 | 真实 Schema upgrade/downgrade、多实例 claim、完整发布构建和治理门禁 |
+| V7 | GitHub Actions（上一轮提交 `f1255499`） | CI run `35974601442`：PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、Requirement Traceability `107552005101`、CI Gate `107555251372` | 上一轮全部通过；本轮修复后的新 HEAD required CI 待复跑 | 旧 HEAD 的 Schema/claim/发布验收；新 HEAD 需重新证明 0060→0062、renew 和慢同步 fencing |
 
 ## 未验证内容与剩余风险
 
@@ -184,4 +184,4 @@ data_changes:
 
 ## 交付状态
 
-实现、目标测试、前端构建、Contract 和文档同步已完成。提交 `f1255499` 已推送到既有 PR #580；required CI run `35974601442` 及 Developer Tooling、Runtime Acceptance、Release suites 已全部通过，等待逐条 review 回复和复审。
+实现、目标测试、前端构建、Contract 和文档同步已完成。本轮修复完成后继续推送到既有 PR #580；新 HEAD 的 required CI 全绿后再逐条回复 review 并请求复审。

@@ -193,6 +193,41 @@ class PostgresFeishuBitableMirrorRepository:
         if result.rowcount != 1:
             raise LeaseLostError("飞书镜像 claim 已失效")
 
+    def renew_claim(
+        self,
+        mirror_id: UUID,
+        *,
+        claim_token: str,
+        lease_seconds: int,
+    ) -> None:
+        """在同步期间续租，并继续用 token/过期时间做 fencing。"""
+
+        if lease_seconds <= 0:
+            raise ValueError("镜像 lease_seconds 必须大于 0")
+        result = cast(
+            CursorResult[Any],
+            self._session.execute(
+                text(
+                    """
+                    UPDATE feishu_bitable_mirrors
+                    SET claim_expires_at = clock_timestamp()
+                        + make_interval(secs => :lease_seconds),
+                        updated_at = clock_timestamp()
+                    WHERE id = :mirror_id
+                      AND claim_token = :claim_token
+                      AND claim_expires_at > clock_timestamp()
+                    """
+                ),
+                {
+                    "mirror_id": mirror_id,
+                    "claim_token": claim_token,
+                    "lease_seconds": lease_seconds,
+                },
+            ),
+        )
+        if result.rowcount != 1:
+            raise LeaseLostError("飞书镜像 claim 已失效，无法续租")
+
     def mark_failed(
         self,
         mirror_id: UUID,

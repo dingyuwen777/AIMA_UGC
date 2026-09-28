@@ -26,6 +26,7 @@ from aima_ugc.modules.analysis.representative_selection import (
     SelectedRepresentative,
 )
 from aima_ugc.platform.config import PlatformSettings
+from aima_ugc.platform.jobs.models import LeaseLostError
 
 
 class _MirrorAPI:
@@ -299,6 +300,46 @@ def test_bidirectional_mirror_excludes_base_bound_attachments() -> None:
     assert result.excluded_fields == ("声音截图",)
     assert result.external_updated_count == 0
     assert result.embedded_updated_count == 0
+    assert api.mutations == []
+
+
+def test_bidirectional_mirror_stops_before_mutation_when_lease_is_lost() -> None:
+    api = _MirrorAPI(
+        external=[_mirror_record("external-a", "item-a", progress="外部较新", modified_time=2_000)],
+        embedded=[_mirror_record("embedded-a", "item-a", progress="内嵌较旧", modified_time=1_000)],
+    )
+    request_count = 0
+
+    def guard() -> None:
+        nonlocal request_count
+        request_count += 1
+        if request_count == 6:
+            raise LeaseLostError("测试 Lease 已丢失")
+
+    config = FeishuConfig(
+        app_id="app",
+        app_token="external",
+        table_id="tbl-external",
+        max_retries=0,
+    )
+    with FeishuBitableClient(
+        config=config,
+        app_secret="secret",
+        client=httpx.Client(
+            base_url="https://open.feishu.cn/",
+            transport=httpx.MockTransport(api),
+        ),
+        upsert_key_fields=("声音内容/连接",),
+        before_request=guard,
+    ) as client:
+        with pytest.raises(LeaseLostError):
+            client.mirror_records_bidirectionally(
+                external_app_token="external",
+                external_table_id="tbl-external",
+                embedded_app_token="embedded",
+                embedded_table_id="tbl-embedded",
+            )
+
     assert api.mutations == []
 
 

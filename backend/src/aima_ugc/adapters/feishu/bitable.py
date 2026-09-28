@@ -340,12 +340,14 @@ class FeishuBitableClient:
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
         upsert_key_fields: Sequence[str] = DEFAULT_UPSERT_KEY_FIELDS,
+        before_request: Callable[[], None] | None = None,
     ) -> None:
         if not app_secret or not app_secret.strip():
             raise ValueError("飞书 App Secret 不能为空")
         self._config = config
         self._app_secret = app_secret
         self._sleep = sleep
+        self._before_request = before_request
         self._upsert_key_fields = tuple(upsert_key_fields)
         if (
             not self._upsert_key_fields
@@ -1143,6 +1145,8 @@ class FeishuBitableClient:
         del allow_auth_retry
         for attempt in range(self._config.max_retries + 1):
             try:
+                if self._before_request is not None:
+                    self._before_request()
                 request_kwargs: dict[str, Any] = {
                     "params": params,
                     "headers": headers,

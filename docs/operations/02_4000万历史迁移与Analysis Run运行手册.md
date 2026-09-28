@@ -217,11 +217,9 @@ freshness 也在同一批次内集合读取、锁定、冲突校验和写入。V
 同一个原子批次，不表示所有数据形态都固定执行相同数量 SQL。
 
 声音广场投影仍在同一业务事务内同步刷新，任务提交后下一次页面查询即可看到数据，不依赖异步回填
-Job。Alembic
-[`migrations/versions/20260924_0061_voice_plaza_statement_triggers.py`](../../migrations/versions/20260924_0061_voice_plaza_statement_triggers.py)
-把逐行 Trigger 收敛为语句级 transition-table Trigger：一条批量 SQL 只触发一次集合刷新，同时维护
-投影和筛选计数。部署必须先备份并执行数据库升级，再启动使用本版本代码的 API/Worker；代码回滚时
-按正式流程 downgrade 可恢复旧逐行 Trigger，不能只回滚镜像而留下未确认的数据库状态。
+Job。语句级 transition-table Trigger 属于独立的声音广场交付单元，不在本 PR #580 的 Migration
+范围内；本 PR 的数据库变更只覆盖飞书镜像 0060→0062。该独立交付单元的升级、回滚和集成证据
+由其所属 Change 单独维护，不能只回滚镜像而留下未确认的数据库状态。
 
 批次开始只做无锁 Fence 资格检查；业务写入、来源贡献、自动证据、Replay ledger 和 checkpoint 仍在
 同一事务中，提交前会锁住 Job 并再次验证 Fence。取消或 Lease 接管若先发生，本批全部写入回滚；若
@@ -236,7 +234,8 @@ Job。Alembic
 Content 总数，随后按每批实际处理量推进进度；完成前仍会检查是否存在未结清 ledger，不再每批重扫
 全部剩余账本。
 
-预检证明表由 Alembic `20260923_0060` 建立，语句级声音广场同步由 `20260924_0061` 建立。部署时先
+预检证明表由独立 Change 的 Alembic `20260923_0060` 建立；本 PR 的飞书镜像 claim 由 `20260924_0062`
+接续。部署时先
 按正式流程备份并升级数据库，再启动新 API/Worker；历史文件不批量盲信原有摘要，也不要求停机一次性回填：首次重筛逐件
 完整验证后回填，文件被替换或元数据/验证规则变化会失效。当前验证规则的非 Schema 语义改变时，
 开发必须提升验证版本，避免沿用旧证明。这里不自动执行服务器 Migration 或全量重筛。
