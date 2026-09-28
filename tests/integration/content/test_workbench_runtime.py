@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import event
 from aima_ugc.adapters.persistence.postgres.workbench import (
     PostgresWorkbenchRepository,
     WorkbenchLayoutRevisionConflict,
@@ -24,6 +25,58 @@ from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
+
+
+def test_workbench_mind_and_trend_each_execute_one_aggregate_statement() -> None:
+    """慢模块必须各用一次数据库执行复用范围事实，不能重建 5/4 次完整关联。"""
+
+    runtime = DatabaseRuntime(load_settings())
+    session = runtime.new_session()
+    statements: list[str] = []
+
+    def capture_statement(
+        _connection: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        """只记录本测试主动执行的聚合 SQL。"""
+
+        statements.append(statement)
+
+    event.listen(runtime.engine, "before_cursor_execute", capture_statement)
+    try:
+        repository = PostgresWorkbenchRepository(session)
+        current_start = datetime(2026, 8, 30, tzinfo=UTC)
+        current_end = datetime(2026, 9, 29, tzinfo=UTC)
+        previous_start = datetime(2026, 7, 31, tzinfo=UTC)
+        query = WorkbenchQuery()
+        trend = repository.trend_snapshot(
+            active_scheme_version_id=uuid4(),
+            query=query,
+            previous_start_at=previous_start,
+            current_start_at=current_start,
+            end_at=current_end,
+        )
+        mind = repository.mind_snapshot(
+            active_scheme_version_id=uuid4(),
+            query=query,
+            previous_start_at=previous_start,
+            current_start_at=current_start,
+            end_at=current_end,
+        )
+
+        assert trend["current_summary"]["total_count"] == 0
+        assert mind["current_summary"]["identified_user_count"] == 0
+        assert len(statements) == 2
+        assert "workbench:trend-snapshot" in statements[0]
+        assert "workbench:mind-snapshot" in statements[1]
+    finally:
+        event.remove(runtime.engine, "before_cursor_execute", capture_statement)
+        session.close()
+        runtime.dispose()
 
 
 def _job_values(job_id: UUID, *, now: datetime, suffix: str) -> dict[str, object]:

@@ -309,6 +309,42 @@ test('工作台按 active Taxonomy 展示真实模块，并使用后端 as_of', 
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
 })
 
+test('声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开关', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLElement.prototype, 'showPopover', {
+      configurable: true,
+      value: undefined,
+    })
+    Object.defineProperty(HTMLElement.prototype, 'hidePopover', {
+      configurable: true,
+      value: undefined,
+    })
+  })
+  await page.goto('/')
+  await page.addStyleTag({ content: '[popover] { display: block; }' })
+
+  const trigger = page.getByRole('button', { name: '二级标签', exact: true })
+  const panel = page.getByRole('dialog', { name: '选择二级标签' })
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await expect(panel).toBeHidden()
+
+  await trigger.click()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  await expect(panel).toBeVisible()
+  const box = await panel.boundingBox()
+  const viewport = page.viewportSize()
+  expect(box).not.toBeNull()
+  expect(viewport).not.toBeNull()
+  expect(box?.x ?? -1).toBeGreaterThanOrEqual(12)
+  expect(box?.y ?? -1).toBeGreaterThanOrEqual(12)
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual((viewport?.width ?? 0) - 12)
+  expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual((viewport?.height ?? 0) - 12)
+
+  await page.keyboard.press('Escape')
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await expect(panel).toBeHidden()
+})
+
 test('声音流筛选下拉可操作，选择后同口径刷新三个真实模块请求', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
@@ -453,6 +489,36 @@ test('模块刷新暂时失败时紧凑提示错误并继续显示上次成功�
   await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 })
 
+test('品牌心智失败只重试自身，不耦合刷新声音流和趋势', async ({ page }) => {
+  let failMind = true
+  const reads = { stream: 0, mind: 0, trend: 0 }
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (path.endsWith('/workbench/stream')) reads.stream += 1
+    if (path.endsWith('/workbench/mind')) reads.mind += 1
+    if (path.endsWith('/workbench/trend')) reads.trend += 1
+  })
+  await page.route('**/api/v1/workbench/mind**', async (route) => {
+    if (failMind) {
+      failMind = false
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify(temporaryError) })
+      return
+    }
+    await route.fallback()
+  })
+  await page.goto('/')
+  await expect(page.getByText('品牌用户心智暂时无法更新')).toBeVisible()
+  const beforeRetry = { ...reads }
+
+  await page.locator('.mind-card').getByRole('button', { name: '重试' }).click()
+
+  await expect(page.getByText('品牌用户心智暂时无法更新')).toHaveCount(0)
+  await expect(page.locator('.mind-card .ranking > button')).toHaveCount(2)
+  expect(reads.mind).toBe(beforeRetry.mind + 1)
+  expect(reads.stream).toBe(beforeRetry.stream)
+  expect(reads.trend).toBe(beforeRetry.trend)
+})
+
 test('声音流展示完整返回列表并自动向上滚动，悬停、聚焦和减少动画时暂停', async ({ page }) => {
   await page.route('**/api/v1/workbench/stream**', async (route) => {
     await route.fulfill({
@@ -572,6 +638,37 @@ test('显式编辑态先改草稿，取消恢复；保存一次提交完整 revi
   expect(payload.modules.find((item) => item.module_id === 'brand-mind')?.visible).toBe(false)
   await expect(page.getByText('工作台布局已保存。')).toBeVisible()
   await expect(page.getByRole('button', { name: '+ 编辑工作台' })).toBeVisible()
+})
+
+test('趋势模块横向按单列缩放，窄模块内部自适应且不重叠', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+  await page.getByRole('button', { name: '+ 编辑工作台' }).click()
+  const trendShell = page.locator('.module-shell').filter({ has: page.getByRole('heading', { name: 'UGC 声量与情感趋势' }) })
+  const handle = trendShell.getByRole('button', { name: '调整模块尺寸' })
+  const handleBox = await handle.boundingBox()
+  expect(handleBox).not.toBeNull()
+  await page.mouse.move((handleBox?.x ?? 0) + 12, (handleBox?.y ?? 0) + 12)
+  await page.mouse.down()
+  await page.mouse.move((handleBox?.x ?? 0) - 148, (handleBox?.y ?? 0) + 12, { steps: 8 })
+  await page.mouse.up()
+
+  const [mainBox, asideBox] = await Promise.all([
+    trendShell.locator('.trend-main').boundingBox(),
+    trendShell.locator('aside').boundingBox(),
+  ])
+  expect(mainBox).not.toBeNull()
+  expect(asideBox).not.toBeNull()
+  expect(asideBox?.y ?? 0).toBeGreaterThanOrEqual((mainBox?.y ?? 0) + (mainBox?.height ?? 0) - 1)
+
+  const saveRequest = page.waitForRequest((request) =>
+    request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/workbench/layout')
+  await page.getByRole('button', { name: '保存完成' }).click()
+  const request = await saveRequest
+  const payload = request.postDataJSON() as { modules: typeof modules }
+  expect(payload.modules.find((item) => item.module_id === 'ugc-trend')?.column_span).toBe(4)
+  expect(payload.modules.find((item) => item.module_id === 'sound-stream')?.column_span).toBe(6)
+  expect(payload.modules.find((item) => item.module_id === 'brand-mind')?.column_span).toBe(6)
 })
 
 test('品牌心智深链把当前日期和一级标签恢复到声音广场', async ({ page }) => {

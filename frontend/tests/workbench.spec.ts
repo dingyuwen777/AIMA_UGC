@@ -168,6 +168,24 @@ describe('工作台状态与 Figma 基线', () => {
     expect(store.editing).toBe(false)
   })
 
+  it('每个模块按独立草稿以单列和单行粒度调整尺寸', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+    store.startEditing()
+
+    store.resizeModule('ugc-trend', 8.4, 63.6)
+
+    expect(store.currentModules.find((item) => item.module_id === 'ugc-trend')).toEqual(
+      expect.objectContaining({ column_span: 8, row_units: 64 }),
+    )
+    expect(store.currentModules.find((item) => item.module_id === 'sound-stream')).toEqual(
+      expect.objectContaining({ column_span: 6, row_units: 48 }),
+    )
+    expect(store.currentModules.find((item) => item.module_id === 'brand-mind')).toEqual(
+      expect.objectContaining({ column_span: 6, row_units: 48 }),
+    )
+  })
+
   it('active Taxonomy 切换后自动移除失效 AI 筛选值', async () => {
     const store = useWorkbenchStore()
     await store.initialize()
