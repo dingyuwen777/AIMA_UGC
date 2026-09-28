@@ -707,7 +707,8 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         listPageCache.clear()
         persistAppliedSearch()
         void refreshResults()
-      } else if (compatibilityChanged) {
+      } else if (compatibilityChanged || legacyLabelCompatibility.value !== null) {
+        // 旧版 Session 首次恢复时也写回显式 compatibility marker，后续重载不再依赖旧字段形状猜来源。
         persistAppliedSearch()
       }
     } catch (reason) {
