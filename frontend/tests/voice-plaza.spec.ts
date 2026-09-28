@@ -699,6 +699,15 @@ describe('voice plaza', () => {
   })
 
   it('旧 secondary-only Session 在动态目录加载后迁移为等价父子筛选', async () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+      clear: () => storage.clear(),
+      key: (index: number) => [...storage.keys()][index] ?? null,
+      get length() { return storage.size },
+    } satisfies Storage)
     sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
       filters: { secondaryLabel: '续航表现' },
       sortBy: 'published_at',
