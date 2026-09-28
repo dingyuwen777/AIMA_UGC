@@ -378,14 +378,14 @@ def test_legacy_label_normalization_rejects_post_merge_cardinality_overflow() ->
     primary = client.get(
         "/api/v1/contents",
         params=[
-            *(( "primary_labels", f"primary-{index}") for index in range(100)),
+            *[("primary_labels", f"primary-{index}") for index in range(100)],
             ("primary_label", "legacy-primary-overflow"),
         ],
     )
     secondary = client.get(
         "/api/v1/contents",
         params=[
-            *(( "secondary_labels", f"secondary-{index}") for index in range(200)),
+            *[("secondary_labels", f"secondary-{index}") for index in range(200)],
             ("secondary_label", "legacy-secondary-overflow"),
         ],
     )
@@ -401,10 +401,10 @@ def test_legacy_label_normalization_deduplicates_before_final_cardinality_check(
     response = _client(service).get(
         "/api/v1/contents",
         params=[
-            *(( "primary_labels", f"primary-{index}") for index in range(99)),
+            *[("primary_labels", f"primary-{index}") for index in range(99)],
             ("primary_labels", "same-primary"),
             ("primary_label", "same-primary"),
-            *(( "secondary_labels", f"secondary-{index}") for index in range(199)),
+            *[("secondary_labels", f"secondary-{index}") for index in range(199)],
             ("secondary_labels", "same-secondary"),
             ("secondary_label", "same-secondary"),
         ],
