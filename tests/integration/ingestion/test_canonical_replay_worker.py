@@ -1196,9 +1196,12 @@ def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
             )
             assert (
                 connection.scalar(
-                    select(content_has_active_source(contents_table.c.id)).where(
-                        contents_table.c.id == content_id
-                    )
+                    select(
+                        content_has_active_source(
+                            contents_table.c.id,
+                            rule_filter_visible=contents_table.c.rule_filter_visible,
+                        )
+                    ).where(contents_table.c.id == content_id)
                 )
                 is True
             )
@@ -1256,9 +1259,12 @@ def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
             )
             assert (
                 connection.scalar(
-                    select(content_has_active_source(contents_table.c.id)).where(
-                        contents_table.c.id == content_id
-                    )
+                    select(
+                        content_has_active_source(
+                            contents_table.c.id,
+                            rule_filter_visible=contents_table.c.rule_filter_visible,
+                        )
+                    ).where(contents_table.c.id == content_id)
                 )
                 is False
             )
@@ -1767,9 +1773,12 @@ def test_all_replay_hides_content_not_matched_by_latest_rules_and_preserves_hist
             assert run["rows_filtered_out"] == 1
             assert (
                 connection.scalar(
-                    select(content_has_active_source(contents_table.c.id)).where(
-                        contents_table.c.id == content_id
-                    )
+                    select(
+                        content_has_active_source(
+                            contents_table.c.id,
+                            rule_filter_visible=contents_table.c.rule_filter_visible,
+                        )
+                    ).where(contents_table.c.id == content_id)
                 )
                 is False
             )
@@ -1878,9 +1887,12 @@ def test_all_replay_keeps_content_when_any_historical_source_matches_latest_rule
             assert connection.scalar(select(contents_table.c.rule_filter_visible)) is True
             assert (
                 connection.scalar(
-                    select(content_has_active_source(contents_table.c.id)).where(
-                        contents_table.c.id == content_id
-                    )
+                    select(
+                        content_has_active_source(
+                            contents_table.c.id,
+                            rule_filter_visible=contents_table.c.rule_filter_visible,
+                        )
+                    ).where(contents_table.c.id == content_id)
                 )
                 is True
             )
@@ -2039,9 +2051,12 @@ def test_all_replay_revoke_restores_content_hidden_by_rule_reconciliation(
             content_id = cast(UUID, connection.scalar(select(contents_table.c.id)))
             assert (
                 connection.scalar(
-                    select(content_has_active_source(contents_table.c.id)).where(
-                        contents_table.c.id == content_id
-                    )
+                    select(
+                        content_has_active_source(
+                            contents_table.c.id,
+                            rule_filter_visible=contents_table.c.rule_filter_visible,
+                        )
+                    ).where(contents_table.c.id == content_id)
                 )
                 is False
             )
@@ -2051,9 +2066,12 @@ def test_all_replay_revoke_restores_content_hidden_by_rule_reconciliation(
         with runtime.database.engine.connect() as connection:
             assert (
                 connection.scalar(
-                    select(content_has_active_source(contents_table.c.id)).where(
-                        contents_table.c.id == content_id
-                    )
+                    select(
+                        content_has_active_source(
+                            contents_table.c.id,
+                            rule_filter_visible=contents_table.c.rule_filter_visible,
+                        )
+                    ).where(contents_table.c.id == content_id)
                 )
                 is True
             )
@@ -2649,9 +2667,12 @@ def test_all_replay_revoke_preserves_content_claimed_by_later_normal_import(
             assert content["replay_visibility_owner_id"] is None
             assert (
                 connection.scalar(
-                    select(content_has_active_source(contents_table.c.id)).where(
-                        contents_table.c.id == content_id
-                    )
+                    select(
+                        content_has_active_source(
+                            contents_table.c.id,
+                            rule_filter_visible=contents_table.c.rule_filter_visible,
+                        )
+                    ).where(contents_table.c.id == content_id)
                 )
                 is True
             )
@@ -3768,7 +3789,12 @@ def test_cancel_and_revoke_http_stops_running_replay_and_reverts_committed_batch
                 connection.scalar(
                     select(func.count())
                     .select_from(contents_table)
-                    .where(content_has_active_source(contents_table.c.id))
+                    .where(
+                        content_has_active_source(
+                            contents_table.c.id,
+                            rule_filter_visible=contents_table.c.rule_filter_visible,
+                        )
+                    )
                 )
                 or 0
             )

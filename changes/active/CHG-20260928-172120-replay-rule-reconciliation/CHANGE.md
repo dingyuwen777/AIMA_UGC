@@ -271,7 +271,7 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 | --- | --- | --- | --- | --- |
 | V1 | 分支基线 `5d9108a9` / Windows / 本机开发 PostgreSQL | `pytest ...::test_all_replay_hides_content_not_matched_by_latest_rules_and_preserves_history` | 预期失败：`rows_filtered_out=1`，但 `content_has_active_source(...) is True`；整轮 2.88s | 当前实现没有让最新规则未命中项退出有效结果 |
 | V2 | 分支基线 `5d9108a9` / Windows / 本机开发 PostgreSQL | `pytest ...::test_all_replay_batches_existing_convergence_without_per_row_sql --durations=1` | 通过；测试调用 2.62s，总计 3.74s，既有断言 SQL `<150` | 修改前 101 条已有 Content 重筛热路径基线 |
-| V3 | 当前 `81dc2b55` / Windows / 本机开发 PostgreSQL | 完整 `tests/integration/ingestion/test_canonical_replay_worker.py` | 42 passed，115.08s | Planner、Run/Shard、取消、失败、接管、撤回、乱序完成、受理后普通写入及最新规则发布整体回归 |
+| V3 | 当前工作树 / Windows / 本机开发 PostgreSQL | 完整 `tests/integration/ingestion/test_canonical_replay_worker.py` | 42 passed，115.33s | Planner、Run/Shard、取消、失败、接管、撤回、乱序完成、受理后普通写入及最新规则发布整体回归 |
 | V4 | 当前工作树 / 同一 PostgreSQL/Fixture/资源 | 两项 101 条性能测试 `--durations=2` | 原已有 Content Replay 2.20s、SQL `<150`；101 条全退出发布 1.57s、一次集合 UPDATE、整轮 SQL `<100` | 相对修改前 2.62s 未观察到热路径回退，发布不按 Content 逐行 SQL |
 | V5 | 当前工作树 / Windows / 本机开发 PostgreSQL | Repository、API、声音广场/工作台、导出/分析目标相关套件 | 17 + 11 + 12 + 3 passed | 请求持久化、公共 API、业务读取与下游任务选择一致 |
 | V6 | 当前工作树 / PostgreSQL 18 开发容器及隔离空库 | 0074 downgrade→0073→upgrade head；`alembic check`；`verify_migration_compatibility.py` | 回退/升级成功，0074 head，无 Metadata 漂移；隔离空库完整历史兼容脚本 exit 0 | Migration 可逆、单一 head、旧正式 revision 可升级 |
@@ -280,18 +280,19 @@ Issue #649 固化了用户在 2026-09-28 的决定：全量“重筛入库”完
 | V9 | 当前工作树 / Windows | `pytest tests/unit -q` | 1456 passed、16 skipped、1 个与本 Change 无关的抖音可选截图提示断言失败；隔离复跑同样失败 | 本次相关 Unit 通过；唯一失败等待 Linux CI 判断既有平台/编码问题，不能计作全套 Unit 绿 |
 | V10 | 当前工作树 / Windows / 本机开发 PostgreSQL | 受影响 Content Current/History、并发、历史导入、TikHub 标准化套件 | 37 passed | 规则时间戳复用数据库批量写语句，未破坏普通 Content 处理链 |
 | V11 | 当前 `81dc2b55` / `origin/main...HEAD` | 完成定义对照与独立 diff 复核；`git diff --check origin/main...HEAD` | AC1–AC7 对照无缺口，diff 无空白错误，未发现新的阻断性 finding | 要求、数据边界、并发/撤回、性能、Migration、Contract 与文档已进入 Ready 门禁 |
+| V12 | 当前工作树 / Windows / 本机开发 PostgreSQL | CI Full-stack/PostgreSQL 失败日志 + `test_revocation_hides_exclusive_content_and_retains_shared_content` Red→Green + 完整 Data Import 撤销套件 | 修复前撤销预览产生 `contents × affected CTE` 笛卡尔积，`hidden=0/retained=2` 错误；显式主键 JOIN 后目标用例及全部 6 个撤销用例通过，无笛卡尔积警告 | 统一可见性调用方使用与自身 FROM/别名同一身份的可见性列；撤销 CTE 一次显式 JOIN，不引入逐行相关子查询 |
 
 ## 未验证内容与剩余风险
 
 - 仓库外生产数据量、锁竞争、Autovacuum 和目标服务器性能未验证；不得用 101 条本地基准冒充生产容量结论。物化集合发布避免读热路径重算，但全量规则发布仍有与 Content 总量/变化量相关的一次性扫描和更新成本。
 - 本机完整 Unit 套件唯一失败是 `test_douyin_screenshot_skips_login_overlay` 的可选浏览器截图提示文本断言，文件与本 Change 无依赖、隔离复跑同样失败；required Linux CI 仍必须全绿，未绿禁止 merge。
-- current-head required CI、Real Full-stack、合并、main-fresh、归档和 Issue Closure 尚未执行。
+- 首轮 current-head required CI 暴露并已修复撤销预览笛卡尔积回归；修复后 required CI/Real Full-stack 尚待重跑，未全绿前不允许 merge。合并、main-fresh、归档和 Issue Closure 仍未执行。
 
 ## 交付状态
 
-- 提交：治理提交 `5d9108a9`；Red 测试提交 `4f6514be`；实现/测试/文档提交 `81dc2b55`。
-- 拉取请求：Draft PR #650 已创建，完成 Completion Audit 与两阶段复核后将转 Ready。
-- CI：早期 Draft PR CI 均按设计 skipped，不构成交付证据；转 Ready 后按当前 HEAD 重新验证。
+- 提交：治理提交 `5d9108a9`；Red 测试提交 `4f6514be`；实现/测试/文档提交 `81dc2b55`；完成审计 `8dc28c9b`；同步最新 main `4a2c2ee6`；修复 main 已合并文件的机械格式 `1d267fdb`；Full-stack 回归修复随当前工作树提交。
+- 拉取请求：PR #650 已转 Ready；首轮完整 CI 反馈已闭环，修复推送后继续按当前 HEAD 验证。
+- CI：早期 Draft PR CI 均按设计 skipped，不构成交付证据；首轮 Ready CI 的完成审计、工具链与 Compose 通过，PostgreSQL/Full-stack 一致暴露同一撤销预览回归，修复后须全量重跑并全绿。
 - 合并：尚未合并。
 - Change 归档：等待合并后 Automation。
 - 发布 / 部署：不适用；用户只授权开发、PR、合并和本地已合并分支清理，未授权 Release/Deploy/生产 Migration。
