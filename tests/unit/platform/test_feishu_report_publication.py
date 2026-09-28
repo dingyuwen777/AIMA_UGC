@@ -884,7 +884,13 @@ def test_publish_all_real_run_creates_embedded_bitable_before_sync(
             },
         )()
 
-    monkeypatch.setattr(publication_module, "publish_selected_representatives_to_feishu", fake_sync)
+    frozen_rows = ({"声音内容/连接": "内容\\nhttps://example.test/1"},)
+    monkeypatch.setattr(
+        publication_module,
+        "build_selected_representative_rows",
+        lambda *_args, **_kwargs: frozen_rows,
+    )
+    monkeypatch.setattr(publication_module, "publish_representative_rows_to_feishu", fake_sync)
 
     def fake_publish(report: object, config: object, **kwargs: object):
         del report, config
@@ -921,8 +927,7 @@ def test_publish_all_real_run_creates_embedded_bitable_before_sync(
     assert result.representative_sync is not None
     assert result.publication is not None
     assert captured["settings"] is settings
-    assert captured["selected"] == ("selected",)
-    assert captured["report_rows"] == rows
+    assert captured["rows"] == frozen_rows
     assert captured["target_bitable_block_token"] == "bascnEmbedded_tblEmbedded"
     assert captured["target_document_token"] == "doc-token"
     assert captured["target_document_url"] == "https://feishu.example/doc"
