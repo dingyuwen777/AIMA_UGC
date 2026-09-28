@@ -233,18 +233,18 @@ data_changes:
 | V3 | Windows 本地 Node 工具链 | `npm run lint`、`npm run build`；`npm run test:e2e -- admin-configuration-release2.spec.ts` | lint/build 通过；8 passed | 前端类型、构建、query cache-buster mock 和首个 GET 失败恢复 |
 | V4 | Windows 本地 `.uv-venv` | Ruff、Mypy 目标源文件 | 全部通过 | 静态质量和类型边界 |
 | V5 | 仓库质量脚本 | `check_docs.py`、`check_architecture.py`、`check_table_ownership.py`、`check_change_completion.py --require-active-ready`、`scan_secrets.py`、`check_agent_governance.py` | 全部通过 | 文档、架构、表 Owner、Secret、Agent governance 和 Active Change 门禁 |
-| V6 | GitHub Actions（上一轮提交 `f1255499`） | CI run `35974601442`：Requirement Traceability `107552005101`、PostgreSQL Integration `107553775774`、Real Full-stack `107553775896`、CI Gate `107555251372` | 上一轮全部通过；本轮修复后的新 HEAD required CI 待复跑 | 旧 HEAD 的完整质量门禁；新 HEAD 需重新证明 main 0071→0072 migration、claim renew 和慢同步 fencing |
+| V6 | GitHub Actions（HEAD `9df22246`） | CI run `36392662890`：Requirement Traceability `108831773053`、PostgreSQL Integration `108834240613`、Real Full-stack `108834240740`、CI Gate `108836108815`；另有 Runtime Acceptance `36392662637`、Release dry-run `36392662501`、Developer Tooling `36392662518` | 全部 success | 当前 HEAD 已重新证明 Requirement/Change、0072 migration、PostgreSQL claim/renew/fencing、真实 API/Worker Browser Golden Path、运行时、离线发布与工具链门禁 |
 
 ## 未验证内容与剩余风险
 
-本机未启动 PostgreSQL/Docker，因此真实数据库集成未执行；Windows 不适用的 POSIX 宿主测试由 Linux CI 负责。真实飞书和 LLM 账户 Probe 不作为普通 CI 证据。
+本机未启动 PostgreSQL/Docker；当前 HEAD 的 PostgreSQL 与 Linux/跨组件证据由 GitHub Actions `36392662890` 提供。真实飞书和付费 LLM 租户 Probe 不作为普通 CI 证据，用户已完成本地正常功能实测。
 
 ## 交付状态
 
-- 提交：本轮修复待提交，完成后推送到既有 PR #580。
+- 提交：根机制修复与回归已推送到既有 PR #580，当前实现审查 HEAD 为 `9df22246`。
 - 拉取请求：PR #580，Requirement Source 指向本 Change 文件。
-- CI：上一轮提交 `f1255499` 的 required CI 已全部通过；本轮修复后的新 HEAD 必须重新跑并记录 CI 结果。
-- 合并：未合并，等待维护者审核。
+- CI：HEAD `9df22246` 的 required CI、PostgreSQL Integration、Real Full-stack、Runtime Acceptance、Release dry-run 与 Developer Tooling 均已通过。
+- 合并：独立 re-review 未发现新的 blocking finding；等待本证据更新提交自身门禁后执行 guarded merge。
 - Change 归档：未归档，保持 `ready_for_review`。
 - 发布 / 部署：不适用；本变更未执行生产发布或真实业务写入。
 
