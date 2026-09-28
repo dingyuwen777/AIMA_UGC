@@ -74,6 +74,8 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 | E8 | Browser Review 曾复现层级菜单展开覆盖“查询”按钮 | Temporary Validation 早期失败日志 | 需要让 tertiary 多选展开参与布局，而不是只改测试点击方式 |
 | E9 | R655-F1 证明旧版允许 secondary-only Route/Session；原实现会在动态目录加载后把该筛选清空并放宽为无标签查询 | PR #655 Review comment 5873630388 + `VoicePlazaPage.vue` / `store.ts` 调用链 | 兼容迁移必须在真实目录加载后补齐父级；无法解析时保留旧 secondary-only 精确条件，不能静默放宽 |
 | E10 | R655-F2 证明新增空 plural 默认字段会改变旧 `_query_hash` payload，导致仍在有效期内的旧 Cursor 失效 | PR #655 Review comment 5873630388 + main@f77e02c 的旧 `ContentFilterSnapshot` / `_query_hash` | query hash 必须规范化空 plural 与 singleton plural，且不能放松 Cursor query binding |
+| E11 | R655-F1b 证明旧 Workbench 可产生 cross-parent singular Route/Session；该状态在旧服务端按一级维度 AND 二级维度合法执行，不能强行改写成当前父子层级 | PR #655 Review comment 5874500915 + 旧 Workbench 深链规则 + 当前 Store sanitize 调用链 | legacy compatibility 必须带来源状态；无法无损层级化或目录已缺失的旧值原样保留并在 UI 明示，直到用户主动修改标签 |
+| E12 | singular + plural 在 Pydantic field 长度校验之后才归一化，理论上可把 100/200 上限追加成 101/201 | PR #655 Review comment 5874500915 + `ContentFilterSnapshot.validate_date_order` | 最终归一化集合必须再次执行 100/200 cardinality 校验 |
 
 ## 推断与待确认
 
@@ -165,11 +167,18 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
    → 同步当前产品说明
    → Unit/API/PG/Browser 分层回归。
 
-6. **PR #655 统一 Repair Batch**
+6. **PR #655 首轮 Repair Batch**
    → R655-F1：`sanitizeLabelFilters()` 在 legacy secondary-only + 动态目录边界推导所有真实父级；若目录暂时无法覆盖全部旧二级值，则保留 secondary-only 精确筛选等待后续目录刷新，不允许清空放宽
    → R655-F2：`_query_hash()` 对 plural 标签做 canonical compatibility 编码；空数组忽略、singleton 映射回旧 singular key、multi-value 保留 plural
    → 不修改 `ContentCursorCodec.decode()` 的 query-hash 等值校验，不降低 Cursor 绑定
    → 新增 Session/Route 最终态、List/Count/query Export、旧 hash/v1 Cursor 与不同查询拒绝复用回归。
+
+7. **R655-F1b consolidated review-correction batch**
+   → legacy Route/Session 恢复时记录显式 compatibility state，不把 cross-parent 或 catalog-missing 误判为新 UI 非法状态
+   → secondary-only 且目录可完整解析时继续无损迁移到当前父子层级；cross-parent/catalog-missing 则保留原 primary/secondary 数组，因此 List/Count/query Export 继续使用旧 AND 语义
+   → Filter UI 明示当前“旧版兼容筛选”和实际 primary/secondary 条件；用户主动改动标签并查询后清除 compatibility state，回到当前父子规则
+   → `ContentFilterSnapshot` singular 合并 plural 后再次校验最终 100/200 上限
+   → 新增 cross-parent Session/Route、catalog-missing、主动退出兼容态和 post-normalization cardinality Regression。
 
 ## 证据到决策
 
@@ -182,6 +191,8 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 | D5 tertiary 展开参与布局 | E8 | 切断遮挡查询按钮的真实交互根因 |
 | D6 legacy secondary-only 只在兼容迁移边界推导父级 | E9 | 保持新交互父子不变量，同时让旧 URL/Session 在目录加载后得到当前合法等价状态；目录暂不能解析时保持旧精确条件而非放宽 |
 | D7 query hash 使用兼容 canonical payload | E10 | 空 plural 不进入旧查询身份；singleton plural 回写旧 singular key；真正 multi-value 才使用 plural key，因此保持旧 Cursor 有效且不削弱不同查询隔离 |
+| D8 legacy cross-parent/catalog-missing 使用显式 compatibility state | E11 | 只对可无损的 secondary-only 自动迁移；不能无损映射的旧组合保持原 primary/secondary AND 查询，并在页面提示；用户主动改标签后退出兼容态 |
+| D9 plural/singular normalization 后重复校验 cardinality | E12 | 保持 OpenAPI 既有 100/200 上限事实，同时堵住 legacy append 绕过上限的 Contract 漏洞 |
 
 # 需求追溯
 
@@ -195,8 +206,8 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 | R6 | 同维度 OR、一级与二级维度 AND，保持工作台一致 | #652 / AC6 | satisfied | Workbench SQL 与 Content projection/fallback 已复核；PG cross-pair 回归通过。 |
 | R7 | List/Count/query-scope Analysis/query-scope Export 共用多选 Filter Snapshot | #652 / AC7 | satisfied | Voice Plaza `filterSnapshot()` 供 List/Count/query export；后端 `ContentTargetSelection.filters` 同时供 Analysis/Reporting freeze。 |
 | R8 | projection 与 fallback PostgreSQL 路径一致 | #652 / AC8 | satisfied | PG 测试先走 ready projection，再置 pending 走 fallback；cross-pair 结果一致。 |
-| R9 | plural Contract + legacy singular 兼容 | #652 / AC9 | satisfied | API repeated plural + legacy singular 归一化；R655-F1 Store 回归验证 legacy Session 经动态目录后迁移为合法父子状态并贯穿 List/Count/query Export；R655-F2 验证旧 Filter query hash / Cursor 在有效期内兼容；generation/compatibility clean。 |
-| R10 | Workbench 多标签深链与 legacy singular 深链兼容 | #652 / AC10 | satisfied | Workbench 输出 repeated plural；Voice Plaza 优先 plural、回退 singular；R655-F1 Browser 回归实际等待动态目录完成并观察最终 migrated List/Count 请求与 Session，证明 secondary-only legacy 深链不会静默变宽。 |
+| R9 | plural Contract + legacy singular 兼容 | #652 / AC9 | satisfied | API repeated plural + legacy singular 归一化；R655-F1/F1b 覆盖 secondary-only、cross-parent 与 catalog-missing Session/Route；无法无损层级化的旧状态保持原 AND 查询并显式提示；归一化后 100/200 最终上限有 API Regression；R655-F2 旧 Cursor 兼容保持；generation/compatibility clean。 |
+| R10 | Workbench 多标签深链与 legacy singular 深链兼容 | #652 / AC10 | satisfied | Workbench 输出 repeated plural；Voice Plaza 优先 plural、回退 singular；R655-F1 secondary-only 可无损迁移；R655-F1b Browser 验证 cross-parent 与 catalog-missing singular 深链在动态目录完成后仍保留原条件且 UI 明示 compatibility state。 |
 | R11 | 分层验证与 generated drift/compatibility 通过 | #652 / AC11 | satisfied | Temporary Validation run 36433340226：Backend、PostgreSQL、Frontend 三 Job success。 |
 
 # 计划改动
@@ -225,10 +236,10 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | required | 原实现 Voice Plaza + Workbench 2 files / 51 tests；Repair targeted Voice Plaza 1 file / 36 tests passed |
-| 接口 / 契约 | required | Repair targeted Cursor + Stage8D API 共 18 passed；generator/Orval diff clean、`--check`、compatibility 通过 |
+| 行为 / 单元 / 组件 | required | 原实现 Voice Plaza + Workbench 2 files / 51 tests；首轮 Repair Voice Plaza 36 tests；F1b Repair Voice Plaza 38 tests passed |
+| 接口 / 契约 | required | 首轮 Repair Cursor + Stage8D API 18 passed；F1b Stage8D API 13 passed，覆盖 normalization 最终 cardinality；generator/Orval diff clean、`--check`、compatibility 通过 |
 | 集成 / 持久化 / 运行依赖 | required | PostgreSQL 18.4 + Alembic head/check；目标集成覆盖 projection/fallback |
-| 用户 / 工作流验收 | required | 原两页 Browser Mock 37 passed；Repair targeted Voice Plaza Browser 16 passed，包含 legacy secondary-only Route 最终迁移请求 |
+| 用户 / 工作流验收 | required | 原两页 Browser Mock 37 passed；首轮 Repair Voice Plaza Browser 16 passed；F1b Repair Voice Plaza Browser 18 passed，覆盖 cross-parent/catalog-missing singular 深链与兼容提示 |
 | 跨组件关键路径 | required | Workbench deep link → Voice Plaza plural restore；Filter Snapshot → PG Read Model |
 | 外部依赖 / 供应方探测 | not_applicable | 不涉及第三方 Provider 当前事实 |
 | 构建 / 打包 / 运行 | required | Frontend lint/typecheck/Vite build；Backend mypy/Ruff |
@@ -265,7 +276,7 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 - [x] upstream_re_read：已重读 #652 最新 AC 与用户“只提交 PR、不合并 main”的后续指令，并重读 Workbench SQL、Content Filter Contract、Analysis/Export query-scope 冻结链和最终前端状态链。
 - [x] change_coverage：AC1–AC11 均映射到实现与新鲜测试；没有用 UI 多选替代后端 Contract、Count、freeze target 或 fallback 语义。
 - [x] reverse_audit：从用户勾选/取消一级 → 二级候选/清理 → applied snapshot → List/Count → Analysis/Export freeze → projection/fallback 反查；从 Workbench → Voice Plaza plural/legacy deep link 反查恢复。
-- [x] unresolved_cleared：实现范围内无 `not_satisfied`；首轮 Review 的 R655-F1/R655-F2 已作为同一 Repair Batch 修复，并取得直接回归证据；此前展开菜单遮挡查询按钮也已按布局根因修复并由 Browser 复验。merge/main-fresh/archive/cleanup 因用户明确限定“只提交 PR”而不属于本任务交付范围。
+- [x] unresolved_cleared：实现范围内无 `not_satisfied`；首轮 R655-F1/R655-F2 已关闭；delta re-review 的同根 FIRST_REVIEW_ESCAPE R655-F1b 与邻接 cardinality 边界已作为统一 Repair Batch 修复并取得直接回归证据；此前展开菜单遮挡查询按钮也已由 Browser 复验。merge/main-fresh/archive/cleanup 因用户明确限定“只提交 PR”而不属于本任务交付范围。
 
 # 完成证据与状态
 
@@ -284,10 +295,14 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 | V9 | Repair run 36448358583 / Chromium Browser Mock | Voice Plaza E2E | 16 passed | R655-F1 legacy secondary-only URL 等待真实 filter options 后最终请求与 Session 不被放宽 |
 | V10 | Repair run 36448358583 | Contract generator + Orval + generated diff + compatibility | success | Repair 未造成 Contract/generated drift；F2 只修查询身份 canonicalization |
 | V11 | PostgreSQL | Repair 未触碰 `content_queries.py`、Schema 或 SQL；此前 current-head predecessor 的 PG Integration 已 success | reusable per Fresh Evidence Contract until affected boundary changes | R655-F1/F2 修复不改变持久化查询语义；最终 PR CI 若 changed-scope 重跑 PG，以 current-head 结果为准 |
+| V12 | F1b Repair run 36500100933 / Ubuntu 24.04 / Python 3.14.7 | Ruff + Stage8D Content API | 13 passed；Ruff green | singular+plural normalization 后 100/200 最终上限、重复同值不伪溢出 |
+| V13 | F1b Repair run 36500100933 / Node 24.19.0 | Voice Plaza Unit + lint + build | 1 file / 38 tests passed；build success | cross-parent Session、catalog-missing、List/Count/query Export、用户主动改标签退出 compatibility state |
+| V14 | F1b Repair run 36500100933 / Chromium Browser Mock | Voice Plaza E2E | 18 passed | cross-parent/catalog-missing singular Route 在动态目录完成后不静默放宽，并明确展示旧版兼容筛选 |
+| V15 | F1b Repair run 36500100933 | Contract generator + Orval + generated diff + compatibility | success | validator 收口未改变 OpenAPI/generated Schema，Contract 生成物无 drift |
 
 ## 未验证内容与剩余风险
 
-- Repair Batch 已取得 targeted green；删除临时 Repair Workflow 并更新本 Change 后，仍需等待 PR 最终 current-head required CI，CI 未完成前不请求“可合并”结论。
+- F1b Repair Batch 已取得 targeted green；临时 Workflow 已删除。更新本 Change 后仍需等待 PR 最终 current-head required CI，CI 未完成前不请求“可合并”结论。
 - 未执行真实 Release、Deploy 或生产数据操作；本任务不需要也未获授权。
 - 不做线上生产量性能声明；本次没有改变标签目录规模上限，也未新增逐行 SQL/额外 HTTP 往返。
 
@@ -295,7 +310,7 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 
 - 提交：任务分支已提交并推送。
 - 拉取请求：#655，open。
-- CI：Repair targeted 已绿色；最终 current-head required CI 待本 Change 更新后的 head 执行完成。
+- CI：F1b targeted 已绿色；最终 current-head required CI 待本 Change 更新后的 head 执行完成。
 - 合并：未授权，不执行。
 - Change 归档：不执行；只有未来 merge 后且再次授权才进入。
 - 发布 / 部署：不适用，本任务无 Release/Deploy。
