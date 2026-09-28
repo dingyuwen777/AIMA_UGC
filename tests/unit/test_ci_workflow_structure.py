@@ -266,3 +266,31 @@ def test_main_evidence_reuse_keeps_main_specific_cheap_governance_gates() -> Non
         "      - name: Setup Python\n",
     )
     assert "steps.reuse.outputs.reusable" not in docs_gate
+
+
+def test_ci_control_plane_compiles_before_project_python_setup() -> None:
+    """main 复用控制面必须先被 Runner bootstrap Python 验证，而不是只依赖项目 Python。"""
+    ci = CI.read_text(encoding="utf-8")
+
+    compile_index = ci.index("Validate bootstrap-compatible CI control scripts")
+    setup_index = ci.index("      - name: Setup Python")
+    assert compile_index < setup_index
+    assert "python3 -m py_compile" in ci
+    assert "scripts/quality/resolve_main_evidence.py" in ci
+    assert "scripts/quality/classify_ci_scope.py" in ci
+
+
+def test_resolver_process_failure_falls_back_to_real_validation() -> None:
+    """Resolver 自身失败只能关闭复用，不能让 CI/Runtime/Tooling 在控制面直接失败。"""
+    ci = CI.read_text(encoding="utf-8")
+    runtime = RUNTIME.read_text(encoding="utf-8")
+    tooling = TOOLING.read_text(encoding="utf-8")
+
+    for workflow in (ci, runtime, tooling):
+        assert "resolver_execution_failed" in workflow
+        assert "reusable=false" in workflow
+        assert "resolver_status" in workflow
+
+    assert "main evidence resolver failed; falling back to real CI validation" in ci
+    assert "Runtime evidence resolver failed; falling back to real Runtime validation" in runtime
+    assert "Tooling evidence resolver failed; falling back to real Tooling validation" in tooling
