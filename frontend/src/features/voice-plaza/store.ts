@@ -124,13 +124,45 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
 }
 
-/** 只保留所选一级标签真实拥有的二级标签，父级变化后隐藏值不能继续参与查询。 */
+/**
+ * 把标签筛选收敛到当前动态目录。
+ *
+ * 新交互始终由一级标签约束二级标签；但旧 Route / Session 允许合法的 secondary-only
+ * 筛选。目录首次加载后，为这种兼容状态补齐所有真实父级，再进入新的父子不变量。
+ * 如果目录暂时还不能解析某个旧二级值，则保留原 secondary-only 查询，宁可继续精确
+ * 使用旧语义，也不能静默清空后放宽为无标签查询。
+ */
 function sanitizeLabelFilters(
   source: VoicePlazaFilters,
   options: ContentFilterOptionsResponse,
 ): VoicePlazaFilters {
   const validPrimaryLabels = new Set(options.labels.map((item) => item.primary_label))
-  const primaryLabels = source.primaryLabels.filter((value) => validPrimaryLabels.has(value))
+  const requestedSecondaryLabels = [...new Set(source.secondaryLabels)]
+  const requestedSecondarySet = new Set(requestedSecondaryLabels)
+  let primaryLabels = source.primaryLabels.filter((value) => validPrimaryLabels.has(value))
+
+  if (source.primaryLabels.length === 0 && requestedSecondaryLabels.length > 0) {
+    const inferredPrimaryLabels: string[] = []
+    const resolvedSecondaryLabels = new Set<string>()
+    for (const group of options.labels) {
+      let parentRequired = false
+      for (const secondary of group.secondary_labels) {
+        if (!requestedSecondarySet.has(secondary.value)) continue
+        resolvedSecondaryLabels.add(secondary.value)
+        parentRequired = true
+      }
+      if (parentRequired) inferredPrimaryLabels.push(group.primary_label)
+    }
+    if (resolvedSecondaryLabels.size !== requestedSecondaryLabels.length) {
+      return {
+        ...copyFilters(source),
+        primaryLabels: [],
+        secondaryLabels: requestedSecondaryLabels,
+      }
+    }
+    primaryLabels = inferredPrimaryLabels
+  }
+
   const selectedPrimaryLabels = new Set(primaryLabels)
   const validSecondaryLabels = new Set(
     options.labels
@@ -140,7 +172,7 @@ function sanitizeLabelFilters(
   return {
     ...copyFilters(source),
     primaryLabels,
-    secondaryLabels: source.secondaryLabels.filter((value) => validSecondaryLabels.has(value)),
+    secondaryLabels: requestedSecondaryLabels.filter((value) => validSecondaryLabels.has(value)),
   }
 }
 
