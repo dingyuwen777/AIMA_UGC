@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -18,7 +20,8 @@ from aima_ugc.adapters.feishu import (
 )
 from aima_ugc.bootstrap.representative_report_pipeline import prepare_representative_report
 from aima_ugc.bootstrap.representative_selection_publication import (
-    publish_selected_representatives_to_feishu,
+    build_selected_representative_rows,
+    publish_representative_rows_to_feishu,
 )
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.reporting import ReportGenerationSummary, generate_excel_report
@@ -30,6 +33,10 @@ class FeishuReportPublicationConfigurationError(RuntimeError):
     def __init__(self, missing: tuple[str, ...] = ()) -> None:
         self.missing = missing
         super().__init__("飞书报告发布配置不可用")
+
+
+class FeishuReportPublicationSnapshotMismatch(RuntimeError):
+    """重试时本地生成结果与首次外部发布输入不一致。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +141,21 @@ def publish_all_report_to_feishu(
     )
     if progress is not None:
         progress(60)
+
+    representative_rows = build_selected_representative_rows(
+        preparation.selection_run.selected,
+        report_rows=preparation.rows,
+    )
+    if not dry_run and checkpoint is not None:
+        current_digest = _prepared_publication_digest(report, representative_rows)
+        frozen_digest = checkpoint.get("prepared_publication_digest")
+        if frozen_digest is None:
+            checkpoint.set("prepared_publication_digest", current_digest)
+        elif not isinstance(frozen_digest, str) or frozen_digest != current_digest:
+            raise FeishuReportPublicationSnapshotMismatch(
+                "报告重试的本地生成结果与首次外部发布输入不一致，已停止继续写飞书"
+            )
+
     if dry_run:
         if progress is not None:
             progress(100)
@@ -165,9 +187,8 @@ def publish_all_report_to_feishu(
         raise RuntimeError("飞书在线报告未返回内嵌多维表 token")
     if progress is not None:
         progress(82)
-    representative_sync = publish_selected_representatives_to_feishu(
-        selected=preparation.selection_run.selected,
-        report_rows=preparation.rows,
+    representative_sync = publish_representative_rows_to_feishu(
+        rows=representative_rows,
         output_dir=target / "representative_selection",
         settings=settings,
         target_bitable_block_token=embedded_token,
@@ -184,6 +205,53 @@ def publish_all_report_to_feishu(
         representative_sync=representative_sync,
         representative_count=len(preparation.rows),
     )
+
+
+def _prepared_publication_digest(
+    report: ReportGenerationSummary,
+    representative_rows: tuple[dict[str, object], ...],
+) -> str:
+    """冻结首次外部发布真正消费的本地结果，防止重试混用不同 Attempt 的产物。"""
+
+    digest = hashlib.sha256()
+    for label, path in (
+        ("markdown", report.markdown_path),
+        ("word", report.word_path),
+        ("charts", report.chart_workbook_path),
+    ):
+        digest.update(label.encode("utf-8"))
+        if path is None:
+            digest.update(b"<none>")
+            continue
+        file_path = Path(path)
+        if not file_path.is_file():
+            raise FileNotFoundError(file_path)
+        digest.update(hashlib.sha256(file_path.read_bytes()).digest())
+
+    normalized_rows: list[dict[str, object]] = []
+    for row in representative_rows:
+        normalized: dict[str, object] = {}
+        for key, value in row.items():
+            if isinstance(value, Path):
+                if not value.is_file():
+                    raise FileNotFoundError(value)
+                normalized[key] = {
+                    "name": value.name,
+                    "sha256": hashlib.sha256(value.read_bytes()).hexdigest(),
+                }
+            else:
+                normalized[key] = value
+        normalized_rows.append(normalized)
+    digest.update(
+        json.dumps(
+            normalized_rows,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    )
+    return digest.hexdigest()
 
 
 def _load_publisher_config(
@@ -246,6 +314,7 @@ def _publish_generated_report(
 __all__ = [
     "FeishuReportPublicationConfigurationError",
     "FeishuReportPublicationResult",
+    "FeishuReportPublicationSnapshotMismatch",
     "publish_all_report_to_feishu",
     "publish_report_to_feishu",
 ]
