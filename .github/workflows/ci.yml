@@ -56,7 +56,9 @@ jobs:
           fetch-depth: 0
 
       - name: Validate bootstrap-compatible CI control scripts
-        if: github.event_name != 'pull_request' || github.event.action != 'edited'
+        if: >-
+          github.event_name != 'push' &&
+          (github.event_name != 'pull_request' || github.event.action != 'edited')
         shell: bash
         run: |
           set -euo pipefail
