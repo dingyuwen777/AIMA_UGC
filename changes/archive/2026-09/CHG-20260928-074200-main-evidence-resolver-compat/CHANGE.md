@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-074200-main-evidence-resolver-compat
 title: 修复主分支Evidence Resolver兼容与失败降级
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/636-main-evidence-resolver-compat
 created: 2026-09-28
