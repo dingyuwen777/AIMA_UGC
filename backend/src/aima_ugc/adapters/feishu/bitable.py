@@ -1263,11 +1263,7 @@ class FeishuBitableClient:
                 )
             if isinstance(code, int) and code != 0:
                 retryable_code = code in {1254290, 1254291}
-                if (
-                    retryable_code
-                    and internal_retry_safe
-                    and attempt < self._config.max_retries
-                ):
+                if retryable_code and internal_retry_safe and attempt < self._config.max_retries:
                     self._sleep(_retry_delay(attempt))
                     continue
                 raise FeishuAPIError(
