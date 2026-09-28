@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260917-180708-representative-selection-feishu-sync
 title: 代表性正负面内容筛选与飞书多维表同步
 level: L3
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/merge-BOLL2-main
 created: 2026-09-17
@@ -220,7 +220,7 @@ data_changes:
 - [x] upstream_re_read：已重新核对用户确认的筛选规则、Prompt、Excel 表头、飞书字段和现有 LLM/Secret 边界。
 - [x] change_coverage：R1—R13 均有实现、测试或明确不适用证据，未把本 Change 作为需求来源。
 - [x] reverse_audit：已核对入口参数、Dry Run/写入开关、新表创建、字段预检、回读和失败边界。
-- [ ] unresolved_cleared：正在闭环同一外部副作用 retry 根机制的剩余投影：代表性 Job checkpoint、创建型 POST ambiguous failure 与报告本地结果漂移；新鲜 CI 与 re-review 完成后再勾选。
+- [x] unresolved_cleared：外部副作用 retry 根机制的已知投影已统一收口：代表性 Job 使用 durable checkpoint 并冻结首次筛选结果；创建型 Bitable POST 不再客户端内盲重试并支持稳定表名回读；无法可靠对账的媒体上传 fail closed；报告发布冻结生成时间和本地发布输入 digest，重试结果漂移时在继续外部写入前失败关闭。
 
 # 完成证据与状态
 
