@@ -29,8 +29,8 @@ const props = withDefaults(defineProps<{
   relevance: '' | ContentRelevance
   voiceType: string
   sentiment: string
-  primaryLabel: string
-  secondaryLabel: string
+  primaryLabels?: string[]
+  secondaryLabels?: string[]
   publishedFrom: string
   publishedTo: string
   sourceIdentifier: string
@@ -39,7 +39,13 @@ const props = withDefaults(defineProps<{
   competitionScopes?: ContentFilterSnapshotCompetitionScopesItem[]
   filterOptions: ContentFilterOptionsResponse | null
   filterOptionsLoading: boolean
-}>(), { brandIds: () => [], vehicleModelIds: () => [], competitionScopes: () => [] })
+}>(), {
+  primaryLabels: () => [],
+  secondaryLabels: () => [],
+  brandIds: () => [],
+  vehicleModelIds: () => [],
+  competitionScopes: () => [],
+})
 
 const emit = defineEmits<{
   'update:search': [value: string]
@@ -49,8 +55,8 @@ const emit = defineEmits<{
   'update:relevance': [value: '' | ContentRelevance]
   'update:voiceType': [value: string]
   'update:sentiment': [value: string]
-  'update:primaryLabel': [value: string]
-  'update:secondaryLabel': [value: string]
+  'update:primaryLabels': [value: string[]]
+  'update:secondaryLabels': [value: string[]]
   'update:publishedFrom': [value: string]
   'update:publishedTo': [value: string]
   'update:sourceIdentifier': [value: string]
@@ -61,10 +67,21 @@ const emit = defineEmits<{
   reset: []
 }>()
 
-const secondaryLabels = computed(
-  () => props.filterOptions?.labels.find((item) => item.primary_label === props.primaryLabel)
-    ?.secondary_labels ?? [],
-)
+const primaryLabelOptions = computed(() => props.filterOptions?.labels ?? [])
+const secondaryLabelOptions = computed(() => {
+  const selected = new Set(props.primaryLabels)
+  const options = new Map<string, { value: string, source: 'active' | 'historical' }>()
+  for (const item of props.filterOptions?.labels ?? []) {
+    if (selected.size > 0 && !selected.has(item.primary_label)) continue
+    for (const secondary of item.secondary_labels) {
+      const current = options.get(secondary.value)
+      if (!current || current.source === 'historical' && secondary.source === 'active') {
+        options.set(secondary.value, secondary)
+      }
+    }
+  }
+  return [...options.values()]
+})
 const platformOptions = Object.values(PlatformName)
 const relevanceOptions = Object.values(ContentRelevance)
 const analysisStatusOptions = Object.values(ContentAnalysisStatus)
@@ -92,10 +109,42 @@ function value(event: Event): string {
   return (event.target as HTMLInputElement | HTMLSelectElement).value
 }
 
-/** 一级标签变化时同时清空旧二级标签，避免提交不合法父子组合。 */
-function updatePrimaryLabel(event: Event): void {
-  emit('update:primaryLabel', value(event))
-  emit('update:secondaryLabel', '')
+/** 用统一摘要展示当前多选状态，避免把长标签列表挤进筛选栏。 */
+function selectionSummary(values: readonly string[], allLabel: string): string {
+  if (values.length === 0) return allLabel
+  if (values.length === 1) return values[0] ?? allLabel
+  return `已选 ${values.length} 项`
+}
+
+const primaryLabelSummary = computed(() => selectionSummary(props.primaryLabels, '全部一级标签'))
+const secondaryLabelSummary = computed(() => selectionSummary(props.secondaryLabels, '全部二级标签'))
+
+/** 根据新的一级集合返回合法二级值；一级为空表示允许全部父级的二级标签。 */
+function allowedSecondaryValues(primaryLabels: readonly string[]): Set<string> {
+  const selected = new Set(primaryLabels)
+  return new Set(
+    (props.filterOptions?.labels ?? [])
+      .filter((item) => selected.size === 0 || selected.has(item.primary_label))
+      .flatMap((item) => item.secondary_labels.map((secondary) => secondary.value)),
+  )
+}
+
+/** 一级标签勾选变化后同步清理已不属于所选父级的二级标签。 */
+function togglePrimaryLabel(label: string, checked: boolean): void {
+  const next = checked
+    ? [...new Set([...props.primaryLabels, label])]
+    : props.primaryLabels.filter((item) => item !== label)
+  const allowed = allowedSecondaryValues(next)
+  emit('update:primaryLabels', next)
+  emit('update:secondaryLabels', props.secondaryLabels.filter((item) => allowed.has(item)))
+}
+
+/** 二级标签勾选变化保持稳定去重数组。 */
+function toggleSecondaryLabel(label: string, checked: boolean): void {
+  const next = checked
+    ? [...new Set([...props.secondaryLabels, label])]
+    : props.secondaryLabels.filter((item) => item !== label)
+  emit('update:secondaryLabels', next)
 }
 
 function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): void {
@@ -217,31 +266,55 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
     </div>
 
     <div class="filter-row filter-row--tertiary">
-      <label class="field field--label"><span>一级标签</span><select
-        aria-label="一级标签"
-        :value="primaryLabel"
-        :disabled="filterOptionsLoading || !filterOptions"
-        @change="updatePrimaryLabel"
-      ><option value="">{{ filterOptionsLoading ? '筛选项加载中' : filterOptions ? '全部一级标签' : '筛选项暂不可用' }}</option><option
-        v-for="item in filterOptions?.labels ?? []"
-        :key="item.primary_label"
-        :value="item.primary_label"
-      >{{ optionLabel(item.primary_label, item.source) }}</option></select></label>
-      <label class="field field--label"><span>二级标签</span><select
-        aria-label="二级标签"
-        :value="secondaryLabel"
-        :disabled="filterOptionsLoading || !filterOptions || !primaryLabel"
-        @change="emit('update:secondaryLabel', value($event))"
-      ><option value="">{{ primaryLabel ? '全部二级标签' : '请先选择一级标签' }}</option><option
-        v-for="item in secondaryLabels"
-        :key="item.value"
-        :value="item.value"
-      >{{ optionLabel(item.value, item.source) }}</option></select></label>
+      <div class="field field--label">
+        <span>一级标签</span>
+        <details
+          class="multi-select"
+          :class="{ 'multi-select--disabled': filterOptionsLoading || !filterOptions }"
+          :aria-disabled="filterOptionsLoading || !filterOptions"
+          @click="(filterOptionsLoading || !filterOptions) && $event.preventDefault()"
+        >
+          <summary aria-label="一级标签">
+            {{ filterOptionsLoading ? '筛选项加载中' : filterOptions ? primaryLabelSummary : '筛选项暂不可用' }}
+          </summary>
+          <label
+            v-for="item in primaryLabelOptions"
+            :key="item.primary_label"
+          ><input
+            type="checkbox"
+            :checked="primaryLabels.includes(item.primary_label)"
+            @change="togglePrimaryLabel(item.primary_label, ($event.target as HTMLInputElement).checked)"
+          >{{ optionLabel(item.primary_label, item.source) }}</label>
+          <p v-if="!primaryLabelOptions.length">暂无可选项</p>
+        </details>
+      </div>
+      <div class="field field--label">
+        <span>二级标签</span>
+        <details
+          class="multi-select"
+          :class="{ 'multi-select--disabled': filterOptionsLoading || !filterOptions }"
+          :aria-disabled="filterOptionsLoading || !filterOptions"
+          @click="(filterOptionsLoading || !filterOptions) && $event.preventDefault()"
+        >
+          <summary aria-label="二级标签">
+            {{ filterOptionsLoading ? '筛选项加载中' : filterOptions ? secondaryLabelSummary : '筛选项暂不可用' }}
+          </summary>
+          <label
+            v-for="item in secondaryLabelOptions"
+            :key="item.value"
+          ><input
+            type="checkbox"
+            :checked="secondaryLabels.includes(item.value)"
+            @change="toggleSecondaryLabel(item.value, ($event.target as HTMLInputElement).checked)"
+          >{{ optionLabel(item.value, item.source) }}</label>
+          <p v-if="!secondaryLabelOptions.length">暂无可选项</p>
+        </details>
+      </div>
     </div>
 
     <footer class="filter-footer">
       <div class="filter-summary">
-        <span>当前条件：</span><span class="filter-chip filter-chip--primary">{{ platform ? platformLabel(platform) : '全部平台' }}</span><span class="filter-chip">{{ brandIds.length ? `已选 ${brandIds.length} 个品牌` : '全部品牌' }}</span><span class="filter-chip">{{ vehicleModelIds.length ? `已选 ${vehicleModelIds.length} 款车型` : '全部车型' }}</span><span class="filter-chip">{{ competitionLabel }}</span><span class="filter-chip">{{ primaryLabel || '全部一级标签' }}</span><button
+        <span>当前条件：</span><span class="filter-chip filter-chip--primary">{{ platform ? platformLabel(platform) : '全部平台' }}</span><span class="filter-chip">{{ brandIds.length ? `已选 ${brandIds.length} 个品牌` : '全部品牌' }}</span><span class="filter-chip">{{ vehicleModelIds.length ? `已选 ${vehicleModelIds.length} 款车型` : '全部车型' }}</span><span class="filter-chip">{{ competitionLabel }}</span><span class="filter-chip">{{ primaryLabelSummary }}</span><span class="filter-chip">{{ secondaryLabelSummary }}</span><button
           v-if="sourceIdentifier"
           class="filter-chip"
           type="button"
@@ -291,10 +364,13 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
 .field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--aima-primary); outline-offset: 1px; }
 .multi-select { position: relative; height: 40px; border: 1px solid var(--aima-border-strong); border-radius: 8px; background: var(--aima-surface); font-size: 13px; font-weight: 400; }
 .multi-select summary { height: 38px; padding: 10px 12px; overflow: hidden; cursor: pointer; list-style: none; text-overflow: ellipsis; white-space: nowrap; }
-.multi-select[open] { z-index: 5; }
+.multi-select[open] { z-index: 5; height: auto; max-height: 280px; overflow-y: auto; }
+.multi-select--disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); }
+.multi-select--disabled summary { cursor: not-allowed; }
 .multi-select label { display: flex; width: 100%; align-items: center; gap: 7px; padding: 8px 12px; border-inline: 1px solid var(--aima-border); background: #fff; }
 .multi-select label:last-child { border-bottom: 1px solid var(--aima-border); border-radius: 0 0 8px 8px; }
 .multi-select input { width: 14px; height: 14px; }
+.multi-select p { margin: 8px 12px; color: var(--aima-text-disabled); font-weight: 400; }
 .filter-hint { display: none; margin: 0; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
 .filter-footer { display: flex; min-width: 0; min-height: 45px; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--aima-border); }
 .filter-summary { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--aima-text-muted); font-size: 12px; }
