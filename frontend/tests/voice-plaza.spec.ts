@@ -641,15 +641,15 @@ describe('voice plaza', () => {
     expect(labels).toContain('真实用户发声')
   })
 
-  it('loads filter options and sends brand, vehicle, competition, and AI query filters', async () => {
+  it('loads filter options and sends multi-label query filters with other dimensions', async () => {
     generated.listContents.mockResolvedValue({ items: [item], has_more: false })
     const store = useVoicePlazaStore()
 
     await store.refreshFilterOptions()
     store.filters.voiceType = '真实用户发声'
     store.filters.sentiment = '负面'
-    store.filters.primaryLabel = '产品体验'
-    store.filters.secondaryLabel = '续航表现'
+    store.filters.primaryLabels = ['产品体验', '服务体验']
+    store.filters.secondaryLabels = ['续航表现', '门店服务']
     store.filters.brandIds = ['brand-aima']
     store.filters.vehicleModelIds = ['vehicle-q7']
     store.filters.competitionScopes = ['owned_only', 'mixed']
@@ -660,12 +660,52 @@ describe('voice plaza', () => {
     expect(generated.listContents).toHaveBeenCalledWith(expect.objectContaining({
       voice_type: '真实用户发声',
       sentiment: '负面',
-      primary_label: '产品体验',
-      secondary_label: '续航表现',
+      primary_labels: ['产品体验', '服务体验'],
+      secondary_labels: ['续航表现', '门店服务'],
       brand_ids: ['brand-aima'],
       vehicle_model_ids: ['vehicle-q7'],
       competition_scopes: ['owned_only', 'mixed'],
     }))
+  })
+
+  it('migrates legacy single-label session filters into multi-select arrays', () => {
+    const values = new Map<string, string>([[
+      'aima.voice-plaza.applied-search.v1',
+      JSON.stringify({
+        filters: {
+          search: '',
+          platform: '',
+          contentType: '',
+          analysisStatus: '',
+          relevance: '',
+          voiceType: '',
+          sentiment: '',
+          primaryLabel: '产品体验',
+          secondaryLabel: '续航表现',
+          publishedFrom: '',
+          publishedTo: '',
+          sourceIdentifier: '',
+          brandIds: [],
+          vehicleModelIds: [],
+          competitionScopes: [],
+        },
+        sortBy: 'published_at',
+        sortDirection: 'desc',
+      }),
+    ]])
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      clear: () => values.clear(),
+    })
+    setActivePinia(createPinia())
+
+    const restored = useVoicePlazaStore()
+
+    expect(restored.filters.primaryLabels).toEqual(['产品体验'])
+    expect(restored.filters.secondaryLabels).toEqual(['续航表现'])
+    expect(restored.appliedFilters.primaryLabels).toEqual(['产品体验'])
+    expect(restored.appliedFilters.secondaryLabels).toEqual(['续航表现'])
   })
 
   it('fails taxonomy closed without blocking the independent content list', async () => {

@@ -371,6 +371,34 @@ describe('工作台状态与 Figma 基线', () => {
     expect(store.filters.secondaryLabels).toEqual(['颜色与配色'])
   })
 
+  it('一级标签变化后只保留其子级二级标签并清除越界选择', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+    store.setFilters({
+      ...store.filters,
+      primaryLabels: ['外观设计', '电池、续航与充电'],
+      secondaryLabels: ['颜色与配色', '续航里程'],
+    })
+
+    expect(store.secondaryLabelOptions.map((item) => item.value)).toEqual([
+      '颜色与配色',
+      '整体造型与颜值',
+      '续航里程',
+    ])
+
+    store.setFilters({
+      ...store.filters,
+      primaryLabels: ['外观设计'],
+      secondaryLabels: ['颜色与配色', '续航里程'],
+    })
+
+    expect(store.filters.secondaryLabels).toEqual(['颜色与配色'])
+    expect(store.secondaryLabelOptions.map((item) => item.value)).toEqual([
+      '颜色与配色',
+      '整体造型与颜值',
+    ])
+  })
+
   it('反向日期在进入三个模块请求前统一规范为有序区间', async () => {
     const store = useWorkbenchStore()
     store.setFilters({ ...store.filters, dateFrom: '2026-08-29', dateTo: '2026-08-28' })

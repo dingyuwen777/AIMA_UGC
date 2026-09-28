@@ -313,8 +313,8 @@ def test_comment_resource_pages_roots_and_replies_with_relationships() -> None:
     assert service.last_query.root_comment_id == "root-1"
 
 
-def test_list_route_accepts_repeated_brand_and_competition_filters() -> None:
-    """FastAPI Query 边界保留新增多选条件，不把数组压成单值。"""
+def test_list_route_accepts_repeated_brand_competition_and_label_filters() -> None:
+    """FastAPI Query 边界保留多选标签，并继续接收旧单值标签参数。"""
 
     service = _ContentService()
     first, second = uuid4(), uuid4()
@@ -325,6 +325,12 @@ def test_list_route_accepts_repeated_brand_and_competition_filters() -> None:
             ("brand_ids", str(second)),
             ("competition_scopes", "owned_only"),
             ("competition_scopes", "mixed"),
+            ("primary_labels", "产品体验"),
+            ("primary_labels", "服务体验"),
+            ("secondary_labels", "续航表现"),
+            ("secondary_labels", "门店服务"),
+            ("primary_label", "历史一级"),
+            ("secondary_label", "历史二级"),
         ],
     )
 
@@ -332,6 +338,10 @@ def test_list_route_accepts_repeated_brand_and_competition_filters() -> None:
     assert service.last_query is not None
     assert service.last_query.brand_ids == (first, second)
     assert service.last_query.competition_scopes == ("owned_only", "mixed")
+    assert service.last_query.primary_labels == ("产品体验", "服务体验")
+    assert service.last_query.secondary_labels == ("续航表现", "门店服务")
+    assert service.last_query.primary_label_values() == ("产品体验", "服务体验", "历史一级")
+    assert service.last_query.secondary_label_values() == ("续航表现", "门店服务", "历史二级")
 
 
 def test_filter_options_returns_backend_values_and_historical_sources() -> None:
