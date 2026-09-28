@@ -22,6 +22,7 @@ const trigger = ref<HTMLButtonElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
 const open = ref(false)
 const position = ref({ left: '12px', top: '12px', maxHeight: '270px' })
+let positionedTrigger: { left: number; top: number } | null = null
 const nativePopoverSupported = typeof HTMLElement !== 'undefined'
   && typeof HTMLElement.prototype.showPopover === 'function'
 
@@ -72,6 +73,7 @@ function updatePosition(): void {
     top: `${Math.round(top)}px`,
     maxHeight: `${Math.round(actualHeight)}px`,
   }
+  positionedTrigger = { left: box.left, top: box.top }
 }
 
 /** 显式打开面板；原生 Popover 只增强顶层和 light-dismiss，不拥有显示事实。 */
@@ -90,6 +92,7 @@ function hidePanel(restoreFocus = false): void {
     panel.value.hidePopover()
   }
   open.value = false
+  positionedTrigger = null
   if (restoreFocus) trigger.value?.focus()
 }
 
@@ -99,10 +102,22 @@ function togglePanel(): void {
   else void showPanel()
 }
 
-/** 页面滚动时关闭浮层；用户在选项面板内滚动时保持可操作。 */
+/** 只有会移动触发器的滚动才关闭浮层，忽略面板和相邻模块自己的内部滚动。 */
 function dismissOnScroll(event: Event): void {
-  if (event.target instanceof Node && panel.value?.contains(event.target)) return
-  if (open.value) hidePanel()
+  if (!open.value) return
+  const scrollTarget = event.target
+  const triggerElement = trigger.value
+  const triggerBox = triggerElement?.getBoundingClientRect()
+  const triggerMoved = !positionedTrigger || !triggerBox
+    || Math.abs(triggerBox.left - positionedTrigger.left) > 0.5
+    || Math.abs(triggerBox.top - positionedTrigger.top) > 0.5
+  const movedByAncestorScroll = scrollTarget instanceof Node
+    && triggerElement
+    && scrollTarget.contains(triggerElement)
+    && triggerMoved
+  if (scrollTarget === window || movedByAncestorScroll) {
+    hidePanel()
+  }
 }
 
 /** fallback 模式补齐原生 Popover 的点击外部关闭。 */
@@ -211,9 +226,11 @@ onBeforeUnmount(() => {
 .workbench-select__trigger[aria-expanded="true"] { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-color-focus-ring); }
 .workbench-select__panel {
   position: fixed;
+  inset: auto;
   width: 220px;
   gap: 1px;
   overflow: auto;
+  margin: 0;
   padding: 6px;
   border: 1px solid var(--aima-border);
   border-radius: 8px;

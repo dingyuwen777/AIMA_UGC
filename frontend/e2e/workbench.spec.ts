@@ -340,9 +340,12 @@ test('声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开�
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual((viewport?.width ?? 0) - 12)
   expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual((viewport?.height ?? 0) - 12)
 
+  await panel.getByRole('checkbox').first().focus()
+  await expect(panel.getByRole('checkbox').first()).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(trigger).toHaveAttribute('aria-expanded', 'false')
   await expect(panel).toBeHidden()
+  await expect(trigger).toBeFocused()
 
   await trigger.click()
   await page.getByRole('heading', { name: '工作台', exact: true }).click()
@@ -350,6 +353,95 @@ test('声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开�
   await trigger.click()
   await page.evaluate(() => window.dispatchEvent(new Event('scroll')))
   await expect(panel).toBeHidden()
+})
+
+test('空声音流时原生筛选面板紧贴对应触发器并位于视口内', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.route('**/api/v1/workbench/stream**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        analysis_scheme_version_id: schemeId,
+        taxonomy_sha256: taxonomyHash,
+        as_of: '2026-09-27T08:10:00+08:00',
+        items: [],
+      }),
+    })
+  })
+  await page.goto('/')
+  await expect(page.locator('.stream-card > footer')).toContainText('最新 0 条')
+
+  const trigger = page.getByRole('button', { name: '发声', exact: true })
+  const panel = page.getByRole('dialog', { name: '选择发声' })
+  await trigger.click()
+  await expect(panel).toBeVisible()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  expect(await panel.evaluate((element) => element.matches(':popover-open'))).toBe(true)
+
+  const [triggerBox, panelBox] = await Promise.all([trigger.boundingBox(), panel.boundingBox()])
+  const viewport = page.viewportSize()
+  expect(triggerBox).not.toBeNull()
+  expect(panelBox).not.toBeNull()
+  expect(viewport).not.toBeNull()
+  expect(Math.abs((panelBox?.x ?? 0) - (triggerBox?.x ?? 0))).toBeLessThanOrEqual(2)
+  expect(panelBox?.y ?? 0).toBeGreaterThanOrEqual((triggerBox?.y ?? 0) + (triggerBox?.height ?? 0))
+  expect(panelBox?.y ?? 0).toBeLessThanOrEqual((triggerBox?.y ?? 0) + (triggerBox?.height ?? 0) + 8)
+  expect(panelBox?.x ?? -1).toBeGreaterThanOrEqual(12)
+  expect((panelBox?.x ?? 0) + (panelBox?.width ?? 0)).toBeLessThanOrEqual((viewport?.width ?? 0) - 12)
+  expect((panelBox?.y ?? 0) + (panelBox?.height ?? 0)).toBeLessThanOrEqual((viewport?.height ?? 0) - 12)
+
+  const sentimentTrigger = page.getByRole('button', { name: '情感', exact: true })
+  const sentimentPanel = page.getByRole('dialog', { name: '选择情感' })
+  await sentimentTrigger.click()
+  await expect(panel).toBeHidden()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await expect(sentimentPanel).toBeVisible()
+  await expect(sentimentTrigger).toHaveAttribute('aria-expanded', 'true')
+})
+
+test('声音流自动滚动时筛选面板保持打开，筛选条滚动时关闭', async ({ page }) => {
+  await page.route('**/api/v1/workbench/stream**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        analysis_scheme_version_id: schemeId,
+        taxonomy_sha256: taxonomyHash,
+        as_of: '2026-09-27T08:10:00+08:00',
+        items: Array.from({ length: 18 }, (_, index) => ({
+          content_id: `44444444-4444-4444-8444-${String(index + 1).padStart(12, '0')}`,
+          platform: 'xiaohongshu',
+          author_display_name: `用户${index + 1}`,
+          published_at: '2026-09-26T15:30:00+08:00',
+          text: `第${index + 1}条真实用户声音`,
+          sentiment: '正面',
+          voice_type: '真实用户发声',
+          labels: [],
+          analysis_current: true,
+          vehicle_names: [],
+        })),
+      }),
+    })
+  })
+  await page.goto('/')
+
+  const list = page.getByRole('region', { name: '声音流列表' })
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(5)
+  const trigger = page.getByRole('button', { name: '发声', exact: true })
+  const panel = page.getByRole('dialog', { name: '选择发声' })
+  await trigger.click()
+  await expect(panel).toBeVisible()
+  const openedAt = await list.evaluate((element) => element.scrollTop)
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(openedAt + 3)
+  await expect(panel).toBeVisible()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  await expect(panel.getByRole('checkbox', { name: '真实用户发声' })).toBeVisible()
+
+  const filters = page.locator('.workbench-filters')
+  const initialScrollLeft = await filters.evaluate((element) => element.scrollLeft)
+  await filters.evaluate((element) => element.scrollBy({ left: 40 }))
+  await expect.poll(() => filters.evaluate((element) => element.scrollLeft)).toBeGreaterThan(initialScrollLeft)
+  await expect(panel).toBeHidden()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('声音流筛选下拉可操作，选择后同口径刷新三个真实模块请求', async ({ page }) => {
