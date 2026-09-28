@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260917-180708-representative-selection-feishu-sync
 title: 代表性正负面内容筛选与飞书多维表同步
 level: L3
-status: ready_for_review
+status: in_progress
 owner: chatgpt
 branch: feature/merge-BOLL2-main
 created: 2026-09-17
@@ -158,7 +158,7 @@ data_changes:
 | R6 | 每次写入在同一 Base 内新建按生成时间命名的数据表，旧表和旧记录不更新、不删除 | user:follow-up-confirmation / AC6 | satisfied | `create_table_from_current()` 和新表写入/回读测试 |
 | R7 | 飞书字段动态读取、类型转换、写入前快照和写入后回读核验 | user:confirmed-requirements / AC7 | satisfied | 字段映射、类型转换、快照和回读测试 |
 | R8 | Secret 不进入日志或运行结果，默认 Dry Run | user:security-boundary / AC8 | satisfied | Secret 文件边界、默认入口和稳定错误输出测试 |
-| R9 | 复用锁定的第三方依赖；在 main 已有声音广场 migration 链上接入飞书镜像 claim 的 0072 Migration、独立 Worker Runtime、可续租 Lease 和 fencing，并复用管理员发布 API/Contract | #580 / AC9 | satisfied | Requirement Source `docs/appendix/14_管理员配置飞书发布按钮接入方案.md`；镜像表 `20260923_0060_feishu_bitable_mirrors.py`、claim migration `20260928_0072_feishu_mirror_claims.py`、main 基线 `0061→0071`、`feishu_bitable_mirror.py`、`feishu_bitable_mirrors.py`；慢同步 Lease 回归与 review threads `2769479400`、`2769479407` 共同证明边界 |
+| R9 | 复用锁定的第三方依赖；在 main 已有声音广场 migration 链上接入飞书镜像 claim 的 0072 Migration、独立 Worker Runtime、可续租 Lease/fencing，并让两个飞书发布 Job 的外部副作用具备跨 Attempt 稳定身份与失败恢复边界 | #580 / AC9 | satisfied | Requirement Source `docs/appendix/14_管理员配置飞书发布按钮接入方案.md`；镜像表/0072、`feishu_bitable_mirror.py`、两个 Job publication checkpoint、稳定表名回读、创建型 POST 不盲重试与 failure-injection 回归 |
 | R10 | 运行入口、配置、README 和测试同步 | user:confirmed-implementation-plan / AC10 | satisfied | 独立入口、配置、模块文档和相关测试 |
 | R11 | 已完成 Dry Run 后可只同步已有结果，避免重复调用大模型 | user:follow-up-confirmation / AC11 | satisfied | `--write-feishu-from-run` 和入口测试 |
 | R12 | 支持直接使用飞书 `/base/` 链接中的 app_token，不强制依赖 Wiki Token | user:follow-up-confirmation / AC12 | satisfied | `AIMA_FEISHU_APP_TOKEN` 及 Base 直连测试 |
@@ -183,7 +183,7 @@ data_changes:
 | 行为 / Unit | required | Excel Sheet/去重、候选池、Prompt、四组选择、配置和不足数量目标测试 |
 | 外部 Adapter Mock | required | Token、字段、创建/写入/回读和失败边界 Mock 测试 |
 | PostgreSQL / Migration | required | main 基线 0061→0071 上升级 0072、0072 downgrade、再 upgrade；两个独立 Session claim/renew 并发验证 |
-| API / Runtime | required | Job Payload checkpoint、lease fencing、管理 API 和 Worker 重试回归 |
+| API / Runtime | required | 两个 Job durable checkpoint、代表性结果冻结、报告发布 digest fencing、创建型 POST ambiguous failure、lease fencing、管理 API 和 Worker 重试回归 |
 | Frontend / E2E | required | 报告策略首个 GET 失败后的 job_id 恢复和构建/E2E |
 | Build / Runtime | required | Ruff format/check、Mypy、目标 pytest |
 | External Provider Probe | not_applicable | 真实 LLM/飞书不进入普通 CI；人工 Probe 受外部网络和租户权限控制 |
@@ -220,7 +220,7 @@ data_changes:
 - [x] upstream_re_read：已重新核对用户确认的筛选规则、Prompt、Excel 表头、飞书字段和现有 LLM/Secret 边界。
 - [x] change_coverage：R1—R13 均有实现、测试或明确不适用证据，未把本 Change 作为需求来源。
 - [x] reverse_audit：已核对入口参数、Dry Run/写入开关、新表创建、字段预检、回读和失败边界。
-- [x] unresolved_cleared：前一轮 Review 的 Change 范围、跨 Attempt checkpoint、镜像 claim/lease/fencing（含可续租心跳与慢同步竞争）、前端首个 GET 失败恢复五条线程均已映射到最终实现和回归；独立的 0061 声音广场 migration 已移出；真实外部 Probe 的环境限制已明确记录。
+- [ ] unresolved_cleared：正在闭环同一外部副作用 retry 根机制的剩余投影：代表性 Job checkpoint、创建型 POST ambiguous failure 与报告本地结果漂移；新鲜 CI 与 re-review 完成后再勾选。
 
 # 完成证据与状态
 
