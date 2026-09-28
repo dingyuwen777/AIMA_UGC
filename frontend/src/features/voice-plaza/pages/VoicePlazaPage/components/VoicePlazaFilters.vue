@@ -374,6 +374,7 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
 .multi-select label { display: flex; width: 100%; align-items: center; gap: 7px; padding: 8px 12px; border-inline: 1px solid var(--aima-border); background: #fff; }
 .multi-select label:last-child { border-bottom: 1px solid var(--aima-border); border-radius: 0 0 8px 8px; }
 .multi-select input { width: 14px; height: 14px; }
+.filter-row--tertiary .multi-select[open] { height: auto; max-height: 260px; overflow-y: auto; }
 .multi-select--disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); }
 .multi-select--disabled summary { cursor: not-allowed; }
 .filter-hint { display: none; margin: 0; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
