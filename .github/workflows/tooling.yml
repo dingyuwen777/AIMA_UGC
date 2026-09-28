@@ -89,11 +89,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/quality/resolve_main_evidence.py \
+          resolver_output="${RUNNER_TEMP}/tooling-linux-evidence.outputs"
+          : > "${resolver_output}"
+          if python3 scripts/quality/resolve_main_evidence.py \
             --repository "${GITHUB_REPOSITORY}" \
             --commit "${GITHUB_SHA}" \
             --required-check "Linux Local Development Tooling" \
-            --github-output "${GITHUB_OUTPUT}"
+            --github-output "${resolver_output}"; then
+            cat "${resolver_output}" >> "${GITHUB_OUTPUT}"
+          else
+            resolver_status=$?
+            {
+              echo "reusable=false"
+              echo "reason=resolver_execution_failed"
+              echo "source_pr="
+              echo "source_head="
+              echo "current_tree="
+              echo "source_tree="
+            } >> "${GITHUB_OUTPUT}"
+            echo "::warning::Tooling evidence resolver failed; falling back to real Tooling validation (exit=${resolver_status})"
+          fi
+
       - name: Resolve Windows Tooling evidence
         id: windows
         env:
@@ -101,31 +117,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/quality/resolve_main_evidence.py \
+          resolver_output="${RUNNER_TEMP}/tooling-windows-evidence.outputs"
+          : > "${resolver_output}"
+          if python3 scripts/quality/resolve_main_evidence.py \
             --repository "${GITHUB_REPOSITORY}" \
             --commit "${GITHUB_SHA}" \
             --required-check "Windows Development and Compose Tooling" \
-            --github-output "${GITHUB_OUTPUT}"
+            --github-output "${resolver_output}"; then
+            cat "${resolver_output}" >> "${GITHUB_OUTPUT}"
+          else
+            resolver_status=$?
+            {
+              echo "reusable=false"
+              echo "reason=resolver_execution_failed"
+              echo "source_pr="
+              echo "source_head="
+              echo "current_tree="
+              echo "source_tree="
+            } >> "${GITHUB_OUTPUT}"
+            echo "::warning::Tooling evidence resolver failed; falling back to real Tooling validation (exit=${resolver_status})"
+          fi
 
-  linux-tooling:
-    name: Linux Local Development Tooling
-    needs: main-evidence
-    if: >-
-      always() &&
-      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
-      (github.event_name != 'push' || needs.main-evidence.outputs.linux_reusable != 'true')
-    runs-on: ubuntu-24.04
-    env:
-      AIMA_DATA_DIR: .runtime/data
-      AIMA_LOG_DIR: .runtime/logs
-      AIMA_SECRET_DIR: .runtime/internal-secrets
-      AIMA_EXTERNAL_SECRET_DIR: .runtime/secrets
-      AIMA_DB_HOST: 127.0.0.1
-      AIMA_DB_PORT: 5432
-      AIMA_DB_NAME: aima_ugc
-      AIMA_DB_USER: aima_ugc
-      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
-    steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
