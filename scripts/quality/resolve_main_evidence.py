@@ -212,7 +212,7 @@ def resolve_main_evidence(
             }
         )
         return result
-    except HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError, KeyError, TypeError:
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError, KeyError, TypeError):
         result["reason"] = "github_api_unavailable"
         return result
 
