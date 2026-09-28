@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260923-115743-report-strategy-feishu-publication
 title: 报告策略页面与飞书发布 Job 前后端接通
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/merge-BOLL2-main
 created: 2026-09-20
