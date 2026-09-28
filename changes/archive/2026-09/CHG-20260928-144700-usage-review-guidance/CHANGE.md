@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-144700-usage-review-guidance
 title: 同步 USAGE Code Review 双模式指令
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: docs/646-usage-review-guidance
 created: 2026-09-28
