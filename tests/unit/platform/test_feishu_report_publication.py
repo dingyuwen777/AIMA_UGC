@@ -1051,7 +1051,7 @@ def test_report_image_upload_ambiguous_failure_is_not_retryable() -> None:
     publisher = FeishuReportPublisher(
         FeishuReportPublisherConfig(
             app_id="app-id",
-            app_secret=publication_module.SecretStr("app-secret"),
+            app_secret=SecretStr("app-secret"),
             folder_token="folder-token",
         ),
         client=httpx.Client(
