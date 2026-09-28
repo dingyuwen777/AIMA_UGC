@@ -658,6 +658,22 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         )
         assert [item.id for item in cross_pair.items] == [content_ids[0]]
 
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(voice_plaza_projection_state_table).values(status="pending")
+            )
+        fallback_cross_pair = content_service.list_contents(
+            ContentListQuery(
+                primary_labels=("电池、续航与充电",),
+                secondary_labels=("客服与服务态度",),
+            )
+        )
+        assert [item.id for item in fallback_cross_pair.items] == [content_ids[0]]
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(voice_plaza_projection_state_table).values(status="ready")
+            )
+
         legacy_filtered = content_service.list_contents(
             ContentListQuery(
                 primary_label="电池、续航与充电",
