@@ -35,10 +35,10 @@ def test_docx_line_break_is_nested_in_run(tmp_path: Path) -> None:
     assert len(root.findall(f".//{{{_W}}}r/{{{_W}}}br")) == 1
 
 
-def test_word_page_is_a4_landscape_with_report_margins(tmp_path: Path) -> None:
+def test_word_page_is_a4_portrait_with_template_margins(tmp_path: Path) -> None:
     output_path = tmp_path / "report.docx"
     builder = DocxBuilder()
-    builder.add_paragraph("横向 A4")
+    builder.add_paragraph("纵向 A4")
     builder.save(output_path)
 
     with zipfile.ZipFile(output_path) as archive:
@@ -46,14 +46,16 @@ def test_word_page_is_a4_landscape_with_report_margins(tmp_path: Path) -> None:
 
     page_size = document.find(f".//{{{_W}}}sectPr/{{{_W}}}pgSz")
     assert page_size is not None
-    assert page_size.get(f"{{{_W}}}w") == "16838"
-    assert page_size.get(f"{{{_W}}}h") == "11906"
-    assert page_size.get(f"{{{_W}}}orient") == "landscape"
+    assert page_size.get(f"{{{_W}}}w") == "11906"
+    assert page_size.get(f"{{{_W}}}h") == "16838"
+    assert page_size.get(f"{{{_W}}}orient") is None
 
     margins = document.find(f".//{{{_W}}}sectPr/{{{_W}}}pgMar")
     assert margins is not None
-    for side in ("top", "right", "bottom", "left"):
-        assert margins.get(f"{{{_W}}}{side}") == "850"
+    assert margins.get(f"{{{_W}}}top") == "1440"
+    assert margins.get(f"{{{_W}}}right") == "1800"
+    assert margins.get(f"{{{_W}}}bottom") == "1440"
+    assert margins.get(f"{{{_W}}}left") == "1800"
 
 
 def test_word_chart_is_editable_office_chart_with_embedded_workbook(tmp_path: Path) -> None:
@@ -148,6 +150,29 @@ def test_word_horizontal_bar_has_native_value_labels(tmp_path: Path) -> None:
     direction = chart.find(f".//{{{_C}}}barChart/{{{_C}}}barDir")
     assert direction is not None
     assert direction.get("val") == "bar"
+    category_values = [
+        point.find(f"{{{_C}}}v").text
+        for point in chart.findall(
+            f".//{{{_C}}}barChart/{{{_C}}}ser/{{{_C}}}cat/"
+            f"{{{_C}}}strRef/{{{_C}}}strCache/{{{_C}}}pt"
+        )
+    ]
+    assert category_values == ["外观设计", "价格与价值", "品牌评价"]
+    category_orientation = chart.find(f".//{{{_C}}}catAx/{{{_C}}}scaling/{{{_C}}}orientation")
+    assert category_orientation is not None
+    assert category_orientation.get("val") == "minMax"
+    category_crosses = chart.find(f".//{{{_C}}}catAx/{{{_C}}}crosses")
+    assert category_crosses is not None
+    assert category_crosses.get("val") == "autoZero"
+    value_axis_position = chart.find(f".//{{{_C}}}valAx/{{{_C}}}axPos")
+    assert value_axis_position is not None
+    assert value_axis_position.get("val") == "b"
+    value_crosses = chart.find(f".//{{{_C}}}valAx/{{{_C}}}crosses")
+    assert value_crosses is not None
+    assert value_crosses.get("val") == "autoZero"
+    cross_between = chart.find(f".//{{{_C}}}valAx/{{{_C}}}crossBetween")
+    assert cross_between is not None
+    assert cross_between.get("val") == "between"
     labels = chart.find(f".//{{{_C}}}barChart/{{{_C}}}dLbls")
     assert labels is not None
     assert labels.find(f"./{{{_C}}}showVal").get("val") == "1"
@@ -212,7 +237,7 @@ def test_word_table_uses_editorial_report_style(tmp_path: Path) -> None:
 
     grid_columns = table.findall(f"./{{{_W}}}tblGrid/{{{_W}}}gridCol")
     assert len(grid_columns) == 3
-    assert sum(int(column.get(f"{{{_W}}}w", "0")) for column in grid_columns) == 15138
+    assert sum(int(column.get(f"{{{_W}}}w", "0")) for column in grid_columns) == 8306
 
     borders = table.find(f"./{{{_W}}}tblPr/{{{_W}}}tblBorders")
     assert borders is not None

@@ -215,6 +215,8 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             "ingestion.canonical-replay-shard.v1",
             "content.voice-plaza-projection-backfill.v1",
             "workbench.snapshot-refresh.v1",
+            "administration.feishu-report-publication.v1",
+            "administration.feishu-representative-selection.v1",
         )
         assert worker.run_once() is True
         assert worker.run_once() is False

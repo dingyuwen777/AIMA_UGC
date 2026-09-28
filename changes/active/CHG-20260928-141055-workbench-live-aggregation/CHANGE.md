@@ -139,7 +139,7 @@ data_changes:
 | R5 | active Taxonomy 驱动非“无法分类”一级标签的动态 N 边用户心智图并匹配参考样式 | #644 / AC5 | satisfied | Service Integration 排除兜底标签 + ECharts dynamic indicator + ResizeObserver + 21 项 Workbench Playwright |
 | R6 | UGC 日均声量四舍五入为整数 | #644 / AC6 | satisfied | `Math.round` + Unit/Browser |
 | R7 | 普通成功/信息提示共享 3 秒生命周期，错误/进度/警告保留 | #644 / AC7 | satisfied | `useTransientNotice` 2999/3000ms fake timer + 8 个页面/面板迁移 + Browser |
-| R8 | Contract/Schema/Client/Job/Docs 与依赖边界同步 | #644 / AC8 | satisfied | OpenAPI/Orval clean generation、Alembic 0072、Worker Registry、Product/Blueprint/Operations、Contract/架构/Table Owner/Docs/Secret gates |
+| R8 | Contract/Schema/Client/Job/Docs 与依赖边界同步 | #644 / AC8 | satisfied | OpenAPI/Orval clean generation、Alembic 0073、Worker Registry、Product/Blueprint/Operations、Contract/架构/Table Owner/Docs/Secret gates |
 | R9 | 分层验证、Review、CI、合并和收尾 | #644 / AC9 | explicitly_deferred | PR #645 已具备本地验证与两阶段 Review；current-head CI、受保护合并、main-fresh、归档和清理由 Ready 后的强制顺序继续执行 |
 
 # 计划改动

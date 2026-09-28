@@ -213,13 +213,7 @@ test('admin exposes the six approved tabs including the frontend report strategy
   await expect(page.getByText('上传本期和上期 XLSX')).toBeVisible()
 })
 
-test('report strategy validates local inputs and states the backend boundary without sending a fake task', async ({ page }) => {
-  const mutations: string[] = []
-  page.on('request', (request) => {
-    if (request.url().includes('/api/') && request.method() !== 'GET') {
-      mutations.push(`${request.method()} ${request.url()}`)
-    }
-  })
+test('report strategy submits the two workbooks and renders the dry-run Job result', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
   await page.getByRole('button', { name: '报告策略', exact: true }).click()
@@ -243,10 +237,61 @@ test('report strategy validates local inputs and states the backend boundary wit
   await expect(page.getByRole('alert')).toContainText('结束日期不早于开始日期')
 
   await page.getByLabel('结束日期').fill('2026-09-17')
+  const jobId = '89111111-1111-4111-8111-111111111111'
+  let publicationPosts = 0
+  await page.route('**/api/v1/admin/feishu-report-publications', async (route) => {
+    expect(route.request().method()).toBe('POST')
+    publicationPosts += 1
+    await json(route, { job_id: jobId, kind: 'report', status: 'queued' }, 202)
+  })
+  let jobReads = 0
+  await page.route(`**/api/v1/admin/feishu-publication-jobs/${jobId}**`, async (route) => {
+    jobReads += 1
+    if (jobReads === 1) {
+      return json(route, {
+        status: 503,
+        detail: 'job status temporarily unavailable',
+        request_id: 'e2e-temporary-job-read',
+        errors: [],
+      }, 503)
+    }
+    await json(route, {
+      id: jobId,
+      kind: 'report',
+      status: 'succeeded',
+      attempt: 1,
+      max_attempts: 3,
+      progress: 100,
+      error_code: null,
+      source_filenames: ['本期报告.xlsx', '上期报告.xlsx'],
+      result: {
+        kind: 'report',
+        dry_run: true,
+        native_document_url: null,
+        editable_chart_sheet_url: null,
+        representative_table_url: null,
+        representative_table_name: null,
+        representative_count: 4,
+        representative_created_count: 0,
+        representative_updated_count: 0,
+        representative_verified_count: 0,
+        content_rows: 12,
+        label_rows: 12,
+        comment_rows: 8,
+        start_date: '2026-09-01',
+        end_date: '2026-09-17',
+      },
+      created_at: now,
+      started_at: now,
+      finished_at: now,
+    })
+  })
   await submit.click()
-  await expect(page.getByRole('alert')).toContainText('报告服务尚未接入，暂不可提交')
-  await expect(page.getByRole('button', { name: '后端服务未接入', exact: true })).toBeDisabled()
-  expect(mutations).toEqual([])
+  await expect(page.getByRole('status')).toContainText('Dry Run 已完成', { timeout: 12_000 })
+  expect(publicationPosts).toBe(1)
+  expect(jobReads).toBeGreaterThanOrEqual(2)
+  await expect(page.getByRole('region', { name: '报告任务结果' })).toContainText('代表性内容 4 条')
+  await expect(page.getByText('Dry Run 未生成真实飞书链接。')).toBeVisible()
 
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(page.getByLabel('开始日期')).toHaveValue('')

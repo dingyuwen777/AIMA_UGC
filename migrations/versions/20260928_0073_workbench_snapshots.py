@@ -1,7 +1,7 @@
 """新增工作台聚合快照与声音广场数据修订序列。
 
-Revision ID: 20260928_0072
-Revises: 20260927_0071
+Revision ID: 20260928_0073
+Revises: 20260928_0072
 """
 
 from collections.abc import Sequence
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "20260928_0072"
-down_revision: str | Sequence[str] | None = "20260927_0071"
+revision: str = "20260928_0073"
+down_revision: str | Sequence[str] | None = "20260928_0072"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
