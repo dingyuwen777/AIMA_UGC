@@ -294,3 +294,22 @@ def test_resolver_process_failure_falls_back_to_real_validation() -> None:
     assert "main evidence resolver failed; falling back to real CI validation" in ci
     assert "Runtime evidence resolver failed; falling back to real Runtime validation" in runtime
     assert "Tooling evidence resolver failed; falling back to real Tooling validation" in tooling
+
+
+def test_tooling_keeps_linux_and_windows_as_independent_jobs() -> None:
+    """Evidence gate 不能吞掉 Linux/Windows job 边界，否则会静默丢失平台证据。"""
+    tooling = TOOLING.read_text(encoding="utf-8")
+
+    linux = _section(tooling, "  linux-tooling:\n", "  windows-tooling:\n")
+    assert "name: Linux Local Development Tooling" in linux
+    assert "needs: main-evidence" in linux
+    assert "runs-on: ubuntu-24.04" in linux
+    assert "AIMA_DB_HOST: 127.0.0.1" in linux
+
+    windows = tooling.split("  windows-tooling:\n", 1)[1]
+    assert "name: Windows Development and Compose Tooling" in windows
+    assert "needs: main-evidence" in windows
+    assert "runs-on: windows-2025" in windows
+
+    gate = _section(tooling, "  main-evidence:\n", "  linux-tooling:\n")
+    assert gate.count("      - name: Checkout\n") == 1
