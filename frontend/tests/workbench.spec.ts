@@ -141,6 +141,31 @@ describe('工作台状态与 Figma 基线', () => {
     expect(store.activeMind?.primary_label).toBe('外观设计')
   })
 
+  it('三个模块的显式重试分别只调用自身接口', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+    const initial = {
+      stream: api.fetchWorkbenchStream.mock.calls.length,
+      mind: api.fetchWorkbenchMind.mock.calls.length,
+      trend: api.fetchWorkbenchTrend.mock.calls.length,
+    }
+
+    await store.refreshModule('stream')
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(initial.stream + 1)
+    expect(api.fetchWorkbenchMind).toHaveBeenCalledTimes(initial.mind)
+    expect(api.fetchWorkbenchTrend).toHaveBeenCalledTimes(initial.trend)
+
+    await store.refreshModule('mind')
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(initial.stream + 1)
+    expect(api.fetchWorkbenchMind).toHaveBeenCalledTimes(initial.mind + 1)
+    expect(api.fetchWorkbenchTrend).toHaveBeenCalledTimes(initial.trend)
+
+    await store.refreshModule('trend')
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(initial.stream + 1)
+    expect(api.fetchWorkbenchMind).toHaveBeenCalledTimes(initial.mind + 1)
+    expect(api.fetchWorkbenchTrend).toHaveBeenCalledTimes(initial.trend + 1)
+  })
+
   it('编辑态只改草稿，取消恢复；保存时一次提交 revision CAS', async () => {
     const store = useWorkbenchStore()
     await store.initialize()
@@ -166,6 +191,26 @@ describe('工作台状态与 Figma 基线', () => {
     expect(api.saveWorkbenchLayout.mock.calls[0]?.[0].revision).toBe(3)
     expect(store.layout?.revision).toBe(4)
     expect(store.editing).toBe(false)
+  })
+
+  it('每个模块按独立草稿以单列和单行粒度调整尺寸', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+    store.startEditing()
+
+    store.resizeModule('sound-stream', 4.2, 55.2)
+    store.resizeModule('brand-mind', 10.6, 72.5)
+    store.resizeModule('ugc-trend', 8.4, 63.6)
+
+    expect(store.currentModules.find((item) => item.module_id === 'ugc-trend')).toEqual(
+      expect.objectContaining({ column_span: 8, row_units: 64 }),
+    )
+    expect(store.currentModules.find((item) => item.module_id === 'sound-stream')).toEqual(
+      expect.objectContaining({ column_span: 4, row_units: 55 }),
+    )
+    expect(store.currentModules.find((item) => item.module_id === 'brand-mind')).toEqual(
+      expect.objectContaining({ column_span: 11, row_units: 73 }),
+    )
   })
 
   it('active Taxonomy 切换后自动移除失效 AI 筛选值', async () => {
@@ -217,6 +262,25 @@ describe('工作台状态与 Figma 基线', () => {
     await pending
     expect(store.mind).toEqual(mind)
     expect(store.moduleLoading.mind).toBe(false)
+  })
+
+  it('较晚返回的单模块重试不会覆盖更新后的全局筛选结果', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+    let finishRetry: (value: typeof mind) => void = () => {}
+    api.fetchWorkbenchMind.mockImplementationOnce(() => new Promise<typeof mind>((resolve) => {
+      finishRetry = resolve
+    }))
+    const staleRetry = store.refreshModule('mind')
+    await Promise.resolve()
+
+    const newerMind = { ...mind, identified_user_count: 200 }
+    api.fetchWorkbenchMind.mockResolvedValue(newerMind)
+    await store.refreshData()
+    finishRetry({ ...mind, identified_user_count: 50 })
+    await staleRetry
+
+    expect(store.mind?.identified_user_count).toBe(200)
   })
 
   it('active Scheme 切换时不会展示混合口径的三个模块', async () => {

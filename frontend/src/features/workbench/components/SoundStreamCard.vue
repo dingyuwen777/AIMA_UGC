@@ -268,4 +268,9 @@ function contentText(item: WorkbenchStreamResponse['items'][number]): string {
 .module-state--inline { min-height: 0; grid-template-columns: auto auto auto; align-items: center; justify-content: start; margin: 0 12px; padding: 5px 8px; border-radius: 5px; background: var(--aima-primary-soft); text-align: left; font-size: 10px; }
 .module-state button, footer button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 11px; }
 footer { display: flex; min-height: 20px; align-items: center; justify-content: space-between; color: var(--aima-text-disabled); font-size: 10px; }
+@container (max-width: 520px) {
+  .stream-list article { grid-template-columns: 24px minmax(0, 1fr); }
+  .stream-tags { max-width: none; grid-column: 2; justify-content: flex-start; }
+  footer { align-items: flex-start; flex-direction: column; gap: 4px; }
+}
 </style>

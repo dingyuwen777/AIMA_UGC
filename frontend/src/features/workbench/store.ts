@@ -153,6 +153,11 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   const mindMetric = ref<WorkbenchMindMetric>('share')
   let dataRevision = 0
   let referenceRevision = 0
+  const moduleRequestRevision: Record<WorkbenchModuleKey, number> = {
+    stream: 0,
+    mind: 0,
+    trend: 0,
+  }
 
   const primaryLabelOptions = computed(() =>
     taxonomy.value?.labels.filter((item) => item.primary_label !== '无法分类') ?? [],
@@ -268,6 +273,11 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   /** 三个接口并发请求、各自完成即更新；慢聚合不能拖住已返回的声音流。 */
   async function refreshData(silent = false, retried = false): Promise<void> {
     const revision = ++dataRevision
+    const requestRevisions: Record<WorkbenchModuleKey, number> = {
+      stream: ++moduleRequestRevision.stream,
+      mind: ++moduleRequestRevision.mind,
+      trend: ++moduleRequestRevision.trend,
+    }
     globalError.value = null
     if (!silent) {
       moduleLoading.value = { stream: true, mind: true, trend: true }
@@ -283,7 +293,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     ): Promise<void> => {
       try {
         const response = await request
-        if (revision !== dataRevision) return
+        if (revision !== dataRevision || requestRevisions[key] !== moduleRequestRevision[key]) return
         const identity = responseIdentity(response)
         seenIdentities.add(identity)
         if (key === 'stream') stream.value = response as WorkbenchStreamResponse
@@ -301,9 +311,13 @@ export const useWorkbenchStore = defineStore('workbench', () => {
           }
         }
       } catch (error) {
-        if (revision === dataRevision) moduleErrors.value[key] = apiErrorMessage(error)
+        if (revision === dataRevision && requestRevisions[key] === moduleRequestRevision[key]) {
+          moduleErrors.value[key] = apiErrorMessage(error)
+        }
       } finally {
-        if (revision === dataRevision) moduleLoading.value[key] = false
+        if (revision === dataRevision && requestRevisions[key] === moduleRequestRevision[key]) {
+          moduleLoading.value[key] = false
+        }
       }
     }
     await Promise.all([
@@ -327,6 +341,56 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       return
     }
     await alignTaxonomyWithData()
+  }
+
+  /** 只重试指定模块；仅遇到 Scheme 身份切换时升级为三个模块重新对齐。 */
+  async function refreshModule(key: WorkbenchModuleKey): Promise<void> {
+    const dataGeneration = dataRevision
+    const requestRevision = ++moduleRequestRevision[key]
+    moduleLoading.value[key] = true
+    moduleErrors.value[key] = null
+    const params = queryParams(filters.value)
+    try {
+      let response: WorkbenchStreamResponse | WorkbenchMindResponse | WorkbenchTrendResponse
+      if (key === 'stream') {
+        response = await fetchWorkbenchStream(params as GetWorkbenchStreamParams)
+      } else if (key === 'mind') {
+        response = await fetchWorkbenchMind(params as GetWorkbenchMindParams)
+      } else {
+        response = await fetchWorkbenchTrend(params as GetWorkbenchTrendParams)
+      }
+      if (dataGeneration !== dataRevision || requestRevision !== moduleRequestRevision[key]) return
+      const identity = `${response.analysis_scheme_version_id}:${response.taxonomy_sha256}`
+      const otherIdentities = [
+        key === 'stream' ? null : stream.value,
+        key === 'mind' ? null : mind.value,
+        key === 'trend' ? null : trend.value,
+      ]
+        .filter((value): value is WorkbenchStreamResponse | WorkbenchMindResponse | WorkbenchTrendResponse => value !== null)
+        .map((value) => `${value.analysis_scheme_version_id}:${value.taxonomy_sha256}`)
+      if (otherIdentities.some((value) => value !== identity)) {
+        globalError.value = 'Analysis Scheme 已切换，正在重新同步工作台口径。'
+        await refreshData(true)
+        return
+      }
+      if (key === 'stream') stream.value = response as WorkbenchStreamResponse
+      else if (key === 'mind') {
+        mind.value = response as WorkbenchMindResponse
+        const dimensions = mind.value.dimensions
+        if (!dimensions.some((item) => item.primary_label === selectedMind.value)) {
+          selectedMind.value = dimensions[0]?.primary_label ?? null
+        }
+      } else trend.value = response as WorkbenchTrendResponse
+      await alignTaxonomyWithData()
+    } catch (error) {
+      if (dataGeneration === dataRevision && requestRevision === moduleRequestRevision[key]) {
+        moduleErrors.value[key] = apiErrorMessage(error)
+      }
+    } finally {
+      if (dataGeneration === dataRevision && requestRevision === moduleRequestRevision[key]) {
+        moduleLoading.value[key] = false
+      }
+    }
   }
 
   /** 页面首次进入时并行准备参考数据和模块数据，首屏不等待非关键目录串行加载。 */
@@ -403,7 +467,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     rowUnits: number,
   ): void {
     if (!editing.value) return
-    const normalizedSpan = columnSpan >= 9 ? 12 : 6
+    const normalizedSpan = Math.max(4, Math.min(12, Math.round(columnSpan)))
     const normalizedRows = Math.max(48, Math.min(160, Math.round(rowUnits)))
     draftModules.value = draftModules.value.map((item) =>
       item.module_id === moduleId
@@ -482,6 +546,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     refreshReferenceData,
     refreshTaxonomy,
     refreshData,
+    refreshModule,
     resetFilters,
     setFilters,
     startEditing,

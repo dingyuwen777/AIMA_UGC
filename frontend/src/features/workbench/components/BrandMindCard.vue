@@ -242,8 +242,16 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
 .module-state--inline { min-height: 0; grid-template-columns: auto auto auto; align-items: center; justify-content: start; margin: 5px 12px 0; padding: 5px 8px; border-radius: 5px; background: var(--aima-primary-soft); text-align: left; font-size: 10px; }
 .refresh-note { margin: 5px 12px 0; color: var(--aima-text-secondary); font-size: 10px; }
 footer { display: flex; min-height: 26px; align-items: center; justify-content: space-between; padding: 5px 12px; border-top: 1px solid var(--aima-border); color: var(--aima-text-disabled); font-size: 9px; }
-@media (max-width: 1180px) {
+@container (max-width: 760px) {
+  header { align-items: flex-start; flex-wrap: wrap; }
+  .header-actions { width: 100%; justify-content: space-between; }
   .mind-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .ranking { border-right: 0; border-bottom: 1px solid var(--aima-border); }
+}
+@container (max-width: 520px) {
+  .header-actions { align-items: flex-start; flex-direction: column; }
+  .ranking-title { align-items: flex-start; flex-direction: column; }
+  .ranking > button { grid-template-columns: minmax(76px, 1fr) minmax(64px, 1fr) 42px; }
+  .metric-cards { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

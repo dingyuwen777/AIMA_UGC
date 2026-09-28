@@ -198,12 +198,13 @@ Content 是 UGC 事实，Analysis 是对某个 Content Version 的推理结果�
 ~~~text
 当前业务可见 Content / 品牌车型维度
 + 当前 active Analysis Scheme Version
-→ 只选择该 Version 下当前 Content Version 的最新 Result
-→ 叠加现有人工相关性与 Analysis 维度纠正
+→ 投影已对应 active Version 时复用其有效结果
+→ 尚未对应时选择该 Version 下当前 Content Version 的最新 Result
+→ 保持现有人工相关性与 Analysis 维度纠正
 → 工作台趋势 / 心智 / 声音流
 ~~~
 
-这不会改写历史 Analysis Result，也不会把 Workbench 口径反向强加给声音广场。用户布局则以 Provider-neutral Principal 为 Owner 单独持久化，并用 revision 防止多会话静默覆盖。
+品牌心智和趋势分别在一个请求内复用同一份当前周期与紧邻上期事实，声音流继续按自己的列表边界读取；三个模块不共享错误、布局草稿或重试状态。这不会改写历史 Analysis Result，也不会把 Workbench 口径反向强加给声音广场。用户布局则以 Provider-neutral Principal 为 Owner 单独持久化，并用 revision 防止多会话静默覆盖。
 
 ## 10. Durable Job 的核心保证
 

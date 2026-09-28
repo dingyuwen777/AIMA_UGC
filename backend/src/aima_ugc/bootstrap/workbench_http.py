@@ -83,35 +83,22 @@ class PostgresWorkbenchHttpService:
             configuration = active_analysis_configuration(session, self._runtime.settings)
             self._require_positive(configuration.taxonomy.sentiments)
             date_from, date_to, start_at, end_at = _period(query)
-            previous_from, previous_to, previous_start, previous_end = _previous_period(
+            previous_from, previous_to, previous_start, _previous_end = _previous_period(
                 date_from, date_to
             )
             repository = PostgresWorkbenchRepository(session)
-            current = repository.period_summary(
+            snapshot = repository.trend_snapshot(
                 active_scheme_version_id=configuration.scheme.id,
                 query=query,
-                start_at=start_at,
+                previous_start_at=previous_start,
+                current_start_at=start_at,
                 end_at=end_at,
             )
-            previous = repository.period_summary(
-                active_scheme_version_id=configuration.scheme.id,
-                query=query,
-                start_at=previous_start,
-                end_at=previous_end,
-            )
-            daily_rows = repository.daily_counts(
-                active_scheme_version_id=configuration.scheme.id,
-                query=query,
-                start_at=start_at,
-                end_at=end_at,
-            )
-            sentiment_rows = repository.sentiment_counts(
-                active_scheme_version_id=configuration.scheme.id,
-                query=query,
-                start_at=start_at,
-                end_at=end_at,
-            )
-            day_counts = {cast(date, row["day"]): int(row["count"]) for row in daily_rows}
+            current = cast(Mapping[str, Any], snapshot["current_summary"])
+            previous = cast(Mapping[str, Any], snapshot["previous_summary"])
+            daily_rows = cast(Sequence[Mapping[str, Any]], snapshot["daily_counts"])
+            sentiment_rows = cast(Sequence[Mapping[str, Any]], snapshot["sentiment_counts"])
+            day_counts = {_json_date(row["day"]): int(row["count"]) for row in daily_rows}
             daily = tuple(
                 WorkbenchDailyPointResponse(day=day, count=day_counts.get(day, 0))
                 for day in _days(date_from, date_to)
@@ -165,47 +152,29 @@ class PostgresWorkbenchHttpService:
             configuration = active_analysis_configuration(session, self._runtime.settings)
             self._require_positive(configuration.taxonomy.sentiments)
             date_from, date_to, start_at, end_at = _period(query)
-            previous_from, previous_to, previous_start, previous_end = _previous_period(
+            previous_from, previous_to, previous_start, _previous_end = _previous_period(
                 date_from, date_to
             )
             repository = PostgresWorkbenchRepository(session)
-            current_summary = repository.period_summary(
+            snapshot = repository.mind_snapshot(
                 active_scheme_version_id=configuration.scheme.id,
                 query=query,
-                start_at=start_at,
+                previous_start_at=previous_start,
+                current_start_at=start_at,
                 end_at=end_at,
             )
-            previous_summary = repository.period_summary(
-                active_scheme_version_id=configuration.scheme.id,
-                query=query,
-                start_at=previous_start,
-                end_at=previous_end,
-            )
+            current_summary = cast(Mapping[str, Any], snapshot["current_summary"])
+            previous_summary = cast(Mapping[str, Any], snapshot["previous_summary"])
             current = {
                 cast(str, row["primary_label"]): row
-                for row in repository.mind_counts(
-                    active_scheme_version_id=configuration.scheme.id,
-                    query=query,
-                    start_at=start_at,
-                    end_at=end_at,
-                )
+                for row in cast(Sequence[Mapping[str, Any]], snapshot["current_primary"])
             }
             previous = {
                 cast(str, row["primary_label"]): row
-                for row in repository.mind_counts(
-                    active_scheme_version_id=configuration.scheme.id,
-                    query=query,
-                    start_at=previous_start,
-                    end_at=previous_end,
-                )
+                for row in cast(Sequence[Mapping[str, Any]], snapshot["previous_primary"])
             }
             secondary: dict[str, list[WorkbenchMindSecondaryResponse]] = defaultdict(list)
-            for row in repository.secondary_mind_counts(
-                active_scheme_version_id=configuration.scheme.id,
-                query=query,
-                start_at=start_at,
-                end_at=end_at,
-            ):
+            for row in cast(Sequence[Mapping[str, Any]], snapshot["current_secondary"]):
                 secondary[cast(str, row["primary_label"])].append(
                     WorkbenchMindSecondaryResponse(
                         secondary_label=cast(str, row["secondary_label"]),
@@ -327,6 +296,14 @@ def _previous_period(
 
 def _days(start: date, end: date) -> tuple[date, ...]:
     return tuple(start + timedelta(days=index) for index in range((end - start).days + 1))
+
+
+def _json_date(value: object) -> date:
+    """把 PostgreSQL JSON 聚合中的日期恢复为业务自然日。"""
+
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
 
 
 def _ratio(numerator: int, denominator: int) -> float | None:
