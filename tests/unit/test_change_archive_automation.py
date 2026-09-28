@@ -214,12 +214,86 @@ def test_archive_fails_when_active_and_archive_both_exist(tmp_path: Path) -> Non
         )
 
 
-def test_archive_fails_for_multiple_active_changes(tmp_path: Path) -> None:
-    """一个 PR 出现多个 Active Change 时必须 fail closed。"""
+def test_select_changes_returns_multiple_active_changes_deterministically() -> None:
+    """一个 Implementation PR 可以明确携带多个 Change，顺序必须稳定。"""
+    module = _load_archiver()
+
+    assert module["select_changes"](
+        [
+            "backend/src/example.py",
+            "changes/active/CHG-20260903-b/CHANGE.md",
+            "changes/active/CHG-20260903-a/CHANGE.md",
+            "changes/active/CHG-20260903-b/CHANGE.md",
+        ]
+    ) == (
+        ("CHG-20260903-a", "changes/active/CHG-20260903-a/CHANGE.md"),
+        ("CHG-20260903-b", "changes/active/CHG-20260903-b/CHANGE.md"),
+    )
+
+
+def test_archive_changes_moves_all_ready_changes_and_keeps_exact_identity(tmp_path: Path) -> None:
+    """批量归档逐个复用单 Change 安全边界，不允许遗漏或替换身份。"""
+    module = _load_archiver()
+    change_a = "CHG-20260903-a"
+    change_b = "CHG-20260903-b"
+    source_a = f"changes/active/{change_a}/CHANGE.md"
+    source_b = f"changes/active/{change_b}/CHANGE.md"
+    original_a = _change(change_a)
+    original_b = _change(change_b)
+    _write(tmp_path / source_a, original_a)
+    _write(tmp_path / source_b, original_b)
+
+    result = module["archive_changes"](
+        tmp_path,
+        changed_paths=[source_b, "backend/src/example.py", source_a],
+        merged_at="2026-09-04T16:30:00Z",
+        expected_sources={source_a: original_a, source_b: original_b},
+    )
+
+    assert result.changed is True
+    assert [item.change_id for item in result.items] == [change_a, change_b]
+    assert [item.reason for item in result.items] == ["archived", "archived"]
+    for change_id in (change_a, change_b):
+        assert not (tmp_path / f"changes/active/{change_id}/CHANGE.md").exists()
+        archived = tmp_path / f"changes/archive/2026-09/{change_id}/CHANGE.md"
+        assert archived.is_file()
+        text = archived.read_text(encoding="utf-8")
+        assert "status: done" in text
+        assert "updated: 2026-09-05" in text
+
+
+def test_archive_changes_rerun_is_idempotent_per_change(tmp_path: Path) -> None:
+    """多个 Change 已由同一 merged revision 归档后，dispatch 重跑整体安全 no-op。"""
+    module = _load_archiver()
+    change_a = "CHG-20260903-a"
+    change_b = "CHG-20260903-b"
+    source_a = f"changes/active/{change_a}/CHANGE.md"
+    source_b = f"changes/active/{change_b}/CHANGE.md"
+    original_a = _change(change_a)
+    original_b = _change(change_b)
+    for change_id in (change_a, change_b):
+        _write(
+            tmp_path / f"changes/archive/2026-09/{change_id}/CHANGE.md",
+            _change(change_id, status="done", updated="2026-09-05"),
+        )
+
+    result = module["archive_changes"](
+        tmp_path,
+        changed_paths=[source_a, source_b],
+        merged_at="2026-09-04T16:30:00Z",
+        expected_sources={source_a: original_a, source_b: original_b},
+    )
+
+    assert result.changed is False
+    assert [item.reason for item in result.items] == ["already_archived", "already_archived"]
+
+
+def test_single_change_helper_still_rejects_multiple_changes() -> None:
+    """单 Change helper 保持防误用边界，批量调用必须显式使用 archive_changes。"""
     module = _load_archiver()
     error = module["ArchiveChangeError"]
 
-    with pytest.raises(error, match="只能.*一个 Active Change"):
+    with pytest.raises(error, match="单 Change helper"):
         module["select_change"](
             [
                 "changes/active/CHG-20260903-a/CHANGE.md",
@@ -282,6 +356,8 @@ def test_change_archive_workflow_is_narrow_serial_and_rerunnable() -> None:
         "merge_commit_sha",
         "--merged-revision",
         "archive_change_after_merge.py",
+        ".items[]",
+        "change-archive-expected.txt",
         "check_change_completion.py",
         "ARCHIVE_PARENT=",
         "CURRENT_MAIN=",
