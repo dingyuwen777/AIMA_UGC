@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-121334-workbench-filter-popover
 title: 修复工作台声音流筛选浮层错位与自动滚动误关闭
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/642-workbench-filter-popover
 created: 2026-09-28
@@ -66,9 +66,9 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 
 ## 成功标准
 
-- [ ] #642 / AC1–AC5 全部有实现和新鲜证据。
-- [ ] 原生 Popover 与 fallback 的位置和生命周期都有 Browser Evidence。
-- [ ] Completion Audit、独立 Review、current-head CI、main 合并和收尾完成。
+- [x] #642 / AC1–AC5 全部有实现和新鲜证据。
+- [x] 原生 Popover 与 fallback 的位置和生命周期都有 Browser Evidence。
+- [ ] Completion Audit、独立 Review、current-head CI、main 合并和收尾完成；其中本地 Completion Audit 已完成，Review 与交付生命周期按顺序后置。
 
 ## 范围
 
@@ -117,12 +117,12 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 空声音流时原生面板紧贴触发器且在视口内 | #642 / AC1 | not_satisfied | 待 Browser Red→Green |
-| R2 | 长声音流持续滚动时面板保持可见、可操作 | #642 / AC2 | not_satisfied | 待 Browser Red→Green |
-| R3 | 页面/trigger 祖先滚动关闭；panel/兄弟列表滚动忽略 | #642 / AC3 | not_satisfied | 待 Browser 回归 |
-| R4 | fallback、外部点击、Escape、焦点、首次关闭不回退 | #642 / AC4 | not_satisfied | 待既有及补充回归 |
-| R5 | 工作台性能、真实筛选、滚动、布局和状态不回退，无 Contract/Schema/依赖变化 | #642 / AC5 | not_satisfied | 待完整前端/工作台验证与 diff 审计 |
-| R6 | Completion、Review、CI、merge/main/archive/cleanup 完成交付 | #642 / AC6 | not_satisfied | 待生命周期门禁 |
+| R1 | 空声音流时原生面板紧贴触发器且在视口内 | #642 / AC1 | satisfied | Browser Red 横向偏移 289.6875px；Green 精确断言横向误差 ≤2px、垂直间距 0–8px 和四边安全距离。 |
+| R2 | 长声音流持续滚动时面板保持可见、可操作 | #642 / AC2 | satisfied | 18 条声音 Browser 验证列表打开前后持续滚动超过 3px，面板仍可见、ARIA 为 open 且选项可操作。 |
+| R3 | 页面/trigger 祖先滚动关闭；panel/兄弟列表滚动忽略 | #642 / AC3 | satisfied | 新回归覆盖兄弟声音流忽略、筛选条祖先关闭；既有回归覆盖 panel 自身忽略和 window 关闭。 |
+| R4 | fallback、外部点击、Escape、焦点、首次关闭不回退 | #642 / AC4 | satisfied | Workbench Browser 20/20 通过，包含无 Popover API、首次关闭、Escape、外部点击和 window scroll。 |
+| R5 | 工作台性能、真实筛选、滚动、布局和状态不回退，无 Contract/Schema/依赖变化 | #642 / AC5 | satisfied | Workbench 20/20、完整 Browser 161/161、Vitest 255/255、lint/typecheck/build；最终 diff 无 Store/API/Contract/Schema/依赖。 |
+| R6 | Completion、Review、CI、merge/main/archive/cleanup 完成交付 | #642 / AC6 | explicitly_deferred | 本地 Completion 已完成；独立 Review、最终提交 CI、合并、main-fresh、归档和分支清理只能在 Ready 提交后按顺序执行，不豁免。 |
 
 # 计划改动
 
@@ -164,10 +164,10 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 
 # 完成审计
 
-- [ ] upstream_re_read：交付前重读 #642、用户截图/请求、产品事实和最终实现。
-- [ ] change_coverage：R1–R6 清零 `not_satisfied`，生命周期后置有正式依据。
-- [ ] reverse_audit：从所有 scroll 来源反查面板关闭；从面板生命周期反查声音流自动滚动与筛选操作。
-- [ ] unresolved_cleared：所有未满足项清零，延期/不适用有依据。
+- [x] upstream_re_read：已重读 #642、用户截图/请求、产品事实、最终组件、Browser 回归和完整 diff。
+- [x] change_coverage：R1–R5 均由实现与新鲜证据满足；R6 仅后置必须绑定最终提交/合并状态的生命周期动作。
+- [x] reverse_audit：已从 window/document、筛选条祖先、panel 自身、声音流兄弟列表四类 scroll 来源反查关闭；从 open/ARIA/原生 top layer/fallback 反查自动滚动与选项操作。
+- [x] unresolved_cleared：无 `not_satisfied`；R6 的 Review、CI、merge、main-fresh、归档和 cleanup 按正式顺序后置，不降低门禁。
 
 # 完成证据与状态
 
@@ -177,9 +177,16 @@ Issue #642 来自用户 2026-09-28 的工作台截图和两条明确复现：空
 | --- | --- | --- | --- | --- |
 | V1 | main@76a1291f | 用户截图 + 当前代码检查 | 已确认根因 | UA 几何与兄弟滚动是两条独立机制 |
 | V2 | fix/642 Red | `cd frontend && npm run test:e2e -- --grep "空声音流时原生\|声音流自动滚动时筛选"` | 2 failed：原生面板横向偏移 289.6875px；自动滚动场景点击后面板立即消失 | 两条回归分别稳定复现 #642 的空流错位与有数据打不开 |
+| V3 | 当前候选工作树 | 同 V2 targeted Green | 2 passed | 两条根因均被切断 |
+| V4 | 当前候选工作树 | `cd frontend && npm run test:e2e -- e2e/workbench.spec.ts` | 20 passed | 工作台筛选、日期、失败、刷新、滚动和独立布局无回退 |
+| V5 | 当前候选工作树 | `cd frontend && npm test -- --run` | 33 files / 255 tests passed | 前端组件与状态回归通过 |
+| V6 | 当前候选工作树 | `cd frontend && npm run lint && npm run typecheck` | 通过 | 静态规则及 TypeScript/Vue 类型正确 |
+| V7 | 当前候选工作树 | `cd frontend && npm run build` | 835 modules，build 成功 | 正式打包通过；只有仓库既有的大 chunk 提示 |
+| V8 | 当前候选工作树 | `cd frontend && npm run test:e2e` | 161 passed | 全页面 Browser Mock Acceptance 无回退 |
+| V9 | 当前候选工作树 | governance / Secret / docs / docs-facts gates | 全部通过 | 治理接线、敏感信息和长期文档事实一致 |
 
 ## Review、CI 与交付记录
 
-- 当前状态：Change/Issue/本地分支与两条 Browser Red 已建立，等待实现和分层验证。
-- Review：待完整候选形成后执行。
-- CI / merge / archive：待 Ready 后按用户授权执行。
+- 当前状态：生产实现、文档、Red→Green、完整前端验证和 Completion Audit 已完成，Change 已转 `ready_for_review`。
+- Review：以 `main@76a1291f` → 当前完整候选为对象执行两阶段独立 Review；结论待记录。
+- CI / merge / archive：Review 无阻断项并形成最终提交后，转 Ready、等待 current-head required checks，再按用户授权合并并完成 main-fresh、原生归档与分支清理。

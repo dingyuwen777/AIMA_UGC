@@ -99,10 +99,15 @@ function togglePanel(): void {
   else void showPanel()
 }
 
-/** 页面滚动时关闭浮层；用户在选项面板内滚动时保持可操作。 */
+/** 只有会移动触发器的滚动才关闭浮层，忽略面板和相邻模块自己的内部滚动。 */
 function dismissOnScroll(event: Event): void {
-  if (event.target instanceof Node && panel.value?.contains(event.target)) return
-  if (open.value) hidePanel()
+  if (!open.value) return
+  const scrollTarget = event.target
+  const triggerElement = trigger.value
+  if (scrollTarget === window
+    || (scrollTarget instanceof Node && triggerElement && scrollTarget.contains(triggerElement))) {
+    hidePanel()
+  }
 }
 
 /** fallback 模式补齐原生 Popover 的点击外部关闭。 */
@@ -211,9 +216,11 @@ onBeforeUnmount(() => {
 .workbench-select__trigger[aria-expanded="true"] { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-color-focus-ring); }
 .workbench-select__panel {
   position: fixed;
+  inset: auto;
   width: 220px;
   gap: 1px;
   overflow: auto;
+  margin: 0;
   padding: 6px;
   border: 1px solid var(--aima-border);
   border-radius: 8px;
