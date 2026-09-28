@@ -144,6 +144,7 @@ from aima_ugc.contracts.workbench import (
     WorkbenchLayoutUpdateRequest,
     WorkbenchMindResponse,
     WorkbenchQuery,
+    WorkbenchStreamQuery,
     WorkbenchStreamResponse,
     WorkbenchTrendResponse,
 )
@@ -2500,7 +2501,7 @@ def create_app(
         tags=["workbench"],
     )
     def get_workbench_stream(
-        query: Annotated[WorkbenchQuery, Query()],
+        query: Annotated[WorkbenchStreamQuery, Query()],
     ) -> WorkbenchStreamResponse:
         return current_workbench_service().get_stream(query)
 

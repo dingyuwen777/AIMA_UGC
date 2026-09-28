@@ -214,6 +214,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             "ingestion.reversal-shard.v1",
             "ingestion.canonical-replay-shard.v1",
             "content.voice-plaza-projection-backfill.v1",
+            "workbench.snapshot-refresh.v1",
             "administration.feishu-report-publication.v1",
             "administration.feishu-representative-selection.v1",
         )

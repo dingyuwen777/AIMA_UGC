@@ -6,6 +6,7 @@ import AppShell from '../../../../app/layouts/AppShell.vue'
 import {
   PlatformName,
   type AnalysisContentRunResponse,
+  type ContentAnalysisManualReviewRequest,
   type ContentRelevanceReviewResponse,
   type DataExportResponse,
   type ExportColumnKey,
@@ -14,6 +15,7 @@ import TaskProgressBar from '../../../../shared/TaskProgressBar.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
+import { useTransientNotice } from '../../../../shared/ui/useTransientNotice'
 import { useTaskCenterStore } from '../../../task-center'
 import {
   relevanceReviewDecision,
@@ -31,7 +33,7 @@ const taskCenter = useTaskCenterStore()
 const route = useRoute()
 const analysisOpen = ref(false)
 const exportOpen = ref(false)
-const notice = ref<string | null>(null)
+const { message: notice, show: showNotice } = useTransientNotice()
 const activeAnalysisRuns = computed(() => store.analysisRuns.filter(
   (run) => run.status === 'queued' || run.status === 'running' || run.status === 'cancelling',
 ))
@@ -196,6 +198,25 @@ async function reviewSelected(decision: RelevanceReviewDecision): Promise<void> 
   if (result) showNotice(relevanceNotice(decision, result))
 }
 
+/** 详情人工车型结论成功后复用页面统一的 3 秒反馈。 */
+async function reviewDetailVehicles(
+  vehicleModelIds: string[],
+  unlockExisting: boolean,
+): Promise<void> {
+  if (await store.reviewDetailVehicles(vehicleModelIds, unlockExisting)) {
+    showNotice('车型人工结论已保存；后续自动识别不会覆盖当前人工结果。')
+  }
+}
+
+/** 详情分析人工纠正成功后复用页面统一的 3 秒反馈。 */
+async function reviewDetailAnalysis(
+  request: Omit<ContentAnalysisManualReviewRequest, 'content_version'>,
+): Promise<void> {
+  if (await store.reviewDetailAnalysis(request)) {
+    showNotice('分析人工纠正已保存；如需替换已确认结果，请先确认解除当前人工结论。')
+  }
+}
+
 /** 使用预检冻结信息确认创建 Analysis Run，并同步全局任务中心。 */
 async function submitAnalysis(): Promise<void> {
   const count = await store.confirmAnalysis()
@@ -235,12 +256,6 @@ async function download(item: DataExportResponse): Promise<void> {
   anchor.remove()
   URL.revokeObjectURL(url)
   showNotice('Excel 导出文件已开始下载。')
-}
-
-/** 展示短时成功反馈，并只清理由本次调用写入的消息。 */
-function showNotice(message: string): void {
-  notice.value = message
-  window.setTimeout(() => { if (notice.value === message) notice.value = null }, 2800)
 }
 
 /** 按已持久化终态数量显示进度，与明细计数保持一致。 */
@@ -528,8 +543,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         @load-more-comments="store.loadCommentRoots()"
         @load-comment-replies="store.loadCommentReplies"
         @review="reviewSingle"
-        @review-vehicles="store.reviewDetailVehicles"
-        @review-analysis="store.reviewDetailAnalysis"
+        @review-vehicles="reviewDetailVehicles"
+        @review-analysis="reviewDetailAnalysis"
       />
       <AnalysisSubmitDialog
         v-model="analysisOpen"

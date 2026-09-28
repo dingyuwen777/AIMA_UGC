@@ -27,6 +27,7 @@ const emit = defineEmits<{
   'update:date-filters': [value: WorkbenchFilters]
   reset: []
   retry: []
+  advance: []
   openAll: []
   openContent: [contentId: string]
 }>()
@@ -41,6 +42,7 @@ let autoScrollHandle = 0
 let resizeObserver: ResizeObserver | undefined
 let reducedMotion: MediaQueryList | undefined
 let lastFrameTime = 0
+let advancingPage = false
 
 /** Figma 的两段同内容轨道首尾相接；短列表增加副本以覆盖可见区域。 */
 function resizeTrack(): void {
@@ -61,7 +63,16 @@ function advanceScroll(timestamp: number): void {
     || hovered.value || focused.value || document.hidden || reducedMotion?.matches) return
   const cycleHeight = cycle.offsetHeight + 6
   if (!cycleHeight || list.scrollHeight <= list.clientHeight) return
-  list.scrollTop = (list.scrollTop + elapsed * 0.04) % cycleHeight
+  const nextTop = list.scrollTop + elapsed * 0.04
+  if (nextTop >= cycleHeight) {
+    list.scrollTop = nextTop % cycleHeight
+    if (!advancingPage) {
+      advancingPage = true
+      emit('advance')
+    }
+  } else {
+    list.scrollTop = nextTop
+  }
 }
 
 onMounted(() => {
@@ -80,19 +91,28 @@ watch([scrollList, firstCycle], async () => {
   if (firstCycle.value) resizeObserver?.observe(firstCycle.value)
   resizeTrack()
 })
-watch(() => props.stream?.items, async () => {
+watch(() => props.stream, async () => {
   await nextTick()
+  advancingPage = false
   if (scrollList.value) scrollList.value.scrollTop = 0
   resizeTrack()
 })
+watch(() => props.loading, (loading) => {
+  // 自动翻页请求无论成功或失败都允许下一轮继续推进；成功时 stream watch 还会
+  // 把滚动位置复位到新页起点。
+  if (!loading) advancingPage = false
+})
 
-/** 用北京时间展示声音列表的紧凑月日，不受浏览器本地时区影响。 */
+/** 用北京时间展示真实发帖月日与时分，不受浏览器本地时区影响。 */
 function compactDate(value: string | null | undefined): string {
   if (!value) return '—'
   return new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
     month: '2-digit',
     day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
   }).format(new Date(value))
 }
 
@@ -215,7 +235,8 @@ function contentText(item: WorkbenchStreamResponse['items'][number]): string {
 
     <footer>
       <span>
-        已展示最新 {{ items.length }} 条声音
+        正在遍历当前筛选范围 · 本页 {{ items.length }} 条
+        <template v-if="stream?.has_more"> · 后续还有内容</template>
         <template v-if="stream?.as_of && !loading && !error"> · 数据已同步</template>
       </span>
       <button

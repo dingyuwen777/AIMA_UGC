@@ -201,10 +201,13 @@ Content 是 UGC 事实，Analysis 是对某个 Content Version 的推理结果�
 → 投影已对应 active Version 时复用其有效结果
 → 尚未对应时选择该 Version 下当前 Content Version 的最新 Result
 → 保持现有人工相关性与 Analysis 维度纠正
-→ 工作台趋势 / 心智 / 声音流
+→ 声音流签名 Keyset Cursor 直接读取
+→ 心智 / 趋势持久聚合快照与后台刷新 Job
 ~~~
 
-品牌心智和趋势分别在一个请求内复用同一份当前周期与紧邻上期事实，声音流继续按自己的列表边界读取；三个模块不共享错误、布局草稿或重试状态。这不会改写历史 Analysis Result，也不会把 Workbench 口径反向强加给声音广场。用户布局则以 Provider-neutral Principal 为 Owner 单独持久化，并用 revision 防止多会话静默覆盖。
+声音流用绑定完整筛选和页大小的签名 Cursor，以 `(published_at, content_id)` 稳定遍历筛选期全部匹配记录；视觉副本不承担数据分页。品牌心智和趋势各自把规范化筛选、active Scheme、Taxonomy、来源数据修订、刷新代次和最近成功响应保存为可重建快照。声音广场投影的 INSERT/UPDATE/DELETE/TRUNCATE 通过 statement trigger 推进无锁单调 revision；HTTP 热路径只读 revision 与快照，同一 Scheme/Taxonomy 的兼容快照陈旧时保留最近成功响应并幂等入队 `workbench.snapshot-refresh.v1`。冷筛选或旧口径快照立即返回当前口径的 preparing 状态，重型查询只在 Worker 中运行。
+
+同一筛选和 Scheme 在任一时刻只允许一个刷新任务，持续导入期间的新 revision 合并到当前任务完成后的下一次补算；Job 提交同时校验刷新代次与 Job Fencing，旧任务不能覆盖新目标。最终失败只改变刷新状态并保留成功响应，短暂退避后自动重试。默认近 30 日心智与趋势在 Worker 启动时幂等预热。三个模块不共享错误、布局草稿或重试状态。这不会改写历史 Analysis Result，也不会把 Workbench 口径反向强加给声音广场。用户布局以 Provider-neutral Principal 为 Owner 单独持久化，并用 revision 防止多会话静默覆盖。
 
 ## 10. Durable Job 的核心保证
 

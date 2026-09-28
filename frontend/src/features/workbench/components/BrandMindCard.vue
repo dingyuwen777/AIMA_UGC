@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import * as echarts from 'echarts'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type {
   WorkbenchMindDimensionResponse,
@@ -23,11 +24,16 @@ const emit = defineEmits<{
 }>()
 
 const dimensions = computed(() => props.mind?.dimensions ?? [])
+const preparing = computed(() => props.mind?.snapshot_status === 'preparing'
+  || (props.mind?.snapshot_status === 'failed' && !props.mind.computed_at))
 const selected = computed(() =>
   dimensions.value.find((item) => item.primary_label === props.selectedLabel)
     ?? dimensions.value[0]
     ?? null,
 )
+const chartElement = ref<HTMLDivElement | null>(null)
+let chart: echarts.ECharts | null = null
+let observer: ResizeObserver | null = null
 
 /** 根据当前切换维度返回条形图值；占比与正向率都以 0..1 Contract 展示。 */
 function metricValue(item: WorkbenchMindDimensionResponse): number {
@@ -51,6 +57,88 @@ function changeText(value: number | null | undefined): string {
 function setMetric(value: WorkbenchMindMetric): void {
   emit('metric', value)
 }
+
+/** active Taxonomy 的每个业务一级标签对应一条雷达轴，数量变化时自然形成 N 边图。 */
+function renderChart(): void {
+  if (!chartElement.value || dimensions.value.length === 0) return
+  if (!chart) {
+    chart = echarts.init(chartElement.value)
+    chart.on('click', (event) => {
+      if (event.componentType !== 'radar') return
+      const label = String(event.name ?? '')
+      if (dimensions.value.some((item) => item.primary_label === label)) emit('select', label)
+    })
+  }
+  const values = dimensions.value.map(metricValue)
+  const labelValues = new Map(dimensions.value.map((item) => [item.primary_label, metricValue(item)]))
+  chart.setOption({
+    animationDuration: 280,
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: '#fff',
+      borderColor: '#ed0b68',
+      borderWidth: 1,
+      textStyle: { color: '#17233d', fontSize: 11 },
+      formatter: () => dimensions.value
+        .map((item) => `${item.primary_label}　<b>${percent(metricValue(item))}</b>`)
+        .join('<br/>'),
+    },
+    radar: {
+      center: ['46%', '52%'],
+      radius: dimensions.value.length > 8 ? '56%' : '62%',
+      shape: 'polygon',
+      splitNumber: 4,
+      startAngle: 90,
+      indicator: dimensions.value.map((item) => ({ name: item.primary_label, max: 1 })),
+      axisNameGap: 12,
+      axisName: {
+        color: '#17233d',
+        fontSize: dimensions.value.length > 8 ? 9 : 10,
+        fontWeight: 600,
+        lineHeight: 16,
+        formatter: (name: string) => (
+          `${name}\n{value|${percent(labelValues.get(name))}} {unit|${props.metric === 'share' ? '占比' : '正向率'}}`
+        ),
+        rich: {
+          value: { color: '#ed0b68', fontSize: 14, fontWeight: 700, lineHeight: 20 },
+          unit: { color: '#8a96ad', fontSize: 9, fontWeight: 400, lineHeight: 20 },
+        },
+      },
+      axisLine: { lineStyle: { color: '#d1d5db', width: 1 } },
+      splitLine: { lineStyle: { color: '#d1d5db', width: 1 } },
+      splitArea: { areaStyle: { color: ['#fff', '#fff'] } },
+    },
+    series: [{
+      type: 'radar',
+      symbol: 'circle',
+      symbolSize: 7,
+      lineStyle: { color: '#ed0b68', width: 2.5 },
+      itemStyle: { color: '#fff', borderColor: '#ed0b68', borderWidth: 2 },
+      areaStyle: { color: 'rgba(237, 11, 104, .34)' },
+      data: [{ value: values }],
+    }],
+  }, true)
+}
+
+onMounted(async () => {
+  await nextTick()
+  renderChart()
+  if (chartElement.value) {
+    observer = new ResizeObserver(() => chart?.resize())
+    observer.observe(chartElement.value)
+  }
+})
+
+watch([dimensions, () => props.metric], async () => {
+  await nextTick()
+  renderChart()
+}, { deep: true })
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  chart?.dispose()
+  chart = null
+})
 </script>
 
 <template>
@@ -88,11 +176,18 @@ function setMetric(value: WorkbenchMindMetric): void {
     </header>
 
     <p
-      v-if="loading && mind"
+      v-if="mind?.snapshot_status === 'refreshing' || (loading && !preparing)"
       class="refresh-note"
       role="status"
     >
-      正在按当前筛选更新，以下为上次结果…
+      后台正在更新当前筛选，以下为最近成功结果…
+    </p>
+    <p
+      v-else-if="mind?.snapshot_status === 'failed' && mind.computed_at"
+      class="refresh-note"
+      role="status"
+    >
+      当前继续显示最近成功结果，后台会自动完成后续更新。
     </p>
 
     <div
@@ -111,10 +206,17 @@ function setMetric(value: WorkbenchMindMetric): void {
       </button>
     </div>
     <div
-      v-if="loading && dimensions.length === 0"
+      v-if="preparing"
+      class="module-state"
+      role="status"
+    >
+      首次聚合正在后台准备，完成后会自动显示…
+    </div>
+    <div
+      v-else-if="loading && dimensions.length === 0"
       class="module-state"
     >
-      正在聚合当前 active Taxonomy…
+      正在读取品牌用户心智…
     </div>
     <div
       v-else-if="dimensions.length === 0 && !error"
@@ -127,23 +229,49 @@ function setMetric(value: WorkbenchMindMetric): void {
       v-else
       class="mind-body"
     >
-      <div class="ranking">
-        <div class="ranking-title">
-          <strong>{{ metric === 'share' ? '一级心智用户占比' : '一级心智正向率' }}</strong>
+      <div class="mind-radar">
+        <div class="radar-title">
+          <strong>用户心智图</strong>
           <span v-if="metric === 'share'">多标签独立统计 · 可合计&gt;100%</span>
           <span v-else>仅 relevant · 正面 / relevant</span>
         </div>
-        <button
-          v-for="item in dimensions"
-          :key="item.primary_label"
-          type="button"
-          :class="{ selected: selected?.primary_label === item.primary_label }"
-          @click="emit('select', item.primary_label)"
+        <div class="radar-stage">
+          <div
+            ref="chartElement"
+            class="radar-chart"
+            :aria-label="`用户心智图，共 ${dimensions.length} 个一级标签`"
+            :data-axis-count="dimensions.length"
+          />
+          <div
+            class="radar-center"
+            aria-hidden="true"
+          >
+            <strong>爱玛</strong><span>心智图</span>
+          </div>
+          <button
+            v-if="selected"
+            type="button"
+            class="radar-selected-card"
+            @click="emit('select', selected.primary_label)"
+          >
+            <strong>{{ selected.primary_label }}</strong>
+            <span>{{ percent(metricValue(selected)) }} <small>{{ metric === 'share' ? '占比' : '正向率' }}</small></span>
+          </button>
+        </div>
+        <div
+          class="radar-accessible-list"
+          aria-label="选择一级用户心智"
         >
-          <span class="label">{{ item.primary_label }}</span>
-          <span class="track"><i :style="{ width: `${Math.max(2, metricValue(item) * 100)}%` }" /></span>
-          <strong>{{ percent(metricValue(item)) }}</strong>
-        </button>
+          <button
+            v-for="item in dimensions"
+            :key="item.primary_label"
+            type="button"
+            :aria-pressed="selected?.primary_label === item.primary_label"
+            @click="emit('select', item.primary_label)"
+          >
+            {{ item.primary_label }} {{ percent(metricValue(item)) }}
+          </button>
+        </div>
       </div>
 
       <div
@@ -210,16 +338,20 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
 .metric-toggle button { padding: 4px 7px; border: 0; border-radius: 4px; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 10px; }
 .metric-toggle .active { color: var(--aima-primary); background: var(--aima-primary-soft); font-weight: 700; }
 .mind-body { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(0, 1.2fr) minmax(220px, .9fr); }
-.ranking { min-width: 0; overflow: auto; padding: 12px; border-right: 1px solid var(--aima-border); }
-.ranking-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.ranking-title strong { color: var(--aima-text); font-size: 12px; }
-.ranking-title span { color: var(--aima-text-disabled); font-size: 9px; white-space: nowrap; }
-.ranking > button { display: grid; width: 100%; min-height: 28px; grid-template-columns: minmax(88px, .8fr) minmax(80px, 1.4fr) 48px; align-items: center; gap: 7px; padding: 3px 6px; border: 0; border-radius: 5px; color: var(--aima-text); background: transparent; cursor: pointer; text-align: left; }
-.ranking > button:hover, .ranking > button.selected { background: var(--aima-color-bg-hover); }
-.ranking .label { overflow: hidden; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.track { height: 7px; overflow: hidden; border-radius: 4px; background: var(--aima-surface-disabled); }
-.track i { display: block; height: 100%; max-width: 100%; border-radius: inherit; background: var(--aima-primary); }
-.ranking > button > strong { color: var(--aima-primary); font-size: 10px; text-align: right; }
+.mind-radar { display: flex; min-width: 0; min-height: 0; flex-direction: column; padding: 10px; border-right: 1px solid var(--aima-border); }
+.radar-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.radar-title strong { color: var(--aima-text); font-size: 12px; }
+.radar-title span { color: var(--aima-text-disabled); font-size: 9px; white-space: nowrap; }
+.radar-stage { position: relative; min-height: 230px; flex: 1; overflow: hidden; }
+.radar-chart { width: 100%; height: 100%; min-height: 230px; }
+.radar-center { position: absolute; top: 52%; left: 46%; display: grid; width: 76px; height: 76px; place-content: center; transform: translate(-50%, -50%); border-radius: 50%; color: #fff; background: linear-gradient(145deg, #f5418b, #ed0b68); box-shadow: 0 8px 18px rgb(237 11 104 / 25%); text-align: center; pointer-events: none; }
+.radar-center strong { font-size: 17px; }
+.radar-center span { margin-top: 2px; font-size: 9px; }
+.radar-selected-card { position: absolute; top: 12px; right: 4px; display: grid; min-width: 104px; gap: 5px; padding: 9px 12px; border: 2px solid #ed0b68; border-radius: 12px; color: var(--aima-text); background: #fff5f9; cursor: pointer; text-align: left; box-shadow: 0 4px 10px rgb(237 11 104 / 10%); }
+.radar-selected-card strong { max-width: 150px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.radar-selected-card > span { color: #ed0b68; font-size: 16px; font-weight: 700; }
+.radar-selected-card small { color: var(--aima-text-disabled); font-size: 9px; font-weight: 400; }
+.radar-accessible-list { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .mind-detail { display: flex; min-width: 0; flex-direction: column; gap: 9px; padding: 12px; overflow: auto; }
 .mind-detail > small { color: var(--aima-text-disabled); font-size: 9px; text-transform: uppercase; }
 .detail-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -246,12 +378,12 @@ footer { display: flex; min-height: 26px; align-items: center; justify-content: 
   header { align-items: flex-start; flex-wrap: wrap; }
   .header-actions { width: 100%; justify-content: space-between; }
   .mind-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
-  .ranking { border-right: 0; border-bottom: 1px solid var(--aima-border); }
+  .mind-radar { min-height: 310px; border-right: 0; border-bottom: 1px solid var(--aima-border); }
 }
 @container (max-width: 520px) {
   .header-actions { align-items: flex-start; flex-direction: column; }
-  .ranking-title { align-items: flex-start; flex-direction: column; }
-  .ranking > button { grid-template-columns: minmax(76px, 1fr) minmax(64px, 1fr) 42px; }
+  .radar-title { align-items: flex-start; flex-direction: column; }
+  .radar-selected-card { top: 4px; right: 0; min-width: 92px; padding: 7px 9px; }
   .metric-cards { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

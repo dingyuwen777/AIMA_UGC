@@ -9,6 +9,7 @@ from aima_ugc.contracts.workbench import (
     WorkbenchLayoutUpdateRequest,
     WorkbenchMindResponse,
     WorkbenchQuery,
+    WorkbenchStreamQuery,
     WorkbenchStreamResponse,
     WorkbenchTrendResponse,
 )
@@ -23,7 +24,7 @@ class WorkbenchLayoutConflict(RuntimeError):
 
 
 class WorkbenchHttpService(Protocol):
-    def get_stream(self, query: WorkbenchQuery) -> WorkbenchStreamResponse: ...
+    def get_stream(self, query: WorkbenchStreamQuery) -> WorkbenchStreamResponse: ...
 
     def get_trend(self, query: WorkbenchQuery) -> WorkbenchTrendResponse: ...
 

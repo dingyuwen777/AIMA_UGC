@@ -10131,6 +10131,18 @@
             "title": "As Of",
             "type": "string"
           },
+          "computed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed At"
+          },
           "date_from": {
             "format": "date",
             "title": "Date From",
@@ -10162,6 +10174,29 @@
             "format": "date",
             "title": "Previous Date To",
             "type": "string"
+          },
+          "snapshot_status": {
+            "default": "fresh",
+            "enum": [
+              "preparing",
+              "fresh",
+              "refreshing",
+              "failed"
+            ],
+            "title": "Snapshot Status",
+            "type": "string"
+          },
+          "source_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision"
           },
           "taxonomy_sha256": {
             "pattern": "^[0-9a-f]{64}$",
@@ -10366,12 +10401,28 @@
             "title": "As Of",
             "type": "string"
           },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/WorkbenchStreamItemResponse"
             },
             "title": "Items",
             "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
           },
           "taxonomy_sha256": {
             "pattern": "^[0-9a-f]{64}$",
@@ -10411,6 +10462,18 @@
             "format": "date-time",
             "title": "As Of",
             "type": "string"
+          },
+          "computed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed At"
           },
           "daily": {
             "items": {
@@ -10502,6 +10565,29 @@
             },
             "title": "Sentiments",
             "type": "array"
+          },
+          "snapshot_status": {
+            "default": "fresh",
+            "enum": [
+              "preparing",
+              "fresh",
+              "refreshing",
+              "failed"
+            ],
+            "title": "Snapshot Status",
+            "type": "string"
+          },
+          "source_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision"
           },
           "summary": {
             "title": "Summary",
@@ -20956,6 +21042,36 @@
               "maxItems": 200,
               "title": "Secondary Labels",
               "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 10,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
             }
           }
         ],

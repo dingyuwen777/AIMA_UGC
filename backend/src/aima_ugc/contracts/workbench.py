@@ -50,6 +50,13 @@ class WorkbenchQuery(BaseModel):
         return self
 
 
+class WorkbenchStreamQuery(WorkbenchQuery):
+    """声音流有限分页；Cursor 与完整筛选和每页大小绑定。"""
+
+    limit: int = Field(default=100, ge=10, le=500)
+    cursor: str | None = Field(default=None, min_length=1, max_length=4096)
+
+
 class WorkbenchAnalysisIdentityResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -83,6 +90,8 @@ class WorkbenchStreamItemResponse(BaseModel):
 
 class WorkbenchStreamResponse(WorkbenchAnalysisIdentityResponse):
     items: tuple[WorkbenchStreamItemResponse, ...]
+    next_cursor: str | None = None
+    has_more: bool = False
 
 
 class WorkbenchDailyPointResponse(BaseModel):
@@ -101,6 +110,9 @@ class WorkbenchSentimentStatResponse(BaseModel):
 
 
 class WorkbenchTrendResponse(WorkbenchAnalysisIdentityResponse):
+    snapshot_status: Literal["preparing", "fresh", "refreshing", "failed"] = "fresh"
+    computed_at: datetime | None = None
+    source_revision: int | None = Field(default=None, ge=1)
     date_from: date
     date_to: date
     previous_date_from: date
@@ -139,6 +151,9 @@ class WorkbenchMindDimensionResponse(BaseModel):
 
 
 class WorkbenchMindResponse(WorkbenchAnalysisIdentityResponse):
+    snapshot_status: Literal["preparing", "fresh", "refreshing", "failed"] = "fresh"
+    computed_at: datetime | None = None
+    source_revision: int | None = Field(default=None, ge=1)
     date_from: date
     date_to: date
     previous_date_from: date
@@ -204,6 +219,7 @@ __all__ = [
     "WorkbenchQuery",
     "WorkbenchSentimentStatResponse",
     "WorkbenchStreamItemResponse",
+    "WorkbenchStreamQuery",
     "WorkbenchStreamResponse",
     "WorkbenchTrendResponse",
 ]

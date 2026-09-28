@@ -13,6 +13,7 @@ import AppShell from '../../../../app/layouts/AppShell.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
+import { useTransientNotice } from '../../../../shared/ui/useTransientNotice'
 import { useCollectionStrategyStore } from '../../store'
 import KeywordPackCreateDialog from './components/KeywordPackCreateDialog.vue'
 import KeywordPackPanel from './components/KeywordPackPanel.vue'
@@ -42,7 +43,7 @@ const planDetailOpen = computed({
   get: () => store.selectedPlan !== null && !planDrawerOpen.value,
   set: (value: boolean) => { if (!value) store.selectedPlan = null },
 })
-const notice = ref<string | null>(null)
+const { message: notice, show: showNotice } = useTransientNotice()
 const confirmTarget = ref<ResourceConfirmTarget | null>(null)
 
 onMounted(() => store.refresh())
@@ -177,11 +178,6 @@ function closeConfirm(): void {
   store.error = null
 }
 
-/** 显示会自动消失的页面级成功反馈。 */
-function showNotice(message: string): void {
-  notice.value = message
-  window.setTimeout(() => { if (notice.value === message) notice.value = null }, 2600)
-}
 </script>
 
 <template>

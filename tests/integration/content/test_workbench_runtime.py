@@ -8,6 +8,9 @@ from aima_ugc.adapters.persistence.postgres.workbench import (
     PostgresWorkbenchRepository,
     WorkbenchLayoutRevisionConflict,
 )
+from aima_ugc.adapters.persistence.postgres.workbench_snapshots import (
+    PostgresWorkbenchSnapshotRepository,
+)
 from aima_ugc.bootstrap.workbench_http import _period
 from aima_ugc.contracts.workbench import WorkbenchLayoutModule, WorkbenchQuery
 from aima_ugc.modules.analysis.manual_override_tables import (
@@ -25,6 +28,7 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
     analysis_content_runs_table,
 )
+from aima_ugc.modules.content.content_cursor import ContentCursorPosition
 from aima_ugc.modules.content.read_model_tables import voice_plaza_content_projection_table
 from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.platform.config import load_settings
@@ -385,6 +389,65 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
         ]
         assert [(row["primary_label"], int(row["user_count"])) for row in mind] == [("外观设计", 1)]
 
+        snapshots = PostgresWorkbenchSnapshotRepository(session)
+        revision_before = snapshots.current_data_revision()
+        session.execute(
+            voice_plaza_content_projection_table.update()
+            .where(voice_plaza_content_projection_table.c.content_id == content_id)
+            .values(updated_at=now + timedelta(seconds=1))
+        )
+        revision_after = snapshots.current_data_revision()
+        assert revision_after > revision_before
+
+        snapshot_hash = "c" * 64
+        refresh = snapshots.request_refresh(
+            module="trend",
+            query_hash=snapshot_hash,
+            query=query.model_dump(mode="json"),
+            source_revision=revision_after,
+            analysis_scheme_version_id=active_version_id,
+        )
+        assert refresh is not None
+        assert (
+            snapshots.request_refresh(
+                module="trend",
+                query_hash=snapshot_hash,
+                query=query.model_dump(mode="json"),
+                source_revision=revision_after,
+                analysis_scheme_version_id=active_version_id,
+            )
+            is None
+        )
+        assert (
+            snapshots.request_refresh(
+                module="trend",
+                query_hash=snapshot_hash,
+                query=query.model_dump(mode="json"),
+                source_revision=revision_after + 1,
+                analysis_scheme_version_id=active_version_id,
+            )
+            is None
+        )
+        assert snapshots.record_success(
+            refresh=refresh,
+            taxonomy_sha256="a" * 64,
+            response={"result": "latest-success"},
+            computed_at=now,
+        )
+        retry_refresh = snapshots.request_refresh(
+            module="trend",
+            query_hash=snapshot_hash,
+            query=query.model_dump(mode="json"),
+            source_revision=revision_after + 1,
+            analysis_scheme_version_id=active_version_id,
+        )
+        assert retry_refresh is not None
+        assert snapshots.record_failure(refresh=retry_refresh, error_code="temporary_failure")
+        failed_snapshot = snapshots.get(module="trend", query_hash=snapshot_hash)
+        assert failed_snapshot is not None
+        assert failed_snapshot["status"] == "failed"
+        assert failed_snapshot["response"] == {"result": "latest-success"}
+
         # Projection 仍指向旧 Scheme 时，回退路径必须应用当前 Content Version 的人工事实。
         session.execute(
             analysis_content_manual_overrides_table.insert().values(
@@ -590,6 +653,96 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
             )["current_primary"]
             == []
         )
+
+        # 稳定 keyset Cursor 必须跨页覆盖全部匹配记录，不能重复最新一页。该样本放在
+        # 单内容过滤语义断言之后，避免额外内容污染 relevance 与筛选回归。
+        extra_content_ids = (uuid4(), uuid4())
+        extra_result_ids = (uuid4(), uuid4())
+        for index, (extra_content_id, extra_result_id) in enumerate(
+            zip(extra_content_ids, extra_result_ids, strict=True),
+            start=1,
+        ):
+            published_at = now - timedelta(minutes=index)
+            session.execute(
+                contents_table.insert().values(
+                    id=extra_content_id,
+                    platform="xiaohongshu",
+                    external_content_id=f"workbench-cursor-{extra_content_id}",
+                    content_type="note",
+                    title=f"Cursor {index}",
+                    text=f"分页声音 {index}",
+                    author_account_id=account_id,
+                    published_at=published_at,
+                    first_seen_at=published_at,
+                    last_seen_at=published_at,
+                    current_version=1,
+                    updated_at=published_at,
+                )
+            )
+            result_values = _result_values(
+                extra_result_id,
+                content_id=extra_content_id,
+                run_id=active_run_id,
+                job_id=active_job_id,
+                sentiment="正面",
+                taxonomy_hash="a" * 64,
+                now=published_at,
+            )
+            result_values["input_hash"] = str(index + 4) * 64
+            session.execute(analysis_content_results_table.insert().values(**result_values))
+            session.execute(
+                analysis_content_label_pairs_table.insert().values(
+                    analysis_result_id=extra_result_id,
+                    ordinal=0,
+                    primary_label="外观设计",
+                    secondary_label="颜色与配色",
+                )
+            )
+            session.execute(
+                voice_plaza_content_projection_table.update()
+                .where(voice_plaza_content_projection_table.c.content_id == extra_content_id)
+                .values(
+                    content_version=1,
+                    platform="xiaohongshu",
+                    content_type="note",
+                    published_at=published_at,
+                    sort_at=published_at,
+                    is_visible=True,
+                    analysis_result_id=extra_result_id,
+                    analysis_status="completed",
+                    effective_relevance="relevant",
+                    relevance_source="ai",
+                    effective_voice_type="真实用户发声",
+                    effective_sentiment="正面",
+                    labels=[{"primary_label": "外观设计", "secondary_label": "颜色与配色"}],
+                    brand_ids=[],
+                    vehicle_model_ids=[],
+                    competition_scope="none_detected",
+                    updated_at=published_at,
+                )
+            )
+
+        first_page = repository.stream_rows(
+            active_scheme_version_id=active_version_id,
+            query=query,
+            start_at=start_at,
+            end_at=end_at,
+            limit=2,
+        )
+        second_page = repository.stream_rows(
+            active_scheme_version_id=active_version_id,
+            query=query,
+            start_at=start_at,
+            end_at=end_at,
+            limit=2,
+            position=ContentCursorPosition(
+                sort_at=first_page[-1]["published_at"],
+                content_id=first_page[-1]["content_id"],
+            ),
+        )
+        paged_ids = [row["content_id"] for row in (*first_page, *second_page)]
+        assert paged_ids == [content_id, *extra_content_ids]
+        assert len(paged_ids) == len(set(paged_ids))
     finally:
         transaction.rollback()
         session.close()
