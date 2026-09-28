@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260928-141055-workbench-live-aggregation
 title: 工作台全量声音流、聚合提速与用户心智图
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/644-workbench-live-aggregation
 created: 2026-09-28
@@ -83,8 +83,8 @@ data_changes:
 
 ## 成功标准
 
-- [ ] Issue #644 / AC1–AC8 全部有实现与新鲜分层证据。
-- [ ] Completion Audit 无 `not_satisfied`，两阶段 Review 无未解决高风险 Finding。
+- [x] Issue #644 / AC1–AC8 全部有实现与新鲜分层证据。
+- [x] Completion Audit 无 `not_satisfied`，两阶段 Review 无未解决高风险 Finding。
 - [ ] PR current-head CI、受保护合并、main-fresh CI、Change 归档和 Issue AC 回写完成。
 
 ## 非目标
@@ -115,17 +115,17 @@ data_changes:
 
 # 需求追溯
 
-| 编号 | 要求 | 来源 | 状态 | 计划证据 |
+| 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 声音流遍历筛选期内全部数据并持续滚动 | #644 / AC1 | not_satisfied | Contract、PostgreSQL 多页、Store/Browser |
-| R2 | 发帖时间显示时分且平台标记一致 | #644 / AC2 | satisfied | `SoundStreamCard` + Workbench Playwright |
-| R3 | 相同筛选热读不重复扫描明细，聚合持久/幂等/可失效 | #644 / AC3 | not_satisfied | Schema、Job、SQL statement count、benchmark |
-| R4 | 失败保留最近成功结果并暴露真实刷新状态 | #644 / AC4 | not_satisfied | PostgreSQL failure、API、Store/Browser |
+| R1 | 声音流遍历筛选期内全部数据并持续滚动 | #644 / AC1 | satisfied | `WorkbenchStreamQuery/Response`、签名 keyset Repository 集成测试、Store 失效游标恢复 Unit、Playwright 多页滚动/暂停/末页重启 |
+| R2 | 发帖时间显示时分且平台标记一致 | #644 / AC2 | satisfied | `SoundStreamCard` 北京时间时分 + `AimaPlatformMark` + Workbench Playwright |
+| R3 | 相同筛选热读不重复扫描明细，聚合持久/幂等/可失效 | #644 / AC3 | satisfied | `workbench_snapshots`/revision migration、版本化 Job、行锁合并、热读 SQL 捕获 Integration、Worker 默认预热 |
+| R4 | 失败保留最近成功结果并暴露真实刷新状态 | #644 / AC4 | satisfied | `snapshot_status/computed_at/source_revision` Contract、失败退避/旧 Scheme 隔离 Integration、Store/Browser 保留结果 |
 | R5 | active Taxonomy 驱动动态 N 边用户心智图并匹配参考样式 | #644 / AC5 | satisfied | ECharts dynamic indicator + ResizeObserver + 21 项 Workbench Playwright |
 | R6 | UGC 日均声量四舍五入为整数 | #644 / AC6 | satisfied | `Math.round` + Unit/Browser |
-| R7 | 普通成功/信息提示共享 3 秒生命周期，错误/进度/警告保留 | #644 / AC7 | satisfied | `useTransientNotice` 2999/3000ms fake timer + 页面迁移 + Browser |
-| R8 | Contract/Schema/Client/Job/Docs 与依赖边界同步 | #644 / AC8 | not_satisfied | generation/migration/docs/quality gates |
-| R9 | 分层验证、Review、CI、合并和收尾 | #644 / AC9 | explicitly_deferred | Ready 后按正式顺序执行 |
+| R7 | 普通成功/信息提示共享 3 秒生命周期，错误/进度/警告保留 | #644 / AC7 | satisfied | `useTransientNotice` 2999/3000ms fake timer + 8 个页面/面板迁移 + Browser |
+| R8 | Contract/Schema/Client/Job/Docs 与依赖边界同步 | #644 / AC8 | satisfied | OpenAPI/Orval clean generation、Alembic 0072、Worker Registry、Product/Blueprint/Operations、Contract/架构/Table Owner/Docs/Secret gates |
+| R9 | 分层验证、Review、CI、合并和收尾 | #644 / AC9 | explicitly_deferred | PR #645 已具备本地验证与两阶段 Review；current-head CI、受保护合并、main-fresh、归档和清理由 Ready 后的强制顺序继续执行 |
 
 # 实施步骤
 
@@ -189,14 +189,14 @@ data_changes:
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重读 Issue #644、用户雷达图参考、正式产品/Blueprint 和当前 Contract。
-- [ ] change_coverage：R1–R8 无遗漏，R9 只保留顺序上必须后置的交付动作。
-- [ ] reverse_audit：从前端入口反查后端真实能力，并从新 Contract/Schema/Job 反查所有消费者和运行入口。
-- [ ] unresolved_cleared：Ready 前 `not_satisfied` 清零；延期/不适用具备正式依据。
+- [x] upstream_re_read：已重读 Issue #644、用户雷达图参考、正式 Product/Blueprint/Operations、Workbench Contract 与 active Taxonomy 边界。
+- [x] change_coverage：AC1–AC8 已逐项映射实现和分层证据；R9 只保留 CI 通过后才能执行的合并与收尾动作。
+- [x] reverse_audit：已从 Workbench 三个前端入口反查 generated client/API/Repository/Snapshot/Job/PostgreSQL，并从新 Contract/Schema/Job 反查 Router、Worker Registry、启动预热、页面和文档消费者。
+- [x] unresolved_cleared：`not_satisfied` 已清零；R9 的后置动作由项目规定的 Ready → CI → merge → main-fresh → archive 顺序明确约束。
 
 # 完成证据与状态
 
-- 当前状态：生产实现、本地静态检查、Contract/API/前端 Unit、生产构建和 Workbench Browser 已完成；真实 PostgreSQL Migration/Integration 与 Linux 全套件等待 PR CI。
+- 当前状态：生产实现、本地静态检查、Contract/API/前端 Unit、生产构建、Workbench Browser 与两阶段 Review 已完成；真实 PostgreSQL Migration/Integration 与 Linux 全套件等待 PR current-head CI。
 - Red（2026-09-28）：`uv run pytest tests/unit/content/test_workbench_contract.py -q` 因缺少 `WorkbenchStreamQuery` 在收集期失败；`npm exec vitest run tests/transient-notice.spec.ts tests/workbench.spec.ts` 因缺少共享 composable 及“用户心智图”断言失败（其余 9 个 Workbench Unit 通过）。
 - Green（2026-09-28，当前工作树）：
   - `uv run ruff format --check backend scripts tests`：807 个文件符合格式；`uv run ruff check backend scripts tests`：通过；`uv run mypy backend/src`：390 个源文件通过。
@@ -208,3 +208,4 @@ data_changes:
   - `npm exec playwright test e2e/workbench.spec.ts`：21 passed，覆盖筛选、签名游标换页、自动滚动/暂停、动态 Radar、自由缩放、模块独立与 15 秒补读。
   - `scripts/contracts/generate.py --check`、Contract Client 重生成、架构、表 Owner、Docs、Docs Facts、Secret Scan 与 Alembic 单一 head/父链：通过。
 - 待验证：CI PostgreSQL 18.4 `upgrade head/current/check`、内容 Integration（含分页无遗漏、revision、刷新合并、失败保留、旧 Scheme 隔离、热读不执行聚合 SQL）、current-head CI、Review、受保护合并、main-fresh、归档与 Issue Closure。
+- Review（2026-09-28）：第一阶段按 #644/AC1–AC9 重新构建完成定义；第二阶段检查 Contract、迁移、并发刷新、Job Fencing、失败退避、旧 Scheme 隔离、游标签名与页面生命周期。发现“页面暂停超过签名有效期会永久重试旧游标”缺陷后，增加 `invalid_content_cursor` 定向恢复与 Unit 回归；复核后无未解决高风险 Finding。
