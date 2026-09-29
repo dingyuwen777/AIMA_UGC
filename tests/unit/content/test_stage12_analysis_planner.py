@@ -115,10 +115,13 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         settings=SimpleNamespace(),
     )
     service = PostgresContentHttpService(runtime)  # type: ignore[arg-type]
-    monkeypatch.setattr(
-        service,
-        "_load_active_analysis_configuration",
-        lambda: SimpleNamespace(
+
+    def load_active_configuration(
+        *,
+        refresh_unused_git_bootstrap: bool = False,
+    ) -> SimpleNamespace:
+        assert refresh_unused_git_bootstrap is True
+        return SimpleNamespace(
             identity=identity,
             llm_provider=SimpleNamespace(
                 id=provider_config_id,
@@ -128,7 +131,12 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
             ),
             scheme=SimpleNamespace(id=uuid4()),
             taxonomy=SimpleNamespace(prompt_text="frozen-prompt"),
-        ),
+        )
+
+    monkeypatch.setattr(
+        service,
+        "_load_active_analysis_configuration",
+        load_active_configuration,
     )
 
     def reject_http_target_scan(session: object, targets: object) -> Any:

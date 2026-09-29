@@ -431,6 +431,7 @@ class RepresentativeSelectionService:
         )
         return ContentLabelingModelItem(
             item_no=candidate.item_no,
+            platform=content.platform,
             title=content.title,
             text=body,
             author_display_name=content.author,

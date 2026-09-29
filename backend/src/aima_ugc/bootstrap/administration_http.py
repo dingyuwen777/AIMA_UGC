@@ -499,8 +499,10 @@ class PostgresAdministrationHttpService:
         try:
             with session.begin():
                 repository = PostgresAnalysisSchemeRepository(session)
-                version, created = repository.bootstrap_default(actor_ref="system:git-bootstrap")
-                if created:
+                version, bootstrap_changed = repository.bootstrap_default(
+                    actor_ref="system:git-bootstrap"
+                )
+                if bootstrap_changed:
                     _audit_system_scheme_bootstrap(session, version)
                 return AnalysisSchemeListResponse(
                     items=tuple(
@@ -845,14 +847,18 @@ def _audit_system_scheme_bootstrap(
     session: Any,
     version: AnalysisSchemeVersionRecord,
 ) -> None:
-    """首次数据库初始化同样属于配置写入，必须留下系统审计。"""
+    """数据库初始化或首次 Run 前基线刷新都必须留下系统审计。"""
 
     PostgresAuditRepository(session).append(
         AuditEvent(
             id=uuid4(),
             actor_kind="system",
             actor_ref="system:git-bootstrap",
-            event_type="analysis_scheme_bootstrapped",
+            event_type=(
+                "analysis_scheme_bootstrapped"
+                if version.version == 1
+                else "analysis_scheme_bootstrap_refreshed"
+            ),
             object_type="analysis_scheme_version",
             object_id=str(version.id),
             request_id=None,

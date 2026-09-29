@@ -148,7 +148,7 @@ def _irrelevant_response() -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"irrelevant",'
         '"relevance_evidence":["爱玛"],"source_type":"media_org",'
-        '"content_intent":"news_information","voice_type":"媒体机构发声",'
+        '"content_intent":"news_information","voice_type":"营销推广发声",'
         '"voice_evidence":["爱玛"],"sentiment":null,"sentiment_evidence":[],'
         '"labels":[],"decision_status":"clear"}]}'
     )

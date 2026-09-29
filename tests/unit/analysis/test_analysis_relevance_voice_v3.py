@@ -209,6 +209,7 @@ def test_service_returns_v3_and_sends_only_approved_public_author_context() -> N
     payload = fake.calls[0].model_payload()[0]
     assert payload == {
         "item_no": 1,
+        "platform": "xiaohongshu",
         "title": "爱玛骑了一年，续航还可以",
         "text": "我每天通勤骑，冬天续航会短一些，但总体够用。",
         "author": {
