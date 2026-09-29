@@ -21,6 +21,7 @@ affected_paths:
   - backend/src/aima_ugc/bootstrap/feishu_publication_worker.py
   - tests/unit/test_docker_build_sources.py
   - tests/unit/platform/test_feishu_publication_worker.py
+  - .github/workflows/runtime.yml
   - docs/operations/01_生产部署与离线Release方案.md
 contracts: []
 data_changes: []
@@ -161,9 +162,9 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 | --- | --- | --- | --- | --- |
 | R1 | Backend 镜像包含 resolver 支持的 Regular/Bold CJK 字体 | #657 / AC1 | not_satisfied | 待 Dockerfile 实现与镜像 smoke |
 | R2 | 正式镜像内中文词云渲染成功 | #657 / AC2 | not_satisfied | 待真实 Docker runtime smoke |
-| R3 | 内部异常写安全诊断事件且错误码兼容 | #657 / AC3 | not_satisfied | 待 Worker unit test 与实现 |
+| R3 | 内部异常写安全诊断事件且错误码兼容 | #657 / AC3 | satisfied | `log_exception_event()` 实现；参数化 `ValueError` / `RuntimeError` 回归 2 passed |
 | R4 | 相关自动回归和 PR 最新 HEAD CI 通过 | #657 / AC4 | not_satisfied | 待定向/相关测试与 CI |
-| R5 | 运行文档提供正确自检与部署生效边界 | #657 / AC5 | not_satisfied | 待 Operations 更新 |
+| R5 | 运行文档提供正确自检与部署生效边界 | #657 / AC5 | satisfied | Operations 第 11 节给出 release 根目录 resolver/render smoke 与旧镜像边界 |
 
 # 计划改动
 
@@ -172,6 +173,7 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 | `Dockerfile` | Backend runtime 安装 `fonts-noto-cjk` | 修复生产镜像缺字体根因 | R1–R2 / E1–E4 |
 | `feishu_publication_worker.py` | 转换内部异常前记录安全事件 | 修复诊断缺口 | R3 / E5–E6 |
 | Docker/Worker unit tests | 锁定包与日志兼容行为 | 建立 Red/Regression | R1,R3–R4 |
+| `.github/workflows/runtime.yml` | 在正式 Compose 构建镜像内执行 resolver + 中文词云 smoke | 证明真实 Linux runtime，而非静态 Dockerfile 文本 | R1–R2,R4 |
 | `docs/operations/01_生产部署与离线Release方案.md` | 新增报告字体 smoke 与生效边界 | 形成可执行生产验证 | R5 |
 | 本 Change | 追溯、验证与交付状态 | L3 门禁 | R1–R5 |
 
@@ -180,8 +182,8 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
 - [x] 行为变化建立失败证据
-- [ ] 完成最小实现
-- [ ] 同步受影响的长期文档
+- [x] 完成最小实现
+- [x] 同步受影响的长期文档
 - [ ] 取得仍覆盖当前版本的验证证据
 - [ ] 完成需求追溯、完成审计和适用复核
 
@@ -203,7 +205,7 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 - 目标测试：`tests/unit/test_docker_build_sources.py`、`tests/unit/platform/test_feishu_publication_worker.py`。
 - 相关回归：`tests/unit/platform/test_reporting_visuals.py`、统一日志 tests。
 - 静态检查或构建：Ruff、mypy 受影响文件、docs checks、Docker backend build。
-- 专项真实边界：新 backend 镜像内 resolver + 中文词云 PNG smoke。
+- 专项真实边界：Runtime Acceptance 在新 Backend 镜像内执行 resolver + 中文词云 PNG smoke。
 - 就绪检查：`python scripts/quality/check_change_completion.py --root . --require-active-ready` 与 PR required CI。
 
 # 风险、兼容性、迁移与回滚
@@ -239,10 +241,16 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 | --- | --- | --- | --- | --- |
 | V1 | branch pre-implementation / Windows Python 3.14.7 | `python -m pytest tests/unit/test_docker_build_sources.py::test_backend_runtime_installs_report_cjk_fonts -q` | 1 failed：Dockerfile Backend stage 不包含 `fonts-noto-cjk` | 镜像运行依赖缺口已由失败测试锁定 |
 | V2 | branch pre-implementation / Windows Python 3.14.7 | `python -m pytest tests/unit/platform/test_feishu_publication_worker.py::test_report_worker_logs_safe_internal_error_and_preserves_error_code -q` | 2 failed：`ValueError` / `RuntimeError` 均无目标日志事件；结果错误码仍兼容 | Worker 诊断缺口已由失败测试锁定 |
+| V3 | working tree / Windows Python 3.14.7 | `python -m pytest tests/unit/test_docker_build_sources.py::test_backend_runtime_installs_report_cjk_fonts tests/unit/platform/test_feishu_publication_worker.py::test_report_worker_logs_safe_internal_error_and_preserves_error_code -q` | 3 passed | Dockerfile Contract 与 Worker 安全日志由 Red 转 Green |
+| V4 | working tree / Windows Python 3.14.7 | Docker build sources + Feishu Worker + reporting visuals + logging unit tests | 23 passed, 2 skipped | 相关 Python 回归通过；两个 Linux 字体渲染测试因 Windows 无 Noto 路径按既有条件 skip，不能替代镜像证据 |
+| V5 | working tree / Ruff + mypy | `ruff check`、`ruff format --check`、`mypy feishu_publication_worker.py` | 全部通过；mypy 1 source file 无问题 | 受影响 Python 代码静态检查通过 |
+| V6 | working tree / Windows Python 3.14.7 | Workflow structure/impact + Docker + Worker + visuals + logging 相关回归 | 59 passed, 2 skipped | Runtime Workflow 静态接线与相关行为回归通过；Linux 字体真实渲染仍由 Runtime CI 负责 |
+| V7 | working tree / project quality scripts | `check_docs.py`、`check_docs_facts.py`、`check_architecture.py`、`check_agent_governance.py` | 全部 exit 0 | 文档链接/事实、架构边界与项目治理接线通过 |
 
 ## 未验证内容与剩余风险
 
-- Red 阶段已完成，尚未实现 Green；生产部署/真实报告重跑未获本任务授权。
+- 本机 Docker Desktop Engine 未运行，无法在本机取得 Linux 镜像证据；已把 resolver + 中文词云真实 smoke 放入 `Runtime Acceptance / Compose Golden Path`，PR 转 Ready 后由 Ubuntu Runner 构建同一正式 Backend target 验证。该 CI 结果在取得前阻塞 Ready/merge。
+- 生产部署/真实报告重跑未获本任务授权；新 Release 上线后的服务器复验仍是交付后的运维步骤。
 
 ## 交付状态
 

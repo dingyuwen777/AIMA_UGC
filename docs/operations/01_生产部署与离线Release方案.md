@@ -404,6 +404,35 @@ Migration 状态
 关键业务入口
 ```
 
+如果本次 Release 涉及 Word / 飞书报告生成，还必须在**解压后的 Release 包根目录**验证 Worker
+镜像同时包含普通和粗体 CJK 字体，并实际渲染一次中文词云：
+
+```bash
+docker compose exec -T worker python - <<'PY'
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from aima_ugc.platform.reporting.visuals.wordcloud import (
+    render_wordcloud_png,
+    resolve_cjk_bold_font,
+    resolve_cjk_font,
+)
+
+print(resolve_cjk_font())
+print(resolve_cjk_bold_font())
+with TemporaryDirectory() as directory:
+    output = Path(directory) / "cjk-smoke.png"
+    render_wordcloud_png({"爱玛": 10, "续航": 6}, output)
+    print(f"wordcloud_bytes={output.stat().st_size}")
+PY
+```
+
+两条字体路径必须指向容器内真实文件，`wordcloud_bytes` 必须大于零。若在 Release 目录外执行
+`docker compose`，Compose 会先报 `no configuration file provided`，此时 Python 尚未运行，不能据此
+判断字体状态。字体属于 Backend 镜像内容；合并源码不会改变已经运行的旧容器，必须构建并部署包含
+该修复的新 Release，再由启动脚本重建 `worker`、`api` 等共享 Backend 镜像的服务。禁止在运行容器
+内临时安装字体来冒充正式修复。
+
 浏览器安全相关部署至少补以下检查；`<bind-ip>` 使用本机实际绑定地址，公网命令使用最终 HTTPS 域名：
 
 ```bash
