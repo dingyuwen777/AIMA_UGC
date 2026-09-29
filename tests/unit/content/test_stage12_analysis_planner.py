@@ -64,8 +64,17 @@ class _AuditRepository:
         del event
 
 
+@pytest.mark.parametrize(
+    ("targets", "idempotency_key"),
+    (
+        (AnalysisRunTargetSelection(content_ids=(uuid4(),)), "stage12-async-selected"),
+        (AnalysisRunTargetSelection(scope="all"), "stage12-async-all"),
+    ),
+)
 def test_new_analysis_run_defers_target_freeze_to_planner(
     monkeypatch: pytest.MonkeyPatch,
+    targets: AnalysisRunTargetSelection,
+    idempotency_key: str,
 ) -> None:
     """新版创建请求必须保持短事务，不在 HTTP 内扫描或冻结全部目标。"""
 
@@ -139,15 +148,16 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         load_active_configuration,
     )
 
-    def reject_http_target_scan(session: object, targets: object) -> Any:
-        del session, targets
-        raise AssertionError("新版 Analysis Run 不得在 HTTP 请求内扫描目标")
+    def reject_http_target_scan(*args: object, **kwargs: object) -> Any:
+        del args, kwargs
+        raise AssertionError("selected/all Analysis Run 创建不得在 HTTP 请求内扫描目标")
 
     monkeypatch.setattr(service, "_analysis_target_statement", reject_http_target_scan)
+    monkeypatch.setattr(service, "_analysis_target_count", reject_http_target_scan)
     response = service.create_analysis_run(
         AnalysisContentRunCreateRequest(
-            client_idempotency_key="stage12-async-plan",
-            targets=AnalysisRunTargetSelection(content_ids=(uuid4(),)),
+            client_idempotency_key=idempotency_key,
+            targets=targets,
             expected_target_count=1,
             expected_configuration_hash=configuration_hash,
             run_intent="manual_reanalysis",

@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 import pytest
-from aima_ugc.contracts.http import AnalysisRunTargetSelection
+from aima_ugc.contracts.http import AnalysisRunTargetSelection, ContentFilterSnapshot
 from pydantic import ValidationError
 
 
@@ -45,3 +45,32 @@ def test_analysis_run_selected_scope_keeps_existing_bounds() -> None:
             scope="selected",
             content_ids=tuple(uuid4() for _ in range(1001)),
         )
+
+
+def test_analysis_query_scope_requires_filters_and_forbids_explicit_ids() -> None:
+    """Query Scope 只接受筛选快照；Selected/All 不得混入 Query 字段。"""
+
+    content_id = uuid4()
+    query = AnalysisRunTargetSelection(
+        scope="query",
+        filters=ContentFilterSnapshot(platforms=("xiaohongshu",)),
+    )
+    assert query.content_ids == ()
+    assert query.filters is not None
+
+    with pytest.raises(ValidationError):
+        AnalysisRunTargetSelection(scope="query")
+    with pytest.raises(ValidationError):
+        AnalysisRunTargetSelection(
+            scope="query",
+            filters=ContentFilterSnapshot(),
+            content_ids=(content_id,),
+        )
+    with pytest.raises(ValidationError):
+        AnalysisRunTargetSelection(
+            scope="selected",
+            filters=ContentFilterSnapshot(),
+            content_ids=(content_id,),
+        )
+    with pytest.raises(ValidationError):
+        AnalysisRunTargetSelection(scope="all", filters=ContentFilterSnapshot())

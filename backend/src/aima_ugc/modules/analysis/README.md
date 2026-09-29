@@ -545,7 +545,7 @@ SQL 排障见：
 
 ---
 
-## 12. Analysis Run 的 selected / all 范围
+## 12. Analysis Run 的 selected / query / all 范围
 
 声音广场正式 Run 的公共 Scope：
 
@@ -553,13 +553,22 @@ SQL 排障见：
 selected
 → 1—1000 个显式 Content ID
 
+query
+→ 当前已经应用的 ContentFilterSnapshot 命中全集
+→ 不受声音广场分页、已加载条数或列表排序影响
+→ HTTP 只提交筛选快照，不提交全量 Content ID
+
 all
 → 数据库当前全部 Content Current
 → 不受声音广场当前筛选或已加载分页影响
 → HTTP 请求不携带全量 Content ID
 ```
 
-`all` 在 HTTP Contract 中是独立语义；服务端持久化时复用既有 `analysis_content_runs.scope = query`，并保存内部 all 快照标记。Planner 按稳定 Content UUID keyset、连续 `target_ordinal` 分批冻结 `content_id + current_version`。
+`query` 和 `all` 在数据库都复用既有 `analysis_content_runs.scope = query`；`all` 继续用专用内部快照标记区分。Planner 对二者都按稳定 Content UUID keyset、连续 `target_ordinal` 分批冻结 `content_id + current_version`，全部冻结后才调度 Shard。
+
+Query Preview 返回服务端权威目标数；用户确认 Create 时，服务端在一个 PostgreSQL Statement Snapshot 内重新统计并对 `content_id + current_version` 目标全集计算双 64-bit 聚合集合指纹，再把该指纹与筛选快照一起冻结到 Run。若 Preview 后数量已经变化，Create 返回 `content_analysis_target_changed`，前端重新 Preview 后必须由用户再次确认。Planner 虽然跨短事务分批读取，但结束时会对已冻结 Target 再计算同一集合指纹；数量相同但成员发生替换也会 fail closed，不会启动 Shard。历史没有指纹的 query Run 保持原数量核对兼容语义。
+
+因此新 query Run 不需要跨全部批次持有长事务或单一 MVCC Snapshot，同时仍能证明 Planner 最终冻结集合与确认 Create 时集合一致；确认完成后的后续内容或 Analysis 变化不会改写已冻结目标。
 
 所有配置来源的 Provider 下，Shard Size 不由用户配置，而由 Run 创建时冻结的 `max_concurrency` 自动推导；`analysis_content_runs.shard_size` 保存最终值，后续 Provider 修改不影响旧 Run。环境配置同样遵守上述规则。
 

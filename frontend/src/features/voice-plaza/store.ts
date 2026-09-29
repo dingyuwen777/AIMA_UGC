@@ -63,6 +63,8 @@ export interface CommentReplyState {
   totalCount: number
 }
 
+type AnalysisScope = 'selected' | 'query' | 'all'
+
 export interface VoicePlazaFilters {
   search: string
   platform: '' | PlatformName
@@ -343,6 +345,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const error = ref<string | null>(null)
   const listError = ref<string | null>(null)
   let analysisDraft: {
+    scope: AnalysisScope
     targets: AnalysisRunTargetSelection
     clientIdempotencyKey: string
   } | null = null
@@ -494,10 +497,11 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       : { scope, content_ids: [...selectedIds.value] }
   }
 
-  function analysisTargetSelection(scope: 'selected' | 'all'): AnalysisRunTargetSelection {
-    return scope === 'all'
-      ? { scope: 'all' }
-      : { scope: 'selected', content_ids: [...selectedIds.value] }
+  /** Analysis 与列表/Count/Export 共用同一已应用筛选快照；排序和分页不进入目标身份。 */
+  function analysisTargetSelection(scope: AnalysisScope): AnalysisRunTargetSelection {
+    if (scope === 'all') return { scope: 'all' }
+    if (scope === 'query') return { scope: 'query', filters: filterSnapshot() }
+    return { scope: 'selected', content_ids: [...selectedIds.value] }
   }
 
   async function refresh(silent = false): Promise<void> {
@@ -926,7 +930,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   async function previewAnalysis(
-    scope: 'selected' | 'all',
+    scope: AnalysisScope,
   ): Promise<AnalysisContentRunPreviewResponse | null> {
     const revision = ++analysisPreviewRevision
     analysisDraft = null
@@ -949,6 +953,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       const preview = await previewAnalysisRun({ targets })
       if (revision !== analysisPreviewRevision) return null
       analysisDraft = {
+        scope,
         targets,
         clientIdempotencyKey: createClientIdempotencyKey(),
       }
@@ -964,24 +969,36 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
+  /** 确认创建 Run；409 表示确认基线已失效，自动刷新 Preview 但不自动扩大任务。 */
   async function confirmAnalysis(): Promise<number | null> {
     if (!analysisDraft || !analysisPreview.value || previewingAnalysis.value || submittingAnalysis.value) return null
+    const draft = analysisDraft
+    const preview = analysisPreview.value
     submittingAnalysis.value = true
     error.value = null
     try {
       const created = await submitAnalysisRun({
-        client_idempotency_key: analysisDraft.clientIdempotencyKey,
-        expected_configuration_hash: analysisPreview.value.configuration_hash,
-        expected_target_count: analysisPreview.value.target_count,
+        client_idempotency_key: draft.clientIdempotencyKey,
+        expected_configuration_hash: preview.configuration_hash,
+        expected_target_count: preview.target_count,
         run_intent: 'manual_reanalysis',
-        targets: analysisDraft.targets,
+        targets: draft.targets,
       })
       await refreshAnalysisRuns(true)
       analysisDraft = null
       analysisPreview.value = null
       return created.target_count
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (analysisDraft !== draft) return null
+      const message = errorMessage(reason)
+      if (reason instanceof VoicePlazaApiError && reason.status === 409) {
+        const refreshed = await previewAnalysis(draft.scope)
+        error.value = refreshed
+          ? `${message} 已重新预览，请确认最新数量后再次提交。`
+          : error.value || message
+      } else {
+        error.value = message
+      }
       return null
     } finally {
       submittingAnalysis.value = false
