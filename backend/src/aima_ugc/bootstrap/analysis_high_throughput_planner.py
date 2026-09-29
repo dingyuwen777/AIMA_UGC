@@ -156,7 +156,9 @@ class HighThroughputContentAnalysisPlanJobExecutor:
                                     )
                                 else:
                                     frozen_target_count, frozen_fingerprint = (
-                                        repository.frozen_target_snapshot(payload.run_id)
+                                        content_repository.snapshot_frozen_analysis_targets(
+                                            payload.run_id
+                                        )
                                     )
                                     target_changed = (
                                         target_changed
