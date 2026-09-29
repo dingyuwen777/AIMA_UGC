@@ -444,7 +444,10 @@ def test_known_backend_and_frontend_paths_select_targeted_development_evidence()
     unknown_backend = _requirements("backend/src/aima_ugc/bootstrap/unclassified_worker.py")
     ci_self = _requirements(".github/workflows/ci.yml")
 
-    assert analysis.backend_targets == ("tests/unit/analysis",)
+    assert analysis.backend_targets == (
+        "tests/unit/analysis",
+        "tests/unit/content/test_stage12_analysis_planner.py",
+    )
     assert voice.frontend_unit_targets == (
         "frontend/tests/analysis-all-scope.spec.ts",
         "frontend/tests/voice-plaza-design.spec.ts",

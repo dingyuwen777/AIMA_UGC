@@ -115,13 +115,13 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     postgres_job = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
     assert "fonts-noto-cjk" not in postgres_job
     assert (
-        "      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}\n" in postgres_job
+        "      POSTGRES_SUITES: ${{ needs.ci-plan.outputs.postgres_suites }}\n" in postgres_job
     )
     assert "uv run pytest tests/integration/vehicles -q" in postgres_job
 
     assert (
         "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.backend_required == 'true'\n" in text
+        "        if: needs.ci-plan.outputs.backend_required == 'true'\n" in text
     )
 
 

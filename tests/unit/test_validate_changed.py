@@ -29,8 +29,8 @@ def test_validate_changed_reuses_classifier_and_builds_targeted_commands() -> No
 
     rendered = [" ".join(command) for command in commands]
     assert any("pytest tests/unit/analysis -q" in command for command in rendered)
-    assert any("vitest" in command and "frontend/tests/voice-plaza.spec.ts" in command for command in rendered)
-    assert any("playwright test" in command and "frontend/e2e/voice-plaza.spec.ts" in command for command in rendered)
+    assert any("vitest" in command and "tests/voice-plaza.spec.ts" in command for command in rendered)
+    assert any("playwright test" in command and "e2e/voice-plaza.spec.ts" in command for command in rendered)
 
 
 def test_validate_changed_keeps_expensive_external_layers_as_explicit_ci_deferred_items() -> None:
@@ -44,3 +44,25 @@ def test_validate_changed_keeps_expensive_external_layers_as_explicit_ci_deferre
     )
 
     assert deferred == ("PostgreSQL Integration", "Real Full-stack Golden Path")
+
+
+def test_validate_changed_fix_only_formats_changed_python_and_regenerates_contracts() -> None:
+    """--fix 只收敛 changed Python 与真实 generated owner，不格式化无关文件。"""
+    script = runpy.run_path(str(SCRIPT_PATH))
+    commands = script["build_fix_commands"](
+        {
+            "changed_paths": [
+                "backend/src/aima_ugc/modules/analysis/content_analysis_job.py",
+                "frontend/src/features/voice-plaza/store.ts",
+            ],
+            "contract_required": True,
+        }
+    )
+    rendered = [" ".join(command) for command in commands]
+    assert any(
+        "ruff format backend/src/aima_ugc/modules/analysis/content_analysis_job.py" in command
+        for command in rendered
+    )
+    assert any("scripts/contracts/generate.py" in command for command in rendered)
+    assert any("frontend run generate:api" in command for command in rendered)
+    assert all("frontend/src/features/voice-plaza/store.ts" not in command for command in rendered)

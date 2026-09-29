@@ -153,7 +153,7 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     """普通 Ready 保留产品证据 Runner；Hygiene 只在 main push 后占用维护 Runner。"""
     ci = CI.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
-    assert ci.count("runs-on: ubuntu-24.04") == 4
+    assert ci.count("runs-on: ubuntu-24.04") == 5
     assert "  actions-hygiene:" in ci
     hygiene = ci.split("  actions-hygiene:", 1)[1]
     assert "github.event_name == 'push'" in hygiene
@@ -182,7 +182,7 @@ def test_backend_unit_suite_installs_cjk_font_prerequisite() -> None:
     text = CI.read_text(encoding="utf-8")
     assert (
         "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.backend_required == 'true'\n" in text
+        "        if: needs.ci-plan.outputs.backend_required == 'true'\n" in text
     )
     assert text.index("Install report validation CJK font") < text.index(
         "Unit, Contract and API tests"

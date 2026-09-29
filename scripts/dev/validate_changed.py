@@ -67,6 +67,32 @@ def _all_or_targets(
     return [(*targeted_prefix, *selected, "-q")]
 
 
+def _frontend_relative(paths: list[str]) -> tuple[str, ...]:
+    """把 classifier 的仓库相对路径转换为 frontend package 相对路径。"""
+    return tuple(path.removeprefix("frontend/") for path in paths)
+
+
+def build_fix_commands(requirements: dict[str, Any]) -> list[tuple[str, ...]]:
+    """生成提交前可安全收敛的 formatter/generated 命令，不复制风险分类。"""
+    commands: list[tuple[str, ...]] = []
+    changed_python = tuple(
+        path
+        for path in requirements.get("changed_paths", [])
+        if path.endswith(".py")
+        and path.startswith(("backend/", "tests/", "scripts/", "migrations/"))
+    )
+    if changed_python:
+        commands.append(("uv", "run", "ruff", "format", *changed_python))
+    if requirements.get("contract_required"):
+        commands.extend(
+            [
+                ("uv", "run", "python", "scripts/contracts/generate.py"),
+                ("npm", "--prefix", "frontend", "run", "generate:api"),
+            ]
+        )
+    return commands
+
+
 def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, ...]]:
     """根据 classifier 输出构造无外部服务副作用的本地验证命令。"""
     commands: list[tuple[str, ...]] = []
@@ -121,7 +147,7 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
                     "--",
                     "vitest",
                     "run",
-                    *unit_targets,
+                    *_frontend_relative(unit_targets),
                 )
             )
         commands.append(("npm", "--prefix", "frontend", "run", "build"))
@@ -138,7 +164,7 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
                     "--",
                     "playwright",
                     "test",
-                    *e2e_specs,
+                    *_frontend_relative(e2e_specs),
                 )
             )
     return commands
@@ -147,6 +173,8 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
 def deferred_ci_layers(requirements: dict[str, Any]) -> tuple[str, ...]:
     """列出默认不在本地伪造、继续由正式 CI 证明的真实重依赖层。"""
     deferred: list[str] = []
+    if requirements.get("repository_quality_required") and not requirements.get("backend_required"):
+        deferred.append("Repository Quality")
     if requirements.get("postgres_required"):
         deferred.append("PostgreSQL Integration")
     if requirements.get("fullstack_required"):
@@ -162,6 +190,11 @@ def _print_plan(requirements: dict[str, Any], commands: list[tuple[str, ...]]) -
     )
     for path in requirements.get("changed_paths", []):
         print(f"- {path}")
+    fix_commands = build_fix_commands(requirements)
+    if fix_commands:
+        print("Optional fix before validation:")
+        for command in fix_commands:
+            print("  " + " ".join(command))
     print("Local validation:")
     for command in commands:
         print("  " + " ".join(command))
@@ -184,6 +217,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", help="Git 基线；默认 origin/main，其次 main")
     parser.add_argument("--head", default="HEAD", help="Git 目标 revision，默认 HEAD")
+    parser.add_argument("--fix", action="store_true", help="先收敛 changed Python 格式和 generated artifacts")
     parser.add_argument("--execute", action="store_true", help="执行本地稳定验证层")
     parser.add_argument("--json", action="store_true", help="输出 classifier JSON")
     args = parser.parse_args()
@@ -195,6 +229,8 @@ def main() -> int:
         print(json.dumps(requirements, ensure_ascii=False, sort_keys=True))
     else:
         _print_plan(requirements, commands)
+    if args.fix:
+        _execute(build_fix_commands(requirements))
     if args.execute:
         _execute(commands)
     return 0

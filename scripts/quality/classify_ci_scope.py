@@ -51,6 +51,7 @@ CI_SELF_EXACT = {
     "tests/unit/test_ci_workflow_structure.py",
     "tests/unit/test_ci_main_evidence_reuse.py",
     "tests/unit/test_actions_runner_optimization.py",
+    "tests/unit/test_validate_changed.py",
 }
 REPOSITORY_QUALITY_EXACT = {
     "scripts/quality/actions_hygiene.py",
@@ -708,7 +709,7 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
 
     if backend_required and (backend_has_unmapped or not backend_targets):
         backend_targets.update(BACKEND_ALL)
-    if frontend_required and (frontend_has_unmapped or not frontend_unit_targets or not frontend_e2e_specs):
+    if frontend_required and frontend_has_unmapped:
         frontend_unit_targets.update(FRONTEND_ALL)
         frontend_e2e_specs.update(FRONTEND_ALL)
 
