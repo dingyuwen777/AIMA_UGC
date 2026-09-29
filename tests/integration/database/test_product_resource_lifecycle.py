@@ -381,9 +381,7 @@ def test_published_analysis_scheme_delete_hides_resource_but_preserves_run_snaps
 
             deleted_row = (
                 session.execute(
-                    select(analysis_schemes_table).where(
-                        analysis_schemes_table.c.id == scheme_id
-                    )
+                    select(analysis_schemes_table).where(analysis_schemes_table.c.id == scheme_id)
                 )
                 .mappings()
                 .one()
