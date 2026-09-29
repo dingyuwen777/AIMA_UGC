@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-161142-final-merge-ci
 title: PR最终合并CI门禁与重复执行优化
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: tech/663-final-merge-ci
 created: 2026-09-29
