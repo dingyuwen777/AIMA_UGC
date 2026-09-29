@@ -440,14 +440,210 @@ test('导入记录查看声音时不继承会话中陈旧筛选', async ({ page 
   expect(url.searchParams.get('search')).toBeNull()
 })
 
+test('旧 secondary-only 深链跨 building 到 ready 始终保持原查询语义', async ({ page }) => {
+  await page.unroute('**/api/v1/content-filter-options')
+  let filterOptionsReads = 0
+  await page.route('**/api/v1/content-filter-options', async (route) => {
+    filterOptionsReads += 1
+    const labels = filterOptionsReads === 1
+      ? [{
+          primary_label: '产品体验',
+          source: 'active',
+          secondary_labels: [{ value: '续航表现', source: 'active' }],
+        }]
+      : [
+          {
+            primary_label: '产品体验',
+            source: 'active',
+            secondary_labels: [{ value: '续航表现', source: 'active' }],
+          },
+          {
+            primary_label: '服务体验',
+            source: 'active',
+            secondary_labels: [{ value: '续航表现', source: 'active' }],
+          },
+        ]
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...voicePlazaFilterOptionsFixture,
+        catalog_status: filterOptionsReads === 1 ? 'building' : 'ready',
+        labels,
+      }),
+    })
+  })
+
+  const listRequests: URLSearchParams[] = []
+  const countFilters: Array<{ primary_labels?: string[], secondary_labels?: string[] }> = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname === '/api/v1/contents') {
+      listRequests.push(url.searchParams)
+    }
+    if (request.method() === 'POST' && url.pathname === '/api/v1/contents/count') {
+      const body = request.postDataJSON() as {
+        filters?: { primary_labels?: string[], secondary_labels?: string[] }
+      }
+      countFilters.push(body.filters ?? {})
+    }
+  })
+
+  await page.goto('/voice-plaza?secondary_label=续航表现')
+  await expect(page.getByText(/当前保留旧版兼容筛选：二级「续航表现」/)).toBeVisible()
+  await expect.poll(() => filterOptionsReads, { timeout: 20_000 }).toBeGreaterThanOrEqual(2)
+
+  const secondaryOnlyLists = listRequests.filter((params) =>
+    params.getAll('secondary_labels').includes('续航表现'),
+  )
+  expect(secondaryOnlyLists.length).toBeGreaterThan(0)
+  expect(secondaryOnlyLists.every((params) => params.getAll('primary_labels').length === 0)).toBe(true)
+  const secondaryOnlyCounts = countFilters.filter((filters) =>
+    filters.secondary_labels?.includes('续航表现') === true,
+  )
+  expect(secondaryOnlyCounts.length).toBeGreaterThan(0)
+  expect(secondaryOnlyCounts.every((filters) => (filters.primary_labels?.length ?? 0) === 0)).toBe(true)
+
+  const persisted = await page.evaluate(() => JSON.parse(
+    sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+  ))
+  expect(persisted.filters).toMatchObject({
+    primaryLabels: [],
+    secondaryLabels: ['续航表现'],
+  })
+  expect(persisted.legacyLabelCompatibility).toEqual({
+    primaryLabels: [],
+    secondaryLabels: ['续航表现'],
+  })
+
+  // 用户主动选择当前父级并提交，compatibility 才清除并进入层级规则。
+  const filters = page.locator('section.filters')
+  const primaryField = filters.locator('.filter-row--tertiary .field').nth(0)
+  await filters.getByLabel('一级标签', { exact: true }).click()
+  await primaryField.getByRole('checkbox', { name: '服务体验' }).check()
+  const currentQuery = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return request.method() === 'GET'
+      && url.pathname === '/api/v1/contents'
+      && url.searchParams.getAll('primary_labels').includes('服务体验')
+      && url.searchParams.getAll('secondary_labels').includes('续航表现')
+  })
+  await page.getByRole('button', { name: '查询' }).click()
+  await currentQuery
+  await expect(page.getByText(/当前保留旧版兼容筛选/)).toHaveCount(0)
+
+  const migrated = await page.evaluate(() => JSON.parse(
+    sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+  ))
+  expect(migrated.legacyLabelCompatibility).toBeNull()
+  expect(migrated.filters).toMatchObject({
+    primaryLabels: ['服务体验'],
+    secondaryLabels: ['续航表现'],
+  })
+})
+
+test('旧 cross-parent singular 深链在目录加载后保持原 AND 语义并明确提示', async ({ page }) => {
+  const listRequests: URLSearchParams[] = []
+  const countFilters: Array<{ primary_labels?: string[], secondary_labels?: string[] }> = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname === '/api/v1/contents') {
+      listRequests.push(url.searchParams)
+    }
+    if (request.method() === 'POST' && url.pathname === '/api/v1/contents/count') {
+      const body = request.postDataJSON() as {
+        filters?: { primary_labels?: string[], secondary_labels?: string[] }
+      }
+      countFilters.push(body.filters ?? {})
+    }
+  })
+
+  await page.goto(
+    '/voice-plaza?primary_label=产品体验&secondary_label=客服与服务态度',
+  )
+  await expect(page.getByText(/当前保留旧版兼容筛选：一级「产品体验」 AND 二级「客服与服务态度」/))
+    .toBeVisible()
+
+  await expect.poll(() => listRequests.length).toBeGreaterThan(0)
+  await expect.poll(() => countFilters.length).toBeGreaterThan(0)
+  expect(listRequests.some((params) =>
+    params.getAll('primary_labels').includes('产品体验')
+      && params.getAll('secondary_labels').includes('客服与服务态度'),
+  )).toBe(true)
+  expect(listRequests.some((params) =>
+    params.getAll('primary_labels').includes('产品体验')
+      && params.getAll('secondary_labels').length === 0,
+  )).toBe(false)
+  expect(countFilters.some((filters) =>
+    filters.primary_labels?.includes('产品体验') === true
+      && filters.secondary_labels?.includes('客服与服务态度') === true,
+  )).toBe(true)
+  expect(countFilters.some((filters) =>
+    filters.primary_labels?.includes('产品体验') === true
+      && (filters.secondary_labels?.length ?? 0) === 0,
+  )).toBe(false)
+
+  const persisted = await page.evaluate(() => JSON.parse(
+    sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+  ))
+  expect(persisted.filters).toMatchObject({
+    primaryLabels: ['产品体验'],
+    secondaryLabels: ['客服与服务态度'],
+  })
+  expect(persisted.legacyLabelCompatibility).toEqual({
+    primaryLabels: ['产品体验'],
+    secondaryLabels: ['客服与服务态度'],
+  })
+})
+
+test('旧 catalog-missing singular 深链在目录加载后仍保留精确条件', async ({ page }) => {
+  const listRequests: URLSearchParams[] = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname === '/api/v1/contents') {
+      listRequests.push(url.searchParams)
+    }
+  })
+
+  await page.goto(
+    '/voice-plaza?primary_label=已下线一级&secondary_label=已下线二级',
+  )
+  await expect(page.getByText(/当前保留旧版兼容筛选：一级「已下线一级」 AND 二级「已下线二级」/))
+    .toBeVisible()
+
+  await expect.poll(() => listRequests.length).toBeGreaterThan(0)
+  expect(listRequests.some((params) =>
+    params.getAll('primary_labels').includes('已下线一级')
+      && params.getAll('secondary_labels').includes('已下线二级'),
+  )).toBe(true)
+  expect(listRequests.some((params) =>
+    params.getAll('primary_labels').length === 0
+      && params.getAll('secondary_labels').length === 0,
+  )).toBe(false)
+
+  const persisted = await page.evaluate(() => JSON.parse(
+    sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+  ))
+  expect(persisted.legacyLabelCompatibility).toEqual({
+    primaryLabels: ['已下线一级'],
+    secondaryLabels: ['已下线二级'],
+  })
+})
+
 test('loads backend filter options and submits voice type with dependent labels', async ({ page }) => {
   await page.goto('/voice-plaza')
 
   await expect(page.getByLabel('发声类型', { exact: true })).toBeVisible()
   await page.locator('label.field--voice-type select').selectOption('真实用户发声')
   await page.locator('label.field--sentiment select').selectOption('负面')
-  await page.locator('label.field--label select').nth(0).selectOption('电池、续航与充电')
-  await page.locator('label.field--label select').nth(1).selectOption('实际续航表现')
+
+  const filters = page.locator('section.filters')
+  const primaryField = filters.locator('.filter-row--tertiary .field').nth(0)
+  const secondaryField = filters.locator('.filter-row--tertiary .field').nth(1)
+  await filters.getByLabel('一级标签', { exact: true }).click()
+  await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
+  await filters.getByLabel('二级标签', { exact: true }).click()
+  await secondaryField.getByRole('checkbox', { name: '实际续航表现', exact: true }).check()
+
   await page.getByRole('button', { name: '选择品牌', exact: true }).click()
   const brandDialog = page.getByRole('dialog', { name: '选择品牌', exact: true })
   await brandDialog.getByLabel(/爱玛/).check()
@@ -464,8 +660,10 @@ test('loads backend filter options and submits voice type with dependent labels'
 
   expect(params.get('voice_type')).toBe('真实用户发声')
   expect(params.get('sentiment')).toBe('负面')
-  expect(params.get('primary_label')).toBe('电池、续航与充电')
-  expect(params.get('secondary_label')).toBe('实际续航表现')
+  expect(params.getAll('primary_labels')).toEqual(['电池、续航与充电'])
+  expect(params.getAll('secondary_labels')).toEqual(['实际续航表现'])
+  expect(params.get('primary_label')).toBeNull()
+  expect(params.get('secondary_label')).toBeNull()
   expect(params.get('brand_ids')).toBe(brandId)
   expect(params.get('competition_scopes')).toBe('owned_only')
 })
@@ -571,10 +769,59 @@ test('keeps stable filters and content usable when dynamic filter options are un
   for (const label of ['平台', '相关性', '状态']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeEnabled()
   }
-  for (const label of ['情感', '发声类型', '内容类型', '一级标签', '二级标签']) {
+  for (const label of ['情感', '发声类型', '内容类型']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeDisabled()
   }
+  for (const label of ['一级标签', '二级标签']) {
+    await expect(filters.getByLabel(label, { exact: true })).toHaveAttribute('aria-disabled', 'true')
+  }
   await expect(page.getByText(item.title)).toBeVisible()
+})
+
+test('一级标签多选约束二级候选，父级取消后失效二级不会进入查询', async ({ page }) => {
+  await page.goto('/voice-plaza')
+  const filters = page.locator('section.filters')
+  const primarySummary = filters.getByLabel('一级标签', { exact: true })
+  const secondarySummary = filters.getByLabel('二级标签', { exact: true })
+  const primaryField = filters.locator('.filter-row--tertiary .field').nth(0)
+  const secondaryField = filters.locator('.filter-row--tertiary .field').nth(1)
+
+  await expect(secondarySummary).toHaveAttribute('aria-disabled', 'true')
+  await expect(secondarySummary).toContainText('请先选择一级标签')
+
+  await primarySummary.click()
+  await primaryField.getByRole('checkbox', { name: '产品体验' }).check()
+  await expect(secondarySummary).toHaveAttribute('aria-disabled', 'false')
+
+  await secondarySummary.click()
+  await expect(secondaryField.getByRole('checkbox', { name: '续航表现' })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '通勤体验' })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toHaveCount(0)
+
+  await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
+  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toBeVisible()
+  await secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }).check()
+  await secondaryField.getByRole('checkbox', { name: '实际续航表现' }).check()
+  await expect(secondarySummary).toContainText('已选 2 个二级标签')
+
+  await primaryField.getByRole('checkbox', { name: '产品体验' }).uncheck()
+  await expect(
+    secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }),
+  ).toHaveCount(0)
+  await expect(secondarySummary).toContainText('已选 1 个二级标签')
+
+  const requestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return request.method() === 'GET'
+      && url.pathname === '/api/v1/contents'
+      && url.searchParams.getAll('primary_labels').includes('电池、续航与充电')
+  })
+  await page.getByRole('button', { name: '查询' }).click()
+  const request = await requestPromise
+  const url = new URL(request.url())
+  expect(url.searchParams.getAll('primary_labels')).toEqual(['电池、续航与充电'])
+  expect(url.searchParams.getAll('secondary_labels')).toEqual(['实际续航表现'])
+  expect(url.searchParams.getAll('secondary_labels')).not.toContain('续航表现')
 })
 
 test('restores the applied platform filter after leaving and reloading the page', async ({ page }) => {

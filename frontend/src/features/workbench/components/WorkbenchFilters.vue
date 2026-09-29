@@ -40,14 +40,17 @@ const primaryLabelOptions = computed<WorkbenchSelectOption[]>(() =>
     label: item.primary_label,
   })),
 )
-const secondaryLabelOptions = computed<WorkbenchSelectOption[]>(() =>
-  (props.taxonomy?.labels ?? []).flatMap((item) =>
-    item.secondary_labels.map((value) => ({
-      value,
-      label: `${item.primary_label} / ${value}`,
-    })),
-  ),
-)
+const secondaryLabelOptions = computed<WorkbenchSelectOption[]>(() => {
+  const selectedPrimaryLabels = new Set(props.modelValue.primaryLabels)
+  return (props.taxonomy?.labels ?? [])
+    .filter((item) => selectedPrimaryLabels.has(item.primary_label))
+    .flatMap((item) =>
+      item.secondary_labels.map((value) => ({
+        value,
+        label: `${item.primary_label} / ${value}`,
+      })),
+    )
+})
 const brandOptions = computed<WorkbenchSelectOption[]>(() =>
   props.brands.map((item) => ({ value: item.id, label: item.display_name })),
 )
@@ -117,8 +120,10 @@ function updateDateRange(value: { from: string; to: string }): void {
     />
     <WorkbenchMultiSelect
       label="二级标签"
+      :all-label="modelValue.primaryLabels.length ? '全部二级标签' : '请先选择一级标签'"
       :model-value="modelValue.secondaryLabels"
       :options="secondaryLabelOptions"
+      :disabled="modelValue.primaryLabels.length === 0"
       @update:model-value="updateArray('secondaryLabels', $event)"
     />
     <AimaDateRange

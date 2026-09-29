@@ -643,11 +643,40 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
                 relevance="relevant",
                 voice_type="真实用户发声",
                 sentiment="负面",
+                primary_labels=("电池、续航与充电", "售后服务"),
+                secondary_labels=("实际续航表现", "客服与服务态度"),
+            )
+        )
+        assert [item.id for item in filtered.items] == [content_ids[0]]
+
+        # 一级与二级分别按同维度 OR、跨维度 AND；它们不要求来自同一 label pair。
+        cross_pair = content_service.list_contents(
+            ContentListQuery(
+                primary_labels=("电池、续航与充电",),
+                secondary_labels=("客服与服务态度",),
+            )
+        )
+        assert [item.id for item in cross_pair.items] == [content_ids[0]]
+
+        with runtime.database.engine.begin() as connection:
+            connection.execute(update(voice_plaza_projection_state_table).values(status="pending"))
+        fallback_cross_pair = content_service.list_contents(
+            ContentListQuery(
+                primary_labels=("电池、续航与充电",),
+                secondary_labels=("客服与服务态度",),
+            )
+        )
+        assert [item.id for item in fallback_cross_pair.items] == [content_ids[0]]
+        with runtime.database.engine.begin() as connection:
+            connection.execute(update(voice_plaza_projection_state_table).values(status="ready"))
+
+        legacy_filtered = content_service.list_contents(
+            ContentListQuery(
                 primary_label="电池、续航与充电",
                 secondary_label="实际续航表现",
             )
         )
-        assert [item.id for item in filtered.items] == [content_ids[0]]
+        assert [item.id for item in legacy_filtered.items] == [content_ids[0]]
 
         reporting = PostgresReportingHttpService(runtime)
         export_created = reporting.create_export(

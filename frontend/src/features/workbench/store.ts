@@ -102,14 +102,20 @@ function sanitizeTaxonomyFilters(
 ): WorkbenchFilters {
   const sentiments = new Set(taxonomy.sentiments)
   const voiceTypes = new Set(taxonomy.voice_types)
-  const primaryLabels = new Set(taxonomy.labels.map((item) => item.primary_label))
-  const secondaryLabels = new Set(taxonomy.labels.flatMap((item) => item.secondary_labels))
+  const validPrimaryLabels = new Set(taxonomy.labels.map((item) => item.primary_label))
+  const primaryLabels = filters.primaryLabels.filter((value) => validPrimaryLabels.has(value))
+  const selectedPrimaryLabels = new Set(primaryLabels)
+  const validSecondaryLabels = new Set(
+    taxonomy.labels
+      .filter((item) => selectedPrimaryLabels.has(item.primary_label))
+      .flatMap((item) => item.secondary_labels),
+  )
   return {
     ...filters,
     sentiments: filters.sentiments.filter((value) => sentiments.has(value)),
     voiceTypes: filters.voiceTypes.filter((value) => voiceTypes.has(value)),
-    primaryLabels: filters.primaryLabels.filter((value) => primaryLabels.has(value)),
-    secondaryLabels: filters.secondaryLabels.filter((value) => secondaryLabels.has(value)),
+    primaryLabels,
+    secondaryLabels: filters.secondaryLabels.filter((value) => validSecondaryLabels.has(value)),
   }
 }
 
@@ -163,14 +169,17 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   const primaryLabelOptions = computed(() =>
     taxonomy.value?.labels.filter((item) => item.primary_label !== '无法分类') ?? [],
   )
-  const secondaryLabelOptions = computed(() =>
-    primaryLabelOptions.value.flatMap((item) =>
-      item.secondary_labels.map((value) => ({
-        value,
-        label: `${item.primary_label} / ${value}`,
-      })),
-    ),
-  )
+  const secondaryLabelOptions = computed(() => {
+    const selected = new Set(filters.value.primaryLabels)
+    return primaryLabelOptions.value
+      .filter((item) => selected.has(item.primary_label))
+      .flatMap((item) =>
+        item.secondary_labels.map((value) => ({
+          value,
+          label: `${item.primary_label} / ${value}`,
+        })),
+      )
+  })
   const currentModules = computed(() => {
     const source = editing.value ? draftModules.value : layout.value?.modules ?? []
     return sortedModules(source)
@@ -471,7 +480,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   function setFilters(value: WorkbenchFilters): void {
     const dates = [value.dateFrom, value.dateTo].filter(Boolean).sort()
     const defaultDates = defaultFilters()
-    filters.value = {
+    const nextFilters: WorkbenchFilters = {
       ...value,
       dateFrom: dates[0] ?? defaultDates.dateFrom,
       dateTo: dates[1] ?? dates[0] ?? defaultDates.dateTo,
@@ -483,6 +492,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       primaryLabels: [...value.primaryLabels],
       secondaryLabels: [...value.secondaryLabels],
     }
+    filters.value = taxonomy.value
+      ? sanitizeTaxonomyFilters(nextFilters, taxonomy.value)
+      : nextFilters
     dataRevision += 1
     // 旧响应属于另一组筛选，不能在新筛选下冒充“最近成功结果”。服务端若已有
     // 相同筛选快照会立即返回；冷筛选则返回明确 preparing 状态。
