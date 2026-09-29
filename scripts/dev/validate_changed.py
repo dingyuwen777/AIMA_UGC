@@ -87,15 +87,21 @@ def _frontend_relative(paths: list[str]) -> tuple[str, ...]:
     return tuple(path.removeprefix("frontend/") for path in paths)
 
 
+def _existing_python_paths(paths: list[str]) -> tuple[str, ...]:
+    """只返回仍存在的 changed Python 文件，删除项只参与影响面分类。"""
+    return tuple(
+        path
+        for path in paths
+        if path.endswith(".py")
+        and path.startswith(("backend/", "tests/", "scripts/", "migrations/"))
+        and (ROOT / path).is_file()
+    )
+
+
 def build_fix_commands(requirements: dict[str, Any]) -> list[tuple[str, ...]]:
     """生成提交前可安全收敛的 formatter/generated 命令，不复制风险分类。"""
     commands: list[tuple[str, ...]] = []
-    changed_python = tuple(
-        path
-        for path in requirements.get("changed_paths", [])
-        if path.endswith(".py")
-        and path.startswith(("backend/", "tests/", "scripts/", "migrations/"))
-    )
+    changed_python = _existing_python_paths(requirements.get("changed_paths", []))
     if changed_python:
         commands.append(("uv", "run", "ruff", "format", *changed_python))
     if requirements.get("contract_required"):
@@ -113,12 +119,7 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
     commands: list[tuple[str, ...]] = []
 
     if requirements.get("backend_required"):
-        changed_python = tuple(
-            path
-            for path in requirements.get("changed_paths", [])
-            if path.endswith(".py")
-            and path.startswith(("backend/", "tests/", "scripts/", "migrations/"))
-        )
+        changed_python = _existing_python_paths(requirements.get("changed_paths", []))
         if changed_python:
             commands.append(("uv", "run", "ruff", "format", "--check", *changed_python))
             commands.append(("uv", "run", "ruff", "check", *changed_python))

@@ -27,10 +27,12 @@ from aima_ugc.adapters.persistence.postgres.provider_lifecycle import (
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
+from aima_ugc.modules.analysis import CONTENT_LABELING_PROMPT_PATH
 from aima_ugc.modules.analysis.scheme_tables import (
     analysis_scheme_versions_table,
     analysis_schemes_table,
 )
+from aima_ugc.modules.analysis.schemes import bootstrap_definition_from_prompt
 from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.modules.collection.corrective_tables import (
     collection_plan_decision_policies_table,
@@ -51,11 +53,8 @@ from sqlalchemy import delete, insert, select, update
 
 
 def _analysis_definition() -> AnalysisSchemeDefinitionRequest:
-    return AnalysisSchemeDefinitionRequest(
-        prompt_template="分析内容。\n{{AIMA_TAXONOMY_JSON}}\n仅输出 JSON。",
-        sentiments=("正面", "负面", "无法判断"),
-        voice_types=("用户发声", "营销内容", "无法判断"),
-        labels={"产品体验": ("质量",), "无法分类": ("无法判断",)},
+    return bootstrap_definition_from_prompt(
+        CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     )
 
 

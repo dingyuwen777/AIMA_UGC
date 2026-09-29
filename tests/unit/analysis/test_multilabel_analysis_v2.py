@@ -94,7 +94,9 @@ def _model_item(
         "relevance_evidence": ["爱玛"],
         "source_type": "ordinary_consumer",
         "content_intent": "organic_experience",
-        "voice_type": taxonomy.semantic_rules.ordinary_consumer_organic_voice_type,
+        "voice_type": (
+            taxonomy.semantic_rules.ordinary_consumer_organic_voice_type_when_not_qualified
+        ),
         "voice_evidence": ["动力不错"],
         "sentiment": taxonomy.sentiments[0],
         "sentiment_evidence": ["动力不错"],

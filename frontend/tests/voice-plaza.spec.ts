@@ -74,7 +74,7 @@ const item = {
 }
 
 const taxonomy = {
-  prompt_version: 'content-labeling.v3',
+  prompt_version: 'content-labeling.v3.0',
   prompt_sha256: 'a'.repeat(64),
   schema_version: 'aima-content-taxonomy.v2',
   taxonomy_sha256: 'b'.repeat(64),
@@ -1121,7 +1121,7 @@ describe('voice plaza', () => {
       target_count: 1,
       shard_count: 1,
       shard_size: 1,
-      prompt_version: 'content_labeling_v3',
+      prompt_version: 'content-labeling.v3.0',
       prompt_sha256: 'a'.repeat(64),
       taxonomy_sha256: 'b'.repeat(64),
       model_provider: 'openai-compatible',
@@ -1174,7 +1174,7 @@ describe('voice plaza', () => {
       target_count: targetCount,
       shard_count: 1,
       shard_size: 100,
-      prompt_version: 'content_labeling_v3',
+      prompt_version: 'content-labeling.v3.0',
       prompt_sha256: 'a'.repeat(64),
       taxonomy_sha256: 'b'.repeat(64),
       model_provider: 'openai-compatible',
