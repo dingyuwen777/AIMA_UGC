@@ -27,12 +27,13 @@ def test_pr_heavy_workflows_do_not_rerun_on_every_synchronize() -> None:
         assert "- ready_for_review" in trigger
 
 
-def test_ci_consolidates_ubuntu_core_without_losing_required_contexts() -> None:
-    """统一 Core 必须承接 Scope/Governance/Completion/Repository Quality 责任。"""
+def test_ci_plan_separates_scope_from_core_without_losing_required_contexts() -> None:
+    """轻量 CI Plan 只拥有 scope；required Core/Gate 身份保持不变。"""
     text = CI.read_text(encoding="utf-8")
+    assert "  ci-plan:\n" in text
+    assert "name: CI Plan" in text
     assert "name: Requirement Traceability and Completion Audit" in text
     assert "name: CI Gate" in text
-    assert "name: CI Scope" not in text
     assert "name: Docs and Governance" not in text
     assert "name: Repository Quality" not in text
     assert "Verify PR Requirement Source" in text
@@ -153,14 +154,14 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     """普通 Ready 保留产品证据 Runner；Hygiene 只在 main push 后占用维护 Runner。"""
     ci = CI.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
-    assert ci.count("runs-on: ubuntu-24.04") == 4
+    assert ci.count("runs-on: ubuntu-24.04") == 5
     assert "  actions-hygiene:" in ci
     hygiene = ci.split("  actions-hygiene:", 1)[1]
     assert "github.event_name == 'push'" in hygiene
     assert "github.ref == 'refs/heads/main'" in hygiene
     assert "needs: ci-gate" in hygiene
     assert runtime.count("runs-on: ubuntu-24.04") == 1
-    assert "needs: quality-core" in ci
+    assert "needs: ci-plan" in ci
     assert "Block Draft required evidence" in ci
     assert "Block Draft required evidence" in runtime
     assert "github.event.pull_request.draft == false" not in ci
@@ -204,6 +205,22 @@ def test_main_push_reuses_same_tree_pr_evidence_without_changing_required_names(
     assert '--required-check "Compose Golden Path"' in runtime
     assert "Reuse merged PR Runtime evidence" in runtime
     assert "name: Compose Golden Path" in runtime
+
+
+def test_ci_plan_releases_postgres_and_fullstack_before_core_finishes() -> None:
+    """PostgreSQL/Full-stack 只依赖轻量 plan，不再等待完整 Core。"""
+    text = CI.read_text(encoding="utf-8")
+    plan = _section(text, "  ci-plan:\n", "  quality-core:\n")
+    postgres = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
+    fullstack = _section(text, "  real-fullstack:\n", "  ci-gate:\n")
+
+    assert "Classify changed scope" in plan
+    assert "Unit, Contract and API tests" not in plan
+    assert "Frontend unit, build and Browser Mock Acceptance" not in plan
+    assert "needs: ci-plan" in postgres
+    assert "needs: quality-core" not in postgres
+    assert "needs: ci-plan" in fullstack
+    assert "needs: quality-core" not in fullstack
 
 
 def test_postgres_workflow_executes_exact_targets_before_domain_suites() -> None:

@@ -70,6 +70,39 @@ def test_frontend_only_keeps_browser_quality_without_postgres_or_real_fullstack(
     assert requirements.stack_smoke_required is False
 
 
+def test_known_backend_domain_selects_targeted_tests_while_unknown_backend_falls_back_all() -> None:
+    analysis = _requirements("backend/src/aima_ugc/modules/analysis/content_analysis_job.py")
+    shared = _requirements("backend/src/aima_ugc/platform/time.py")
+
+    assert analysis.backend_targets
+    assert "all" not in analysis.backend_targets
+    assert "tests/unit/analysis" in analysis.backend_targets
+    assert shared.backend_targets == ("all",)
+
+
+def test_known_frontend_feature_selects_targeted_unit_and_browser_tests() -> None:
+    voice = _requirements(
+        "frontend/src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue"
+    )
+    shared = _requirements("frontend/src/shared/ui/AimaMultiSelect.vue")
+
+    assert voice.frontend_unit_targets
+    assert voice.frontend_browser_targets
+    assert "all" not in voice.frontend_unit_targets
+    assert "all" not in voice.frontend_browser_targets
+    assert shared.frontend_unit_targets == ("all",)
+    assert shared.frontend_browser_targets == ("all",)
+
+
+def test_changed_backend_and_frontend_test_files_are_direct_targets() -> None:
+    backend = _requirements("tests/unit/content/test_content_cursor.py")
+    frontend = _requirements("frontend/tests/voice-plaza.spec.ts")
+
+    assert backend.backend_targets == ("tests/unit/content/test_content_cursor.py",)
+    assert frontend.frontend_unit_targets == ("tests/voice-plaza.spec.ts",)
+    assert frontend.frontend_browser_targets == ()
+
+
 def test_backend_non_persistence_change_can_skip_postgres_and_real_fullstack() -> None:
     requirements = _requirements("backend/src/aima_ugc/platform/time.py")
 
@@ -425,6 +458,9 @@ def test_github_output_exposes_each_required_layer_and_selected_suites(tmp_path:
     assert values["frontend_required"] == "false"
     assert values["contract_required"] == "false"
     assert values["postgres_required"] == "true"
+    assert values["backend_targets"]
+    assert values["frontend_unit_targets"] == ""
+    assert values["frontend_browser_targets"] == ""
     assert values["postgres_targets"] == ""
     assert values["postgres_suites"] == "content ingestion"
     assert values["frontend_audit_required"] == "false"
