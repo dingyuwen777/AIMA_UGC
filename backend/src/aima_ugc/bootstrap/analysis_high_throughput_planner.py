@@ -73,13 +73,15 @@ class HighThroughputContentAnalysisPlanJobExecutor:
                         run = repository.get_run(payload.run_id, for_update=True)
                         if run is None:
                             return JobHandlerResult.failed("analysis_run_not_found")
-                        all_scope = is_analysis_all_scope_filter_snapshot(run["filter_snapshot"])
                         if run["cancel_requested_at"] is not None:
                             return JobHandlerResult.cancelled()
 
+                        all_scope = is_analysis_all_scope_filter_snapshot(run["filter_snapshot"])
+                        query_scope = run["scope"] == "query" and not all_scope
                         expected_target_count = cast(int, run["target_count"])
                         frozen_count = repository.next_frozen_target_ordinal(payload.run_id)
-                        if not all_scope:
+
+                        if not all_scope and not query_scope:
                             if frozen_count == 0:
                                 frozen_count = repository.freeze_run_targets(
                                     run_id=payload.run_id,
@@ -109,17 +111,34 @@ class HighThroughputContentAnalysisPlanJobExecutor:
 
                         content_repository = PostgresContentQueryRepository(
                             session,
-                            analysis_identity=None,
+                            analysis_identity=(
+                                None if all_scope else _analysis_identity_from_run(run)
+                            ),
                         )
-                        batch = content_repository.list_all_analysis_targets(
-                            after_content_id=repository.last_frozen_content_id(payload.run_id),
-                            limit=self._freeze_batch_size,
-                        )
+                        after_content_id = repository.last_frozen_content_id(payload.run_id)
+                        if all_scope:
+                            batch = content_repository.list_all_analysis_targets(
+                                after_content_id=after_content_id,
+                                limit=self._freeze_batch_size,
+                            )
+                        else:
+                            filters = ContentFilterSnapshot.model_validate(run["filter_snapshot"])
+                            batch = content_repository.list_filtered_analysis_targets(
+                                filters=filters,
+                                after_content_id=after_content_id,
+                                limit=self._freeze_batch_size,
+                            )
+
                         if not batch:
-                            current_target_count = content_repository.count_all_analysis_targets()
+                            if all_scope:
+                                current_count = content_repository.count_all_analysis_targets()
+                            else:
+                                current_count = content_repository.count_filtered_analysis_targets(
+                                    filters
+                                )
                             if (
                                 frozen_count != expected_target_count
-                                or current_target_count != expected_target_count
+                                or current_count != expected_target_count
                             ):
                                 jobs.lock_current_execution(fence)
                                 return JobHandlerResult.failed("content_analysis_target_changed")
@@ -170,18 +189,24 @@ class _AnalysisTargetSelectionChanged(RuntimeError):
     """Preview 后目标数量变化；抛出以回滚当前冻结事务。"""
 
 
+def _analysis_identity_from_run(run: RowMapping) -> AnalysisConfigurationIdentity:
+    """从 Run 冻结字段恢复查询所需 Analysis Identity，避免使用当前已变化配置。"""
+
+    return AnalysisConfigurationIdentity(
+        prompt_version=cast(str, run["prompt_version"]),
+        prompt_sha256=cast(str, run["prompt_sha256"]),
+        taxonomy_sha256=cast(str, run["taxonomy_sha256"]),
+        model_provider=cast(str, run["model_provider"]),
+        model=cast(str, run["model"]),
+    )
+
+
 def _target_statement_from_run(session: Session, run: RowMapping) -> object:
     """从已冻结 Run Scope 恢复兼容 selected/query 目标查询。"""
 
     repository = PostgresContentQueryRepository(
         session,
-        analysis_identity=AnalysisConfigurationIdentity(
-            prompt_version=cast(str, run["prompt_version"]),
-            prompt_sha256=cast(str, run["prompt_sha256"]),
-            taxonomy_sha256=cast(str, run["taxonomy_sha256"]),
-            model_provider=cast(str, run["model_provider"]),
-            model=cast(str, run["model"]),
-        ),
+        analysis_identity=_analysis_identity_from_run(run),
     )
     if is_analysis_all_scope_filter_snapshot(run["filter_snapshot"]):
         raise ValueError("all Scope 必须走有界 Planner Target 冻结")
