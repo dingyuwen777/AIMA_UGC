@@ -462,14 +462,14 @@ test('声音流自动滚动时筛选面板保持打开，筛选条滚动时关�
 test('声音流筛选下拉可操作，选择后同口径刷新三个真实模块请求', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
-  const sentiment = page.locator('.workbench-select').filter({ has: page.getByRole('button', { name: '情感', exact: true }) })
+  const sentiment = page.locator('.aima-multi-select').filter({ has: page.getByRole('button', { name: '情感', exact: true }) })
   await sentiment.getByRole('button', { name: '情感', exact: true }).click()
-  const panelHit = await sentiment.locator('.workbench-select__panel').evaluate((panel) => {
+  const panelHit = await sentiment.locator('.aima-multi-select__panel').evaluate((panel) => {
     const box = panel.getBoundingClientRect()
     return panel.contains(document.elementFromPoint(box.left + 20, box.top + 15))
   })
   expect(panelHit).toBe(true)
-  await sentiment.locator('.workbench-select__panel').evaluate((panel) => {
+  await sentiment.locator('.aima-multi-select__panel').evaluate((panel) => {
     panel.dispatchEvent(new Event('scroll'))
   })
   await expect(sentiment.getByRole('dialog', { name: '选择情感' })).toBeVisible()

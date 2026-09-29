@@ -792,6 +792,12 @@ test('标签多选使用不改变布局且可按常见方式关闭的互斥浮�
   await expect.poll(
     () => filters.evaluate((element) => element.getBoundingClientRect().height),
   ).toBe(initialHeight)
+  const panelMetrics = await primaryDialog.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    overflowY: getComputedStyle(element).overflowY,
+  }))
+  expect(panelMetrics.height).toBeLessThanOrEqual(270)
+  expect(panelMetrics.overflowY).toBe('auto')
   await primaryDialog.getByRole('checkbox', { name: '产品体验', exact: true }).check()
   await expect(primaryDialog).toBeVisible()
 
@@ -824,19 +830,18 @@ test('一级标签多选约束二级候选，父级取消后失效二级不会�
 
   await primarySummary.click()
   await primaryField.getByRole('checkbox', { name: '产品体验' }).check()
+  await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
   await expect(secondarySummary).toHaveAttribute('aria-disabled', 'false')
 
   await secondarySummary.click()
-  await expect(secondaryField.getByRole('checkbox', { name: '续航表现' })).toBeVisible()
-  await expect(secondaryField.getByRole('checkbox', { name: '通勤体验' })).toBeVisible()
-  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toHaveCount(0)
-
-  await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
-  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '产品体验 / 通勤体验', exact: true })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '电池、续航与充电 / 实际续航表现', exact: true })).toBeVisible()
   await secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }).check()
-  await secondaryField.getByRole('checkbox', { name: '实际续航表现' }).check()
+  await secondaryField.getByRole('checkbox', { name: '电池、续航与充电 / 实际续航表现', exact: true }).check()
   await expect(secondarySummary).toContainText('已选 2 个二级标签')
 
+  await primarySummary.click()
   await primaryField.getByRole('checkbox', { name: '产品体验' }).uncheck()
   await expect(
     secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }),
