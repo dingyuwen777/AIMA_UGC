@@ -418,8 +418,9 @@ from aima_ugc.platform.reporting.visuals.wordcloud import (
     resolve_cjk_font,
 )
 
-print(resolve_cjk_font())
-print(resolve_cjk_bold_font())
+regular = resolve_cjk_font()
+print(regular)
+print(resolve_cjk_bold_font(regular))
 with TemporaryDirectory() as directory:
     output = Path(directory) / "cjk-smoke.png"
     render_wordcloud_png({"爱玛": 10, "续航": 6}, output)

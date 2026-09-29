@@ -202,7 +202,7 @@ jobs:
           )
 
           regular = resolve_cjk_font()
-          bold = resolve_cjk_bold_font()
+          bold = resolve_cjk_bold_font(regular)
           assert regular.is_file(), regular
           assert bold.is_file(), bold
           with TemporaryDirectory() as directory:

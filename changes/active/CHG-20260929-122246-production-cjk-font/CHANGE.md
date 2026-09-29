@@ -246,6 +246,7 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 | V5 | working tree / Ruff + mypy | `ruff check`、`ruff format --check`、`mypy feishu_publication_worker.py` | 全部通过；mypy 1 source file 无问题 | 受影响 Python 代码静态检查通过 |
 | V6 | working tree / Windows Python 3.14.7 | Workflow structure/impact + Docker + Worker + visuals + logging 相关回归 | 59 passed, 2 skipped | Runtime Workflow 静态接线与相关行为回归通过；Linux 字体真实渲染仍由 Runtime CI 负责 |
 | V7 | working tree / project quality scripts | `check_docs.py`、`check_docs_facts.py`、`check_architecture.py`、`check_agent_governance.py` | 全部 exit 0 | 文档链接/事实、架构边界与项目治理接线通过 |
+| V8 | PR head `c17c751e` / Ubuntu 24.04 Runtime Acceptance run 36522455696 | Compose 构建正式 Backend/Frontend 并进入 Worker 执行 CJK smoke | Backend/Worker 启动成功且 `resolve_cjk_font()` 返回后，smoke 因错误地无参调用 `resolve_cjk_bold_font()` 失败；Release dry-run run 36522455537 已 success | 发现验证脚本/Operations 命令未遵守现有 bold resolver 的 `fallback` 参数 Contract；不是字体包缺失，需修正后重跑 |
 
 ## 未验证内容与剩余风险
 
