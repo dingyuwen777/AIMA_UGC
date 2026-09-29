@@ -30,6 +30,7 @@ from aima_ugc.modules.analysis.scheme_tables import (
     analysis_scheme_versions_table,
     analysis_schemes_table,
 )
+from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.modules.collection.corrective_tables import (
     collection_plan_decision_policies_table,
 )
@@ -43,8 +44,9 @@ from aima_ugc.modules.system.models import KeywordPack, ProviderConfig
 from aima_ugc.modules.system.tables import keyword_packs_table, provider_configs_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.time import beijing_now
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, insert, select, update
 
 
 def _analysis_definition() -> AnalysisSchemeDefinitionRequest:
@@ -242,41 +244,44 @@ def test_unused_provider_can_archive_and_delete_but_disappears_from_current_dire
         runtime.dispose()
 
 
-def test_published_analysis_scheme_can_archive_but_cannot_hard_delete() -> None:
+def test_unused_analysis_scheme_archive_delete_physically_removes_draft() -> None:
     runtime = DatabaseRuntime(load_settings())
     session = runtime.new_session()
     scheme_id: UUID | None = None
+    version_id: UUID | None = None
     try:
         with session.begin():
             schemes = PostgresAnalysisSchemeRepository(session)
             version = schemes.create_draft(
-                name=f"历史发布方案-{uuid4()}",
-                description="published history",
+                name=f"纯草稿方案-{uuid4()}",
+                description="unused draft",
                 definition=_analysis_definition(),
                 actor_ref="integration-test",
             )
             scheme_id = version.scheme_id
+            version_id = version.id
             lifecycle = PostgresAnalysisSchemeLifecycleRepository(session)
-            assert lifecycle.delete_archived(scheme_id) is False
+            assert lifecycle.archive(scheme_id, archived_at=beijing_now()) is True
+            assert lifecycle.delete_blockers(scheme_id) == ()
+            deletion = lifecycle.delete_archived(scheme_id)
+            assert deletion is not None
+            assert deletion.mode == "hard_deleted"
+            assert (
+                session.scalar(
+                    select(analysis_schemes_table.c.id).where(
+                        analysis_schemes_table.c.id == scheme_id
+                    )
+                )
+                is None
+            )
             assert (
                 session.scalar(
                     select(analysis_scheme_versions_table.c.id).where(
-                        analysis_scheme_versions_table.c.id == version.id
+                        analysis_scheme_versions_table.c.id == version_id
                     )
                 )
-                == version.id
+                is None
             )
-            # 只建立“曾发布”的持久化历史事实，不切换全局 active，避免污染其他套件。
-            session.execute(
-                update(analysis_scheme_versions_table)
-                .where(analysis_scheme_versions_table.c.id == version.id)
-                .values(status="retired", published_at=beijing_now())
-            )
-            assert lifecycle.archive_blockers(scheme_id) == ()
-            assert lifecycle.archive(scheme_id, archived_at=beijing_now()) is True
-            assert all(scheme["id"] != scheme_id for scheme, _ in schemes.list_schemes())
-            blockers = lifecycle.delete_blockers(scheme_id)
-            assert "该分析方案已有发布历史，只允许归档" in blockers
     finally:
         with session.begin():
             if scheme_id is not None:
@@ -292,6 +297,147 @@ def test_published_analysis_scheme_can_archive_but_cannot_hard_delete() -> None:
                 )
                 session.execute(
                     delete(analysis_schemes_table).where(analysis_schemes_table.c.id == scheme_id)
+                )
+        session.close()
+        runtime.dispose()
+
+
+def test_published_analysis_scheme_delete_hides_resource_but_preserves_run_snapshot() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    session = runtime.new_session()
+    scheme_id: UUID | None = None
+    replacement_scheme_id: UUID | None = None
+    version_id: UUID | None = None
+    run_id = uuid4()
+    planner_job_id = uuid4()
+    scheme_name = f"历史发布方案-{uuid4()}"
+    try:
+        with session.begin():
+            schemes = PostgresAnalysisSchemeRepository(session)
+            version = schemes.create_draft(
+                name=scheme_name,
+                description="published history",
+                definition=_analysis_definition(),
+                actor_ref="integration-test",
+            )
+            scheme_id = version.scheme_id
+            version_id = version.id
+            now = beijing_now()
+            # 建立已发布历史，但不切换全局 active，避免污染其他套件。
+            session.execute(
+                update(analysis_scheme_versions_table)
+                .where(analysis_scheme_versions_table.c.id == version.id)
+                .values(status="retired", published_at=now)
+            )
+            session.execute(
+                insert(jobs_table).values(
+                    id=planner_job_id,
+                    job_type="analysis.test-planner.v1",
+                    payload_version="v1",
+                    payload={},
+                    status="queued",
+                    internal_idempotency_key=f"analysis-scheme-delete-{run_id}",
+                    priority=0,
+                    attempt=0,
+                    max_attempts=1,
+                    timeout_seconds=60,
+                    progress=0,
+                    available_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.execute(
+                insert(analysis_content_runs_table).values(
+                    id=run_id,
+                    client_idempotency_key=f"analysis-scheme-delete-run-{run_id}",
+                    planner_job_id=planner_job_id,
+                    run_intent="manual_reanalysis",
+                    scope="selected",
+                    filter_snapshot={},
+                    status="queued",
+                    target_count=1,
+                    shard_count=1,
+                    shard_size=1,
+                    prompt_version=f"analysis-scheme:{version.id}",
+                    analysis_scheme_version_id=version.id,
+                    prompt_text_snapshot=version.compiled_prompt,
+                    prompt_sha256=version.prompt_sha256,
+                    taxonomy_sha256=version.taxonomy_sha256,
+                    model_provider="fake",
+                    model="fake-model",
+                    generation_config={},
+                    generation_config_hash="0" * 64,
+                    runtime_config_snapshot={},
+                    created_at=now,
+                )
+            )
+
+            lifecycle = PostgresAnalysisSchemeLifecycleRepository(session)
+            assert lifecycle.archive_blockers(scheme_id) == ()
+            assert lifecycle.archive(scheme_id, archived_at=now) is True
+            assert lifecycle.delete_blockers(scheme_id) == ()
+            deletion = lifecycle.delete_archived(scheme_id)
+            assert deletion is not None
+            assert deletion.mode == "history_preserved"
+
+            deleted_row = (
+                session.execute(
+                    select(analysis_schemes_table).where(
+                        analysis_schemes_table.c.id == scheme_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert deleted_row["deleted_at"] is not None
+            assert deleted_row["active_version_id"] is None
+            assert scheme_id not in {item.id for item in lifecycle.list_archived()}
+            assert all(scheme["id"] != scheme_id for scheme, _ in schemes.list_schemes())
+            assert schemes.get_version(version.id) is not None
+            assert (
+                session.scalar(
+                    select(analysis_content_runs_table.c.analysis_scheme_version_id).where(
+                        analysis_content_runs_table.c.id == run_id
+                    )
+                )
+                == version.id
+            )
+
+            # 管理视图删除必须释放名称，使管理员可以重新创建同名规则。
+            replacement = schemes.create_draft(
+                name=scheme_name,
+                description="replacement after management deletion",
+                definition=_analysis_definition(),
+                actor_ref="integration-test",
+            )
+            replacement_scheme_id = replacement.scheme_id
+            assert replacement_scheme_id != scheme_id
+    finally:
+        with session.begin():
+            session.execute(
+                delete(analysis_content_runs_table).where(
+                    analysis_content_runs_table.c.id == run_id
+                )
+            )
+            session.execute(delete(jobs_table).where(jobs_table.c.id == planner_job_id))
+            for cleanup_scheme_id in (replacement_scheme_id, scheme_id):
+                if cleanup_scheme_id is None:
+                    continue
+                session.execute(
+                    update(analysis_schemes_table)
+                    .where(analysis_schemes_table.c.id == cleanup_scheme_id)
+                    .values(active_version_id=None, is_active=False)
+                )
+                session.execute(
+                    delete(analysis_scheme_versions_table).where(
+                        analysis_scheme_versions_table.c.scheme_id == cleanup_scheme_id
+                    )
+                )
+                session.execute(
+                    delete(analysis_schemes_table).where(
+                        analysis_schemes_table.c.id == cleanup_scheme_id
+                    )
                 )
         session.close()
         runtime.dispose()
