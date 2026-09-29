@@ -755,9 +755,7 @@ class PostgresContentHttpService:
     ) -> tuple[AnalysisContentRunCreatedResponse, UUID | None, UUID | None]:
         """创建并冻结 Analysis Run；Shard 只由本次冻结 Provider 并发自动推导。"""
 
-        configuration = self._load_active_analysis_configuration(
-            refresh_unused_git_bootstrap=True
-        )
+        configuration = self._load_active_analysis_configuration(refresh_unused_git_bootstrap=True)
         identity = configuration.identity
         llm_provider = configuration.llm_provider
         if identity is None or llm_provider is None:
