@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from aima_ugc.adapters.persistence.postgres import analysis_schemes as scheme_module
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
@@ -16,7 +17,7 @@ from aima_ugc.platform.config import load_settings
 
 def test_unused_system_git_bootstrap_refreshes_to_v46_before_first_analysis_run(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """纯系统旧基线且没有 Analysis Run 时可追加刷新，旧 Version 继续保留审计历史。"""
 
