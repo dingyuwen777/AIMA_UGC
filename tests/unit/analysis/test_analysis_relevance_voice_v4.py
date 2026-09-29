@@ -29,6 +29,7 @@ from aima_ugc.modules.analysis.schemes import (
 )
 
 OBSERVED_AT = datetime(2026, 9, 7, 10, 0, tzinfo=UTC)
+LEGACY_V4_PROMPT_PATH = CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v4.md")
 
 
 def _content(
@@ -135,21 +136,22 @@ def _response(*items: dict[str, object]) -> str:
     return json.dumps({"items": list(items)}, ensure_ascii=False)
 
 
-def test_v4_is_the_new_bootstrap_prompt_while_v3_remains_available() -> None:
-    """新环境使用 V4，但旧数据库 Scheme 仍有可加载的 V3 协议。"""
+def test_v46_is_the_new_bootstrap_prompt_while_v4_and_v3_remain_available() -> None:
+    """新环境使用 V4.6；旧数据库 Scheme 仍可加载 V4/V3 协议。"""
 
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    v4_taxonomy = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH).load()
     v3_path = CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v3.md")
     v3_taxonomy = PromptTaxonomyLoader(v3_path).load()
 
-    assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling_v4.md"
-    assert PROMPT_VERSION == "content-labeling.v4"
-    assert taxonomy.prompt_version == "content-labeling.v4"
-    assert taxonomy.output_protocol_version == "content-labeling.v4"
-    assert v3_path.is_file()
-    assert v3_taxonomy.prompt_version == "content-labeling.v3"
+    assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling_v4.6.md"
+    assert PROMPT_VERSION == "content-labeling.v4.6"
+    assert taxonomy.prompt_version == "content-labeling.v4.6"
+    assert taxonomy.output_protocol_version == "content-labeling.v4.6"
+    assert v4_taxonomy.output_protocol_version == "content-labeling.v4"
     assert v3_taxonomy.output_protocol_version == "content-labeling.v3"
-    assert "个人交易发声" in taxonomy.voice_types
+    assert "个人交易发声" not in taxonomy.voice_types
+    assert "个人交易发声" in v4_taxonomy.voice_types
     assert "个人交易发声" not in v3_taxonomy.voice_types
 
 
@@ -160,7 +162,7 @@ def test_bootstrap_prompt_uses_a_version_neutral_checked_pointer(tmp_path: Path)
     prompt_directory.mkdir()
     future_prompt = prompt_directory / "content_labeling_v5.md"
     future_prompt.write_text(
-        CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8").replace(
+        LEGACY_V4_PROMPT_PATH.read_text(encoding="utf-8").replace(
             "Prompt Version：`content-labeling.v4`",
             "Prompt Version：`content-labeling.v5`",
         ),
@@ -211,7 +213,7 @@ def test_bootstrap_prompt_pointer_rejects_filename_and_declared_version_mismatch
 def test_v4_prompt_defines_decision_order_evidence_and_prompt_injection_boundary() -> None:
     """V4 必须把五字段视为不可信数据，并明确逐层判定与证据要求。"""
 
-    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    prompt = LEGACY_V4_PROMPT_PATH.read_text(encoding="utf-8")
 
     assert "relevance_evidence" in prompt
     assert "source_type" in prompt
@@ -228,7 +230,7 @@ def test_v4_prompt_defines_decision_order_evidence_and_prompt_injection_boundary
 def test_v4_clear_personal_transaction_is_not_persisted_as_real_user_voice() -> None:
     """普通消费者个人交易必须进入独立类别，内部证据不扩公共 Result。"""
 
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH)
     taxonomy = loader.load()
     fake = FakeContentLabelingLLM(responses=[_response(_v4_item(taxonomy))])
 
@@ -250,7 +252,7 @@ def test_v4_clear_personal_transaction_is_not_persisted_as_real_user_voice() -> 
 def test_v4_semantic_conflict_routes_only_the_item_to_judge() -> None:
     """个人交易却输出真实用户属于确定性矛盾，必须复判而不是直接接受。"""
 
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH)
     taxonomy = loader.load()
     contradictory = _v4_item(taxonomy, voice_type="真实用户发声")
     corrected = _v4_item(taxonomy)
@@ -272,7 +274,7 @@ def test_v4_semantic_conflict_routes_only_the_item_to_judge() -> None:
 def test_v4_fabricated_evidence_routes_to_judge() -> None:
     """证据必须是五字段中的原文片段，模型臆造不能直接进入结果。"""
 
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH)
     taxonomy = loader.load()
     fabricated = _v4_item(taxonomy, voice_evidence=["售价 1999 元"])
     fake = FakeContentLabelingLLM(responses=[_response(fabricated), _response(_v4_item(taxonomy))])
@@ -290,7 +292,7 @@ def test_v4_fabricated_evidence_routes_to_judge() -> None:
 def test_v4_explicit_needs_judge_is_not_accepted_as_a_final_result() -> None:
     """主判主动声明歧义时只复判该条，Judge 可用显式未知值收敛。"""
 
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH)
     taxonomy = loader.load()
     needs_judge = _v4_item(taxonomy, decision_status="needs_judge")
     resolved = _v4_item(taxonomy)
@@ -309,7 +311,7 @@ def test_v4_explicit_needs_judge_is_not_accepted_as_a_final_result() -> None:
 def test_v4_partial_batch_judges_only_the_unresolved_item() -> None:
     """批次中清晰条目不得因另一条歧义而重复付费调用。"""
 
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH)
     taxonomy = loader.load()
     clear = _v4_item(taxonomy, item_no=1)
     unclear = _v4_item(taxonomy, item_no=2, decision_status="needs_judge")
@@ -333,7 +335,7 @@ def test_v4_partial_batch_judges_only_the_unresolved_item() -> None:
 def test_v4_mixed_retry_batch_separates_repair_items_from_judge_items() -> None:
     """同轮结构错误与语义歧义必须分别进入 repair 和 judge 请求。"""
 
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    loader = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH)
     taxonomy = loader.load()
     malformed = _v4_item(taxonomy, item_no=1)
     malformed.pop("source_type")
@@ -407,8 +409,8 @@ def test_v3_scheme_response_remains_accepted_without_v4_internal_fields() -> Non
     assert len(fake.calls) == 1
 
 
-def test_v4_model_payload_still_contains_only_the_five_approved_business_fields() -> None:
-    """V4 内部推理字段不能反向扩大模型输入面。"""
+def test_v46_model_payload_adds_only_platform_to_the_five_approved_text_fields() -> None:
+    """V4.6 只新增官号判断所需 platform，不扩大其它模型输入面。"""
 
     loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
     taxonomy = loader.load()
@@ -420,10 +422,11 @@ def test_v4_model_payload_still_contains_only_the_five_approved_business_fields(
     )
 
     payload = fake.calls[0].model_payload()[0]
-    assert set(payload) == {"item_no", "title", "text", "author"}
+    assert set(payload) == {"item_no", "platform", "title", "text", "author"}
+    assert payload["platform"] == "xiaohongshu"
     assert set(payload["author"]) == {"display_name", "bio", "verification_label"}
     serialized = json.dumps(payload, ensure_ascii=False)
-    for forbidden in ("platform", "provider", "url", "followers", "metrics"):
+    for forbidden in ("provider", "url", "followers", "metrics"):
         assert forbidden not in serialized
 
 
