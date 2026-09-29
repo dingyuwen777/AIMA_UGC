@@ -610,7 +610,11 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(session, self._runtime.settings)
+                configuration = active_analysis_configuration(
+                    session,
+                    self._runtime.settings,
+                    refresh_unused_git_bootstrap=True,
+                )
                 identity = configuration.identity
                 llm_provider = configuration.llm_provider
                 if identity is None or llm_provider is None:
@@ -751,7 +755,9 @@ class PostgresContentHttpService:
     ) -> tuple[AnalysisContentRunCreatedResponse, UUID | None, UUID | None]:
         """创建并冻结 Analysis Run；Shard 只由本次冻结 Provider 并发自动推导。"""
 
-        configuration = self._load_active_analysis_configuration()
+        configuration = self._load_active_analysis_configuration(
+            refresh_unused_git_bootstrap=True
+        )
         identity = configuration.identity
         llm_provider = configuration.llm_provider
         if identity is None or llm_provider is None:
@@ -1000,14 +1006,22 @@ class PostgresContentHttpService:
         finally:
             session.close()
 
-    def _load_active_analysis_configuration(self) -> ActiveAnalysisConfiguration:
-        """在短事务中读取并验证当前 Scheme，首次 bootstrap 会连同审计提交。"""
+    def _load_active_analysis_configuration(
+        self,
+        *,
+        refresh_unused_git_bootstrap: bool = False,
+    ) -> ActiveAnalysisConfiguration:
+        """短事务读取 Scheme；只有打标冻结入口显式允许刷新未使用 Git 基线。"""
 
         session = self._runtime.database.new_session()
         try:
             with session.begin():
                 try:
-                    return active_analysis_configuration(session, self._runtime.settings)
+                    return active_analysis_configuration(
+                        session,
+                        self._runtime.settings,
+                        refresh_unused_git_bootstrap=refresh_unused_git_bootstrap,
+                    )
                 except (RuntimeError, ValueError) as exc:
                     raise ContentAnalysisTaxonomyUnavailable from exc
         finally:
