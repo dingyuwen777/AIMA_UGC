@@ -232,7 +232,9 @@ class PostgresAnalysisSchemeLifecycleRepository:
         if blockers:
             raise RuntimeError("；".join(blockers))
 
-        preserve_history = self._has_published_history(scheme_id) or self._has_run_history(scheme_id)
+        preserve_history = self._has_published_history(scheme_id) or self._has_run_history(
+            scheme_id
+        )
         if preserve_history:
             deleted_id = self._session.execute(
                 update(analysis_schemes_table)
