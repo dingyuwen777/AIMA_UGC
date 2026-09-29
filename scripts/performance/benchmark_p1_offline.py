@@ -60,10 +60,16 @@ class _TaxonomyBenchmarkLLM:
     def __init__(self, taxonomy: PromptTaxonomy) -> None:
         if taxonomy.semantic_rules is None:
             raise ValueError("性能测试要求 V4 Semantic Rules")
+        rules = taxonomy.semantic_rules
         self._sentiment = taxonomy.sentiments[0]
         self._primary = taxonomy.primary_labels[0]
         self._secondary = taxonomy.labels[self._primary][0]
-        self._voice_type = taxonomy.semantic_rules.unknown_voice_type
+        self._source_type = rules.source_types[0]
+        self._content_intent = rules.content_intents[0]
+        self._voice_type = rules.derive_voice_type(
+            source_type=self._source_type,
+            content_intent=self._content_intent,
+        )
 
     def complete(self, request: ContentLabelingLLMRequest) -> ContentLabelingLLMResponse:
         payload = {
@@ -72,10 +78,10 @@ class _TaxonomyBenchmarkLLM:
                     "item_no": item.item_no,
                     "relevance": "relevant",
                     "relevance_evidence": ["爱玛"],
-                    "source_type": "unknown",
-                    "content_intent": "unknown",
+                    "source_type": self._source_type,
+                    "content_intent": self._content_intent,
                     "voice_type": self._voice_type,
-                    "voice_evidence": [],
+                    "voice_evidence": ["爱玛"],
                     "sentiment": self._sentiment,
                     "sentiment_evidence": ["爱玛"],
                     "labels": [
