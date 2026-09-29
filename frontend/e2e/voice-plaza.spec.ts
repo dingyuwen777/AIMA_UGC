@@ -786,12 +786,28 @@ test('标签多选使用不改变布局且可按常见方式关闭的互斥浮�
   const primaryDialog = page.getByRole('dialog', { name: '选择一级标签', exact: true })
   const secondaryDialog = page.getByRole('dialog', { name: '选择二级标签', exact: true })
   const initialHeight = await filters.evaluate((element) => element.getBoundingClientRect().height)
+  const actionButtons = [
+    page.getByRole('button', { name: '条件重置', exact: true }),
+    page.getByRole('button', { name: '查询', exact: true }),
+  ]
+  const initialActionPositions = await Promise.all(
+    actionButtons.map((button) => button.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return { x: box.x, y: box.y }
+    })),
+  )
 
   await primaryTrigger.click()
   await expect(primaryDialog).toBeVisible()
   await expect.poll(
     () => filters.evaluate((element) => element.getBoundingClientRect().height),
   ).toBe(initialHeight)
+  await expect.poll(() => Promise.all(
+    actionButtons.map((button) => button.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return { x: box.x, y: box.y }
+    })),
+  )).toEqual(initialActionPositions)
   const panelMetrics = await primaryDialog.evaluate((element) => ({
     height: element.getBoundingClientRect().height,
     overflowY: getComputedStyle(element).overflowY,

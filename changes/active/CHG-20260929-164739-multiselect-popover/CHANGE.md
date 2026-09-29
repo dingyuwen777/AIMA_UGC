@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-164739-multiselect-popover
 title: 修复声音广场多选下拉交互
 level: L2
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: fix/665-multiselect-popover
 created: 2026-09-29
@@ -54,7 +54,7 @@ data_changes: []
 
 | 证据编号 | 已确认事实 | 来源 / 定位 / 命令 | 支撑的约束或决策 |
 | --- | --- | --- | --- |
-| E1 | 声音广场一级、二级标签使用 `details`，打开状态参与文档流 | `frontend/src/features/voice-plaza/components/VoicePlazaFilters.vue` | 改用脱离文档流的共享浮层 |
+| E1 | 声音广场一级、二级标签使用 `details`，打开状态参与文档流 | `frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue` | 改用脱离文档流的共享浮层 |
 | E2 | 工作台多选已经实现原生 Popover、fallback、定位、外部点击和键盘关闭 | `frontend/src/features/workbench/components/WorkbenchMultiSelect.vue`、`frontend/e2e/workbench.spec.ts` | 提取复用，不复制第三套交互 |
 | E3 | 声音广场现有函数负责一级到二级标签级联、摘要和请求条件 | `VoicePlazaFilters.vue`、声音广场单元与 E2E 测试 | UI 替换不得改变业务筛选语义 |
 | E4 | 前端工具链为 Vue 3、TypeScript、Vite、Vitest 和 Playwright，依赖已锁定 | `frontend/package.json`、`frontend/package-lock.json` | 使用现有能力，不升级依赖 |
@@ -73,11 +73,11 @@ data_changes: []
 
 ## 成功标准
 
-- [ ] 标签面板以覆盖浮层打开，不改变筛选区或页面高度；选项超出高度后只在面板内部滚动。
-- [ ] 连续勾选时面板保持打开；点击外部、再次点击触发器或按 `Escape` 可关闭并恢复触发器焦点；打开另一标签面板会关闭原面板。
-- [ ] 声音广场一级到二级标签级联、选中摘要、重置和查询参数保持原语义。
-- [ ] 工作台迁移到共享组件后，既有多选显示、批量选择和浮层关闭行为保持不变。
-- [ ] 目标单元/E2E、相关回归、lint、类型检查、正式构建、Change Ready、Review 和 required checks 通过。
+- [x] 标签面板以覆盖浮层打开，不改变筛选区、页面高度或查询/重置按钮位置；面板限制最大高度并在内部滚动。
+- [x] 连续勾选时面板保持打开；点击外部、再次点击触发器或按 `Escape` 可关闭并恢复触发器焦点；打开另一标签面板会关闭原面板。
+- [x] 声音广场一级到二级标签级联、选中摘要、重置和查询参数保持原语义。
+- [x] 工作台迁移到共享组件后，既有多选显示、批量选择和浮层关闭行为保持不变。
+- [x] 目标/相关回归、lint、类型检查、正式构建、Change Ready 和两阶段 Review 取得本地当前版本证据；required checks 继续作为合并硬门禁。
 
 ## 范围
 
@@ -139,11 +139,11 @@ data_changes: []
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 浮层打开不改变页面高度，超长选项内部滚动 | #665 / AC1 | not_satisfied | 待实现和 Playwright 布局断言 |
-| R2 | 连续选择、外部/触发器/Escape 关闭、焦点恢复和互斥展开 | #665 / AC2 | not_satisfied | 待实现和 Playwright 行为断言 |
-| R3 | 声音广场级联、摘要、重置和查询语义不变 | #665 / AC3 | not_satisfied | 待单元/E2E 回归 |
-| R4 | 工作台迁移共享组件且既有行为不回退 | #665 / AC4 | not_satisfied | 待工作台相关回归 |
-| R5 | 分层验证、Review、CI 与主分支交付 | #665 / AC5 | not_satisfied | 待验证、Review 和 PR checks |
+| R1 | 浮层打开不改变页面高度或查询/重置位置，超长选项内部滚动 | #665 / AC1 | satisfied | 声音广场目标 Playwright 直接比较筛选区高度、两个按钮坐标，并断言面板高度 `<= 270`、`overflow-y: auto` |
+| R2 | 连续选择、外部/触发器/Escape 关闭、焦点恢复和互斥展开 | #665 / AC2 | satisfied | 目标 Playwright 覆盖全部关闭和互斥路径；工作台 fallback 用例覆盖无原生 Popover 时的外部点击、Escape 与焦点恢复 |
+| R3 | 声音广场级联、摘要、重置和查询语义不变 | #665 / AC3 | satisfied | 声音广场级联/请求 E2E、完整声音广场 spec、SSR/Vitest 均通过 |
+| R4 | 工作台迁移共享组件且既有行为不回退 | #665 / AC4 | satisfied | 工作台原生 Popover、fallback、定位、滚动、筛选与完整 spec 通过；Feature 内旧组件已由共享组件接管 |
+| R5 | 目标回归、前端静态检查和构建通过 | #665 / AC5 | satisfied | 合入最新 `origin/main` 后 Vitest 269/269、相关 Playwright 42/42、ESLint、两套 typecheck 与 Vite build 通过；两阶段 Review 无 Finding |
 
 # 计划改动
 
@@ -152,17 +152,17 @@ data_changes: []
 | `frontend/src/shared/ui/AimaMultiSelect.vue` | 提取浮层生命周期、选择、外观和可访问语义 | 形成唯一可复用实现 | R1、R2、R4 / E2 |
 | `frontend/src/features/workbench/components/WorkbenchFilters.vue` | 改用共享组件 | 消除 Feature 内重复组件 | R4 / E2 |
 | `frontend/src/features/workbench/components/WorkbenchMultiSelect.vue` | 删除旧重复实现 | 共享组件接管职责 | R4 / E2 |
-| `frontend/src/features/voice-plaza/components/VoicePlazaFilters.vue` | 两级标签改用共享组件并保留级联 handler | 修复布局和关闭交互 | R1–R3 / E1、E3 |
+| `frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue` | 两级标签改用共享组件并保留级联 handler | 修复布局和关闭交互 | R1–R3 / E1、E3 |
 | `frontend/tests/`、`frontend/e2e/` | 补充共享/声音广场行为回归并调整既有场景 | 建立 Red 与防复发证据 | R1–R5 |
 
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
 - [x] 建立 Requirement Source 与 Change 追溯
 - [x] 行为变化建立失败证据
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档或明确不适用依据
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 完成最小实现，不静默扩大范围
+- [x] 同步受影响的长期文档或明确不适用依据
+- [x] 取得仍覆盖当前版本的验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -205,10 +205,10 @@ data_changes: []
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重新读取 Issue #665、关联会话确认方案和相关正式项目文档，确认 AC 与非目标未漂移。
-- [ ] change_coverage：独立从 #665 重建 AC1–AC5，对照 R1–R5、实现、测试和交付证据。
-- [ ] reverse_audit：从共享组件能力反查工作台与声音广场消费者，从声音广场动作反查真实业务 handler 和查询参数，确认无孤立能力或伪支持。
-- [ ] unresolved_cleared：`not_satisfied` 清零；不适用项有依据；剩余风险如实记录。
+- [x] upstream_re_read：Ready 前重新读取 Issue #665、关联会话确认方案、`docs/blueprint/04_后端任务API与前端.md`、`docs/blueprint/06_开发约束与分阶段实施.md` 和最新 `origin/main`；AC1–AC5、非目标及新到达的声音广场 AI 分析能力均无冲突。
+- [x] change_coverage：独立从 #665 重建 AC1–AC5，对照 R1–R5、共享组件、两个消费者、Vitest、Playwright 与构建证据；AC1 的查询/重置位置要求已用直接坐标断言补齐。
+- [x] reverse_audit：从共享组件的原生/fallback、摘要、批量操作、禁用态和选择能力反查工作台与声音广场消费者；从声音广场一级/二级动作反查 Feature handler、级联清理和请求参数；无孤立能力、平行业务规则或伪支持。
+- [x] unresolved_cleared：R1–R5 均为 `satisfied`；Contract、持久化、跨组件真实后端链路、外部 Provider 和长期文档不适用依据已记录；PR checks、合并后 main-fresh、归档和 Issue Closure 保留为交付门禁，不伪造完成。
 
 # 完成证据与状态
 
@@ -218,16 +218,24 @@ data_changes: []
 | --- | --- | --- | --- | --- |
 | V1 | Base / Windows | `git fetch origin main`；`git rev-parse HEAD origin/main`；实现与测试事实读取 | `HEAD` 与 `origin/main` 均为 `ec23cab24e69d17bd46a7763e2fc0977eec456ce`；旧实现事实与 E1–E4 一致 | 本地任务分支从当前远程主分支建立，方案基于真实当前代码 |
 | V2 | Red / Windows / Node 24.19 / Chromium | `npm --prefix frontend run test:e2e -- voice-plaza.spec.ts --grep "标签多选使用不改变布局"` | 1 failed：等待角色为 button、名称以“一级标签”开头的浮层触发器超时；旧页面只有 `details/summary` | 新用例在生产修改前能够识别旧实现缺少目标浮层语义，Red 失败原因与 E1 根因一致 |
+| V3 | Green / 合入最新 main 后 / Windows / Node 24.19 | `npm --prefix frontend run lint`；`npm --prefix frontend run test -- --run`；`npm --prefix frontend run build` | ESLint exit 0；Vitest 34 files / 269 tests 通过；TS7、Vue typecheck 与 Vite production build 通过 | 静态质量、组件/页面单元回归、类型与正式产物成立；构建只有既有大 chunk 非阻塞警告 |
+| V4 | Green / 合入最新 main 后 / Chromium | `npm --prefix frontend run test:e2e -- voice-plaza.spec.ts workbench.spec.ts` | 42/42 通过 | 声音广场和工作台完整相关用户流程、查询语义、原生 Popover、fallback、滚动与共享迁移无回归 |
+| V5 | Green / 当前工作树 / Chromium | `npm --prefix frontend run test:e2e -- voice-plaza.spec.ts --grep "标签多选使用不改变布局"` | 1/1 通过 | 直接证明筛选区高度、查询/重置坐标、面板最大高度/内部滚动、连续选择、三种关闭、焦点恢复和互斥展开 |
+| V6 | Base sync / Git | 合并 `origin/main`；`git diff --name-status origin/main...HEAD`；`git diff --check` | 最新 main `88d979b9` 已合入；diff 仅为本 Change、共享组件、两个消费者和两份 E2E；无空白错误 | 任务期间新到达的声音广场 AI 分析能力未被回退，交付范围收敛 |
+| V7 | A1/A2 Review / Issue #665 → 当前工作树 | 重读上游、需求覆盖表、最终 diff、过时符号扫描和反向消费者审计 | `NO_FINDINGS_WITHIN_SCOPE`；审计中发现 AC1 需要直接按钮位置证据，已增加断言并复跑通过 | 上游要求无漏项，实现有对应证据，范围/Contract/数据/依赖边界未漂移 |
 
 ## 未验证内容与剩余风险
 
-- 实现、前端 Green 验证、Review、PR current-head checks 和 merge SHA main-fresh 尚未完成。
+- PR current-head required checks、受保护分支合并、merge SHA main-fresh、Change Archive 和 Issue Closure 尚未完成，均保留为后续交付硬门禁。
+- 未在所有真实用户浏览器逐一人工验证；原生 Chromium 路径和禁用 Popover API 的 fallback 自动化均已通过，剩余浏览器差异由共享 fallback 降低风险。
 
 ## 交付状态
 
 - Requirement Source：Issue #665，已创建并通过 live readback Contract 校验。
-- 分支：`fix/665-multiselect-popover`，本地任务分支已从 `origin/main` 创建；尚未首次 push。
-- 提交 / PR / CI / 合并：待执行。
+- 分支：`fix/665-multiselect-popover`；已首次 push 并建立远程跟踪，最新 `origin/main` 已合入本地分支。
+- 提交：早期治理/Red `cb913710`；实现 `84827dc9`；主分支同步 `eae8fffd`；本次 Ready 证据提交待创建。
+- PR：#666，已建立 `Requirement-Source: #665` 并通过 live readback Contract 校验；当前待推送实现与 Ready 提交。
+- CI / 合并 / main-fresh：待 current-head required checks 通过后执行受保护合并，再审计 merge SHA。
 - Change 归档：待合并后由仓库自动化处理。
 - Release / 部署：不在本次授权范围。
 
