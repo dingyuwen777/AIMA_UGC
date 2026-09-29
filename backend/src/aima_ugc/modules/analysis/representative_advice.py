@@ -91,6 +91,7 @@ class RepresentativeAdviceService:
         request_items = tuple(
             ContentLabelingModelItem(
                 item_no=item.item_no,
+                platform=item.platform,
                 title=(
                     f"平台：{item.platform}；情感：{item.sentiment}；"
                     f"一级标签：{item.primary_label}；二级标签：{item.secondary_label}"
