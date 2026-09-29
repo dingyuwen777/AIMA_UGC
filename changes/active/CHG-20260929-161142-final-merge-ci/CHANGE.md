@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-161142-final-merge-ci
 title: PR最终合并CI门禁与重复执行优化
 level: L3
-status: ready_for_review
+status: in_progress
 owner: dingyuwen777
 branch: tech/663-final-merge-ci
 created: 2026-09-29
@@ -41,9 +41,9 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 
 ## 当前现状
 
-- 当前分支四个重 Workflow 的 PR trigger 已移除 `synchronize`，并保留 `opened`、`reopened`、`ready_for_review`；CI 另保留 `edited` metadata-only 路径。
+- 当前分支四个重 Workflow 的 PR trigger 已移除 `synchronize`，并保留 Final 生命周期事件；首次 Ready 实跑同时暴露出 Draft required jobs 仍使用 job-level skip 的安全缺口。
 - `main-quality-gate` Ruleset active 且 `strict_required_status_checks_policy=true`，要求 `CI Gate`、`Requirement Traceability and Completion Audit`、`Compose Golden Path`。
-- Draft PR 已在 job-level 跳过重 Runner，`ready_for_review` 已能重新进入完整验证。
+- Draft 重测试仍应避免执行，但 required contexts 必须由轻量 fail-closed guard 明确失败，不能用 job-level skipped 结果充当 required evidence；`ready_for_review` 再进入完整验证。
 - CI/Runtime/Tooling 已通过 `resolve_main_evidence.py` 支持 merge 后同 tree Evidence 复用。
 
 ## 问题、根因或约束
@@ -63,6 +63,7 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 | E3 | Draft skip 与 `ready_for_review` 已存在 | 当前 Workflow 与结构测试 | 可复用 Draft → Ready 生命周期 |
 | E4 | main 已支持同 tree PR Evidence reuse | `scripts/quality/resolve_main_evidence.py` | merge 后不重复同一重 Evidence |
 | E5 | 仓库 `allow_auto_merge=false` | GitHub repository metadata | 不依赖 Auto-merge |
+| E6 | PR #664 首次 Draft/Ready 实跑显示旧 Draft required jobs 产生 `skipped` check；GitHub 官方语义说明 job-level `if` 跳过的 required job 可报告为可满足门禁 | PR #664 check-runs + GitHub Actions/required checks 官方文档 | Draft required contexts 必须改为轻量 fail-closed guard，而不是继续 job-level skip |
 
 ## 推断与待确认
 
@@ -77,7 +78,7 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 ## 成功标准
 
 - [x] 四个重 PR Workflow 不再监听 `pull_request.synchronize`。
-- [x] `opened`、`reopened`、`ready_for_review` 与 Draft skip 保持；实际 current-head Actions 由 Ready 后 merge gate 验证。
+- [ ] `opened`、`reopened`、`ready_for_review` 保持；Draft 不跑重测试，但三个 required contexts 使用轻量 fail-closed guard，不再以 skipped 状态满足门禁；实际 current-head Actions 由 Ready 后 merge gate 验证。
 - [x] 三个 required context 名称与 strict Ruleset 不变。
 - [x] Final CI 后新 push 不可使用旧 Head checks 直接 merge；需重新 Draft → Ready。
 - [x] main same-tree evidence reuse、daily/weekly safety net 保持。
@@ -121,7 +122,7 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 
 1. 用结构回归锁定四个重 Workflow 的 PR trigger 不得包含 `synchronize`，但保留 `opened`、`reopened`、`ready_for_review`。
 2. 删除四个重 Workflow 的 `synchronize` PR event，不改 required job 名称、job body、changed-scope、main push、schedule。
-3. 保持 Draft job-level skip；Draft → Ready 作为最终 current-head CI 边界。Final 后若再 push，current Head 缺少 required checks，strict Ruleset 阻止 merge；重新 Draft → Ready 取得新 Evidence。
+3. Draft 阶段对非 required 重任务继续 job-level skip；对 `Requirement Traceability and Completion Audit`、`CI Gate`、`Compose Golden Path` 移除 job-level skip，改为在 checkout/setup 前执行轻量 fail-closed guard。Draft → Ready 作为最终 current-head CI 边界。Final 后若再 push，current Head 缺少 required checks，strict Ruleset 阻止 merge；重新 Draft → Ready 取得新 Evidence。
 4. 更新项目 CI 文档。
 5. Ready 后实际运行完整 current-head Evidence，Review PASS 后 guarded merge，验证 main reuse 与 archive/closure。
 
@@ -130,7 +131,7 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 | 决策 | 依据证据 | 为什么采用这个方案 |
 | --- | --- | --- |
 | D1 移除 synchronize | E1 | 直接消除每次 push 的重 Workflow 启动 |
-| D2 Draft → Ready 作为 Final | E2、E3 | 复用已有生命周期与 strict checks，不增加新控制面 |
+| D2 Draft fail-closed + Ready Final | E2、E3、E6 | 非 required 重任务继续跳过；required contexts 只支付轻量失败 guard，避免 skipped=pass 空窗，同时不增加新控制面 |
 | D3 required identity 不变 | E2 | 保持 Ruleset consumer 与 fail-closed |
 | D4 main reuse 不改 | E4 | 避免 merge 后重复相同 Evidence |
 
@@ -145,7 +146,7 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 四个重 PR Workflow 移除 `synchronize` | #663 / AC1 | satisfied | 当前 Head `00f10a714fc09801a1c5ec233fa76d4d33c93d6a` 四个 trigger readback 均无 `synchronize`；结构回归已同步。 |
-| R2 | 保留 opened/reopened/ready_for_review 与 Draft Final 路径 | #663 / AC2 | explicitly_deferred | 当前 Head 已静态确认事件与 Draft job guard 保持；真实 `ready_for_review` Actions 按 #663 / AC2、AC6 只能在本 Change Ready 后作为 merge gate 取得。 |
+| R2 | 保留 opened/reopened/ready_for_review；Draft 重测试不执行且 required contexts fail closed；Ready 运行完整 Final | #663 / AC2 | not_satisfied | 首次 Ready 实跑发现旧 Draft job-level skip 可形成可满足 required check 的状态；本 Repair Batch 正在改为轻量失败 guard。 |
 | R3 | required contexts / strict Ruleset 不变 | #663 / AC3 | satisfied | `main-quality-gate` 当前仍为 active + strict，required contexts 仍为 `CI Gate`、`Requirement Traceability and Completion Audit`、`Compose Golden Path`；对应 job 名称未改。 |
 | R4 | Final 后新 commit 不能复用旧 Head | #663 / AC4 | satisfied | GitHub required-status 语义要求最新 commit SHA 成功；当前 Ruleset strict。新 Head 无 `synchronize` 生成的 required checks 时保持 blocked，必须重新 Draft → Ready。 |
 | R5 | main reuse 与 scheduled safety net 保持 | #663 / AC5 | satisfied | 本 diff 未修改 `resolve_main_evidence.py`、main push 或 cron；CI daily、Runtime/Tooling weekly trigger readback 均保留。 |
@@ -165,8 +166,8 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 - [x] 先建立结构 Red 回归。
 - [x] 完成最小实现。
 - [x] 同步长期文档。
-- [x] current-head Actions Evidence 已正式绑定为 Ready 后 merge gate；当前不提前伪造执行结果。
-- [x] 完成 pre-Ready 需求追溯、完成审计和独立 Review；Review 结论为 `NO_FINDINGS_WITHIN_SCOPE`。
+- [ ] 完成 Draft required-context fail-closed Repair，并重新进入 Ready 取得 current-head Actions Evidence。
+- [ ] 修复首次 Review/真实 Actions 暴露的 blocking Finding 后执行 delta re-review。
 
 # 验证矩阵
 
@@ -210,9 +211,9 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 # 完成审计
 
 - [x] upstream_re_read：已重读 #663、active `main-quality-gate`、四 Workflow、CI 文档与 PR 当前 diff。
-- [x] change_coverage：AC1–AC5 已由当前实现/平台事实覆盖；AC2 的实际 Ready run 与 AC6 的 CI/merge/main-fresh 按上游生命周期显式延期到交付门禁。
-- [x] reverse_audit：已反查 CI metadata-only、Runtime、Tooling、Release Draft guard、required check identity、main reuse 与 schedule；未发现丢失的独立 Evidence Owner。
-- [x] unresolved_cleared：`not_satisfied` 已清零；仅保留由 #663 AC2/AC6 明确属于 Ready/merge 后阶段的 `explicitly_deferred`。
+- [ ] change_coverage：#663 已因 E6 更新 AC2；Repair 后重新映射 AC1–AC6。
+- [ ] reverse_audit：首次反查漏掉 GitHub `skipped` required-job 语义；Repair 后必须重新审 required-context Draft/Ready 生命周期。
+- [ ] unresolved_cleared：R2 因 blocking Finding 重新回到 `not_satisfied`，Repair/Ready 验证前不得清零。
 
 # 完成证据与状态
 
@@ -222,18 +223,18 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 | --- | --- | --- | --- | --- |
 | V1 | `00f10a714fc09801a1c5ec233fa76d4d33c93d6a` / GitHub branch readback | 读取四个 Workflow trigger | PASS：均无 `synchronize`；`opened/reopened/ready_for_review` 保留 | AC1 与 Final 事件图 |
 | V2 | 同一 Head / GitHub Ruleset | 读取 `main-quality-gate` | PASS：active、strict；三个 required context 未变 | AC3 与新 Head fail-closed |
-| V3 | 同一 Head / Review FIRST_ASSEMBLY | #663 → diff → tests/docs → metadata-only/Release/Tooling/Runtime 反向审计 | `NO_FINDINGS_WITHIN_SCOPE` | pre-Ready Review 无 blocking Finding |
+| V3 | `37b0bf13db5c437c5a98930736ae85d1645ea3c3` / GitHub Actions + Review correction | Draft/Ready check-runs 与 required-check 语义复核 | BLOCKING Finding：Draft required jobs 的 job-level skip 可产生可满足门禁的 skipped check | 触发 E6 Repair Batch |
 | V4 | 当前 PR Head / GitHub Actions | targeted/full current-head CI | explicitly_deferred 到 `ready_for_review` merge gate | Workflow 解析、结构回归及真实 required Evidence |
 | V5 | merge 后 main | Actions + Ruleset + Change Archive | explicitly_deferred 到 #663 / AC6 | main-fresh / evidence reuse / archive / closure |
 
 ## 未验证内容与剩余风险
 
-- 实现与 pre-Ready Review 已完成；尚未取得 `ready_for_review` 后 current-head Actions 与 post-merge main Evidence。前者是 merge blocker，后者是 Issue Closure blocker，均不能提前伪造。
+- 首次 Ready 实跑暴露 Draft required-context fail-closed 缺口，PR 已重新转为 Draft；当前 Repair 未完成，禁止合并。修复后仍需重新 Ready 取得 current-head Actions，post-merge main Evidence 继续作为 Issue Closure blocker。
 
 ## 交付状态
 
 - 提交：`989e8a66dec96ddebc4681b38230f3f516b4277f`（Change/Red）+ `00f10a714fc09801a1c5ec233fa76d4d33c93d6a`（实现/文档）。
-- 拉取请求：#664，当前 Draft；本提交后准备切换 Ready。
+- 拉取请求：#664，因 E6 blocking Finding 已从 Ready 退回 Draft，进入 Repair Batch。
 - CI：未提前执行；切换 Ready 后仅运行一次 Final current-head CI。
 - 合并：待 Review PASS + required checks。
 - Change 归档：待 merge 后 repository-native workflow。
