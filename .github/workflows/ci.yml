@@ -306,7 +306,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install report validation CJK font
-        if: needs.ci-plan.outputs.backend_required == 'true'
+        if: >-
+          needs.ci-plan.outputs.backend_required == 'true' &&
+          (needs.ci-plan.outputs.backend_targets == 'all' ||
+           needs.ci-plan.outputs.report_font_required == 'true')
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk

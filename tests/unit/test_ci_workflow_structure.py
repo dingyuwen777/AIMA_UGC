@@ -177,13 +177,16 @@ def test_frontend_typechecks_once_through_build() -> None:
     assert "npm --prefix frontend run typecheck\n" not in text
 
 
-def test_backend_unit_suite_installs_cjk_font_prerequisite() -> None:
-    """完整后端单测包含 Reporting 渲染，因此进入 backend suite 前必须准备 CJK 字体。"""
+def test_backend_font_setup_only_runs_for_full_or_reporting_evidence() -> None:
+    """精准 Backend target 不为无关 Reporting 测试支付字体安装成本。"""
     text = CI.read_text(encoding="utf-8")
-    assert (
-        "      - name: Install report validation CJK font\n"
-        "        if: needs.ci-plan.outputs.backend_required == 'true'\n" in text
+    font_step = _section(
+        text,
+        "      - name: Install report validation CJK font\n",
+        "      - name: Verify required runtime versions\n",
     )
+    assert "needs.ci-plan.outputs.backend_targets == 'all'" in font_step
+    assert "needs.ci-plan.outputs.report_font_required == 'true'" in font_step
     assert text.index("Install report validation CJK font") < text.index(
         "Unit, Contract and API tests"
     )
@@ -342,6 +345,10 @@ def test_ci_plan_allows_core_postgres_and_fullstack_to_run_in_parallel() -> None
 
     assert "name: CI Plan" in plan
     assert "Classify changed scope" in plan
+    assert "if: always()" in core
+    assert "Block failed CI Plan" in core
+    assert "PLAN_RESULT: ${{ needs.ci-plan.result }}" in gate
+    assert 'test "${PLAN_RESULT}" = "success"' in gate
     assert "needs: ci-plan" in core
     assert "needs: ci-plan" in postgres
     assert "needs: quality-core" not in postgres
@@ -351,3 +358,13 @@ def test_ci_plan_allows_core_postgres_and_fullstack_to_run_in_parallel() -> None
     assert "      - quality-core\n" in gate
     assert "      - postgres-integration\n" in gate
     assert "      - real-fullstack\n" in gate
+
+
+def test_core_consumes_selected_backend_and_frontend_targets_from_ci_plan() -> None:
+    """Core 的 Targeted Evidence 只消费 Plan 输出，不重新计算 changed scope。"""
+    text = CI.read_text(encoding="utf-8")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    assert "BACKEND_TARGETS: ${{ needs.ci-plan.outputs.backend_targets }}" in core
+    assert "FRONTEND_UNIT_TARGETS: ${{ needs.ci-plan.outputs.frontend_unit_targets }}" in core
+    assert "FRONTEND_E2E_SPECS: ${{ needs.ci-plan.outputs.frontend_e2e_specs }}" in core
+    assert "scripts/quality/classify_ci_scope.py" not in core
