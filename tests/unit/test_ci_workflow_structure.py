@@ -224,11 +224,11 @@ def test_special_core_costs_are_conditioned_on_actual_inputs() -> None:
 
     assert (
         "      - name: Audit frontend dependencies\n"
-        "        if: steps.classify.outputs.frontend_audit_required == 'true'\n" in ci
+        "        if: needs.ci-plan.outputs.frontend_audit_required == 'true'\n" in ci
     )
     assert (
         "      - name: Build and verify Wheel\n"
-        "        if: steps.classify.outputs.package_required == 'true'\n" in ci
+        "        if: needs.ci-plan.outputs.package_required == 'true'\n" in ci
     )
 
 
