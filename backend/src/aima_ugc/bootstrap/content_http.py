@@ -798,7 +798,7 @@ class PostgresContentHttpService:
                 if (
                     not freeze_in_http
                     and isinstance(targets, AnalysisRunTargetSelection)
-                    and targets.scope in {"query", "all"}
+                    and targets.scope == "query"
                 ):
                     current_target_count = self._analysis_target_count(
                         session,
