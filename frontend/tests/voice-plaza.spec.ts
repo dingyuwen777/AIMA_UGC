@@ -713,72 +713,151 @@ describe('voice plaza', () => {
     }))
   })
 
-  it('旧 secondary-only Session 在动态目录加载后迁移为等价父子筛选', async () => {
+  it('legacy secondary-only 在 building 到 ready 全程保持原查询直到用户主动修改', async () => {
     installSessionStorage()
     sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
       filters: { secondaryLabel: '续航表现' },
       sortBy: 'published_at',
       sortDirection: 'desc',
     }))
+
+    const buildingOptions: ContentFilterOptionsResponse = {
+      ...filterOptions,
+      catalog_status: 'building',
+      labels: [{
+        primary_label: '产品体验',
+        source: 'active',
+        secondary_labels: [{ value: '续航表现', source: 'active' }],
+      }],
+    }
+    const readyOptions: ContentFilterOptionsResponse = {
+      ...filterOptions,
+      catalog_status: 'ready',
+      labels: [
+        {
+          primary_label: '产品体验',
+          source: 'active',
+          secondary_labels: [{ value: '续航表现', source: 'active' }],
+        },
+        {
+          primary_label: '服务体验',
+          source: 'active',
+          secondary_labels: [{ value: '续航表现', source: 'active' }],
+        },
+      ],
+    }
+    generated.getContentFilterOptions
+      .mockResolvedValueOnce(buildingOptions)
+      .mockResolvedValueOnce(readyOptions)
     generated.listContents.mockResolvedValue({ items: [item], has_more: false })
     generated.countContents.mockResolvedValue({
       count_mode: 'estimated',
       count: 1,
       count_kind: 'exact',
-      as_of: '2026-09-28T12:00:00+08:00',
+      as_of: '2026-09-29T10:00:00+08:00',
       truncated: false,
     })
-    generated.createDataExport.mockResolvedValue({
-      export_id: 'export-legacy-label',
-      job_id: 'job-legacy-label',
-      target_count: 1,
-    })
+    generated.createDataExport
+      .mockResolvedValueOnce({
+        export_id: 'export-secondary-building',
+        job_id: 'job-secondary-building',
+        target_count: 1,
+      })
+      .mockResolvedValueOnce({
+        export_id: 'export-secondary-ready',
+        job_id: 'job-secondary-ready',
+        target_count: 1,
+      })
     generated.getDataExport.mockRejectedValue(new Error('仅验证创建请求快照'))
 
     const store = useVoicePlazaStore()
-    expect(store.appliedFilters.primaryLabels).toEqual([])
-    expect(store.appliedFilters.secondaryLabels).toEqual(['续航表现'])
-
-    await store.refreshFilterOptions()
-    await vi.waitFor(() => {
-      expect(generated.listContents).toHaveBeenCalledWith(expect.objectContaining({
-        primary_labels: ['产品体验'],
-        secondary_labels: ['续航表现'],
-      }))
-    })
-
-    expect(store.filters.primaryLabels).toEqual(['产品体验'])
-    expect(store.filters.secondaryLabels).toEqual(['续航表现'])
-    expect(store.appliedFilters.primaryLabels).toEqual(['产品体验'])
-    expect(store.appliedFilters.secondaryLabels).toEqual(['续航表现'])
-    expect(generated.countContents).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filters: expect.objectContaining({
-          primary_labels: ['产品体验'],
-          secondary_labels: ['续航表现'],
-        }),
-      }),
-      expect.anything(),
-    )
-
-    const persisted = JSON.parse(
-      sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
-    )
-    expect(persisted.filters).toMatchObject({
-      primaryLabels: ['产品体验'],
+    expect(store.legacyLabelCompatibility).toEqual({
+      primaryLabels: [],
       secondaryLabels: ['续航表现'],
     })
 
+    const assertSecondaryOnlyState = (): void => {
+      expect(store.filters.primaryLabels).toEqual([])
+      expect(store.filters.secondaryLabels).toEqual(['续航表现'])
+      expect(store.appliedFilters.primaryLabels).toEqual([])
+      expect(store.appliedFilters.secondaryLabels).toEqual(['续航表现'])
+      expect(store.legacyLabelCompatibility).toEqual({
+        primaryLabels: [],
+        secondaryLabels: ['续航表现'],
+      })
+      const persisted = JSON.parse(
+        sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+      )
+      expect(persisted.filters).toMatchObject({
+        primaryLabels: [],
+        secondaryLabels: ['续航表现'],
+      })
+      expect(persisted.legacyLabelCompatibility).toEqual({
+        primaryLabels: [],
+        secondaryLabels: ['续航表现'],
+      })
+    }
+
+    await store.refreshFilterOptions()
+    await store.refreshResults()
+    assertSecondaryOnlyState()
+    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({
+      secondary_labels: ['续航表现'],
+    })
+    expect(generated.listContents.mock.lastCall?.[0]).not.toHaveProperty('primary_labels')
+    expect(generated.countContents.mock.lastCall?.[0]).toMatchObject({
+      filters: { secondary_labels: ['续航表现'] },
+    })
+    expect(generated.countContents.mock.lastCall?.[0]?.filters).not.toHaveProperty('primary_labels')
     await store.createExport('query')
-    expect(generated.createDataExport).toHaveBeenCalledWith(expect.objectContaining({
+    expect(generated.createDataExport.mock.lastCall?.[0]).toMatchObject({
       targets: {
         scope: 'query',
-        filters: expect.objectContaining({
-          primary_labels: ['产品体验'],
-          secondary_labels: ['续航表现'],
-        }),
+        filters: { secondary_labels: ['续航表现'] },
       },
-    }))
+    })
+    expect(
+      generated.createDataExport.mock.lastCall?.[0]?.targets.filters,
+    ).not.toHaveProperty('primary_labels')
+
+    await store.refreshFilterOptions()
+    await store.refreshResults()
+    assertSecondaryOnlyState()
+    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({
+      secondary_labels: ['续航表现'],
+    })
+    expect(generated.listContents.mock.lastCall?.[0]).not.toHaveProperty('primary_labels')
+    expect(generated.countContents.mock.lastCall?.[0]).toMatchObject({
+      filters: { secondary_labels: ['续航表现'] },
+    })
+    expect(generated.countContents.mock.lastCall?.[0]?.filters).not.toHaveProperty('primary_labels')
+    await store.createExport('query')
+    expect(generated.createDataExport.mock.lastCall?.[0]).toMatchObject({
+      targets: {
+        scope: 'query',
+        filters: { secondary_labels: ['续航表现'] },
+      },
+    })
+    expect(
+      generated.createDataExport.mock.lastCall?.[0]?.targets.filters,
+    ).not.toHaveProperty('primary_labels')
+
+    // 用户主动选择当前目录中的父级并提交后，才退出 legacy compatibility。
+    store.filters.primaryLabels = ['服务体验']
+    store.applyFilters()
+    expect(store.legacyLabelCompatibility).toBeNull()
+    expect(store.appliedFilters).toMatchObject({
+      primaryLabels: ['服务体验'],
+      secondaryLabels: ['续航表现'],
+    })
+    const migrated = JSON.parse(
+      sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+    )
+    expect(migrated.legacyLabelCompatibility).toBeNull()
+    expect(migrated.filters).toMatchObject({
+      primaryLabels: ['服务体验'],
+      secondaryLabels: ['续航表现'],
+    })
   })
 
   it('旧 cross-parent Session 在目录加载后继续保持原 AND 查询语义', async () => {
