@@ -778,6 +778,39 @@ test('keeps stable filters and content usable when dynamic filter options are un
   await expect(page.getByText(item.title)).toBeVisible()
 })
 
+test('标签多选使用不改变布局且可按常见方式关闭的互斥浮层', async ({ page }) => {
+  await page.goto('/voice-plaza')
+  const filters = page.locator('section.filters')
+  const primaryTrigger = filters.getByRole('button', { name: /^一级标签/ })
+  const secondaryTrigger = filters.getByRole('button', { name: /^二级标签/ })
+  const primaryDialog = page.getByRole('dialog', { name: '选择一级标签', exact: true })
+  const secondaryDialog = page.getByRole('dialog', { name: '选择二级标签', exact: true })
+  const initialHeight = await filters.evaluate((element) => element.getBoundingClientRect().height)
+
+  await primaryTrigger.click()
+  await expect(primaryDialog).toBeVisible()
+  await expect.poll(
+    () => filters.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBe(initialHeight)
+  await primaryDialog.getByRole('checkbox', { name: '产品体验', exact: true }).check()
+  await expect(primaryDialog).toBeVisible()
+
+  await secondaryTrigger.click()
+  await expect(primaryDialog).toBeHidden()
+  await expect(secondaryDialog).toBeVisible()
+  await secondaryTrigger.click()
+  await expect(secondaryDialog).toBeHidden()
+
+  await secondaryTrigger.click()
+  await page.getByRole('heading', { name: '声音广场', exact: true }).click()
+  await expect(secondaryDialog).toBeHidden()
+
+  await primaryTrigger.click()
+  await page.keyboard.press('Escape')
+  await expect(primaryDialog).toBeHidden()
+  await expect(primaryTrigger).toBeFocused()
+})
+
 test('一级标签多选约束二级候选，父级取消后失效二级不会进入查询', async ({ page }) => {
   await page.goto('/voice-plaza')
   const filters = page.locator('section.filters')
