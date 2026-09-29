@@ -85,7 +85,7 @@ function hydrateRouteFilters(): void {
   let changed = false
   const setString = (
     queryKey: string,
-    filterKey: 'sourceIdentifier' | 'sentiment' | 'voiceType' | 'primaryLabel'
+    filterKey: 'sourceIdentifier' | 'primaryLabel'
       | 'secondaryLabel' | 'publishedFrom' | 'publishedTo',
   ): void => {
     const value = routeValues(route.query[queryKey])[0]
@@ -95,16 +95,26 @@ function hydrateRouteFilters(): void {
   }
 
   setString('source_identifier', 'sourceIdentifier')
-  setString('sentiment', 'sentiment')
-  setString('voice_type', 'voiceType')
   setString('primary_label', 'primaryLabel')
   setString('secondary_label', 'secondaryLabel')
   setString('published_from', 'publishedFrom')
   setString('published_to', 'publishedTo')
 
-  const platform = routeValues(route.query.platform)[0]
-  if (platform && Object.values(PlatformName).includes(platform as PlatformName)) {
-    store.filters.platform = platform as PlatformName
+  const platforms = routeValues(route.query.platform).filter(
+    (item): item is PlatformName => Object.values(PlatformName).includes(item as PlatformName),
+  )
+  if (platforms.length) {
+    store.filters.platforms = platforms
+    changed = true
+  }
+  const voiceTypes = routeValues(route.query.voice_type)
+  if (voiceTypes.length) {
+    store.filters.voiceTypes = voiceTypes
+    changed = true
+  }
+  const sentiments = routeValues(route.query.sentiment)
+  if (sentiments.length) {
+    store.filters.sentiments = sentiments
     changed = true
   }
 
