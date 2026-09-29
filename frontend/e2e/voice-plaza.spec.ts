@@ -778,6 +778,61 @@ test('keeps stable filters and content usable when dynamic filter options are un
   await expect(page.getByText(item.title)).toBeVisible()
 })
 
+test('标签多选使用不改变布局且可按常见方式关闭的互斥浮层', async ({ page }) => {
+  await page.goto('/voice-plaza')
+  const filters = page.locator('section.filters')
+  const primaryTrigger = filters.getByRole('button', { name: /^一级标签/ })
+  const secondaryTrigger = filters.getByRole('button', { name: /^二级标签/ })
+  const primaryDialog = page.getByRole('dialog', { name: '选择一级标签', exact: true })
+  const secondaryDialog = page.getByRole('dialog', { name: '选择二级标签', exact: true })
+  const initialHeight = await filters.evaluate((element) => element.getBoundingClientRect().height)
+  const actionButtons = [
+    page.getByRole('button', { name: '条件重置', exact: true }),
+    page.getByRole('button', { name: '查询', exact: true }),
+  ]
+  const initialActionPositions = await Promise.all(
+    actionButtons.map((button) => button.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return { x: box.x, y: box.y }
+    })),
+  )
+
+  await primaryTrigger.click()
+  await expect(primaryDialog).toBeVisible()
+  await expect.poll(
+    () => filters.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBe(initialHeight)
+  await expect.poll(() => Promise.all(
+    actionButtons.map((button) => button.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return { x: box.x, y: box.y }
+    })),
+  )).toEqual(initialActionPositions)
+  const panelMetrics = await primaryDialog.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    overflowY: getComputedStyle(element).overflowY,
+  }))
+  expect(panelMetrics.height).toBeLessThanOrEqual(270)
+  expect(panelMetrics.overflowY).toBe('auto')
+  await primaryDialog.getByRole('checkbox', { name: '产品体验', exact: true }).check()
+  await expect(primaryDialog).toBeVisible()
+
+  await secondaryTrigger.click()
+  await expect(primaryDialog).toBeHidden()
+  await expect(secondaryDialog).toBeVisible()
+  await secondaryTrigger.click()
+  await expect(secondaryDialog).toBeHidden()
+
+  await secondaryTrigger.click()
+  await page.getByRole('heading', { name: '声音广场', exact: true }).click()
+  await expect(secondaryDialog).toBeHidden()
+
+  await primaryTrigger.click()
+  await page.keyboard.press('Escape')
+  await expect(primaryDialog).toBeHidden()
+  await expect(primaryTrigger).toBeFocused()
+})
+
 test('一级标签多选约束二级候选，父级取消后失效二级不会进入查询', async ({ page }) => {
   await page.goto('/voice-plaza')
   const filters = page.locator('section.filters')
@@ -791,19 +846,18 @@ test('一级标签多选约束二级候选，父级取消后失效二级不会�
 
   await primarySummary.click()
   await primaryField.getByRole('checkbox', { name: '产品体验' }).check()
+  await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
   await expect(secondarySummary).toHaveAttribute('aria-disabled', 'false')
 
   await secondarySummary.click()
-  await expect(secondaryField.getByRole('checkbox', { name: '续航表现' })).toBeVisible()
-  await expect(secondaryField.getByRole('checkbox', { name: '通勤体验' })).toBeVisible()
-  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toHaveCount(0)
-
-  await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
-  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '产品体验 / 通勤体验', exact: true })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '电池、续航与充电 / 实际续航表现', exact: true })).toBeVisible()
   await secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }).check()
-  await secondaryField.getByRole('checkbox', { name: '实际续航表现' }).check()
+  await secondaryField.getByRole('checkbox', { name: '电池、续航与充电 / 实际续航表现', exact: true }).check()
   await expect(secondarySummary).toContainText('已选 2 个二级标签')
 
+  await primarySummary.click()
   await primaryField.getByRole('checkbox', { name: '产品体验' }).uncheck()
   await expect(
     secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }),
