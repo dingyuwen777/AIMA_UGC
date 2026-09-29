@@ -141,7 +141,7 @@ Final CI 继续支付人为串行等待，复杂 PR 继续把可在 push 前闭�
 | 编号 | 要求 | 来源 | 状态 | Evidence |
 | --- | --- | --- | --- | --- |
 | R1 | CI Plan 并行 | #671 AC1 | satisfied | `ci-plan` 只产 scope/reuse；Core/PostgreSQL/Full-stack 都消费 Plan，PG/Full-stack 不再依赖 Core；CI Gate 显式校验 PLAN_RESULT。 |
-| R2 | Backend/Frontend targeted | #671 AC2 | satisfied | classifier 新增 backend/frontend targets；高置信 Owner 精准映射，共享/未知/CI-self 回退 all；targeted Backend 仍保留 tests/api。 |
+| R2 | Backend/Frontend targeted | #671 AC2 | satisfied | classifier 新增 backend/frontend targets；高置信 Owner 精准映射直接 Unit/API/Browser Mock，共享/未知/CI-self 回退 all；代表性 selected targets 已 live readback 存在并由永久回归锁定。 |
 | R3 | validate_changed 同源 | #671 AC3 | satisfied | `validate_changed.py` 直接调用 classifier；默认覆盖 base→working tree tracked/staged/unstaged/untracked，`--committed-only` 可复现 revision。 |
 | R4 | Commit Hygiene | #671 AC4 | satisfied | AGENTS/测试指南/Blueprint 已明确临时 CI/debug/formatter/generated/Red 过程态默认不形成正式 commit，并保留有价值 checkpoint 例外。 |
 | R5 | Final base/merge freshness | #671 AC5 | satisfied | 项目规则明确 Draft 不追无关 main；Final 前统一 current base；normal merge 不依赖 bypass，绑定 current head/base/required checks。 |
@@ -187,7 +187,7 @@ Final CI 继续支付人为串行等待，复杂 PR 继续把可在 push 前闭�
 
 # 完成证据与状态
 
-当前实现 Head 为 `a4f1850b3566846bbf5a8ad4d13be53c4f0b02ae`；FIRST_ASSEMBLY + Repair delta review 当前 `NO_FINDINGS_WITHIN_SCOPE`。Draft 普通 push 不触发重 CI；current-head 完整 Green Evidence 只在 Final Ready 取得。
+当前实现 Head 为 `df81a390eeeb605ad75eaa8fb6c5fa671db9d34c`；FIRST_ASSEMBLY + Repair delta review 当前 `NO_FINDINGS_WITHIN_SCOPE`。精准 Backend/Frontend selector 的代表性目标已逐个 live readback 存在，并增加永久存在性回归。Draft control-plane 实跑为 `CI Plan=success`、Core/CI Gate 明确 failure、PostgreSQL/Real Full-stack skipped；current-head 完整 Green Evidence 只在 Final Ready 取得。
 
 - 分支：tech/671-development-flow-ci
 - PR：#672 Draft；本 Change 转 Ready 后保持 Draft，先完成轻量 control-plane check，再切 Ready。
