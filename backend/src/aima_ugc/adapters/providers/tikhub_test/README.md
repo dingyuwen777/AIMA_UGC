@@ -488,7 +488,7 @@ result = run_douyin(
 
 - [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../tikhub/capabilities.py)
 - [`backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py`](../tikhub/operations/douyin.py)
-
+[`backend/src/aima_ugc/adapters/providers/tikhub_test/.env`](.en
 ### 4.3 微博
 
 ```python
