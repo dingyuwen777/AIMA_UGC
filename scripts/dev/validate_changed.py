@@ -175,8 +175,6 @@ def deferred_ci_layers(requirements: dict[str, Any]) -> tuple[str, ...]:
     deferred: list[str] = []
     if requirements.get("repository_quality_required") and not requirements.get("backend_required"):
         deferred.append("Repository Quality")
-    if requirements.get("repository_quality_required") and not requirements.get("backend_required"):
-        deferred.append("Repository Quality")
     if requirements.get("postgres_required"):
         deferred.append("PostgreSQL Integration")
     if requirements.get("fullstack_required"):
