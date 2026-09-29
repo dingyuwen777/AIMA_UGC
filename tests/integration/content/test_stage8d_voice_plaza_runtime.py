@@ -496,7 +496,7 @@ def _relevant_response(*, sentiment: str = "负面", voice_type: str = "真实�
     )
 
 
-def _irrelevant_response(*, voice_type: str = "媒体机构发声") -> str:
+def _irrelevant_response(*, voice_type: str = "营销推广发声") -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"irrelevant",'
         '"relevance_evidence":["爱玛"],"source_type":"media_org",'
@@ -924,7 +924,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
                 ).where(analysis_content_results_table.c.content_id == content_ids[0])
             ).one()
             assert stored.relevance == "irrelevant"
-            assert stored.voice_type == "媒体机构发声"
+            assert stored.voice_type == "营销推广发声"
             assert stored.sentiment is None
             assert (
                 connection.scalar(
@@ -950,20 +950,20 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
         audited_page = content_service.list_contents(
             ContentListQuery(
                 relevance="irrelevant",
-                voice_type="媒体机构发声",
+                voice_type="营销推广发声",
             )
         )
         assert [item.id for item in audited_page.items] == [content_ids[0]]
         audited = audited_page.items[0]
         assert audited.analysis.status == "completed"
         assert audited.analysis.relevance == "irrelevant"
-        assert audited.analysis.voice_type == "媒体机构发声"
+        assert audited.analysis.voice_type == "营销推广发声"
         assert audited.analysis.sentiment is None
         assert audited.analysis.labels == ()
 
         direct = content_service.get_content(content_ids[0])
         assert direct.analysis.relevance == "irrelevant"
-        assert direct.analysis.voice_type == "媒体机构发声"
+        assert direct.analysis.voice_type == "营销推广发声"
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
