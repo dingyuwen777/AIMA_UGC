@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 import pytest
-from aima_ugc.contracts.http import AnalysisRunTargetSelection
+from aima_ugc.contracts.http import AnalysisRunTargetSelection, ContentFilterSnapshot
 from pydantic import ValidationError
 
 
