@@ -17,12 +17,12 @@ from aima_ugc.modules.analysis.scheme_tables import (
     analysis_scheme_versions_table,
     analysis_schemes_table,
 )
-from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.modules.analysis.schemes import (
     AnalysisSchemeVersionRecord,
     bootstrap_definition_from_prompt,
     compile_analysis_scheme,
 )
+from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.platform.time import beijing_now
 
 register_analysis_lifecycle_schema()
