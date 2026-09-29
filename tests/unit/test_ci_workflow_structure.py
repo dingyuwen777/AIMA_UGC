@@ -183,7 +183,7 @@ def test_backend_unit_suite_installs_cjk_font_prerequisite() -> None:
     text = CI.read_text(encoding="utf-8")
     assert (
         "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.backend_required == 'true'\n" in text
+        "        if: needs.ci-plan.outputs.backend_required == 'true'\n" in text
     )
     assert text.index("Install report validation CJK font") < text.index(
         "Unit, Contract and API tests"
@@ -241,11 +241,11 @@ def test_special_core_costs_are_conditioned_on_actual_inputs() -> None:
 
     assert (
         "      - name: Audit frontend dependencies\n"
-        "        if: steps.classify.outputs.frontend_audit_required == 'true'\n" in ci
+        "        if: needs.ci-plan.outputs.frontend_audit_required == 'true'\n" in ci
     )
     assert (
         "      - name: Build and verify Wheel\n"
-        "        if: steps.classify.outputs.package_required == 'true'\n" in ci
+        "        if: needs.ci-plan.outputs.package_required == 'true'\n" in ci
     )
 
 

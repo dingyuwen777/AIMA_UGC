@@ -115,14 +115,25 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     postgres_job = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
     assert "fonts-noto-cjk" not in postgres_job
     assert (
-        "      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}\n" in postgres_job
+        "      POSTGRES_SUITES: ${{ needs.ci-plan.outputs.postgres_suites }}\n" in postgres_job
     )
     assert "uv run pytest tests/integration/vehicles -q" in postgres_job
 
     assert (
         "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.backend_required == 'true'\n" in text
+        "        if: needs.ci-plan.outputs.backend_required == 'true'\n" in text
     )
+
+
+def test_frontend_and_backend_selected_targets_are_consumed_by_core() -> None:
+    """Core 使用 plan 选出的直接目标；all 仍是 fail-closed 全量路径。"""
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "BACKEND_TARGETS: ${{ needs.ci-plan.outputs.backend_targets }}" in text
+    assert "FRONTEND_UNIT_TARGETS: ${{ needs.ci-plan.outputs.frontend_unit_targets }}" in text
+    assert "FRONTEND_BROWSER_TARGETS: ${{ needs.ci-plan.outputs.frontend_browser_targets }}" in text
+    assert '[[ " ${BACKEND_TARGETS} " == *" all "* ]]' in text
+    assert '[[ " ${FRONTEND_UNIT_TARGETS} " == *" all "* ]]' in text
+    assert '[[ " ${FRONTEND_BROWSER_TARGETS} " == *" all "* ]]' in text
 
 
 def test_draft_pr_required_contexts_fail_closed_without_running_full_ci() -> None:
