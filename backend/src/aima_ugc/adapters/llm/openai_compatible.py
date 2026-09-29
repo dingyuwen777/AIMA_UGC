@@ -346,8 +346,12 @@ def resolve_openai_compatible_provider_name(
 
 
 def _user_message(request: ContentLabelingLLMRequest) -> str:
+    """构造模型用户消息；V4.6 不允许离线入口覆盖 Prompt 自身业务协议。"""
+
     payload: dict[str, object] = {"items": request.model_payload()}
-    if request.require_excel_complete:
+    is_v46 = "Prompt Version：`content-labeling.v4.6`" in request.prompt
+    legacy_excel_contract = request.require_excel_complete and not is_v46
+    if legacy_excel_contract:
         payload["excel_output_contract"] = (
             "发声类型、情感标签、一级标签、二级标签四列永远不得为空，也不得出现“空白”占位值。"
             "当前离线 Excel 持久化契约不接受 relevance=irrelevant；请输出 relevance=relevant，"
@@ -357,22 +361,29 @@ def _user_message(request: ContentLabelingLLMRequest) -> str:
     if request.previous_validation_error_codes:
         error_codes = tuple(request.previous_validation_error_codes)
         payload["previous_validation_error_codes"] = list(error_codes)
-        if request.require_excel_complete:
+        if legacy_excel_contract:
             payload["validation_repair_rules"] = _validation_repair_rules(error_codes)
-        if request.request_kind == "judge" and request.require_excel_complete:
+        if request.request_kind == "judge" and legacy_excel_contract:
             payload["decision_mode"] = "judge"
             payload["retry_instruction"] = (
-                "上一响应未通过本地校验。请只基于本次 items 的五个文本字段独立重新判断，"
-                "不要沿用上一结论；按 validation_repair_rules 修正后返回完整 JSON。"
+                "上一响应未通过本地校验。请只基于本次 items 的 platform 与五个文本字段"
+                "独立重新判断，不要沿用上一结论；按 validation_repair_rules 修正后返回完整 JSON。"
             )
         elif request.request_kind == "judge":
             payload["decision_mode"] = "judge"
-            payload["retry_instruction"] = (
-                "上一响应存在证据、主体、意图或发声类型歧义。"
-                "请只基于本次 items 的五个文本字段独立重新判断，"
-                "逐项引用原文证据；不要沿用上一结论。证据不足时使用显式未知值并返回 clear。"
-            )
-        elif request.require_excel_complete:
+            if is_v46:
+                payload["retry_instruction"] = (
+                    "上一响应存在证据或分类协议错误。请只基于本次 items 的 platform 与五个文本字段"
+                    "独立重新判断并逐项引用原文证据；按当前 Prompt 的保底规则收敛为 clear，"
+                    "禁止 unknown、无法判断、needs_judge 或空白结果。"
+                )
+            else:
+                payload["retry_instruction"] = (
+                    "上一响应存在证据、主体、意图或发声类型歧义。"
+                    "请只基于本次 items 的 platform 与五个文本字段独立重新判断，"
+                    "逐项引用原文证据；不要沿用上一结论。证据不足时使用显式未知值并返回 clear。"
+                )
+        elif legacy_excel_contract:
             payload["retry_instruction"] = (
                 "上一响应未通过本地校验；仅修正列出的结构/标签错误，并重新返回整个当前批次。"
                 "必须严格执行 validation_repair_rules，不能输出 unknown、无法判断、其他或空白"

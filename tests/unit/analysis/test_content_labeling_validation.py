@@ -216,9 +216,7 @@ def test_irrelevant_results_remain_valid_outside_excel_complete_mode() -> None:
 
 
 def test_v46_prompt_asset_builds_taxonomy_without_python_voice_literals() -> None:
-    prompt_path = CONTENT_LABELING_PROMPT_PATH.with_name(
-        "content_labeling_v4.6_豆包零空白_发声类型闭环版 (1).md"
-    )
+    prompt_path = CONTENT_LABELING_PROMPT_PATH
     taxonomy = PromptTaxonomyLoader(prompt_path).load()
     rules = taxonomy.semantic_rules
 
@@ -233,8 +231,8 @@ def test_v46_prompt_asset_builds_taxonomy_without_python_voice_literals() -> Non
     } <= set(taxonomy.voice_types)
 
 
-def test_excel_complete_fallback_keeps_unrecoverable_item_exportable() -> None:
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+def test_legacy_v4_excel_complete_fallback_keeps_unrecoverable_item_exportable() -> None:
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v4.md"))
     fake = FakeContentLabelingLLM(responses=["not-json"])
 
     result = ContentLabelingService(
@@ -256,8 +254,8 @@ def test_excel_complete_fallback_keeps_unrecoverable_item_exportable() -> None:
     assert item_result.analysis.secondary_label
 
 
-def test_excel_complete_fallback_also_handles_terminal_provider_error() -> None:
-    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+def test_legacy_v4_excel_complete_fallback_also_handles_terminal_provider_error() -> None:
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v4.md"))
     fake = FakeContentLabelingLLM(responses=[])
 
     result = ContentLabelingService(

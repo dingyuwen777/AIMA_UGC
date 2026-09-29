@@ -27,6 +27,7 @@ from aima_ugc.modules.analysis.content_labeling import (
 )
 
 OBSERVED_AT = datetime(2026, 8, 18, 10, 0, tzinfo=UTC)
+LEGACY_V4_PROMPT_PATH = CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v4.md")
 
 
 def _analysis_docs() -> str:
@@ -38,7 +39,7 @@ def _prompt_with_taxonomy_mutation(
     tmp_path: Path,
     mutate: Callable[[dict[str, Any]], None],
 ) -> Path:
-    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    prompt = LEGACY_V4_PROMPT_PATH.read_text(encoding="utf-8")
     match = re.search(
         r"(<!-- AIMA_TAXONOMY_START -->\s*```json\s*)(.*?)(\s*```\s*<!-- AIMA_TAXONOMY_END -->)",
         prompt,
@@ -63,10 +64,10 @@ def _valid_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
         "item_no": item_no,
         "relevance": "relevant",
         "relevance_evidence": ["爱玛体验"],
-        "source_type": "unknown",
-        "content_intent": "unknown",
+        "source_type": "ordinary_consumer",
+        "content_intent": "organic_inquiry",
         "voice_type": taxonomy.semantic_rules.unknown_voice_type,
-        "voice_evidence": [],
+        "voice_evidence": ["正文"],
         "sentiment": sentiment,
         "sentiment_evidence": ["正文"],
         "labels": [
@@ -143,9 +144,9 @@ def test_prompt_taxonomy_has_expected_baseline_and_documented_bootstrap_source()
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
     docs = _analysis_docs()
 
-    assert len(taxonomy.primary_labels) == 10
-    assert len(taxonomy.all_secondary_labels) == 40
-    assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md" in docs
+    assert len(taxonomy.primary_labels) == 9
+    assert len(taxonomy.all_secondary_labels) == 39
+    assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.6.md" in docs
     assert "active Analysis Scheme Version" in docs
     assert "bootstrap/灾备基线" in docs
 
@@ -168,15 +169,15 @@ def test_production_python_does_not_copy_concrete_taxonomy_labels() -> None:
 def test_prompt_contains_required_human_judgment_sections() -> None:
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
 
-    assert "## 情感判断标准" in prompt
-    assert "## 一级/二级标签判断标准" in prompt
-    assert "### 一级/二级标签高混淆场景" in prompt
-    assert "### 一级/二级标签示例" in prompt
-    assert "典型表达只作理解辅助" in prompt
+    assert "# 8. 情感判断" in prompt
+    assert "# 9. 标签 Taxonomy" in prompt
+    assert "### 标签规则" in prompt
+    assert "# 13. 输出前最终硬校验" in prompt
+    assert "任何中间判断失败，都不得放弃该 item" in prompt
 
 
 def test_prompt_taxonomy_changes_are_runtime_driven_without_python_changes(tmp_path: Path) -> None:
-    original = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    original = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH).load()
 
     def add_label(payload: dict[str, Any]) -> None:
         payload["labels"]["临时测试一级"] = ["临时测试二级"]
@@ -189,7 +190,7 @@ def test_prompt_taxonomy_changes_are_runtime_driven_without_python_changes(tmp_p
 
 
 def test_removed_prompt_label_is_immediately_rejected_by_runtime_validator(tmp_path: Path) -> None:
-    original = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    original = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH).load()
     primary = original.primary_labels[0]
     removed_secondary = original.labels[primary][0]
 
@@ -231,7 +232,7 @@ def test_invalid_prompt_taxonomy_fails_before_llm_call(
     tmp_path: Path,
     failure_kind: str,
 ) -> None:
-    PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH).load()
 
     def mutate(payload: dict[str, Any]) -> None:
         if failure_kind == "duplicate_sentiment":
@@ -257,7 +258,7 @@ def test_invalid_prompt_taxonomy_fails_before_llm_call(
 
 
 def test_invalid_taxonomy_json_is_rejected(tmp_path: Path) -> None:
-    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    prompt = LEGACY_V4_PROMPT_PATH.read_text(encoding="utf-8")
     match = re.search(
         r"(<!-- AIMA_TAXONOMY_START -->\s*```json\s*)(.*?)(\s*```\s*<!-- AIMA_TAXONOMY_END -->)",
         prompt,
@@ -295,6 +296,7 @@ def test_model_request_only_contains_approved_business_fields_and_fills_missing_
     assert fake.calls[0].model_payload() == [
         {
             "item_no": 1,
+            "platform": "xiaohongshu",
             "title": "",
             "text": "",
             "author": {"display_name": "", "bio": "", "verification_label": ""},
@@ -303,7 +305,6 @@ def test_model_request_only_contains_approved_business_fields_and_fills_missing_
     serialized = json.dumps(fake.calls[0].model_payload(), ensure_ascii=False)
     for forbidden in (
         "secret-content-id",
-        "xiaohongshu",
         "imports",
         "source.xlsx",
         "sheet=文章;row=2",
@@ -315,10 +316,10 @@ def test_model_request_only_contains_approved_business_fields_and_fills_missing_
 
 
 def test_prompt_and_taxonomy_hashes_change_at_the_correct_boundary(tmp_path: Path) -> None:
-    original = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    original = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH).load()
     text_only_path = tmp_path / "text-only.md"
     text_only_path.write_text(
-        CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8") + "\n<!-- text-only-change -->\n",
+        LEGACY_V4_PROMPT_PATH.read_text(encoding="utf-8") + "\n<!-- text-only-change -->\n",
         encoding="utf-8",
     )
     text_only = PromptTaxonomyLoader(text_only_path).load()

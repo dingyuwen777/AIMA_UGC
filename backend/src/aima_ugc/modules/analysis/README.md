@@ -36,7 +36,7 @@ sentiment
 labels[]
 ```
 
-默认 V4 模型协议在持久化前还要求内部 `source_type / content_intent`、各维度原文证据和 `decision_status`。这些字段只用于本地语义一致性校验与条件 Judge，不扩展 `ContentLabelAnalysisV3`、HTTP 或数据库结果结构。
+默认 V4.6 模型协议在持久化前还要求内部 `source_type / content_intent`、各维度原文证据和 `decision_status`。这些字段只用于本地语义一致性校验与条件 Judge，不扩展 `ContentLabelAnalysisV3`、HTTP 或数据库结果结构。
 
 约束：
 
@@ -52,7 +52,7 @@ relevance = irrelevant
 
 历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容，不再作为新写入格式。
 
-当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，运行时唯一机器事实来自 Analysis Run 冻结的 Scheme Version；当前结果继续以字符串 `voice_type` 保存，由 `RuntimeTaxonomyValidator` 对冻结 Taxonomy 严格校验 membership。V4 单列普通消费者个人车辆处置，避免把交易帖计入真实用户。
+当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，运行时唯一机器事实来自 Analysis Run 冻结的 Scheme Version；当前结果继续以字符串 `voice_type` 保存，由 `RuntimeTaxonomyValidator` 对冻结 Taxonomy 严格校验 membership。V4.6 将 `voice_type` 独立收敛为 Prompt 定义的三分类；`source_type / content_intent` 继续作为内部辅助字段，不反推最终三分类。
 
 真实用户发声唯一业务判断：
 
@@ -66,19 +66,20 @@ voice_type == "真实用户发声"
 
 ## 2. Analysis Scheme 与 Git bootstrap
 
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_bootstrap.txt`](prompts/content_labeling_bootstrap.txt)：新空库 bootstrap 的显式版本中立指针，当前选择 V4。
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：当前新空库 bootstrap/灾备资产。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_bootstrap.txt`](prompts/content_labeling_bootstrap.txt)：新空库 bootstrap 的显式版本中立指针，当前选择 V4.6。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.6.md`](prompts/content_labeling_v4.6.md)：当前首次正式打标 bootstrap/灾备资产。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：旧 V4 Scheme 兼容资产。
 - [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](prompts/content_labeling_v3.md)：既有 active Scheme 输出协议兼容基线，不再作为默认文件。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-空数据库第一次读取 Analysis 配置时，会解析受限指针，把其明确选择的版本化 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。指针只允许引用同目录 `content_labeling_vN.md`，不会因目录里新增实验文件而自动切换。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。代码升级不会覆盖已有数据库 active Version；要在既有环境启用新原则，必须通过管理员配置创建并原子发布完整 Scheme。
+数据库第一次读取 Analysis 配置时，会解析受限指针，把其明确选择的版本化 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。指针只允许引用同目录 `content_labeling_vN.md`，不会因目录里新增实验文件而自动切换。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run 且没有人工/额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
 
 一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；编译后再计算 `prompt_sha256 / taxonomy_sha256`。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
 
 相关代码：
 
-- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：解析并校验 sentiments / voice_types / labels 机器 Taxonomy JSON；V4 还校验内部主体/意图到发声类型的机器语义映射，计算 `taxonomy_sha256`。
+- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：解析并校验 sentiments / voice_types / labels；V3/V4 使用机器 JSON 区块，V4.6 从同一 Markdown 闭集恢复 Taxonomy 和内部辅助语义规则，并计算 `taxonomy_sha256`。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)：编译受控模板并核对数据库快照 Hash。
 - [`backend/src/aima_ugc/bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version 并形成运行身份。
 
@@ -96,7 +97,7 @@ Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但�
 → 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
 ```
 
-V4 的 Taxonomy 与机器语义映射必须同时合法；映射引用已删除的发声类型时在模型调用前 fail closed。`source_type/content_intent` 是当前输出协议的内部闭集，不是新的业务持久字段。
+V4.6 的 Taxonomy 与内部语义闭集必须同时合法；最终 `voice_type` 由 V4.6 独立三分类规则决定，不再由辅助字段反推。`source_type/content_intent` 是当前输出协议的内部闭集，不是新的业务持久字段。
 
 `prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。
 
@@ -108,9 +109,10 @@ V4 的 Taxonomy 与机器语义映射必须同时合法；映射引用已删除�
 
 ## 3. 模型实际看到什么
 
-`ContentLabelingService` 只把允许字段投影给模型：
+`ContentLabelingService` 只把官号判断和语义分析所需字段投影给模型：
 
 ```text
+platform
 title
 text
 author.display_name
@@ -118,10 +120,11 @@ author.bio
 author.verification_label
 ```
 
+`platform` 只提供官号白名单上下文；普通 evidence 仍只能来自五个文本字段。
+
 不会发送：
 
 - Content UUID；
-- platform；
 - Provider 私有字段；
 - URL；
 - 点赞/评论数；
@@ -130,7 +133,7 @@ author.verification_label
 - 源 Excel 情感；
 - 其他未批准元数据。
 
-五个字段全部作为不可信待分析数据处理；其中出现的提示、命令、URL 或“忽略规则”文字不得改变系统 Prompt 或输出协议。
+`platform` 和五个文本字段全部作为不可信待分析数据处理；其中出现的提示、命令、URL 或“忽略规则”文字不得改变系统 Prompt 或输出协议。
 
 这样可以降低 token、减少无关信息干扰，并让 `input_hash` 和隐私边界可审计。
 
@@ -371,7 +374,7 @@ HTTP 已成功
 
 管理员 Provider 的 `max_retries` 当前表示每条 Content 的 **Validation Retry** 轮数上限。
 
-V4 的 Validation Attempt 记录 `request_kind=primary/repair/judge`。Judge 不读取上一响应全文，只收到当前 unresolved item、稳定错误码和五个原始文本字段，并独立重新判断；同一轮同时出现结构错误与语义歧义时按 item 拆成 repair/judge 请求，每条 Content 仍只消耗一轮重试。没有触发语义/证据歧义的清晰内容保持单次调用。
+V4.6 的 Validation Attempt 记录 `request_kind=primary/repair/judge`。Judge 不读取上一响应全文，只收到当前 unresolved item、稳定错误码、`platform` 与五个原始文本字段，并独立重新判断；同一轮同时出现结构错误与语义歧义时按 item 拆成 repair/judge 请求，每条 Content 仍只消耗一轮重试。没有触发语义/证据歧义的清晰内容保持单次调用。
 
 ### Transport Retry
 
@@ -468,7 +471,7 @@ Dry Run 会在输入 Excel 同目录生成带时间戳的运行目录，包含�
 | --- | --- |
 | 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 管理员 Analysis Scheme 草稿 → 校验 → 发布；Git Prompt 只在要改变新环境 bootstrap 基线时同步 |
 | 改 Scheme 编译、发布或回滚 | [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) + Administration Service/Repository + Migration/API/审计/Integration tests |
-| 改 V4 内部输出协议或 Judge 路由 | Prompt + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + V3 兼容/离线回归 |
+| 改 V4.6 内部输出协议或 Judge 路由 | Prompt + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + V3 兼容/离线回归 |
 | 改持久化 `ContentLabelAnalysisV3` 结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
 | 改模型/Base URL/API Key/模型并发/RPS | 管理员 Provider 配置 + [`backend/src/aima_ugc/contracts/administration.py`](../../contracts/administration.py) + [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) + `adapters/llm` |
 | 改自动 Shard 策略 | [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) + Preview/Create + Planner tests |
