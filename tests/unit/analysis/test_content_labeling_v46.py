@@ -251,7 +251,6 @@ def test_v46_irrelevant_requires_empty_sentiment_evidence() -> None:
 def test_v46_empty_input_accepts_only_the_protocol_sentinel() -> None:
     """五个文本字段全空时仅允许 Prompt 明确批准的 EMPTY_INPUT evidence。"""
 
-    taxonomy = PromptTaxonomyLoader().load()
     item = {
         "item_no": 1,
         "relevance": "irrelevant",
