@@ -52,7 +52,7 @@ relevance = irrelevant
 
 历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容，不再作为新写入格式。
 
-当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，运行时唯一机器事实来自 Analysis Run 冻结的 Scheme Version；当前结果继续以字符串 `voice_type` 保存，由 `RuntimeTaxonomyValidator` 对冻结 Taxonomy 严格校验 membership。V4 单列普通消费者个人车辆处置，避免把交易帖计入真实用户。
+当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，运行时唯一机器事实来自 Analysis Run 冻结的 Scheme Version；当前结果继续以字符串 `voice_type` 保存，由 `RuntimeTaxonomyValidator` 对冻结 Taxonomy 严格校验 membership。V4.6 将 `voice_type` 独立收敛为 Prompt 定义的三分类；`source_type / content_intent` 继续作为内部辅助字段，不反推最终三分类。
 
 真实用户发声唯一业务判断：
 
@@ -72,13 +72,13 @@ voice_type == "真实用户发声"
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-空数据库第一次读取 Analysis 配置时，会解析受限指针，把其明确选择的版本化 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。指针只允许引用同目录 `content_labeling_vN.md`，不会因目录里新增实验文件而自动切换。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。代码升级不会覆盖已有数据库 active Version；要在既有环境启用新原则，必须通过管理员配置创建并原子发布完整 Scheme。
+数据库第一次读取 Analysis 配置时，会解析受限指针，把其明确选择的版本化 Git Prompt 转成一个已发布 Scheme Version并记录系统审计。指针只允许引用同目录 `content_labeling_vN.md`，不会因目录里新增实验文件而自动切换。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run 且没有人工/额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
 
 一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；编译后再计算 `prompt_sha256 / taxonomy_sha256`。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
 
 相关代码：
 
-- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：解析并校验 sentiments / voice_types / labels 机器 Taxonomy JSON；V4 还校验内部主体/意图到发声类型的机器语义映射，计算 `taxonomy_sha256`。
+- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：解析并校验 sentiments / voice_types / labels；V3/V4 使用机器 JSON 区块，V4.6 从同一 Markdown 闭集恢复 Taxonomy 和内部辅助语义规则，并计算 `taxonomy_sha256`。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)：编译受控模板并核对数据库快照 Hash。
 - [`backend/src/aima_ugc/bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version 并形成运行身份。
 
@@ -96,7 +96,7 @@ Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但�
 → 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
 ```
 
-V4 的 Taxonomy 与机器语义映射必须同时合法；映射引用已删除的发声类型时在模型调用前 fail closed。`source_type/content_intent` 是当前输出协议的内部闭集，不是新的业务持久字段。
+V4.6 的 Taxonomy 与内部语义闭集必须同时合法；最终 `voice_type` 由 V4.6 独立三分类规则决定，不再由辅助字段反推。`source_type/content_intent` 是当前输出协议的内部闭集，不是新的业务持久字段。
 
 `prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。
 
