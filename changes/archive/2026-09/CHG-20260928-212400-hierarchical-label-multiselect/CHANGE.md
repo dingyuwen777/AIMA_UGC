@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260928-212400-hierarchical-label-multiselect
 title: 统一工作台与声音广场的层级标签多选筛选
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: feature/652-hierarchical-label-multiselect
 created: 2026-09-28
-updated: 2026-09-28
+updated: 2026-09-29
 completion_gate: required
 depends_on: []
 affected_areas:
