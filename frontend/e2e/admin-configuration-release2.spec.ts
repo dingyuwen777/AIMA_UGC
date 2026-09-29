@@ -2,6 +2,7 @@ import type {
   AnalysisSchemeResponse,
   BrandResponse,
   ProviderConfigResponse,
+  ResourceLifecycleResponse,
   VehicleModelResponse,
 } from '../src/generated/api/client'
 import { expect, test, type Page, type Route } from './fixture'
@@ -152,10 +153,22 @@ async function json(route: Route, body: unknown, status = 200): Promise<void> {
 }
 
 /** 只 Mock 本测试负责的前端公开边界；请求结构仍来自当前正式 Contract。 */
-async function mockAdmin(page: Page): Promise<void> {
+async function mockAdmin(
+  page: Page,
+  options: { archivedSchemes?: ResourceLifecycleResponse[] } = {},
+): Promise<void> {
+  let archivedSchemes = [...(options.archivedSchemes ?? [])]
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
+    if (
+      request.method() === 'DELETE'
+      && /^\/api\/v1\/analysis-schemes\/[^/]+$/.test(url.pathname)
+    ) {
+      const schemeId = url.pathname.split('/').at(-1)
+      archivedSchemes = archivedSchemes.filter((item) => item.id !== schemeId)
+      return route.fulfill({ status: 204 })
+    }
     if (request.method() !== 'GET') return route.fallback()
     const offset = Number(url.searchParams.get('offset') ?? '0')
     const limit = Number(url.searchParams.get('limit') ?? '100')
@@ -166,6 +179,19 @@ async function mockAdmin(page: Page): Promise<void> {
       return json(route, { items: brands, total: brands.length, catalog_version: 18, offset, limit })
     }
     if (url.pathname === '/api/v1/analysis-schemes') return json(route, { items: [scheme] })
+    if (url.pathname === '/api/v1/analysis-schemes/lifecycle/archived') {
+      return json(route, { items: archivedSchemes })
+    }
+    const schemeDeleteEligibility = url.pathname.match(
+      /^\/api\/v1\/analysis-schemes\/([^/]+)\/delete-eligibility$/,
+    )
+    if (schemeDeleteEligibility) {
+      return json(route, {
+        id: schemeDeleteEligibility[1],
+        eligible: true,
+        blocking_reasons: [],
+      })
+    }
     if (url.pathname === '/api/v1/audit-events') {
       return json(route, {
         items: [{
@@ -371,6 +397,38 @@ test('1440 provider and scheme layouts keep fixed readable lists plus flexible e
   expect(editorBox!.width).toBeGreaterThan(760)
   expect(Math.abs(historyBox!.y - editorBox!.y)).toBeLessThanOrEqual(1)
   await expectNoGlobalHorizontalScroll(page)
+})
+
+test('analysis rules group versions and archived rules can be removed without cluttering the main list', async ({ page }) => {
+  const archivedSchemeId = '82111111-1111-4111-8111-999999999999'
+  await mockAdmin(page, {
+    archivedSchemes: [{
+      id: archivedSchemeId,
+      resource_type: 'analysis_scheme',
+      name: '历史测试规则',
+      archived_at: now,
+    }],
+  })
+  page.on('dialog', (dialog) => { void dialog.accept() })
+  await page.goto('/admin/configuration')
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
+
+  const group = page.locator('.scheme-group')
+  await expect(group).toHaveCount(1)
+  await expect(group.locator('summary')).toContainText('爱玛舆情分析规则')
+  await expect(group.locator('summary')).toContainText('2 个版本')
+
+  const archived = page.locator('details.archived-schemes')
+  await expect(archived).toHaveJSProperty('open', false)
+  await archived.locator('summary').click()
+  await expect(archived.locator('summary')).toContainText('1 项')
+  await expect(archived.getByText('历史测试规则', { exact: true })).toBeVisible()
+  await expect(archived).toContainText('历史分析所需的不可变版本快照')
+
+  await archived.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.getByText('AI 分析规则已从配置管理中删除；历史分析所需版本快照不会被破坏。')).toBeVisible()
+  await expect(archived.getByText('历史测试规则', { exact: true })).toHaveCount(0)
+  await expect(archived.locator('summary')).toContainText('0 项')
 })
 
 test('vehicle create and edit use the business vehicle name without exposing category', async ({ page }) => {
