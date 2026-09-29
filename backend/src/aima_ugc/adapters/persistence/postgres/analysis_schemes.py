@@ -17,6 +17,7 @@ from aima_ugc.modules.analysis.scheme_tables import (
     analysis_scheme_versions_table,
     analysis_schemes_table,
 )
+from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.modules.analysis.schemes import (
     AnalysisSchemeVersionRecord,
     bootstrap_definition_from_prompt,
@@ -65,18 +66,29 @@ class PostgresAnalysisSchemeRepository:
     def bootstrap_default(
         self, *, actor_ref: str = "system"
     ) -> tuple[AnalysisSchemeVersionRecord, bool]:
-        """数据库为空时从 Git Prompt 建立唯一 bootstrap 发布版。"""
+        """建立 Git bootstrap；首次 Analysis Run 前可安全刷新纯系统旧基线。"""
 
         _lock_scheme_registry(self._session)
-        active = self.get_active_version()
-        if active is not None:
-            return active, False
-        existing = self._session.scalar(select(func.count()).select_from(analysis_schemes_table))
-        if int(existing or 0) > 0:
-            raise RuntimeError("Analysis Scheme 存在但没有 active version")
         prompt_text = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
         definition = bootstrap_definition_from_prompt(prompt_text)
         compiled = compile_analysis_scheme(definition)
+
+        active = self.get_active_version()
+        if active is not None:
+            refreshed = self._refresh_unused_git_bootstrap(
+                active,
+                definition=definition,
+                compiled_prompt=compiled.prompt_text,
+                prompt_sha256=compiled.prompt_sha256,
+                taxonomy_sha256=compiled.taxonomy_sha256,
+                actor_ref=actor_ref,
+            )
+            return (refreshed, True) if refreshed is not None else (active, False)
+
+        existing = self._session.scalar(select(func.count()).select_from(analysis_schemes_table))
+        if int(existing or 0) > 0:
+            raise RuntimeError("Analysis Scheme 存在但没有 active version")
+
         now = beijing_now()
         scheme_id, version_id = uuid4(), uuid4()
         self._session.execute(
@@ -118,6 +130,80 @@ class PostgresAnalysisSchemeRepository:
             .values(active_version_id=version_id, is_active=True, updated_at=now)
         )
         return _version_from_row(row), True
+
+    def _refresh_unused_git_bootstrap(
+        self,
+        active: AnalysisSchemeVersionRecord,
+        *,
+        definition: AnalysisSchemeDefinitionRequest,
+        compiled_prompt: str,
+        prompt_sha256: str,
+        taxonomy_sha256: str,
+        actor_ref: str,
+    ) -> AnalysisSchemeVersionRecord | None:
+        """仅在没有 Run/人工版本时把旧 Git bootstrap 追加刷新为当前基线。"""
+
+        if (
+            active.prompt_sha256 == prompt_sha256
+            and active.taxonomy_sha256 == taxonomy_sha256
+            and active.compiled_prompt == compiled_prompt
+        ):
+            return None
+        if (
+            active.version != 1
+            or active.status != "published"
+            or active.description != "由 Git Prompt bootstrap 的首个生产 Scheme"
+        ):
+            return None
+
+        scheme_count = int(
+            self._session.scalar(select(func.count()).select_from(analysis_schemes_table)) or 0
+        )
+        version_count = int(
+            self._session.scalar(select(func.count()).select_from(analysis_scheme_versions_table))
+            or 0
+        )
+        run_count = int(
+            self._session.scalar(select(func.count()).select_from(analysis_content_runs_table)) or 0
+        )
+        if scheme_count != 1 or version_count != 1 or run_count != 0:
+            return None
+
+        now = beijing_now()
+        self._session.execute(
+            update(analysis_scheme_versions_table)
+            .where(analysis_scheme_versions_table.c.id == active.id)
+            .values(status="retired")
+        )
+        row = (
+            self._session.execute(
+                insert(analysis_scheme_versions_table)
+                .values(
+                    id=uuid4(),
+                    scheme_id=active.scheme_id,
+                    version=2,
+                    status="published",
+                    description="首次正式打标前由 Git Prompt 刷新 bootstrap Scheme",
+                    definition=definition.model_dump(mode="json"),
+                    compiled_prompt=compiled_prompt,
+                    prompt_sha256=prompt_sha256,
+                    taxonomy_sha256=taxonomy_sha256,
+                    created_by=actor_ref,
+                    created_at=now,
+                    published_at=now,
+                )
+                .returning(analysis_scheme_versions_table)
+            )
+            .mappings()
+            .one()
+        )
+        refreshed = _version_from_row(row)
+        self._session.execute(
+            update(analysis_schemes_table)
+            .where(analysis_schemes_table.c.id == active.scheme_id)
+            .values(active_version_id=refreshed.id, is_active=True, updated_at=now)
+        )
+        return refreshed
 
     def create_draft(
         self,
