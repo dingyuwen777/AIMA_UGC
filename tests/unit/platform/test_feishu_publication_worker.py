@@ -206,6 +206,52 @@ def test_report_worker_logs_specific_feishu_endpoint_and_error_details(
     assert "Access denied" in record.error_message
 
 
+@pytest.mark.parametrize(
+    "error",
+    (
+        ValueError("secret=must-not-leak"),
+        RuntimeError("secret=must-not-leak"),
+    ),
+)
+def test_report_worker_logs_safe_internal_error_and_preserves_error_code(
+    executor: PostgresFeishuPublicationJobExecutor,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: ValueError | RuntimeError,
+) -> None:
+    monkeypatch.setattr(worker_module, "validate_xlsx_archive", lambda path: None)
+    monkeypatch.setattr(
+        worker_module,
+        "publish_all_report_to_feishu",
+        lambda **kwargs: (_ for _ in ()).throw(error),
+    )
+    payload = FeishuReportPublicationJobPayload(
+        input_artifact_id=uuid4(),
+        previous_input_artifact_id=uuid4(),
+        input_filename="current.xlsx",
+        previous_input_filename="previous.xlsx",
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 9),
+    )
+    context = _Context()
+
+    with caplog.at_level(logging.ERROR, logger=worker_module.logger.name):
+        result = executor.execute_report(payload=payload, fence=context.fence, context=context)
+
+    assert result.outcome == "failed"
+    assert result.error_code == "feishu_report_publication_failed"
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "feishu.report_publication.internal_error"
+    )
+    assert record.job_id == str(context.fence.job_id)
+    assert record.publication_kind == "report"
+    assert record.error_type == type(error).__name__
+    assert type(error).__name__ in record.exception
+    assert "must-not-leak" not in record.exception
+
+
 def test_representative_worker_passes_stable_retry_identity_and_checkpoint(
     executor: PostgresFeishuPublicationJobExecutor,
     monkeypatch: pytest.MonkeyPatch,

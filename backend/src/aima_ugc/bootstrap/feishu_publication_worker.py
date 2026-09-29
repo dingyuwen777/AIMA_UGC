@@ -32,7 +32,7 @@ from aima_ugc.modules.administration.feishu_publication_jobs import (
 from aima_ugc.modules.ingestion.xlsx_security import validate_xlsx_archive
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
-from aima_ugc.platform.logging import log_event
+from aima_ugc.platform.logging import log_event, log_exception_event
 from aima_ugc.platform.security import SecretFileError
 
 from .runtime import PlatformRuntime
@@ -192,7 +192,16 @@ class PostgresFeishuPublicationJobExecutor(FeishuPublicationJobExecutor):
             return JobHandlerResult.failed("feishu_report_api_failed")
         except OSError, TimeoutError:
             return JobHandlerResult.retry("feishu_report_io_error")
-        except ValueError, RuntimeError:
+        except (ValueError, RuntimeError) as exc:
+            log_exception_event(
+                logger,
+                logging.ERROR,
+                "feishu.report_publication.internal_error",
+                "飞书报告发布内部处理失败。",
+                exc,
+                job_id=job_id,
+                publication_kind="report",
+            )
             return JobHandlerResult.failed("feishu_report_publication_failed")
 
     def execute_representative_selection(
