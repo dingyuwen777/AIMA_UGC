@@ -76,6 +76,7 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 | E10 | R655-F2 证明新增空 plural 默认字段会改变旧 `_query_hash` payload，导致仍在有效期内的旧 Cursor 失效 | PR #655 Review comment 5873630388 + main@f77e02c 的旧 `ContentFilterSnapshot` / `_query_hash` | query hash 必须规范化空 plural 与 singleton plural，且不能放松 Cursor query binding |
 | E11 | R655-F1b 证明旧 Workbench 可产生 cross-parent singular Route/Session；该状态在旧服务端按一级维度 AND 二级维度合法执行，不能强行改写成当前父子层级 | PR #655 Review comment 5874500915 + 旧 Workbench 深链规则 + 当前 Store sanitize 调用链 | legacy compatibility 必须带来源状态；无法无损层级化或目录已缺失的旧值原样保留并在 UI 明示，直到用户主动修改标签 |
 | E12 | singular + plural 在 Pydantic field 长度校验之后才归一化，理论上可把 100/200 上限追加成 101/201 | PR #655 Review comment 5874500915 + `ContentFilterSnapshot.validate_date_order` | 最终归一化集合必须再次执行 100/200 cardinality 校验 |
+| E13 | R655-F1c 证明 Filter Options 在 `catalog_status=building` 时可能只暴露目录子集；用当前目录给 legacy secondary-only 自动补父级会在 ready 后发现更多父级时永久收窄旧查询 | PR #655 Review comment 5882316280 + `refreshFilterOptions()/sanitizeLabelFilters()` 生命周期 | legacy compatibility 不得由动态 Filter Options 自动改写；只有用户主动修改标签并提交才退出 |
 
 ## 推断与待确认
 
@@ -168,7 +169,7 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
    → Unit/API/PG/Browser 分层回归。
 
 6. **PR #655 首轮 Repair Batch**
-   → R655-F1：`sanitizeLabelFilters()` 在 legacy secondary-only + 动态目录边界推导所有真实父级；若目录暂时无法覆盖全部旧二级值，则保留 secondary-only 精确筛选等待后续目录刷新，不允许清空放宽
+   → R655-F1：先建立 legacy compatibility state，避免 secondary-only 在目录加载时被清空放宽；后续 R655-F1c 进一步收紧为“不依据任何动态目录阶段自动补父级”
    → R655-F2：`_query_hash()` 对 plural 标签做 canonical compatibility 编码；空数组忽略、singleton 映射回旧 singular key、multi-value 保留 plural
    → 不修改 `ContentCursorCodec.decode()` 的 query-hash 等值校验，不降低 Cursor 绑定
    → 新增 Session/Route 最终态、List/Count/query Export、旧 hash/v1 Cursor 与不同查询拒绝复用回归。
@@ -180,6 +181,13 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
    → `ContentFilterSnapshot` singular 合并 plural 后再次校验最终 100/200 上限
    → 新增 cross-parent Session/Route、catalog-missing、主动退出兼容态和 post-normalization cardinality Regression。
 
+8. **R655-F1c Repair Verify**
+   → legacy `primary=[] + secondary=[S]` 从恢复开始一直保持 secondary-only 与 compatibility marker
+   → `catalog_status=building` 只知道 `P1/S`、后续 `ready` 新增 `P2/S` 时均不得自动补 primary 或退出 compatibility
+   → List / Count / query-scope Export / Session 始终消费原 secondary-only snapshot
+   → 只有用户主动修改标签草稿并提交查询时清除 compatibility，再按当前父子规则 sanitize
+   → 只修改 Voice Plaza Store 与对应 Unit/Browser Regression，不触碰已闭环 Cursor、Contract cardinality、SQL、generated client 和其它筛选。
+
 ## 证据到决策
 
 | 决策 | 依据证据 | 为什么采用这个方案 |
@@ -189,9 +197,9 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 | D3 Store 清理而非仅 UI 隐藏 | #652 / AC5、E6 | 防止失效二级仍隐藏参与请求 |
 | D4 projection/fallback 同时改 | E5 | 防止读模型状态切换时查询结果漂移 |
 | D5 tertiary 展开参与布局 | E8 | 切断遮挡查询按钮的真实交互根因 |
-| D6 legacy secondary-only 只在兼容迁移边界推导父级 | E9 | 保持新交互父子不变量，同时让旧 URL/Session 在目录加载后得到当前合法等价状态；目录暂不能解析时保持旧精确条件而非放宽 |
+| D6 legacy secondary-only 始终保留原查询直到用户主动修改 | E9,E13 | Filter Options 可能处于 building 子集，任何自动补父级都可能收窄旧查询；因此 compatibility state 不受目录阶段改写，只有用户提交新的标签选择后退出 |
 | D7 query hash 使用兼容 canonical payload | E10 | 空 plural 不进入旧查询身份；singleton plural 回写旧 singular key；真正 multi-value 才使用 plural key，因此保持旧 Cursor 有效且不削弱不同查询隔离 |
-| D8 legacy cross-parent/catalog-missing 使用显式 compatibility state | E11 | 只对可无损的 secondary-only 自动迁移；不能无损映射的旧组合保持原 primary/secondary AND 查询，并在页面提示；用户主动改标签后退出兼容态 |
+| D8 所有 legacy Route/Session 标签组合使用显式 compatibility state | E11,E13 | secondary-only、cross-parent、catalog-missing 都保持恢复时的原 primary/secondary 查询事实并在页面提示；动态目录只服务当前新 UI，用户主动改标签并提交后才退出兼容态 |
 | D9 plural/singular normalization 后重复校验 cardinality | E12 | 保持 OpenAPI 既有 100/200 上限事实，同时堵住 legacy append 绕过上限的 Contract 漏洞 |
 
 # 需求追溯
@@ -206,8 +214,8 @@ Requirement Source 为 canonical `[需求]` Issue #652。用户要求工作台�
 | R6 | 同维度 OR、一级与二级维度 AND，保持工作台一致 | #652 / AC6 | satisfied | Workbench SQL 与 Content projection/fallback 已复核；PG cross-pair 回归通过。 |
 | R7 | List/Count/query-scope Analysis/query-scope Export 共用多选 Filter Snapshot | #652 / AC7 | satisfied | Voice Plaza `filterSnapshot()` 供 List/Count/query export；后端 `ContentTargetSelection.filters` 同时供 Analysis/Reporting freeze。 |
 | R8 | projection 与 fallback PostgreSQL 路径一致 | #652 / AC8 | satisfied | PG 测试先走 ready projection，再置 pending 走 fallback；cross-pair 结果一致。 |
-| R9 | plural Contract + legacy singular 兼容 | #652 / AC9 | satisfied | API repeated plural + legacy singular 归一化；R655-F1/F1b 覆盖 secondary-only、cross-parent 与 catalog-missing Session/Route；无法无损层级化的旧状态保持原 AND 查询并显式提示；归一化后 100/200 最终上限有 API Regression；R655-F2 旧 Cursor 兼容保持；generation/compatibility clean。 |
-| R10 | Workbench 多标签深链与 legacy singular 深链兼容 | #652 / AC10 | satisfied | Workbench 输出 repeated plural；Voice Plaza 优先 plural、回退 singular；R655-F1 secondary-only 可无损迁移；R655-F1b Browser 验证 cross-parent 与 catalog-missing singular 深链在动态目录完成后仍保留原条件且 UI 明示 compatibility state。 |
+| R9 | plural Contract + legacy singular 兼容 | #652 / AC9 | satisfied | API repeated plural + legacy singular 归一化；R655-F1b/F1c 要求所有 legacy Session/Route 标签状态保持恢复时查询事实直到用户主动修改，覆盖 secondary-only building→ready、cross-parent 与 catalog-missing；归一化后 100/200 上限与 R655-F2 Cursor 兼容保持不变。 |
+| R10 | Workbench 多标签深链与 legacy singular 深链兼容 | #652 / AC10 | satisfied | Workbench 输出 repeated plural；Voice Plaza 优先 plural、回退 singular；legacy singular 一律保留原标签维度语义与 compatibility marker，R655-F1c 专项覆盖 secondary-only 在 building→ready 目录生命周期中不被自动补 primary，用户主动修改后才进入当前层级规则。 |
 | R11 | 分层验证与 generated drift/compatibility 通过 | #652 / AC11 | satisfied | Temporary Validation run 36433340226：Backend、PostgreSQL、Frontend 三 Job success。 |
 
 # 计划改动
