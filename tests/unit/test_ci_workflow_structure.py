@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 RUNTIME = ROOT / ".github" / "workflows" / "runtime.yml"
 TOOLING = ROOT / ".github" / "workflows" / "tooling.yml"
+RELEASE = ROOT / ".github" / "workflows" / "release.yml"
 FULLSTACK = ROOT / ".github" / "workflows" / "fullstack.yml"
 LEGACY_COMPLETION = ROOT / ".github" / "workflows" / "change-completion-gate.yml"
 
@@ -14,6 +15,16 @@ def _section(text: str, start: str, end: str) -> str:
     start_index = text.index(start)
     end_index = text.index(end, start_index)
     return text[start_index:end_index]
+
+
+def test_pr_heavy_workflows_do_not_rerun_on_every_synchronize() -> None:
+    """重 Workflow 只在 PR 生命周期边界运行，不跟随每次 push 自动重跑。"""
+    for workflow in (CI, RUNTIME, TOOLING, RELEASE):
+        trigger = workflow.read_text(encoding="utf-8").split("permissions:", 1)[0]
+        assert "- synchronize" not in trigger
+        assert "- opened" in trigger
+        assert "- reopened" in trigger
+        assert "- ready_for_review" in trigger
 
 
 def test_ci_consolidates_ubuntu_core_without_losing_required_contexts() -> None:

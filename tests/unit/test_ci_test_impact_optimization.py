@@ -167,7 +167,6 @@ def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
         "      - main\n"
         "    types:\n"
         "      - opened\n"
-        "      - synchronize\n"
         "      - reopened\n"
         "      - ready_for_review\n"
         "    paths:\n"
