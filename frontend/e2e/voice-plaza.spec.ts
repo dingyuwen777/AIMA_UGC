@@ -440,37 +440,103 @@ test('导入记录查看声音时不继承会话中陈旧筛选', async ({ page 
   expect(url.searchParams.get('search')).toBeNull()
 })
 
-test('旧 secondary-only 深链在目录加载后迁移为等价父子筛选且不静默放宽', async ({ page }) => {
-  const migratedList = page.waitForRequest((request) => {
-    const url = new URL(request.url())
-    return request.method() === 'GET'
-      && url.pathname === '/api/v1/contents'
-      && url.searchParams.getAll('primary_labels').includes('产品体验')
-      && url.searchParams.getAll('secondary_labels').includes('续航表现')
+test('旧 secondary-only 深链跨 building 到 ready 始终保持原查询语义', async ({ page }) => {
+  await page.unroute('**/api/v1/content-filter-options')
+  let filterOptionsReads = 0
+  await page.route('**/api/v1/content-filter-options', async (route) => {
+    filterOptionsReads += 1
+    const labels = filterOptionsReads === 1
+      ? [{
+          primary_label: '产品体验',
+          source: 'active',
+          secondary_labels: [{ value: '续航表现', source: 'active' }],
+        }]
+      : [
+          {
+            primary_label: '产品体验',
+            source: 'active',
+            secondary_labels: [{ value: '续航表现', source: 'active' }],
+          },
+          {
+            primary_label: '服务体验',
+            source: 'active',
+            secondary_labels: [{ value: '续航表现', source: 'active' }],
+          },
+        ]
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...voicePlazaFilterOptionsFixture,
+        catalog_status: filterOptionsReads === 1 ? 'building' : 'ready',
+        labels,
+      }),
+    })
   })
-  const migratedCount = page.waitForRequest((request) => {
+
+  const listRequests: URLSearchParams[] = []
+  const countFilters: Array<{ primary_labels?: string[], secondary_labels?: string[] }> = []
+  page.on('request', (request) => {
     const url = new URL(request.url())
-    if (request.method() !== 'POST' || url.pathname !== '/api/v1/contents/count') return false
-    const body = request.postDataJSON() as { filters?: {
-      primary_labels?: string[]
-      secondary_labels?: string[]
-    } }
-    return body.filters?.primary_labels?.includes('产品体验') === true
-      && body.filters?.secondary_labels?.includes('续航表现') === true
+    if (request.method() === 'GET' && url.pathname === '/api/v1/contents') {
+      listRequests.push(url.searchParams)
+    }
+    if (request.method() === 'POST' && url.pathname === '/api/v1/contents/count') {
+      const body = request.postDataJSON() as {
+        filters?: { primary_labels?: string[], secondary_labels?: string[] }
+      }
+      countFilters.push(body.filters ?? {})
+    }
   })
 
   await page.goto('/voice-plaza?secondary_label=续航表现')
-  await Promise.all([migratedList, migratedCount])
+  await expect(page.getByText(/当前保留旧版兼容筛选：二级「续航表现」/)).toBeVisible()
+  await expect.poll(() => filterOptionsReads, { timeout: 20_000 }).toBeGreaterThanOrEqual(2)
 
-  const filters = page.locator('section.filters')
-  await expect(filters.getByLabel('一级标签', { exact: true })).toContainText('已选 1 个一级标签')
-  await expect(filters.getByLabel('二级标签', { exact: true })).toContainText('已选 1 个二级标签')
+  const secondaryOnlyLists = listRequests.filter((params) =>
+    params.getAll('secondary_labels').includes('续航表现'),
+  )
+  expect(secondaryOnlyLists.length).toBeGreaterThan(0)
+  expect(secondaryOnlyLists.every((params) => params.getAll('primary_labels').length === 0)).toBe(true)
+  const secondaryOnlyCounts = countFilters.filter((filters) =>
+    filters.secondary_labels?.includes('续航表现') === true,
+  )
+  expect(secondaryOnlyCounts.length).toBeGreaterThan(0)
+  expect(secondaryOnlyCounts.every((filters) => (filters.primary_labels?.length ?? 0) === 0)).toBe(true)
 
   const persisted = await page.evaluate(() => JSON.parse(
     sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
   ))
   expect(persisted.filters).toMatchObject({
-    primaryLabels: ['产品体验'],
+    primaryLabels: [],
+    secondaryLabels: ['续航表现'],
+  })
+  expect(persisted.legacyLabelCompatibility).toEqual({
+    primaryLabels: [],
+    secondaryLabels: ['续航表现'],
+  })
+
+  // 用户主动选择当前父级并提交，compatibility 才清除并进入层级规则。
+  const filters = page.locator('section.filters')
+  const primaryField = filters.locator('.filter-row--tertiary .field').nth(0)
+  await filters.getByLabel('一级标签', { exact: true }).click()
+  await primaryField.getByRole('checkbox', { name: '服务体验' }).check()
+  const currentQuery = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return request.method() === 'GET'
+      && url.pathname === '/api/v1/contents'
+      && url.searchParams.getAll('primary_labels').includes('服务体验')
+      && url.searchParams.getAll('secondary_labels').includes('续航表现')
+  })
+  await page.getByRole('button', { name: '查询' }).click()
+  await currentQuery
+  await expect(page.getByText(/当前保留旧版兼容筛选/)).toHaveCount(0)
+
+  const migrated = await page.evaluate(() => JSON.parse(
+    sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}',
+  ))
+  expect(migrated.legacyLabelCompatibility).toBeNull()
+  expect(migrated.filters).toMatchObject({
+    primaryLabels: ['服务体验'],
     secondaryLabels: ['续航表现'],
   })
 })
