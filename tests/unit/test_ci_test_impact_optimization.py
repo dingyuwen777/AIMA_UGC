@@ -119,10 +119,13 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     )
     assert "uv run pytest tests/integration/vehicles -q" in postgres_job
 
-    assert (
-        "      - name: Install report validation CJK font\n"
-        "        if: needs.ci-plan.outputs.backend_required == 'true'\n" in text
+    font = _section(
+        text,
+        "      - name: Install report validation CJK font\n",
+        "      - name: Verify required runtime versions\n",
     )
+    assert "needs.ci-plan.outputs.backend_targets == 'all'" in font
+    assert "needs.ci-plan.outputs.report_font_required == 'true'" in font
 
 
 def test_frontend_and_backend_selected_targets_are_consumed_by_core() -> None:

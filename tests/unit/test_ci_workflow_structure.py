@@ -178,13 +178,16 @@ def test_frontend_typechecks_once_through_build() -> None:
     assert "npm --prefix frontend run typecheck\n" not in text
 
 
-def test_backend_unit_suite_installs_cjk_font_prerequisite() -> None:
-    """完整后端单测包含 Reporting 渲染，因此进入 backend suite 前必须准备 CJK 字体。"""
+def test_backend_font_setup_only_runs_when_selected_tests_can_reach_reporting() -> None:
+    """Targeted Backend 不支付 Reporting 字体；all/reporting 风险仍保留真实先决条件。"""
     text = CI.read_text(encoding="utf-8")
-    assert (
-        "      - name: Install report validation CJK font\n"
-        "        if: needs.ci-plan.outputs.backend_required == 'true'\n" in text
+    font = _section(
+        text,
+        "      - name: Install report validation CJK font\n",
+        "      - name: Verify required runtime versions\n",
     )
+    assert "needs.ci-plan.outputs.backend_targets == 'all'" in font
+    assert "needs.ci-plan.outputs.report_font_required == 'true'" in font
     assert text.index("Install report validation CJK font") < text.index(
         "Unit, Contract and API tests"
     )

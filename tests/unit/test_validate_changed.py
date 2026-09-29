@@ -24,3 +24,20 @@ def test_validate_changed_exposes_plan_and_explicit_execution_mode() -> None:
     assert "frontend_browser_targets" in text
     assert "PostgreSQL" in text
     assert "Full-stack" in text
+
+
+def test_project_development_rules_bind_preflight_commit_hygiene_and_final_sync() -> None:
+    """AIMA Overlay 只绑定项目入口与交付节奏，不复制第二套通用治理。"""
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    blueprint = (ROOT / "docs" / "blueprint" / "06_开发约束与分阶段实施.md").read_text(
+        encoding="utf-8"
+    )
+    for marker in (
+        "scripts/dev/validate_changed.py",
+        "临时 Workflow",
+        "Draft 阶段",
+        "Final 前",
+        "bypass",
+    ):
+        assert marker in agents
+        assert marker in blueprint

@@ -118,6 +118,10 @@
 4. 宿主已验证可自动完成 Draft → Ready 时使用 Draft PR；否则创建普通 PR，并明确“逻辑未就绪”，所有 Ready 门禁完成前禁止 merge；
 5. 保持 `Issue ↔ Change ↔ branch ↔ PR` 稳定关联。PR 使用 `Requirement-Source:`，只有当前 PR 完成整个 Issue 时才使用关闭关键字；
 6. 当前宿主没有相应外部写权限时，在依赖该权限的动作前停止并报告，不用远程空分支、口头关联或本地副本冒充已建立追溯链。
+7. AIMA 开发期 changed-scope preflight 的项目入口固定为 `python scripts/dev/validate_changed.py --base main --head HEAD`；它必须直接复用 `scripts/quality/classify_ci_scope.py`，不得维护第二套 impact mapping。需要执行安全本地层时显式加 `--run`；PostgreSQL / Real Full-stack 仍由正式 CI 提供最终真实 Evidence；
+8. 正式 commit 只保存可独立审查的实现 checkpoint。临时 Workflow、debug instrumentation、未收敛 formatter/generated 状态、为取 Red 临时搬移治理/配置文件等过程态默认不提交；有独立 Red、Migration、审计或回滚价值的 checkpoint 例外；
+9. Draft 阶段不因为无关 main/Change Archive 前进就反复同步；只有真实冲突/共享 Contract 依赖出现时提前同步。进入 Final 前必须统一同步当前 main、解决真实冲突、重新运行 changed-scope preflight，再进入 Review/Ready；
+10. 正常 merge 不使用 Ruleset 的 bypass 能力替代质量门禁。merge 前必须重新读取 current head/base、reviewed head/base 与 required checks；若 Final Evidence 后 base 漂移使待合入 tree 改变，先回 Draft 同步并重新取得 current-head/current-base Evidence，再 merge。
 
 ### 正式单元完成定义追溯门禁
 
