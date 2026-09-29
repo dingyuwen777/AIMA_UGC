@@ -618,20 +618,11 @@ class PostgresContentHttpService:
                 runtime_config_snapshot = cast(
                     dict[str, object], llm_provider.safe_runtime_snapshot()
                 )
-                if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
-                    target_count = PostgresContentQueryRepository(
-                        session,
-                        analysis_identity=None,
-                    ).count_all_analysis_targets()
-                else:
-                    target_statement = self._analysis_target_statement(
-                        session,
-                        targets,
-                        analysis_identity=identity,
-                    )
-                    target_count = PostgresAnalysisRepository(session).count_targets(
-                        target_statement
-                    )
+                target_count = self._analysis_target_count(
+                    session,
+                    targets,
+                    analysis_identity=identity,
+                )
                 if target_count == 0:
                     raise ContentSelectionEmpty
         finally:
@@ -800,6 +791,14 @@ class PostgresContentHttpService:
                         cast(UUID, first_shard["request_id"]) if first_shard else None,
                         cast(UUID, first_shard["job_id"]) if first_shard else None,
                     )
+                if not freeze_in_http:
+                    current_target_count = self._analysis_target_count(
+                        session,
+                        targets,
+                        analysis_identity=identity,
+                    )
+                    if current_target_count != expected_target_count:
+                        raise ContentAnalysisTargetChanged
                 shard_count = ceil(expected_target_count / shard_size)
                 run_id = uuid5(_ANALYSIS_RUN_ID_NAMESPACE, client_idempotency_key)
                 planner_job = PostgresJobRepository(session).enqueue(
@@ -958,6 +957,28 @@ class PostgresContentHttpService:
             )
         )
 
+    def _analysis_target_count(
+        self,
+        session: Session,
+        targets: _AnalysisTargetSelection,
+        *,
+        analysis_identity: Any,
+    ) -> int:
+        """按 Scope 统计服务端权威目标数；Query 不构造带窗口序号的冻结语句。"""
+
+        repository = PostgresContentQueryRepository(session, analysis_identity=analysis_identity)
+        if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+            return PostgresContentQueryRepository(
+                session,
+                analysis_identity=None,
+            ).count_all_analysis_targets()
+        if targets.scope == "query":
+            return repository.count_filtered_analysis_targets(
+                targets.filters or ContentFilterSnapshot()
+            )
+        target_statement = repository.freeze_target_statement(content_ids=targets.content_ids)
+        return PostgresAnalysisRepository(session).count_targets(target_statement)
+
     def _analysis_target_statement(
         self,
         session: Session,
@@ -965,9 +986,11 @@ class PostgresContentHttpService:
         *,
         analysis_identity: Any,
     ) -> Any:
+        """恢复兼容入口的冻结语句；新 Run 的 all/query 由 Planner 有界冻结。"""
+
         repository = PostgresContentQueryRepository(session, analysis_identity=analysis_identity)
-        if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
-            raise ValueError("all Scope 只能由 Planner 有界冻结")
+        if isinstance(targets, AnalysisRunTargetSelection) and targets.scope in {"all", "query"}:
+            raise ValueError("all/query Scope 只能由 Planner 有界冻结")
         if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
             return repository.freeze_target_statement(
                 filters=targets.filters or ContentFilterSnapshot()
@@ -1077,9 +1100,11 @@ def _filter_value_options(
 
 
 def _analysis_filter_snapshot(targets: _AnalysisTargetSelection) -> dict[str, object]:
+    """把公开 Scope 固化成数据库可恢复的筛选快照。"""
+
     if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
         return analysis_all_scope_filter_snapshot()
-    if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
+    if targets.scope == "query":
         return (targets.filters or ContentFilterSnapshot()).model_dump(mode="json")
     return {"content_ids": [str(item) for item in targets.content_ids]}
 
