@@ -48,11 +48,13 @@ def active_analysis_configuration(
     if refresh_unused_git_bootstrap:
         scheme, bootstrap_changed = repository.bootstrap_default(actor_ref="system:git-bootstrap")
     else:
-        scheme = repository.get_active_version()
-        if scheme is None:
+        active = repository.get_active_version()
+        if active is None:
             scheme, bootstrap_changed = repository.bootstrap_default(
                 actor_ref="system:git-bootstrap"
             )
+        else:
+            scheme = active
     if bootstrap_changed:
         PostgresAuditRepository(session).append(
             AuditEvent(
