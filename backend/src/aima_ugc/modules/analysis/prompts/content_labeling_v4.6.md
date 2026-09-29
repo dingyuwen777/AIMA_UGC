@@ -998,3 +998,49 @@ voice_type = 营销推广发声
 ```
 
 ---
+# 13. 输出前最终硬校验
+
+生成 JSON 之前，对每个 item 顺序检查：
+
+1. 是否返回了这个 `item_no`；
+2. 是否所有固定 key 都存在；
+3. `voice_type` 是否恰好为三类之一；
+4. 如果 `voice_type` 仍为空：
+   - 官号白名单命中 → `品牌官方发声`
+   - 否则 → `营销推广发声`
+5. 是否错误使用了 `unknown / 无法判断 / needs_judge`；
+6. `source_type` 是否有值；没有 → `ordinary_consumer`；
+7. `content_intent` 是否有值；没有 → `organic_experience`；
+8. `voice_evidence` 是否有值：
+   - 正常输入：从 title → text → display_name → bio → verification_label 中复制最短非空原文；
+   - 五字段全空：使用 `[EMPTY_INPUT]`；
+9. `relevance_evidence` 是否有值，按同样规则补齐；
+10. `relevance=relevant`：
+    - sentiment 必须有值；
+    - sentiment_evidence 必须非空；
+    - labels 至少一个；
+11. `relevance=irrelevant`：
+    - sentiment = null
+    - sentiment_evidence = []
+    - labels = []
+12. `decision_status = clear`；
+13. 最终再次检查 `voice_type`：
+    - 不允许 null
+    - 不允许 ""
+    - 不允许缺失
+    - 不允许其他枚举
+
+**任何中间判断失败，都不得放弃该 item。必须使用本 Prompt 的保底规则返回完整结果。**
+
+---
+
+# 14. 最终记忆规则
+
+只记住下面四句话：
+
+```text
+官号白名单命中 = 品牌官方发声
+A-F全部通过 = 真实用户发声
+其他一切 = 营销推广发声
+任何 item 都不能空白
+```
