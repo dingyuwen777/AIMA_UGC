@@ -22,7 +22,7 @@ const emit = defineEmits<{
 
 const scope = ref<AnalysisScope>('all')
 
-/** 打开弹窗时优先使用有效显式选择，否则默认选择全部数据并立即预检。 */
+/** 打开弹窗时优先使用有效显式选择，否则默认选择当前筛选结果并立即预检。 */
 watch(() => props.modelValue, (open) => {
   if (!open) return
   scope.value = props.selectedCount > 0 && props.selectedCount <= 1000 ? 'selected' : 'query'
