@@ -146,6 +146,49 @@ def test_excel_output_contract_is_scoped_to_excel_complete_requests() -> None:
     assert "relevance=irrelevant" in user_payload["excel_output_contract"]
 
 
+def test_v46_excel_request_does_not_override_prompt_relevance_protocol() -> None:
+    """V4.6 自带零空白/irrelevant 协议，离线入口不得再注入相反要求。"""
+
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"items": []}'}}]},
+        )
+
+    client = httpx.Client(
+        base_url="https://llm.example/v1/",
+        transport=httpx.MockTransport(handler),
+    )
+    prompt = (
+        "# AIMA 内容舆情语义相关性与多标签分析 Prompt V4.6\n"
+        "Prompt Version：`content-labeling.v4.6`\n"
+    )
+    request = _request(require_excel_complete=True)
+    request = ContentLabelingLLMRequest(
+        prompt=prompt,
+        items=request.items,
+        request_kind=request.request_kind,
+        previous_validation_error_codes=request.previous_validation_error_codes,
+        require_excel_complete=True,
+    )
+    try:
+        adapter = OpenAICompatibleContentLabelingLLM(
+            api_key=SecretStr("secret"),
+            model="model-a",
+            client=client,
+        )
+        adapter.complete(request)
+    finally:
+        client.close()
+
+    user_payload = json.loads(json.loads(captured[0].content)["messages"][1]["content"])
+    assert set(user_payload) == {"items"}
+    assert "excel_output_contract" not in user_payload
+
+
 def test_openai_compatible_adapter_derives_non_default_port_in_provider_identity() -> None:
     client = httpx.Client(
         base_url="https://gateway.example:8443/v1/",
