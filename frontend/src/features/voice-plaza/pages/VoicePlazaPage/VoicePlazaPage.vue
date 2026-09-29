@@ -301,7 +301,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
           <AimaButton
             size="small"
             :disabled="store.analysisConfigured !== true"
-            :title="store.analysisConfigured === false ? 'AI 分析尚未配置' : store.analysisConfigured === null ? '正在检查 AI 分析是否可用' : '可选择已选内容或全部数据进行分析'"
+            :title="store.analysisConfigured === false ? 'AI 分析尚未配置' : store.analysisConfigured === null ? '正在检查 AI 分析是否可用' : '可选择已选内容、当前筛选结果或全部数据进行分析'"
             @click="analysisOpen = true"
           >
             AI 分析
