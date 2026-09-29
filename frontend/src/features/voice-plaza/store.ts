@@ -69,8 +69,8 @@ export interface VoicePlazaFilters {
   relevance: '' | ContentRelevance
   voiceTypes: string[]
   sentiments: string[]
-  primaryLabel: string
-  secondaryLabel: string
+  primaryLabels: string[]
+  secondaryLabels: string[]
   publishedFrom: string
   publishedTo: string
   sourceIdentifier: string
@@ -85,8 +85,8 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   relevance: '',
   voiceTypes: [],
   sentiments: [],
-  primaryLabel: '',
-  secondaryLabel: '',
+  primaryLabels: [],
+  secondaryLabels: [],
   publishedFrom: '',
   publishedTo: '',
   sourceIdentifier: '',
@@ -97,10 +97,16 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
 const FILTER_SESSION_KEY = 'aima.voice-plaza.applied-search.v1'
 const LIST_CACHE_TTL_MS = 60_000
 
+export interface LegacyLabelCompatibility {
+  primaryLabels: string[]
+  secondaryLabels: string[]
+}
+
 interface PersistedVoicePlazaSearch {
   filters: VoicePlazaFilters
   sortBy: 'published_at' | 'follower_count'
   sortDirection: 'asc' | 'desc'
+  legacyLabelCompatibility: LegacyLabelCompatibility | null
 }
 
 /** 复制筛选数组，避免草稿、已应用条件和默认值共享可变引用。 */
@@ -112,11 +118,71 @@ function copyFilters(source: VoicePlazaFilters): VoicePlazaFilters {
     sentiments: [...source.sentiments],
     brandIds: [...source.brandIds],
     vehicleModelIds: [...source.vehicleModelIds],
+    primaryLabels: [...source.primaryLabels],
+    secondaryLabels: [...source.secondaryLabels],
   }
 }
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function copyLegacyLabelCompatibility(
+  source: LegacyLabelCompatibility | null,
+): LegacyLabelCompatibility | null {
+  return source ? {
+    primaryLabels: [...source.primaryLabels],
+    secondaryLabels: [...source.secondaryLabels],
+  } : null
+}
+
+function sameLabelSelection(
+  source: Pick<VoicePlazaFilters, 'primaryLabels' | 'secondaryLabels'>,
+  legacy: LegacyLabelCompatibility,
+): boolean {
+  return JSON.stringify(source.primaryLabels) === JSON.stringify(legacy.primaryLabels)
+    && JSON.stringify(source.secondaryLabels) === JSON.stringify(legacy.secondaryLabels)
+}
+
+/**
+ * 新交互按当前父子目录收敛；legacy Route / Session 则保持原查询事实。
+ *
+ * Filter Options 在 building 阶段可能只是目录子集，因此不能据此给 secondary-only
+ * 自动补父级，也不能因为目录后来 ready 就改写旧查询。compatibility 只在用户主动
+ * 修改标签并提交后退出，避免动态目录生命周期静默放宽或收窄历史查询。
+ */
+function sanitizeLabelFilters(
+  source: VoicePlazaFilters,
+  options: ContentFilterOptionsResponse,
+  legacyCompatibility: LegacyLabelCompatibility | null = null,
+): VoicePlazaFilters {
+  const requestedPrimaryLabels = [...new Set(source.primaryLabels)]
+  const requestedSecondaryLabels = [...new Set(source.secondaryLabels)]
+  const compatibilityState = {
+    ...copyFilters(source),
+    primaryLabels: requestedPrimaryLabels,
+    secondaryLabels: requestedSecondaryLabels,
+  }
+  if (
+    legacyCompatibility !== null
+    && sameLabelSelection(compatibilityState, legacyCompatibility)
+  ) {
+    return compatibilityState
+  }
+
+  const validPrimaryLabels = new Set(options.labels.map((item) => item.primary_label))
+  const primaryLabels = requestedPrimaryLabels.filter((value) => validPrimaryLabels.has(value))
+  const selectedPrimaryLabels = new Set(primaryLabels)
+  const validSecondaryLabels = new Set(
+    options.labels
+      .filter((item) => selectedPrimaryLabels.has(item.primary_label))
+      .flatMap((item) => item.secondary_labels.map((label) => label.value)),
+  )
+  return {
+    ...compatibilityState,
+    primaryLabels,
+    secondaryLabels: requestedSecondaryLabels.filter((value) => validSecondaryLabels.has(value)),
+  }
 }
 
 /** 只恢复本应用写入且仍符合当前 Contract 的会话筛选，损坏缓存直接回退默认值。 */
@@ -125,6 +191,7 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     filters: copyFilters(EMPTY_FILTERS),
     sortBy: 'published_at',
     sortDirection: 'desc',
+    legacyLabelCompatibility: null,
   }
   if (typeof sessionStorage === 'undefined') return fallback
   try {
@@ -157,24 +224,55 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     const analysisStatus = Object.values(ContentAnalysisStatusValues).includes(
       values.analysisStatus as ContentAnalysisStatus,
     ) ? values.analysisStatus as ContentAnalysisStatus : ''
+    const filters: VoicePlazaFilters = {
+      search: stringValue('search'),
+      platforms,
+      analysisStatus,
+      relevance,
+      voiceTypes,
+      sentiments,
+      primaryLabels: isStringArray(values.primaryLabels)
+        ? values.primaryLabels
+        : typeof values.primaryLabel === 'string' && values.primaryLabel ? [values.primaryLabel] : [],
+      secondaryLabels: isStringArray(values.secondaryLabels)
+        ? values.secondaryLabels
+        : typeof values.secondaryLabel === 'string' && values.secondaryLabel ? [values.secondaryLabel] : [],
+      publishedFrom: stringValue('publishedFrom'),
+      publishedTo: stringValue('publishedTo'),
+      sourceIdentifier: stringValue('sourceIdentifier'),
+      brandIds: isStringArray(values.brandIds) ? values.brandIds : [],
+      vehicleModelIds: isStringArray(values.vehicleModelIds) ? values.vehicleModelIds : [],
+    }
+    const savedCompatibility = record.legacyLabelCompatibility
+    const parsedCompatibility = savedCompatibility && typeof savedCompatibility === 'object'
+      ? savedCompatibility as Record<string, unknown>
+      : null
+    const persistedCompatibility = parsedCompatibility
+      && isStringArray(parsedCompatibility.primaryLabels)
+      && isStringArray(parsedCompatibility.secondaryLabels)
+      ? {
+          primaryLabels: parsedCompatibility.primaryLabels,
+          secondaryLabels: parsedCompatibility.secondaryLabels,
+        }
+      : null
+    const restoredFromLegacyFields = (
+      (typeof values.primaryLabel === 'string' && Boolean(values.primaryLabel))
+      || (typeof values.secondaryLabel === 'string' && Boolean(values.secondaryLabel))
+    )
+    const legacyLabelCompatibility = persistedCompatibility
+      && sameLabelSelection(filters, persistedCompatibility)
+      ? copyLegacyLabelCompatibility(persistedCompatibility)
+      : restoredFromLegacyFields
+        ? {
+            primaryLabels: [...filters.primaryLabels],
+            secondaryLabels: [...filters.secondaryLabels],
+          }
+        : null
     return {
-      filters: {
-        search: stringValue('search'),
-        platforms,
-        analysisStatus,
-        relevance,
-        voiceTypes,
-        sentiments,
-        primaryLabel: stringValue('primaryLabel'),
-        secondaryLabel: stringValue('secondaryLabel'),
-        publishedFrom: stringValue('publishedFrom'),
-        publishedTo: stringValue('publishedTo'),
-        sourceIdentifier: stringValue('sourceIdentifier'),
-        brandIds: isStringArray(values.brandIds) ? values.brandIds : [],
-        vehicleModelIds: isStringArray(values.vehicleModelIds) ? values.vehicleModelIds : [],
-      },
+      filters,
       sortBy: record.sortBy === 'follower_count' ? 'follower_count' : 'published_at',
       sortDirection: record.sortDirection === 'asc' ? 'asc' : 'desc',
+      legacyLabelCompatibility,
     }
   } catch {
     return fallback
@@ -195,6 +293,9 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const persistedSearch = readPersistedSearch()
   const filters = reactive<VoicePlazaFilters>(copyFilters(persistedSearch.filters))
   const appliedFilters = reactive<VoicePlazaFilters>(copyFilters(persistedSearch.filters))
+  const legacyLabelCompatibility = ref<LegacyLabelCompatibility | null>(
+    copyLegacyLabelCompatibility(persistedSearch.legacyLabelCompatibility),
+  )
   const sortBy = ref<'published_at' | 'follower_count'>(persistedSearch.sortBy)
   const sortDirection = ref<'asc' | 'desc'>(persistedSearch.sortDirection)
   const items = ref<ContentListItemResponse[]>([])
@@ -281,6 +382,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
         filters: copyFilters(appliedFilters),
         sortBy: sortBy.value,
         sortDirection: sortDirection.value,
+        legacyLabelCompatibility: copyLegacyLabelCompatibility(legacyLabelCompatibility.value),
       } satisfies PersistedVoicePlazaSearch))
     } catch {
       // 浏览器禁用会话存储时保留当前 Pinia 状态，不阻断查询。
@@ -295,8 +397,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       relevance: appliedFilters.relevance || undefined,
       voice_types: appliedFilters.voiceTypes.length ? [...appliedFilters.voiceTypes] : undefined,
       sentiments: appliedFilters.sentiments.length ? [...appliedFilters.sentiments] : undefined,
-      primary_label: appliedFilters.primaryLabel.trim() || undefined,
-      secondary_label: appliedFilters.secondaryLabel.trim() || undefined,
+      primary_labels: appliedFilters.primaryLabels.length ? [...appliedFilters.primaryLabels] : undefined,
+      secondary_labels: appliedFilters.secondaryLabels.length ? [...appliedFilters.secondaryLabels] : undefined,
       published_from: beijingDayBoundary(appliedFilters.publishedFrom, 'start'),
       published_to: beijingDayBoundary(appliedFilters.publishedTo, 'end'),
       source_identifier: appliedFilters.sourceIdentifier.trim() || undefined,
@@ -346,8 +448,32 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     await refresh()
   }
 
-  /** 提交筛选草稿；列表、统计、导出和轮询在下一次提交前只消费这份快照。 */
+  /** 恢复 Route 标签时记录 legacy 来源；动态目录不得自行改写该兼容查询。 */
+  function restoreLabelFilters(
+    primaryLabels: string[],
+    secondaryLabels: string[],
+    legacy: boolean,
+  ): void {
+    filters.primaryLabels = [...new Set(primaryLabels)]
+    filters.secondaryLabels = [...new Set(secondaryLabels)]
+    legacyLabelCompatibility.value = legacy ? {
+      primaryLabels: [...filters.primaryLabels],
+      secondaryLabels: [...filters.secondaryLabels],
+    } : null
+  }
+
+  /** 提交筛选草稿；用户主动改变 legacy 标签后立即回到当前层级规则。 */
   function applyFilters(): void {
+    const legacy = legacyLabelCompatibility.value
+    if (legacy && !sameLabelSelection(filters, legacy)) {
+      legacyLabelCompatibility.value = null
+    }
+    if (filterOptions.value) {
+      Object.assign(
+        filters,
+        sanitizeLabelFilters(filters, filterOptions.value, legacyLabelCompatibility.value),
+      )
+    }
     Object.assign(appliedFilters, copyFilters(filters))
     selectedIds.value = []
     nextCursor.value = null
@@ -491,6 +617,35 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       const loaded = await fetchContentFilterOptions()
       if (revision !== filterOptionsRevision) return
       filterOptions.value = loaded
+      const previousApplied = JSON.stringify({
+        primaryLabels: appliedFilters.primaryLabels,
+        secondaryLabels: appliedFilters.secondaryLabels,
+      })
+      const previousCompatibility = JSON.stringify(legacyLabelCompatibility.value)
+      Object.assign(
+        filters,
+        sanitizeLabelFilters(filters, loaded, legacyLabelCompatibility.value),
+      )
+      Object.assign(
+        appliedFilters,
+        sanitizeLabelFilters(appliedFilters, loaded, legacyLabelCompatibility.value),
+      )
+      const currentApplied = JSON.stringify({
+        primaryLabels: appliedFilters.primaryLabels,
+        secondaryLabels: appliedFilters.secondaryLabels,
+      })
+      const compatibilityChanged = JSON.stringify(legacyLabelCompatibility.value) !== previousCompatibility
+      if (currentApplied !== previousApplied) {
+        selectedIds.value = []
+        nextCursor.value = null
+        hasMore.value = false
+        listPageCache.clear()
+        persistAppliedSearch()
+        void refreshResults()
+      } else if (compatibilityChanged || legacyLabelCompatibility.value !== null) {
+        // 旧版 Session 首次恢复时也写回显式 compatibility marker，后续重载不再依赖旧字段形状猜来源。
+        persistAppliedSearch()
+      }
     } catch (reason) {
       if (revision !== filterOptionsRevision) return
       filterOptionsError.value = errorMessage(reason)
@@ -901,6 +1056,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   function resetFilters(): void {
     Object.assign(filters, copyFilters(EMPTY_FILTERS))
     Object.assign(appliedFilters, copyFilters(EMPTY_FILTERS))
+    legacyLabelCompatibility.value = null
     clearSelection()
     countRevision += 1
     countAbortController?.abort()
@@ -958,10 +1114,12 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   return {
     filters,
     appliedFilters,
+    legacyLabelCompatibility,
     sortBy,
     sortDirection,
     changeSort,
     applyFilters,
+    restoreLabelFilters,
     detailId,
     detailError,
     commentRoots,

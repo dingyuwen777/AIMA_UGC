@@ -75,7 +75,8 @@ function routeValues(value: unknown): string[] {
 /** 从真实可表达的声音广场筛选字段恢复工作台深链，不解析未知参数。 */
 function hydrateRouteFilters(): void {
   const deepLinkKeys = [
-    'source_identifier', 'sentiment', 'voice_type', 'primary_label', 'secondary_label',
+    'source_identifier', 'sentiment', 'voice_type',
+    'primary_labels', 'secondary_labels', 'primary_label', 'secondary_label',
     'published_from', 'published_to', 'platform', 'brand_ids', 'vehicle_model_ids', 'content_id',
   ]
   if (deepLinkKeys.some((key) => routeValues(route.query[key]).length > 0)) {
@@ -85,8 +86,7 @@ function hydrateRouteFilters(): void {
   let changed = false
   const setString = (
     queryKey: string,
-    filterKey: 'sourceIdentifier' | 'primaryLabel'
-      | 'secondaryLabel' | 'publishedFrom' | 'publishedTo',
+    filterKey: 'sourceIdentifier' | 'publishedFrom' | 'publishedTo',
   ): void => {
     const value = routeValues(route.query[queryKey])[0]
     if (!value) return
@@ -95,8 +95,6 @@ function hydrateRouteFilters(): void {
   }
 
   setString('source_identifier', 'sourceIdentifier')
-  setString('primary_label', 'primaryLabel')
-  setString('secondary_label', 'secondaryLabel')
   setString('published_from', 'publishedFrom')
   setString('published_to', 'publishedTo')
 
@@ -115,6 +113,21 @@ function hydrateRouteFilters(): void {
   const sentiments = routeValues(route.query.sentiment)
   if (sentiments.length) {
     store.filters.sentiments = sentiments
+    changed = true
+  }
+  const primaryLabels = routeValues(route.query.primary_labels)
+  const legacyPrimaryLabels = routeValues(route.query.primary_label)
+  const restoredPrimaryLabels = primaryLabels.length ? primaryLabels : legacyPrimaryLabels
+  const secondaryLabels = routeValues(route.query.secondary_labels)
+  const legacySecondaryLabels = routeValues(route.query.secondary_label)
+  const restoredSecondaryLabels = secondaryLabels.length ? secondaryLabels : legacySecondaryLabels
+  if (restoredPrimaryLabels.length || restoredSecondaryLabels.length) {
+    store.restoreLabelFilters(
+      restoredPrimaryLabels,
+      restoredSecondaryLabels,
+      (primaryLabels.length === 0 && legacyPrimaryLabels.length > 0)
+        || (secondaryLabels.length === 0 && legacySecondaryLabels.length > 0),
+    )
     changed = true
   }
 
@@ -310,8 +323,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:relevance="store.filters.relevance"
         v-model:voice-types="store.filters.voiceTypes"
         v-model:sentiments="store.filters.sentiments"
-        v-model:primary-label="store.filters.primaryLabel"
-        v-model:secondary-label="store.filters.secondaryLabel"
+        v-model:primary-labels="store.filters.primaryLabels"
+        v-model:secondary-labels="store.filters.secondaryLabels"
         v-model:published-from="store.filters.publishedFrom"
         v-model:published-to="store.filters.publishedTo"
         v-model:source-identifier="store.filters.sourceIdentifier"
@@ -319,6 +332,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:vehicle-model-ids="store.filters.vehicleModelIds"
         :filter-options="store.filterOptions"
         :filter-options-loading="store.filterOptionsLoading"
+        :legacy-label-compatibility="store.legacyLabelCompatibility"
         @search="search"
         @reset="reset"
       />

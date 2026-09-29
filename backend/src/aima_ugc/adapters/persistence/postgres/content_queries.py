@@ -1541,13 +1541,24 @@ def _apply_projection_filters(
         statement = statement.where(projection.c.analysis_status == filters.analysis_status)
     if filters.sentiments:
         statement = statement.where(projection.c.effective_sentiment.in_(filters.sentiments))
-    if filters.primary_label is not None or filters.secondary_label is not None:
-        label: dict[str, str] = {}
-        if filters.primary_label is not None:
-            label["primary_label"] = filters.primary_label
-        if filters.secondary_label is not None:
-            label["secondary_label"] = filters.secondary_label
-        statement = statement.where(projection.c.labels.contains([label]))
+    if filters.primary_labels:
+        statement = statement.where(
+            or_(
+                *(
+                    projection.c.labels.contains([{"primary_label": value}])
+                    for value in filters.primary_labels
+                )
+            )
+        )
+    if filters.secondary_labels:
+        statement = statement.where(
+            or_(
+                *(
+                    projection.c.labels.contains([{"secondary_label": value}])
+                    for value in filters.secondary_labels
+                )
+            )
+        )
     return statement
 
 
@@ -1728,24 +1739,29 @@ def _apply_filters(
         statement = statement.where(~has_any_analysis)
     if filters.sentiments:
         statement = statement.where(effective_sentiment.in_(filters.sentiments))
-    if filters.primary_label is not None or filters.secondary_label is not None:
+    label_dimensions = (
+        ("primary_label", filters.primary_labels),
+        ("secondary_label", filters.secondary_labels),
+    )
+    for column_name, values in label_dimensions:
+        if not values:
+            continue
         pair = analysis_content_label_pairs_table
-        label_conditions = [pair.c.analysis_result_id == analysis.c.id]
-        if filters.primary_label is not None:
-            label_conditions.append(pair.c.primary_label == filters.primary_label)
-        if filters.secondary_label is not None:
-            label_conditions.append(pair.c.secondary_label == filters.secondary_label)
-        manual_label: dict[str, str] = {}
-        if filters.primary_label is not None:
-            manual_label["primary_label"] = filters.primary_label
-        if filters.secondary_label is not None:
-            manual_label["secondary_label"] = filters.secondary_label
-        ai_label_match = exists(select(literal(1)).where(*label_conditions))
+        pair_column = getattr(pair.c, column_name)
+        ai_label_match = exists(
+            select(literal(1)).where(
+                pair.c.analysis_result_id == analysis.c.id,
+                pair_column.in_(values),
+            )
+        )
+        manual_label_match = or_(
+            *(manual.c.labels.contains([{column_name: value}]) for value in values)
+        )
         statement = statement.where(
             or_(
                 and_(
                     manual.c.labels_locked.is_(True),
-                    manual.c.labels.contains([manual_label]),
+                    manual_label_match,
                 ),
                 and_(
                     or_(

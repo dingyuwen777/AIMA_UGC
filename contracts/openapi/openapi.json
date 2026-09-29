@@ -5173,6 +5173,17 @@
             ],
             "title": "Primary Label"
           },
+          "primary_labels": {
+            "default": [],
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Primary Labels",
+            "type": "array"
+          },
           "published_from": {
             "anyOf": [
               {
@@ -5232,6 +5243,17 @@
               }
             ],
             "title": "Secondary Label"
+          },
+          "secondary_labels": {
+            "default": [],
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Secondary Labels",
+            "type": "array"
           },
           "sentiments": {
             "default": [],
@@ -14736,6 +14758,38 @@
                 }
               ],
               "title": "Secondary Label"
+            }
+          },
+          {
+            "in": "query",
+            "name": "primary_labels",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Primary Labels",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "secondary_labels",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "Secondary Labels",
+              "type": "array"
             }
           },
           {
