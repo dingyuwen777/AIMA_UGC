@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 RUNTIME = ROOT / ".github" / "workflows" / "runtime.yml"
 TOOLING = ROOT / ".github" / "workflows" / "tooling.yml"
+RELEASE = ROOT / ".github" / "workflows" / "release.yml"
 FULLSTACK = ROOT / ".github" / "workflows" / "fullstack.yml"
 LEGACY_COMPLETION = ROOT / ".github" / "workflows" / "change-completion-gate.yml"
 
@@ -14,6 +15,16 @@ def _section(text: str, start: str, end: str) -> str:
     start_index = text.index(start)
     end_index = text.index(end, start_index)
     return text[start_index:end_index]
+
+
+def test_pr_heavy_workflows_do_not_rerun_on_every_synchronize() -> None:
+    """重 Workflow 只在 PR 生命周期边界运行，不跟随每次 push 自动重跑。"""
+    for workflow in (CI, RUNTIME, TOOLING, RELEASE):
+        trigger = workflow.read_text(encoding="utf-8").split("permissions:", 1)[0]
+        assert "- synchronize" not in trigger
+        assert "- opened" in trigger
+        assert "- reopened" in trigger
+        assert "- ready_for_review" in trigger
 
 
 def test_ci_consolidates_ubuntu_core_without_losing_required_contexts() -> None:
@@ -56,25 +67,22 @@ def test_pr_body_edit_revalidates_metadata_without_overwriting_failed_full_evide
     assert "github.event.action != 'edited'" in text
 
 
-def test_draft_pr_skips_ci_jobs_before_expensive_product_setup() -> None:
-    """Draft 在分配 CI Runner 前跳过；Ready event 再运行完整 profile。"""
+def test_draft_pr_required_checks_fail_closed_before_expensive_product_setup() -> None:
+    """Draft 只运行轻量失败门禁，required contexts 不能以 skipped 状态满足合并。"""
     text = CI.read_text(encoding="utf-8")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    gate = _section(text, "  ci-gate:\n", "  actions-hygiene:\n")
+
     assert "- ready_for_review" in text
     assert (
-        "  quality-core:\n"
-        "    name: Requirement Traceability and Completion Audit\n"
-        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
-        in text
+        "if: github.event_name != 'pull_request' || github.event.pull_request.draft == false"
+        not in core
     )
-    assert (
-        "  ci-gate:\n"
-        "    name: CI Gate\n"
-        "    if: >-\n"
-        "      always() &&\n"
-        "      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)\n"
-        in text
-    )
-    assert "Defer full CI while PR is Draft" not in text
+    assert "      - name: Block Draft required evidence\n" in core
+    assert "github.event.pull_request.draft == true" in core
+    assert core.index("Block Draft required evidence") < core.index("      - name: Checkout")
+    assert "  ci-gate:\n    name: CI Gate\n    if: always()\n" in gate
+    assert "github.event.pull_request.draft == false" not in gate
 
 
 def test_frontend_audit_runs_once_at_the_same_high_threshold() -> None:
@@ -94,17 +102,19 @@ def test_expensive_independent_evidence_keeps_its_owner() -> None:
     assert "Canonical Compose startup, security, persistence, and recovery" in runtime
 
 
-def test_runtime_required_check_skips_draft_job_and_reenters_on_ready() -> None:
-    """Draft Runtime 在分配 Compose Runner 前跳过；Ready 后同一 HEAD 重新取完整证据。"""
+def test_runtime_required_check_fails_closed_for_draft_then_reenters_on_ready() -> None:
+    """Draft Runtime 只运行轻量失败门禁；Ready 后同一 HEAD 再取完整证据。"""
     runtime = RUNTIME.read_text(encoding="utf-8")
+    job = runtime.split("  compose-golden-path:\n", 1)[1]
+
     assert "- ready_for_review" in runtime
     assert (
-        "  compose-golden-path:\n"
-        "    name: Compose Golden Path\n"
-        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
-        in runtime
+        "if: github.event_name != 'pull_request' || github.event.pull_request.draft == false"
+        not in job
     )
-    assert "Defer Runtime Acceptance while PR is Draft" not in runtime
+    assert "      - name: Block Draft required evidence\n" in job
+    assert "github.event.pull_request.draft == true" in job
+    assert job.index("Block Draft required evidence") < job.index("      - name: Checkout")
     assert "Canonical Compose startup, security, persistence, and recovery" in runtime
 
 
@@ -151,10 +161,10 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     assert "needs: ci-gate" in hygiene
     assert runtime.count("runs-on: ubuntu-24.04") == 1
     assert "needs: quality-core" in ci
-    assert "github.event.pull_request.draft == false" in ci
-    assert "github.event.pull_request.draft == false" in runtime
-    assert "Defer full CI while PR is Draft" not in ci
-    assert "Defer Runtime Acceptance while PR is Draft" not in runtime
+    assert "Block Draft required evidence" in ci
+    assert "Block Draft required evidence" in runtime
+    assert "github.event.pull_request.draft == false" not in ci
+    assert "github.event.pull_request.draft == false" not in runtime
 
 
 def test_frontend_typechecks_once_through_build() -> None:

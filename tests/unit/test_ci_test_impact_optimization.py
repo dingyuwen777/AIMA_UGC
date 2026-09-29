@@ -125,36 +125,25 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     )
 
 
-def test_draft_prs_are_skipped_at_job_level_instead_of_failed_inside_ci() -> None:
+def test_draft_pr_required_contexts_fail_closed_without_running_full_ci() -> None:
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
 
-    assert (
-        "  quality-core:\n"
-        "    name: Requirement Traceability and Completion Audit\n"
-        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
-        in text
-    )
-    assert (
-        "  ci-gate:\n"
-        "    name: CI Gate\n"
-        "    if: >-\n"
-        "      always() &&\n"
-        "      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)\n"
-        in text
-    )
-    assert "Defer full CI while PR is Draft" not in text
+    assert "      - name: Block Draft required evidence\n" in core
+    assert "github.event.pull_request.draft == true" in core
+    assert core.index("Block Draft required evidence") < core.index("      - name: Checkout")
+    assert "  ci-gate:\n    name: CI Gate\n    if: always()\n" in text
+    assert "github.event.pull_request.draft == false" not in text
 
 
-def test_runtime_draft_pr_is_skipped_before_allocating_compose_work() -> None:
+def test_runtime_draft_pr_fails_closed_before_compose_setup() -> None:
     text = (ROOT / ".github" / "workflows" / "runtime.yml").read_text(encoding="utf-8")
+    job = text.split("  compose-golden-path:\n", 1)[1]
 
-    assert (
-        "  compose-golden-path:\n"
-        "    name: Compose Golden Path\n"
-        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
-        in text
-    )
-    assert "Defer Runtime Acceptance while PR is Draft" not in text
+    assert "      - name: Block Draft required evidence\n" in job
+    assert "github.event.pull_request.draft == true" in job
+    assert job.index("Block Draft required evidence") < job.index("      - name: Checkout")
+    assert "github.event.pull_request.draft == false" not in job
 
 
 def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
@@ -167,7 +156,6 @@ def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
         "      - main\n"
         "    types:\n"
         "      - opened\n"
-        "      - synchronize\n"
         "      - reopened\n"
         "      - ready_for_review\n"
         "    paths:\n"
