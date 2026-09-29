@@ -165,9 +165,10 @@ class PromptTaxonomyLoader:
     ) -> PromptTaxonomy:
         """从已给定的完整 Prompt 文本恢复运行时协议与 Taxonomy。"""
 
-        resolved_prompt_version = prompt_version or _prompt_version_from_text(prompt_text)
+        declared_prompt_version = _prompt_version_from_text(prompt_text)
+        resolved_prompt_version = prompt_version or declared_prompt_version
         if (
-            resolved_prompt_version == "content-labeling.v4.6"
+            declared_prompt_version == "content-labeling.v4.6"
             and _TAXONOMY_START not in prompt_text
             and _TAXONOMY_END not in prompt_text
         ):
@@ -498,9 +499,10 @@ def _parse_v46_taxonomy_payload(prompt_text: str) -> dict[str, Any]:
     body = str(match.group("body"))
     headings = list(re.finditer(r"^## (?P<primary>.+?)\s*$", body, flags=re.MULTILINE))
     labels: dict[str, list[str]] = {}
-    for index, heading in enumerate(headings):
+    for heading in headings:
         start = heading.end()
-        end = headings[index + 1].start() if index + 1 < len(headings) else len(body)
+        following_heading = re.search(r"^#{1,3}\s+.+?$", body[start:], flags=re.MULTILINE)
+        end = start + following_heading.start() if following_heading is not None else len(body)
         secondaries = re.findall(r"^- (?P<secondary>.+?)\s*$", body[start:end], re.MULTILINE)
         if not secondaries:
             continue

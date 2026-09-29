@@ -496,12 +496,12 @@ def _relevant_response(*, sentiment: str = "负面", voice_type: str = "真实�
     )
 
 
-def _media_org_relevant_response(*, sentiment: str = "正面") -> str:
-    """媒体机构发声的 relevant 响应（source_type=media_org）。"""
+def _brand_official_relevant_response(*, sentiment: str = "正面") -> str:
+    """品牌官方发声的 relevant 响应（source_type=brand_official，V4.6 三分类之一）。"""
     return (
         '{"items":[{"item_no":1,"relevance":"relevant",'
-        '"relevance_evidence":["爱玛"],"source_type":"media_org",'
-        '"content_intent":"news_information","voice_type":"媒体机构发声",'
+        '"relevance_evidence":["爱玛"],"source_type":"brand_official",'
+        '"content_intent":"news_information","voice_type":"品牌官方发声",'
         '"voice_evidence":["爱玛"],"sentiment":"'
         + sentiment
         + '","sentiment_evidence":["爱玛"],"labels":['
@@ -513,11 +513,11 @@ def _media_org_relevant_response(*, sentiment: str = "正面") -> str:
 
 
 def _unknown_relevant_response(*, sentiment: str = "中性") -> str:
-    """无法判断发声的 relevant 响应（source_type=unknown）。"""
+    """无法判断发声的 relevant 响应（source_type=unknown，V4.6 归入营销推广发声）。"""
     return (
         '{"items":[{"item_no":1,"relevance":"relevant",'
         '"relevance_evidence":["爱玛"],"source_type":"unknown",'
-        '"content_intent":"unknown","voice_type":"无法判断",'
+        '"content_intent":"unknown","voice_type":"营销推广发声",'
         '"voice_evidence":[],"sentiment":"'
         + sentiment
         + '","sentiment_evidence":["爱玛"],"labels":['
@@ -527,7 +527,7 @@ def _unknown_relevant_response(*, sentiment: str = "中性") -> str:
     )
 
 
-def _irrelevant_response(*, voice_type: str = "媒体机构发声") -> str:
+def _irrelevant_response(*, voice_type: str = "营销推广发声") -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"irrelevant",'
         '"relevance_evidence":["爱玛"],"source_type":"media_org",'
@@ -955,7 +955,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
                 ).where(analysis_content_results_table.c.content_id == content_ids[0])
             ).one()
             assert stored.relevance == "irrelevant"
-            assert stored.voice_type == "媒体机构发声"
+            assert stored.voice_type == "营销推广发声"
             assert stored.sentiment is None
             assert (
                 connection.scalar(
@@ -981,20 +981,20 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
         audited_page = content_service.list_contents(
             ContentListQuery(
                 relevance="irrelevant",
-                voice_types=("媒体机构发声",),
+                voice_types=("营销推广发声",),
             )
         )
         assert [item.id for item in audited_page.items] == [content_ids[0]]
         audited = audited_page.items[0]
         assert audited.analysis.status == "completed"
         assert audited.analysis.relevance == "irrelevant"
-        assert audited.analysis.voice_type == "媒体机构发声"
+        assert audited.analysis.voice_type == "营销推广发声"
         assert audited.analysis.sentiment is None
         assert audited.analysis.labels == ()
 
         direct = content_service.get_content(content_ids[0])
         assert direct.analysis.relevance == "irrelevant"
-        assert direct.analysis.voice_type == "媒体机构发声"
+        assert direct.analysis.voice_type == "营销推广发声"
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
@@ -1176,7 +1176,7 @@ def test_voice_plaza_multi_value_voice_type_filter_returns_all_matches(tmp_path:
         )
         responses = (
             _relevant_response(voice_type="真实用户发声", sentiment="负面"),
-            _media_org_relevant_response(sentiment="正面"),
+            _brand_official_relevant_response(sentiment="正面"),
             _unknown_relevant_response(sentiment="中性"),
         )
         for content_id, response in zip(content_ids, responses, strict=True):
@@ -1198,7 +1198,7 @@ def test_voice_plaza_multi_value_voice_type_filter_returns_all_matches(tmp_path:
             assert content_service.get_analysis_job(created.job_id).status == "succeeded"
 
         page = content_service.list_contents(
-            ContentListQuery(voice_types=("真实用户发声", "媒体机构发声"))
+            ContentListQuery(voice_types=("真实用户发声", "品牌官方发声"))
         )
         returned_ids = {item.id for item in page.items}
         assert content_ids[0] in returned_ids

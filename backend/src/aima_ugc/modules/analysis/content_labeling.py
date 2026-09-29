@@ -73,6 +73,7 @@ class ContentLabelingModelItem:
     """发给模型的一条最小业务输入；item_no 只用于批次配对。"""
 
     item_no: int
+    platform: str
     title: str
     text: str
     author_display_name: str
@@ -84,6 +85,7 @@ class ContentLabelingModelItem:
 
         return {
             "item_no": self.item_no,
+            "platform": self.platform,
             "title": self.title,
             "text": self.text,
             "author": {
@@ -407,14 +409,14 @@ class RuntimeTaxonomyValidator:
         if errors:
             raise ContentLabelingValidationError(errors)
 
-    @staticmethod
     def _evidence_errors(
+        self,
         evidence: tuple[str, ...],
         *,
         item: ContentLabelingModelItem,
         required: bool,
     ) -> tuple[str, ...]:
-        """确认模型证据逐项来自五个输入字段，不做关键词分类。"""
+        """校验证据来自五个文本字段；V4.6 全空输入仅接受专用哨兵。"""
 
         errors: list[str] = []
         if required and not evidence:
@@ -426,11 +428,17 @@ class RuntimeTaxonomyValidator:
             item.author_bio,
             item.author_verification_label,
         )
+        empty_input = not any(source_texts)
+        allow_empty_sentinel = (
+            self._taxonomy.output_protocol_version == "content-labeling.v4.6" and empty_input
+        )
         seen: set[str] = set()
         for fragment in evidence:
             if fragment in seen:
                 errors.append("duplicate_evidence")
             seen.add(fragment)
+            if allow_empty_sentinel and fragment == "[EMPTY_INPUT]":
+                continue
             if (
                 not fragment
                 or fragment != fragment.strip()
@@ -477,7 +485,10 @@ class RuntimeTaxonomyValidator:
             self._evidence_errors(
                 parsed.voice_evidence,
                 item=item,
-                required=derived_voice_type != rules.unknown_voice_type,
+                required=(
+                    self._taxonomy.output_protocol_version == "content-labeling.v4.6"
+                    or derived_voice_type != rules.unknown_voice_type
+                ),
             )
         )
 
@@ -491,10 +502,7 @@ class RuntimeTaxonomyValidator:
             )
             for label_evidence in parsed.label_evidence:
                 errors.extend(self._evidence_errors(label_evidence, item=item, required=True))
-        elif (
-            self._taxonomy.output_protocol_version != "content-labeling.v4.6"
-            and parsed.sentiment_evidence
-        ):
+        elif parsed.sentiment_evidence:
             errors.append("irrelevant_has_sentiment_evidence")
 
         if parsed.decision_status == "needs_judge":
@@ -586,11 +594,12 @@ class RuntimeTaxonomyValidator:
             if self._require_excel_complete and "空白" in parsed.voice_type:
                 shape_errors.append("blank_excel_voice_type_marker")
 
-            if self._require_excel_complete:
-                # Excel 打标结果的四个字段禁止出现 null、空字符串或空数组。
-                # 即使 relevance=irrelevant，也必须补齐情感和至少一个标签，
-                # 但当前持久化契约不允许 irrelevant 携带这些字段；因此这类结果
-                # 也只进入下一轮 LLM 修复，不得成为成功结果。
+            if (
+                self._require_excel_complete
+                and self._taxonomy.output_protocol_version != "content-labeling.v4.6"
+            ):
+                # 旧离线协议保留四列强制完备兼容。V4.6 自身已经定义零空白，
+                # 且明确允许 irrelevant 的 null/[] 结构，不能由 Excel 入口覆盖。
                 if parsed.relevance == "irrelevant":
                     shape_errors.append("irrelevant_not_exportable")
                 if parsed.sentiment is None or "空白" in parsed.sentiment:
@@ -815,10 +824,12 @@ class ContentLabelingService:
                 except ContentLabelingStopped:
                     raise
                 except Exception:
-                    if not self._force_excel_complete:
+                    if (
+                        not self._force_excel_complete
+                        or taxonomy.output_protocol_version == "content-labeling.v4.6"
+                    ):
                         raise
-                    # 离线人工入口即使遇到网络/Provider 终态错误，也不能留下无法导出的
-                    # 半成品；实际 HTTP 错误已经由 Adapter 的 request_audit 记录。
+                    # 旧离线协议保留历史兜底；V4.6 禁止用本地伪造业务分类掩盖 Provider 失败。
                     transport_fallback_triggered = True
                     break
                 completed_at = beijing_now()
@@ -876,10 +887,13 @@ class ContentLabelingService:
             if transport_fallback_triggered:
                 break
 
-        if unresolved and self._force_excel_complete:
-            # 模型多轮修复仍未收敛时，不能把空白结果写入最终 Excel。
-            # 兜底值仍从当前 Taxonomy 取闭集成员，且继续沿用同一 Prompt/Model 身份，
-            # 使后续 checkpoint 恢复和最终导出保持一致。
+        if (
+            unresolved
+            and self._force_excel_complete
+            and taxonomy.output_protocol_version != "content-labeling.v4.6"
+        ):
+            # 旧离线协议保留历史格式兜底；V4.6 未收敛时必须保留失败事实，
+            # 不能生成模型从未判断过的业务分类。
             fallback_completed_at = beijing_now()
             for item_no in tuple(unresolved):
                 successful[item_no] = _build_excel_complete_fallback(
@@ -931,6 +945,7 @@ def _to_model_item(content: CanonicalContentV1, *, item_no: int) -> ContentLabel
         author_verification_label = content.author.verification_label or ""
     return ContentLabelingModelItem(
         item_no=item_no,
+        platform=content.platform,
         title=content.title or "",
         text=content.text or "",
         author_display_name=author_display_name,
@@ -941,6 +956,7 @@ def _to_model_item(content: CanonicalContentV1, *, item_no: int) -> ContentLabel
 
 def _input_hash(item: ContentLabelingModelItem) -> str:
     payload = {
+        "platform": item.platform,
         "title": item.title,
         "text": item.text,
         "author": {

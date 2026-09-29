@@ -78,11 +78,17 @@ def test_bootstrap_prompt_separates_source_intent_and_evidence_without_parallel_
     assert "source_type" in prompt
     assert "content_intent" in prompt
     assert "voice_evidence" in prompt
-    assert "个人交易发声" in prompt
-    assert "作者展示名" in prompt
-    assert "公开简介" in prompt
-    assert "认证文案" in prompt
-    assert "标题" in prompt
-    assert "正文" in prompt
-    assert "证据不足" in prompt
+    assert "品牌官方发声" in prompt
+    assert "真实用户发声" in prompt
+    assert "营销推广发声" in prompt
+    assert "个人交易发声" not in prompt
+    for input_field in (
+        "title",
+        "text",
+        "author.display_name",
+        "author.bio",
+        "author.verification_label",
+    ):
+        assert input_field in prompt
+    assert "A-F全部通过" in prompt
     assert "无法判断" in prompt
