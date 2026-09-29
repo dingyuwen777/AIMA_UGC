@@ -232,7 +232,7 @@ data_changes:
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | git | `git merge origin/main` 后 `git diff origin/main...HEAD --name-only` | 19 个文件，均为声音广场/契约/迁移/生成物/测试 | 已非破坏性同步最新 main，改动范围收敛 |
+| V1 | git | `git merge origin/main` 后 `git diff origin/main...HEAD --name-only` | 19 个文件，均为声音广场/契约/迁移/生成物/测试 | 已非破坏性同步最新 main（`44961bec`，merge 提交 `9547eac3`）；`test_stage8d_voice_plaza_runtime.py` 冲突逐处解决并适配 V4.6 三分类 voice_type |
 | V2 | git | `git ls-tree origin/main migrations/versions/` | 远端迁移链到 0074，本 PR 迁移重排为 0075 | 迁移链正确 |
 | V3 | 本地 | `pytest tests/contracts` | 114 passed | Contract 层通过，含 20/21/50/51 cardinality 边界与单项长度约束 |
 | V4 | 本地 | `python scripts/contracts/generate.py --check` + `check_compatibility.py` | exit 0 | OpenAPI/JSON Schema 生成一致性与漂移检查通过 |
@@ -247,13 +247,13 @@ data_changes:
 
 ## 未验证内容与剩余风险
 
-- 本地环境 Docker daemon 不可用，未在本地运行 PostgreSQL 集成 / Full-stack；该项由 current-head required CI 的 `postgres-integration` 与 `real-fullstack` 重新验证（上一 Head 已全绿，本轮 Contract 仅改 validation 上限，不改变 IN 查询/迁移语义）。
+- 本地已跑通 PostgreSQL 集成（stage8d 10 passed、migration lifecycle 31 passed、tests/api 92 passed）；`real-fullstack` Browser Mock 与完整 CI 仍以 current-head required CI 为准。
 - 生产部署、Release 与真实 Provider 验收不属本 Change 范围。
 
 ## 交付状态
 
-- 同步：已把最新 `origin/main`（`15ec55f5`）非破坏性 merge 进当前 PR 分支（merge 提交 `29a1ec78`），无冲突。
-- 提交：本轮 R591-F5 + R591-F6 返修已提交到 `feature/voice-plaza-multi-value-filters`（见 PR #591 Head）。
+- 同步：已把最新 `origin/main`（`44961bec`，含 #658 AI 打标 V4.6）非破坏性 merge 进当前 PR 分支（merge 提交 `9547eac3`）；`test_stage8d_voice_plaza_runtime.py` 存在冲突，已按 PR 多值意图 + V4.6 三分类规则逐处解决。
+- 提交：R591-F5 + R591-F6 返修已提交；本轮 V4.6 适配与 merge 冲突解决已提交到 `feature/voice-plaza-multi-value-filters`（见 PR #591 Head）。
 - 拉取请求：#591。
 - CI：待 current-head required CI（push 后触发，未声称绿色）。
 - 合并：未合并（待 Reviewer delta re-review 后合并）。
@@ -262,3 +262,5 @@ data_changes:
 ## 备注
 
 R591-F5（blocking）已修复：`ContentFilterSnapshot.voice_types/sentiments` cardinality 20→50，与 `AnalysisSchemeDefinitionRequest` 的 50 对齐；R591-F6（non-blocking）已随本轮一起做最小修复：一级/二级标签候选改挂 `.multi-select__options` 绝对定位 overlay，不再参与正常流高度计算。直接相邻回归：标签候选变为 overlay 后，e2e 在点击“查询/选择品牌”前先收起仍打开的一级/二级标签下拉，断言不变。
+
+**V4.6 同步适配**：合并 #658（AI 打标 Prompt V4.6）后，`voice_type` 收窄为三分类（品牌官方/真实用户/营销推广），`source_type=unknown` 被禁止。`test_stage8d_voice_plaza_runtime.py` 中媒体机构/无法判断 helper 已适配为 V4.6 合法组合：媒体机构（`media_org`/`news_information`）归入营销推广发声；多值 IN 测试第二条改为品牌官方发声（`brand_official`），保持“匹配两条、排除一条”的验证强度；irrelevant 审计测试查询值改为营销推广发声。本地 PostgreSQL 集成实测通过。

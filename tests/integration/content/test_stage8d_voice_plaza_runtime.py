@@ -512,17 +512,18 @@ def _brand_official_relevant_response(*, sentiment: str = "正面") -> str:
     )
 
 
-def _unknown_relevant_response(*, sentiment: str = "中性") -> str:
-    """无法判断发声的 relevant 响应（source_type=unknown，V4.6 归入营销推广发声）。"""
+def _media_org_relevant_response(*, sentiment: str = "中性") -> str:
+    """媒体机构发声的 relevant 响应（source_type=media_org，V4.6 归入营销推广发声）。"""
     return (
         '{"items":[{"item_no":1,"relevance":"relevant",'
-        '"relevance_evidence":["爱玛"],"source_type":"unknown",'
-        '"content_intent":"unknown","voice_type":"营销推广发声",'
-        '"voice_evidence":[],"sentiment":"'
+        '"relevance_evidence":["爱玛"],"source_type":"media_org",'
+        '"content_intent":"news_information","voice_type":"营销推广发声",'
+        '"voice_evidence":["爱玛"],"sentiment":"'
         + sentiment
         + '","sentiment_evidence":["爱玛"],"labels":['
-        '{"primary_label":"无法分类","secondary_label":"无法判断",'
-        '"evidence":["爱玛"]}],'
+        '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现",'
+        '"evidence":["爱玛"]},{"primary_label":"售后服务",'
+        '"secondary_label":"客服与服务态度","evidence":["爱玛"]}],'
         '"decision_status":"clear"}]}'
     )
 
@@ -1177,7 +1178,7 @@ def test_voice_plaza_multi_value_voice_type_filter_returns_all_matches(tmp_path:
         responses = (
             _relevant_response(voice_type="真实用户发声", sentiment="负面"),
             _brand_official_relevant_response(sentiment="正面"),
-            _unknown_relevant_response(sentiment="中性"),
+            _media_org_relevant_response(sentiment="中性"),
         )
         for content_id, response in zip(content_ids, responses, strict=True):
             created = content_service.create_analysis(
