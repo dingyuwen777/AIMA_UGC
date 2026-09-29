@@ -232,9 +232,7 @@ def test_v46_prompt_asset_builds_taxonomy_without_python_voice_literals() -> Non
 
 
 def test_legacy_v4_excel_complete_fallback_keeps_unrecoverable_item_exportable() -> None:
-    loader = PromptTaxonomyLoader(
-        CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v4.md")
-    )
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v4.md"))
     fake = FakeContentLabelingLLM(responses=["not-json"])
 
     result = ContentLabelingService(
