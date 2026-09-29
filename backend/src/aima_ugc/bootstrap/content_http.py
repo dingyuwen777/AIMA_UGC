@@ -1219,6 +1219,8 @@ def _query_hash(
     """对语义等价筛选生成稳定摘要，同时保持 Cursor 的严格查询绑定。"""
     payload = filters.model_dump(mode="json", exclude_none=True)
     for plural_key, singular_key in (
+        ("voice_types", "voice_type"),
+        ("sentiments", "sentiment"),
         ("primary_labels", "primary_label"),
         ("secondary_labels", "secondary_label"),
     ):
