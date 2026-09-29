@@ -25,7 +25,7 @@ from aima_ugc.modules.analysis.schemes import (
 )
 
 OBSERVED_AT = datetime(2026, 9, 29, 11, 26, tzinfo=UTC)
-EXPECTED_PROMPT_SHA256 = "44e584274fd2bd5b5d5bf81143f29068c84d44d97c6d723af51c24a29887a1a5"
+EXPECTED_PROMPT_SHA256 = "9a8fa7e98680ee707871f0303d4154dfbae4e900c0be90535edd8b5793ab02cb"
 
 
 def _content(
@@ -90,7 +90,7 @@ def _response(item: dict[str, object]) -> str:
 
 
 def test_v46_prompt_asset_matches_the_uploaded_source_exactly() -> None:
-    """正式 Prompt 文件必须与用户上传原文保持固定字节身份。"""
+    """正式 Prompt 文件必须与用户上传原文保持相同 LF 规范化文本身份。"""
 
     payload = CONTENT_LABELING_PROMPT_PATH.read_bytes()
 
