@@ -28,6 +28,7 @@ affected_paths:
   - tests/unit/analysis
   - tests/unit/test_validate_changed.py
   - tests/integration/content
+  - tests/integration/database
   - tests/contracts
   - docs/appendix
 contracts:
@@ -75,6 +76,7 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 | E5 | 旧标签编辑器会自动注入 `无法分类 / 无法判断` | `AnalysisLabelsEditor.vue` 修复前实现 | 必须删除前端平行兜底规则 |
 | E6 | changed-scope 预检会把已删除 Python 路径传给 Ruff 并因文件不存在失败 | `python scripts/dev/validate_changed.py --base origin/main --execute` 的当前工作树失败输出 | 删除项继续参与影响面分类，但文件级工具只接收仍存在的文件 |
 | E7 | 管理员可分别编辑 Scheme 的 Prompt、发声类型、情感和标签；只替换机器 JSON 会让模型正文与结构化定义冲突 | `AnalysisSchemePanel.vue` 与 `schemes.py` 的反向能力审计 | 当前 v3.0 Compiler 必须原子重写人类可读闭集和机器镜像 |
+| E8 | 首轮 Ready CI 的 PostgreSQL 任务仍用旧 Scheme fixture 调用当前 Compiler，并错误要求 0038 历史 Migration 输出等于当前 Compiler | PR #675 CI run `36599716178` / PostgreSQL Integration | 生命周期 fixture 必须改用唯一当前 Prompt；历史 Migration 只能按其冻结算法验证，不得恢复运行时旧协议兼容 |
 
 ## 推断与待确认
 
@@ -176,6 +178,7 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 | `AnalysisLabelsEditor.vue` / Scheme Panel | 原样显示结构化标签和 Prompt | 消除前端平行 Taxonomy | R5 |
 | `scripts/dev/validate_changed.py` | 删除项保留影响面分类，但不传给要求文件存在的 Ruff | 让本次和后续文件删除能通过同一正式预检 | R6 / E6 |
 | 后端/前端测试 | inventory、roundtrip、fail-closed、bootstrap、9/39 渲染 | 直接证明关键行为 | R1-R6 |
+| PostgreSQL 集成测试 | 当前 Scheme 生命周期改用 v3.0 基线；0038 数据迁移按其冻结算法自证 | 修正旧测试事实但不恢复生产兼容 | R3/R6 / E8 |
 | 项目文档 | 更新唯一事实与迁移边界 | 防止后续恢复旧路径 | R7/R8 |
 
 执行过程中保持最小闭环：
@@ -231,10 +234,10 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 
 # 完成审计
 
-- [x] upstream_re_read：已在 `origin/main@3f6b4f4c` 和 PR head `1b55acda` 上重读 live #674、用户最终决定、当前 `AGENTS.md`、Analysis README、Appendix 07、唯一 Prompt 与实际代码。
+- [x] upstream_re_read：已在 `origin/main@3f6b4f4c` 和 PR head 上重读 live #674、用户最终决定、当前 `AGENTS.md`、Analysis README、Appendix 07、唯一 Prompt 与实际代码。
 - [x] change_coverage：脱离当前 checklist 从 #674 重建 AC1—AC7；文件收敛、原则/格式、fail-closed、bootstrap/运行时、前端 9×39 展示、验证门禁和文档边界均有实现与测试承载；生产清库仍由 R8 正式延期，不冒充本 PR 验收。
 - [x] reverse_audit：已核对 `content_labeling.md → bootstrap definition → Compiler/Version/Hash → RuntimeTaxonomyValidator/LLM → API/UI`，并反向核对 `AnalysisSchemePanel 编辑 → Compiler → 人类可读闭集与机器 JSON 同步 → 新 Version/发布`；发现初版 Compiler 只更新机器 JSON 后已在 `1b55acda` 修复并新增回归。
-- [x] unresolved_cleared：R1—R7 已有当前实现/测试承载，R8 具有用户明确延期依据；PR current-head CI、独立 Review 和 current-base merge preflight 继续作为交付门禁，不把它们伪装成已完成。
+- [x] unresolved_cleared：R1—R7 已有当前实现/测试承载，R8 具有用户明确延期依据；首轮 Ready CI 发现的 3 个旧测试事实已完成根因修复，修复后 current-head CI、独立 Review 和 current-base merge preflight 继续作为交付门禁，不把它们伪装成已完成。
 
 ## 两阶段需求复核
 
@@ -255,19 +258,21 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 | V6 | 本地任务工作区 | PostgreSQL Integration | 本机缺少 `.runtime/secrets/postgres_password`，连接前失败 | 本机未取得持久化证据；由 PR CI 补齐 |
 | V7 | 本地任务工作区，Draft Review 修复后 | 当前 Scheme 编译、roundtrip、编辑镜像和旧模板拒绝回归 | 43 passed；Ruff/mypy 通过 | 当前 v3.0 Compiler 会同步模型正文与机器 Taxonomy，并拒绝旧模板 |
 | V8 | `1b55acda`，基于 `origin/main@3f6b4f4c` | `uv run pytest tests/unit/analysis -q` | 165 passed | Review 修复后的 Analysis 全量单元回归通过 |
+| V9 | PR #675 head `5bd7fe66` | CI run `36599716178` | Runtime Acceptance、Developer Tooling、Real Full-stack Golden Path 已通过；PostgreSQL Integration 因 3 个过期测试 fixture 失败 | 证明生产迁移和数据库本身可用，并定位测试仍假设旧 Compiler 兼容 |
+| V10 | PostgreSQL 测试修复工作区 | 两个修复文件 Ruff；Pytest collect-only | Ruff 通过；35 个相关集成测试成功收集 | 当前 fixture/历史迁移测试源码可加载，完整数据库行为待修复后 CI 验证 |
 
 ## 未验证内容与剩余风险
 
-- 当前分支尚未形成 commit/PR，因此没有 current-head CI。
+- PostgreSQL 过期测试事实修复尚待提交并触发新的 current-head CI；首轮失败 run 不作为可合并证据。
 - changed-scope 稳定层已执行；原始全量命令受一项未改动的本机 Edge 截图基线失败阻断，剔除该项后的完整稳定套件已通过。
-- 仍需 PR current-head PostgreSQL/Full-stack CI、独立 Review 与 current-base merge preflight。
+- 仍需修复后 PR current-head PostgreSQL/Full-stack CI、独立 Review 与 current-base merge preflight。
 - 生产清库、镜像部署、空库 bootstrap 和重新打标未执行，仍是部署阶段责任。
 
 ## 交付状态
 
-- 提交：`1b0212e5`（主实现）+ `1b55acda`（Review 修复），后续还有本次 Ready/文档提交。
-- 拉取请求：Draft PR #675 已绑定 #674，待本 Change Ready 提交后转为 Ready for Review。
-- CI：Draft 阶段按仓库规则只给出预期 fail-closed；待 Ready 事件运行 current-head 全量证据。
+- 提交：`1b0212e5`（主实现）+ `1b55acda`（Review 修复）+ `5bd7fe66`（Ready/文档）；PostgreSQL 测试事实修复待提交。
+- 拉取请求：PR #675 已绑定 #674 并处于 Ready；合并仍受修复后同一 head 的 required CI 与 Review 门禁约束。
+- CI：首轮 Ready run `36599716178` 暴露 3 个旧测试事实；修复后必须用新 head 重跑，不能重用失败 run。
 - 合并：待 Review、Ready Check、CI、current base/head 复核后执行。
 - Change 归档：待合并后由仓库自动化处理。
 - Issue Closure：只有本 PR 完成 #674 全部代码验收时随合并关闭；生产部署动作不由本 Issue 伪装完成。
