@@ -74,6 +74,7 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 | E4 | 前端管理员页从 `version.definition` 读取 Prompt、枚举和标签 | `AnalysisSchemePanel.vue` | 前端不应解析 Markdown 或维护平行标签 |
 | E5 | 旧标签编辑器会自动注入 `无法分类 / 无法判断` | `AnalysisLabelsEditor.vue` 修复前实现 | 必须删除前端平行兜底规则 |
 | E6 | changed-scope 预检会把已删除 Python 路径传给 Ruff 并因文件不存在失败 | `python scripts/dev/validate_changed.py --base origin/main --execute` 的当前工作树失败输出 | 删除项继续参与影响面分类，但文件级工具只接收仍存在的文件 |
+| E7 | 管理员可分别编辑 Scheme 的 Prompt、发声类型、情感和标签；只替换机器 JSON 会让模型正文与结构化定义冲突 | `AnalysisSchemePanel.vue` 与 `schemes.py` 的反向能力审计 | 当前 v3.0 Compiler 必须原子重写人类可读闭集和机器镜像 |
 
 ## 推断与待确认
 
@@ -170,7 +171,7 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 | 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
 | --- | --- | --- | --- |
 | `prompts/content_labeling.md` 与旧 Prompt | 建立唯一 v3.0 Prompt，删除旧文件 | 单一 Git bootstrap 基线 | R1-R3 |
-| `prompt_taxonomy.py` / `schemes.py` | 收敛单协议解析编译 | fail closed 与精确 roundtrip | R2-R4 |
+| `prompt_taxonomy.py` / `schemes.py` | 收敛单协议解析编译，并同步人类可读闭集与机器镜像 | fail closed、精确 roundtrip 和管理员编辑原子一致 | R2-R5 / E7 |
 | `content_labeling.py` / LLM adapter | 收敛当前完整输入输出和错误传播 | 正确应用 Prompt | R3/R4 |
 | `AnalysisLabelsEditor.vue` / Scheme Panel | 原样显示结构化标签和 Prompt | 消除前端平行 Taxonomy | R5 |
 | `scripts/dev/validate_changed.py` | 删除项保留影响面分类，但不传给要求文件存在的 Ruff | 让本次和后续文件删除能通过同一正式预检 | R6 / E6 |
@@ -247,6 +248,7 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 | V4 | 本地任务工作区，基于 `origin/main@3f6b4f4c` | Contract generate `--check` 与 compatibility | 均 exit 0 | 生成 Contract 无漂移且兼容检查通过 |
 | V5 | 本地任务工作区，基于 `origin/main@3f6b4f4c` | Frontend ESLint、Vitest、build、Playwright | lint 通过；36 files/271 tests 通过；typecheck/build 通过；170 E2E 通过 | Prompt/9×39 标签展示和前端相关回归成立 |
 | V6 | 本地任务工作区 | PostgreSQL Integration | 本机缺少 `.runtime/secrets/postgres_password`，连接前失败 | 本机未取得持久化证据；由 PR CI 补齐 |
+| V7 | 本地任务工作区，Draft Review 修复后 | 当前 Scheme 编译、roundtrip、编辑镜像和旧模板拒绝回归 | 43 passed；Ruff/mypy 通过 | 当前 v3.0 Compiler 会同步模型正文与机器 Taxonomy，并拒绝旧模板 |
 
 ## 未验证内容与剩余风险
 
