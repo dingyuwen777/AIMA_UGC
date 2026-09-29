@@ -375,6 +375,38 @@ class PostgresContentQueryRepository:
             .order_by(order)
         )
 
+    def count_filtered_analysis_targets(self, filters: ContentFilterSnapshot) -> int:
+        """统计与声音广场列表完全同语义的筛选 Analysis Target，不计算展示排序。"""
+
+        statement, _ = self._effective_base_statement(filters, targets_only=True)
+        targets = statement.subquery("analysis_filtered_target_count")
+        return cast(int, self._session.scalar(select(func.count()).select_from(targets)) or 0)
+
+    def list_filtered_analysis_targets(
+        self,
+        *,
+        filters: ContentFilterSnapshot,
+        after_content_id: UUID | None,
+        limit: int,
+    ) -> tuple[ContentTarget, ...]:
+        """按 Content UUID 稳定读取筛选结果的一批 Target，供 Planner 短事务续跑。"""
+
+        if limit <= 0:
+            raise ValueError("limit 必须大于 0")
+        statement, _ = self._effective_base_statement(filters, targets_only=True)
+        selected = statement.subquery("analysis_filtered_target_batch")
+        page = select(selected.c.id, selected.c.current_version)
+        if after_content_id is not None:
+            page = page.where(selected.c.id > after_content_id)
+        rows = self._session.execute(page.order_by(selected.c.id).limit(limit)).all()
+        return tuple(
+            ContentTarget(
+                content_id=cast(UUID, row.id),
+                content_version=cast(int, row.current_version),
+            )
+            for row in rows
+        )
+
     def count_all_analysis_targets(self) -> int:
         """统计全部仍有有效来源的 Content Current，不继承相关性筛选。"""
 
