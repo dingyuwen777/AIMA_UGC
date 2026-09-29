@@ -119,9 +119,15 @@ function selectScope(next: AnalysisScope): void {
         </label>
       </fieldset>
       <p class="scope-note">
-        <template v-if="scope === 'selected'">仅分析当前显式勾选的内容。</template>
-        <template v-else-if="scope === 'query'">当前筛选结果包含已应用筛选条件命中的全部内容，不受列表分页和当前已加载数量限制。</template>
-        <template v-else>全部范围包含系统中的全部当前内容，不受列表筛选和分页限制。</template>
+        <template v-if="scope === 'selected'">
+          仅分析当前显式勾选的内容。
+        </template>
+        <template v-else-if="scope === 'query'">
+          当前筛选结果包含已应用筛选条件命中的全部内容，不受列表分页和当前已加载数量限制。
+        </template>
+        <template v-else>
+          全部范围包含系统中的全部当前内容，不受列表筛选和分页限制。
+        </template>
       </p>
       <div
         v-if="previewing"
