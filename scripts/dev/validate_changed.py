@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import runpy
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 CLASSIFIER = ROOT / "scripts" / "quality" / "classify_ci_scope.py"
+
+_CLASSIFIER_NS = runpy.run_path(str(CLASSIFIER))
+CLASSIFY_REQUIREMENTS = _CLASSIFIER_NS["classify_requirements"]
+REQUIREMENTS_JSON = _CLASSIFIER_NS["_requirements_json"]
 
 
 def _git_ref_exists(ref: str) -> bool:
@@ -33,24 +37,35 @@ def default_base() -> str:
     raise SystemExit("无法解析 origin/main 或 main；请使用 --base 显式指定基线。")
 
 
-def classify(base: str, head: str) -> dict[str, Any]:
-    """调用唯一 CI classifier，禁止在开发入口复制 impact mapping。"""
+def _git_paths(command: list[str]) -> tuple[str, ...]:
+    """执行 Git 路径查询并保留 UTF-8/空格等合法文件名。"""
     completed = subprocess.run(
-        [
-            sys.executable,
-            str(CLASSIFIER),
-            "--base",
-            base,
-            "--head",
-            head,
-            "--json",
-        ],
+        command,
         cwd=ROOT,
         check=True,
         capture_output=True,
-        text=True,
     )
-    return json.loads(completed.stdout)
+    return tuple(
+        item.decode("utf-8", errors="surrogateescape")
+        for item in completed.stdout.split(b"\0")
+        if item
+    )
+
+
+def changed_paths(base: str, head: str, *, include_worktree: bool) -> tuple[str, ...]:
+    """恢复开发期真实变更；默认覆盖 staged/unstaged/untracked，而不复制风险映射。"""
+    if include_worktree and head == "HEAD":
+        tracked = _git_paths(["git", "diff", "--no-renames", "--name-only", "-z", base])
+        untracked = _git_paths(["git", "ls-files", "--others", "--exclude-standard", "-z"])
+        return tuple(dict.fromkeys((*tracked, *untracked)))
+    return _git_paths(["git", "diff", "--no-renames", "--name-only", "-z", base, head])
+
+
+def classify(base: str, head: str, *, include_worktree: bool = True) -> dict[str, Any]:
+    """把真实 changed paths 交给唯一 CI classifier，开发入口不维护 impact mapping。"""
+    paths = list(changed_paths(base, head, include_worktree=include_worktree))
+    requirements = CLASSIFY_REQUIREMENTS(paths)
+    return json.loads(REQUIREMENTS_JSON(requirements, paths))
 
 
 def _all_or_targets(
@@ -123,6 +138,10 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
                 targeted_prefix=("uv", "run", "pytest"),
             )
         )
+        if requirements.get("backend_targets") and "all" not in requirements.get(
+            "backend_targets", []
+        ):
+            commands.append(("uv", "run", "pytest", "tests/api", "-q"))
 
     if requirements.get("contract_required"):
         commands.extend(
@@ -217,13 +236,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", help="Git 基线；默认 origin/main，其次 main")
     parser.add_argument("--head", default="HEAD", help="Git 目标 revision，默认 HEAD")
+    parser.add_argument("--committed-only", action="store_true", help="仅比较 base..head，不包含 working tree/untracked")
     parser.add_argument("--fix", action="store_true", help="先收敛 changed Python 格式和 generated artifacts")
     parser.add_argument("--execute", action="store_true", help="执行本地稳定验证层")
     parser.add_argument("--json", action="store_true", help="输出 classifier JSON")
     args = parser.parse_args()
 
     base = args.base or default_base()
-    requirements = classify(base, args.head)
+    requirements = classify(base, args.head, include_worktree=not args.committed_only)
     commands = build_validation_commands(requirements)
     if args.json:
         print(json.dumps(requirements, ensure_ascii=False, sort_keys=True))

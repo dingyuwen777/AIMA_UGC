@@ -431,6 +431,7 @@ jobs:
           elif [[ -n "${BACKEND_TARGETS}" ]]; then
             read -r -a targets <<< "${BACKEND_TARGETS}"
             uv run pytest "${targets[@]}" -q
+            uv run pytest tests/api -q
           else
             echo "backend_required=true without selected targets" >&2
             exit 1

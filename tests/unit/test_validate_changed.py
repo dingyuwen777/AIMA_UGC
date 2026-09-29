@@ -80,3 +80,47 @@ def test_validate_changed_defers_repository_quality_without_inventing_second_map
             "fullstack_required": False,
         }
     ) == ("Repository Quality",)
+
+
+def test_validate_changed_default_scope_includes_worktree_and_untracked(monkeypatch) -> None:
+    """提交前预检默认覆盖 HEAD 后 staged/unstaged 与 untracked 文件。"""
+    script = runpy.run_path(str(SCRIPT_PATH))
+    calls: list[tuple[str, ...]] = []
+
+    def fake_git_paths(command: list[str]) -> tuple[str, ...]:
+        calls.append(tuple(command))
+        if command[1:3] == ["diff", "--no-renames"]:
+            return (
+                "backend/src/aima_ugc/modules/analysis/content_analysis_job.py",
+                "frontend/src/features/voice-plaza/store.ts",
+            )
+        return ("tests/unit/analysis/test_new_rule.py",)
+
+    monkeypatch.setitem(script["_git_paths"].__globals__, "_git_paths", fake_git_paths)
+    paths = script["changed_paths"]("origin/main", "HEAD", include_worktree=True)
+
+    assert paths == (
+        "backend/src/aima_ugc/modules/analysis/content_analysis_job.py",
+        "frontend/src/features/voice-plaza/store.ts",
+        "tests/unit/analysis/test_new_rule.py",
+    )
+    assert any(command[:3] == ("git", "diff", "--no-renames") for command in calls)
+    assert any(command[:3] == ("git", "ls-files", "--others") for command in calls)
+
+
+def test_validate_changed_committed_only_keeps_explicit_base_head_diff(monkeypatch) -> None:
+    """显式 committed-only 不读取 working tree，便于复现已提交 revision Evidence。"""
+    script = runpy.run_path(str(SCRIPT_PATH))
+    calls: list[tuple[str, ...]] = []
+
+    def fake_git_paths(command: list[str]) -> tuple[str, ...]:
+        calls.append(tuple(command))
+        return ("backend/src/aima_ugc/modules/content/service.py",)
+
+    monkeypatch.setitem(script["_git_paths"].__globals__, "_git_paths", fake_git_paths)
+    paths = script["changed_paths"]("main", "feature-head", include_worktree=False)
+
+    assert paths == ("backend/src/aima_ugc/modules/content/service.py",)
+    assert calls == [
+        ("git", "diff", "--no-renames", "--name-only", "-z", "main", "feature-head")
+    ]
