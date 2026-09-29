@@ -35,6 +35,7 @@ def _request(
         items=(
             ContentLabelingModelItem(
                 item_no=1,
+                platform="xiaohongshu",
                 title="爱玛标题",
                 text="正文",
                 author_display_name="作者",
@@ -99,6 +100,7 @@ def test_openai_compatible_adapter_sends_one_minimal_chat_completion_request() -
         "items": [
             {
                 "item_no": 1,
+                "platform": "xiaohongshu",
                 "title": "爱玛标题",
                 "text": "正文",
                 "author": {
