@@ -371,3 +371,23 @@ def test_core_consumes_selected_backend_and_frontend_targets_from_ci_plan() -> N
     assert "FRONTEND_UNIT_TARGETS: ${{ needs.ci-plan.outputs.frontend_unit_targets }}" in core
     assert "FRONTEND_E2E_SPECS: ${{ needs.ci-plan.outputs.frontend_e2e_specs }}" in core
     assert "scripts/quality/classify_ci_scope.py" not in core
+
+
+def test_targeted_backend_does_not_pay_global_api_suite() -> None:
+    """Backend targeted profile 只运行 classifier targets；全量 API 仅属于 all fallback。"""
+    text = CI.read_text(encoding="utf-8")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    step = _section(
+        core,
+        "      - name: Unit, Contract and API tests\n",
+        "      - name: Architecture and ownership gates\n",
+    )
+    all_branch = step.split('if [[ " ${BACKEND_TARGETS} " == *" all "* ]]; then', 1)[1].split(
+        'elif [[ -n "${BACKEND_TARGETS}" ]]; then', 1
+    )[0]
+    targeted_branch = step.split('elif [[ -n "${BACKEND_TARGETS}" ]]; then', 1)[1].split(
+        "else", 1
+    )[0]
+    assert "uv run pytest tests/api -q" in all_branch
+    assert "uv run pytest tests/api -q" not in targeted_branch
+    assert 'uv run pytest "${targets[@]}" -q' in targeted_branch

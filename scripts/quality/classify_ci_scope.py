@@ -221,12 +221,46 @@ def _backend_targets_for_path(path: str) -> tuple[tuple[str, ...], bool]:
     domain_markers: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "/modules/analysis/",
-            ("tests/unit/analysis", "tests/unit/content/test_stage12_analysis_planner.py"),
+            (
+                "tests/unit/analysis",
+                "tests/unit/content/test_stage12_analysis_planner.py",
+                "tests/api/test_analysis_all_scope.py",
+                "tests/api/test_analysis_runtime_capability.py",
+                "tests/api/test_analysis_taxonomy.py",
+            ),
         ),
-        ("/modules/collection/", ("tests/unit/collection",)),
-        ("/modules/content/", ("tests/unit/content",)),
-        ("/modules/ingestion/", ("tests/unit/ingestion",)),
-        ("/modules/vehicles/", ("tests/unit/vehicles",)),
+        (
+            "/modules/collection/",
+            (
+                "tests/unit/collection",
+                "tests/api/test_stage8e_collection_runs.py",
+                "tests/api/test_stage8f_collection_strategy.py",
+            ),
+        ),
+        (
+            "/modules/content/",
+            (
+                "tests/unit/content",
+                "tests/api/test_content_relevance_review_api.py",
+                "tests/api/test_stage8d_contents.py",
+            ),
+        ),
+        (
+            "/modules/ingestion/",
+            (
+                "tests/unit/ingestion",
+                "tests/api/test_stage12_historical_imports.py",
+                "tests/api/test_stage8b_imports.py",
+                "tests/api/test_stage8c_import_batches.py",
+            ),
+        ),
+        (
+            "/modules/vehicles/",
+            (
+                "tests/unit/vehicles",
+                "tests/api/test_brand_vehicle_stage2_contract.py",
+            ),
+        ),
     )
     for marker, targets in domain_markers:
         if marker in path:

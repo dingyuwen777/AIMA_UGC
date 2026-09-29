@@ -445,6 +445,9 @@ def test_known_backend_and_frontend_paths_select_targeted_development_evidence()
     ci_self = _requirements(".github/workflows/ci.yml")
 
     assert analysis.backend_targets == (
+        "tests/api/test_analysis_all_scope.py",
+        "tests/api/test_analysis_runtime_capability.py",
+        "tests/api/test_analysis_taxonomy.py",
         "tests/unit/analysis",
         "tests/unit/content/test_stage12_analysis_planner.py",
     )
@@ -486,3 +489,20 @@ def test_github_output_exposes_backend_and_frontend_selected_targets(tmp_path: P
     assert values["backend_targets"] == ""
     assert values["frontend_unit_targets"] == "frontend/tests/workbench.spec.ts"
     assert values["frontend_e2e_specs"] == "frontend/e2e/workbench.spec.ts"
+
+
+def test_known_backend_domains_include_direct_api_evidence_without_global_api_suite() -> None:
+    """高频 Backend Owner 的 API Evidence 与 Unit 一起由 classifier 精确选择。"""
+    collection = _requirements("backend/src/aima_ugc/modules/collection/service.py")
+    ingestion = _requirements("backend/src/aima_ugc/modules/ingestion/imports.py")
+    vehicles = _requirements("backend/src/aima_ugc/modules/vehicles/service.py")
+
+    assert "tests/api/test_stage8e_collection_runs.py" in collection.backend_targets
+    assert "tests/api/test_stage8f_collection_strategy.py" in collection.backend_targets
+    assert "tests/api/test_stage12_historical_imports.py" in ingestion.backend_targets
+    assert "tests/api/test_stage8b_imports.py" in ingestion.backend_targets
+    assert "tests/api/test_stage8c_import_batches.py" in ingestion.backend_targets
+    assert vehicles.backend_targets == (
+        "tests/api/test_brand_vehicle_stage2_contract.py",
+        "tests/unit/vehicles",
+    )
