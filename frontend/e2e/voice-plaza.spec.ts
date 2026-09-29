@@ -1050,6 +1050,49 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
 })
 
 
+test('creates a query analysis run from the full applied filter snapshot', async ({ page }) => {
+  let previewRequest: Record<string, any> | undefined
+  await page.unroute('**/api/v1/analysis/content-runs/preview')
+  await page.route('**/api/v1/analysis/content-runs/preview', async (route) => {
+    previewRequest = route.request().postDataJSON() as Record<string, any>
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        target_count: 27,
+        shard_count: 1,
+        shard_size: 100,
+        prompt_version: 'content_labeling_v3',
+        prompt_sha256: 'a'.repeat(64),
+        taxonomy_sha256: 'b'.repeat(64),
+        model_provider: 'openai-compatible',
+        model: 'fixture-model',
+        generation_config: { temperature: 0 },
+        generation_config_hash: 'c'.repeat(64),
+        configuration_hash: 'd'.repeat(64),
+        cost_estimate_available: false,
+        cost_estimate_note: '运行后以实际 token/cost 审计为准。',
+      }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+  const voicePlaza = page.getByRole('main', { name: '声音广场' })
+  await voicePlaza.getByLabel('平台', { exact: true }).selectOption('xiaohongshu')
+  await page.getByRole('button', { name: '查询' }).click()
+  await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
+  await expect(dialog.getByRole('radio', { name: /当前筛选结果/ })).toBeChecked()
+  await expect(dialog.getByText('预计分析 27 条内容')).toBeVisible()
+  expect(previewRequest?.targets).toMatchObject({
+    scope: 'query',
+    filters: { platforms: ['xiaohongshu'] },
+  })
+  expect(previewRequest?.targets).not.toHaveProperty('content_ids')
+  expect(previewRequest?.targets?.filters).not.toHaveProperty('sort_by')
+  expect(previewRequest?.targets?.filters).not.toHaveProperty('cursor')
+})
+
 test('creates an all-data analysis run without browser-side content ids', async ({ page }) => {
   let previewRequest: Record<string, unknown> | undefined
   let createRequest: Record<string, unknown> | undefined
@@ -1095,6 +1138,8 @@ test('creates an all-data analysis run without browser-side content ids', async 
   await expect(analysisButton).toBeEnabled()
   await analysisButton.click()
   const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
+  await expect(dialog.getByRole('radio', { name: /当前筛选结果/ })).toBeChecked()
+  await dialog.getByRole('radio', { name: /全部系统内容/ }).check()
   await expect(dialog.getByRole('radio', { name: /全部系统内容/ })).toBeChecked()
   await expect(dialog.getByText('预计分析 4200 条内容')).toBeVisible()
   await expect(dialog.getByText(/分析可能产生服务费用/)).toBeVisible()
