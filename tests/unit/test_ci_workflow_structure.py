@@ -74,7 +74,10 @@ def test_draft_pr_required_checks_fail_closed_before_expensive_product_setup() -
     gate = _section(text, "  ci-gate:\n", "  actions-hygiene:\n")
 
     assert "- ready_for_review" in text
-    assert "if: github.event_name != 'pull_request' || github.event.pull_request.draft == false" not in core
+    assert (
+        "if: github.event_name != 'pull_request' || github.event.pull_request.draft == false"
+        not in core
+    )
     assert "      - name: Block Draft required evidence\n" in core
     assert "github.event.pull_request.draft == true" in core
     assert core.index("Block Draft required evidence") < core.index("      - name: Checkout")
@@ -105,7 +108,10 @@ def test_runtime_required_check_fails_closed_for_draft_then_reenters_on_ready() 
     job = runtime.split("  compose-golden-path:\n", 1)[1]
 
     assert "- ready_for_review" in runtime
-    assert "if: github.event_name != 'pull_request' || github.event.pull_request.draft == false" not in job
+    assert (
+        "if: github.event_name != 'pull_request' || github.event.pull_request.draft == false"
+        not in job
+    )
     assert "      - name: Block Draft required evidence\n" in job
     assert "github.event.pull_request.draft == true" in job
     assert job.index("Block Draft required evidence") < job.index("      - name: Checkout")
