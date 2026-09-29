@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260930-000659-content-labeling-v3
 title: 收敛唯一内容打标 Prompt 与 v3.0 格式协议
 level: L3
-status: ready_for_review
+status: done
 owner: assistant
 branch: refactor/674-content-labeling-v3
 created: 2026-09-30 00:06:59 +08:00
