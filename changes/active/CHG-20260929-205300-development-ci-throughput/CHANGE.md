@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-205300-development-ci-throughput
 title: 优化开发全链路与FinalCI关键路径
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: tech/671-development-flow-ci
 created: 2026-09-29
@@ -140,21 +140,21 @@ Final CI 继续支付人为串行等待，复杂 PR 继续把可在 push 前闭�
 
 | 编号 | 要求 | 来源 | 状态 | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | CI Plan 并行 | #671 AC1 | not_satisfied | 本次先建立永久结构回归 |
-| R2 | Backend/Frontend targeted | #671 AC2 | not_satisfied | 本次先建立 selector 回归 |
-| R3 | validate_changed 同源 | #671 AC3 | not_satisfied | 本次先建立入口回归 |
-| R4 | Commit Hygiene | #671 AC4 | not_satisfied | 待 AGENTS/Blueprint |
-| R5 | Final base/merge freshness | #671 AC5 | not_satisfied | 待 AGENTS/Blueprint |
-| R6 | 端到端交付 | #671 AC6 | not_satisfied | 待 Final lifecycle |
+| R1 | CI Plan 并行 | #671 AC1 | satisfied | `ci-plan` 只产 scope/reuse；Core/PostgreSQL/Full-stack 都消费 Plan，PG/Full-stack 不再依赖 Core；CI Gate 显式校验 PLAN_RESULT。 |
+| R2 | Backend/Frontend targeted | #671 AC2 | satisfied | classifier 新增 backend/frontend targets；高置信 Owner 精准映射，共享/未知/CI-self 回退 all；targeted Backend 仍保留 tests/api。 |
+| R3 | validate_changed 同源 | #671 AC3 | satisfied | `validate_changed.py` 直接调用 classifier；默认覆盖 base→working tree tracked/staged/unstaged/untracked，`--committed-only` 可复现 revision。 |
+| R4 | Commit Hygiene | #671 AC4 | satisfied | AGENTS/测试指南/Blueprint 已明确临时 CI/debug/formatter/generated/Red 过程态默认不形成正式 commit，并保留有价值 checkpoint 例外。 |
+| R5 | Final base/merge freshness | #671 AC5 | satisfied | 项目规则明确 Draft 不追无关 main；Final 前统一 current base；normal merge 不依赖 bypass，绑定 current head/base/required checks。 |
+| R6 | 端到端交付 | #671 AC6 | explicitly_deferred | current-head Final CI、guarded merge、main-fresh、Archive/Closure 只能在 Ready/merge 生命周期取得。 |
 
 # 计划改动
 
 - [x] 恢复 current main、Ruleset、Workflow、classifier、近期 PR/Actions Evidence。
 - [x] 建立 CI Responsibility Audit / Evidence Preservation Mapping。
 - [x] 建立永久 Red 回归文件。
-- [ ] 实现 CI Plan / selector / preflight。
-- [ ] 同步开发规则和测试文档。
-- [ ] Completion Audit + 独立 Review + current-head CI。
+- [x] 实现 CI Plan / selector / preflight。
+- [x] 同步开发规则和测试文档。
+- [x] Completion Audit + FIRST_ASSEMBLY/Repair delta Review 完成；current-head CI 正式延期到 Ready gate。
 - [ ] guarded merge + main-fresh + archive + #671 Closure。
 
 # 验证矩阵
@@ -180,15 +180,16 @@ Final CI 继续支付人为串行等待，复杂 PR 继续把可在 push 前闭�
 
 # 完成审计
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] unresolved_cleared
+- [x] upstream_re_read：已重读 #671、live Ruleset、current main、current PR diff、CI/classifier/preflight/项目规则。
+- [x] change_coverage：AC1-AC5 实现责任已覆盖；AC6 只保留 Ready/merge 后直接 Evidence。
+- [x] reverse_audit：已反查 Plan fail-closed、Draft PG/Full-stack guard、shared/unknown all fallback、working tree scope、API baseline、required check identity/main reuse。
+- [x] unresolved_cleared：无 not_satisfied；只有 AC6 生命周期项 explicitly_deferred。
 
 # 完成证据与状态
 
-当前为 Red/契约 checkpoint；尚无实现 Green、Review 或 current-head CI Evidence。
+当前实现 Head 为 `a4f1850b3566846bbf5a8ad4d13be53c4f0b02ae`；FIRST_ASSEMBLY + Repair delta review 当前 `NO_FINDINGS_WITHIN_SCOPE`。Draft 普通 push 不触发重 CI；current-head 完整 Green Evidence 只在 Final Ready 取得。
 
 - 分支：tech/671-development-flow-ci
-- PR：待首个 commit 后创建 Draft。
+- PR：#672 Draft；本 Change 转 Ready 后保持 Draft，先完成轻量 control-plane check，再切 Ready。
+- Review：`NO_FINDINGS_WITHIN_SCOPE`；current-head full CI/merge/main-fresh 仍是交付门禁。
 - Release/Deploy：不适用。
