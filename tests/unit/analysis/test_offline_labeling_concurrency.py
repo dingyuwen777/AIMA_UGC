@@ -146,10 +146,10 @@ def _valid_response() -> str:
                     "item_no": 1,
                     "relevance": "relevant",
                     "relevance_evidence": ["爱玛"],
-                    "source_type": "unknown",
-                    "content_intent": "unknown",
+                    "source_type": "ordinary_consumer",
+                    "content_intent": "organic_inquiry",
                     "voice_type": taxonomy.semantic_rules.unknown_voice_type,
-                    "voice_evidence": [],
+                    "voice_evidence": ["正文"],
                     "sentiment": taxonomy.sentiments[0],
                     "sentiment_evidence": ["正文"],
                     "labels": [
