@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-161142-final-merge-ci
 title: PR最终合并CI门禁与重复执行优化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: tech/663-final-merge-ci
 created: 2026-09-29
@@ -168,7 +168,7 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 - [x] 完成最小实现。
 - [x] 同步长期文档。
 - [x] 完成 Draft required-context fail-closed Repair；重新进入 Ready 后取得 current-head Actions Evidence。
-- [ ] E6 主修复已完成；Final CI 暴露 `test_actions_runner_optimization.py` 仍断言旧 Runtime Draft skip，本 Repair 只同步该同根测试投影后再做 delta re-review。
+- [x] E6 主修复与 runner-optimization 测试投影均已同步；`a20f85a3…` delta re-review 未发现新增 blocking Finding。
 
 # 验证矩阵
 
@@ -213,8 +213,8 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 
 - [x] upstream_re_read：已重读 #663、active `main-quality-gate`、四 Workflow、CI 文档与 PR 当前 diff。
 - [x] change_coverage：已重读更新后的 #663；AC1–AC5 的实现责任覆盖完整，AC2 实际 Ready run 与 AC6 merge/main-fresh 按正式生命周期延期。
-- [ ] reverse_audit：Runtime 行为已闭环，但 Final CI 暴露 runner-optimization 测试仍镜像旧 Draft skip；同步后重新审所有 Draft/Ready 测试投影。
-- [ ] unresolved_cleared：当前仅剩 runner-optimization 测试投影修复，完成并 re-review 后再清零。
+- [x] reverse_audit：已重审所有已知 CI/Runtime/Actions/Release Draft/Ready 测试投影；required contexts 均断言 fail-closed，Tooling/Release 的非 required Draft skip 保持。
+- [x] unresolved_cleared：`not_satisfied` 已清零；只保留 Final current-head CI 与 post-merge 阶段的正式 `explicitly_deferred`。
 
 # 完成证据与状态
 
@@ -227,17 +227,18 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 | V3 | `37b0bf13db5c437c5a98930736ae85d1645ea3c3` / GitHub Actions + Review correction | Draft/Ready check-runs 与 required-check 语义复核 | BLOCKING Finding：Draft required jobs 的 job-level skip 可产生可满足门禁的 skipped check | 触发 E6 Repair Batch |
 | V4 | `a1c89350e1e3d2713623e28e9de90627e4d30720` / GitHub branch + Actions | Repair diff delta review；查询该 Head Actions runs | PASS：run count=0；required Core/Runtime 改为 pre-checkout fail guard；CI Gate `always()`；`NO_FINDINGS_WITHIN_SCOPE` | E6 closure + ordinary push no-CI evidence |
 | V5 | `f74413bd943bede4ab1fbd399e4b59ff9fa0c2c4` / Final CI | Core tests | `1488 passed, 1 failed, 380 warnings, 12 subtests passed`；唯一失败为 `test_actions_runner_optimization.py::test_runtime_draft_skips_job_then_ready_uses_changed_scope` 的旧断言 | 证明 Workflow/格式门禁已过，剩余为同根测试投影漏改 |
-| V6 | merge 后 main | Actions + Ruleset + Change Archive | explicitly_deferred 到 #663 / AC6 | main-fresh / evidence reuse / archive / closure |
+| V6 | `a20f85a330ff047355b195c4af41103bf8ac2d58` / delta re-review | 扫描 CI/Runtime/Actions/Release Draft/Ready 测试投影；查询 Actions runs | PASS：run count=0；唯一旧 Runtime Draft skip 断言已改为 fail-closed guard；Release 非 required skip 保留；`NO_FINDINGS_WITHIN_SCOPE` | 第二轮 test-projection closure |
+| V7 | merge 后 main | Actions + Ruleset + Change Archive | explicitly_deferred 到 #663 / AC6 | main-fresh / evidence reuse / archive / closure |
 
 ## 未验证内容与剩余风险
 
-- E6 Workflow Repair 已完成；第二次 Final CI 仅暴露 `test_actions_runner_optimization.py` 的旧语义断言。当前正在修复该测试投影，尚不可合并。
+- E6 Workflow Repair 与同根测试投影已完成；尚未取得 `a20f85a3…` 之后的 Final current-head CI 与 post-merge main Evidence，前者继续阻塞 merge。
 
 ## 交付状态
 
 - 提交：`989e8a66dec96ddebc4681b38230f3f516b4277f`（Change/Red）+ `00f10a714fc09801a1c5ec233fa76d4d33c93d6a`（事件优化）+ `a1c89350e1e3d2713623e28e9de90627e4d30720`（E6 Draft fail-closed Repair）。
-- 拉取请求：#664，E6 Repair 已闭环；当前保持 Draft，待本提交后再次切换 Ready。
-- CI：Repair push 未触发 Actions（run count=0）；再次切换 Ready 后运行一次 Final current-head CI。
+- 拉取请求：#664，E6 与测试投影 Repair 已闭环；当前保持 Draft，待本提交后再次切换 Ready。
+- CI：`a20f85a3…` Repair push 未触发 Actions（run count=0）；再次切换 Ready 后运行 Final current-head CI。
 - 合并：待 Review PASS + required checks。
 - Change 归档：待 merge 后 repository-native workflow。
 - 发布 / 部署：不适用。
