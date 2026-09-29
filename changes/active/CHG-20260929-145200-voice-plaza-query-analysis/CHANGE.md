@@ -20,6 +20,9 @@ affected_paths:
   - backend/src/aima_ugc/bootstrap/content_http.py
   - backend/src/aima_ugc/bootstrap/analysis_high_throughput_planner.py
   - backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/analysis_high_throughput.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/analysis_target_snapshot.py
+  - backend/src/aima_ugc/modules/analysis/content_analysis_job.py
   - backend/src/aima_ugc/modules/analysis/README.md
   - contracts/openapi/openapi.json
   - frontend/src/generated/api/client.ts
@@ -30,6 +33,7 @@ affected_paths:
   - tests/contracts/test_stage12_analysis_run_http.py
   - tests/api/test_analysis_all_scope.py
   - tests/integration/content/test_stage12_analysis_runs.py
+  - tests/unit/content/test_stage12_analysis_planner.py
   - docs/product/02_当前产品能力与用户流程.md
   - docs/appendix/07_AI舆情打标与分析实现.md
 contracts:
@@ -76,12 +80,12 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 | E3 | all Scope 已有高吞吐 Planner、有界批次与最终数量核对 | `analysis_high_throughput_planner.py` | query 应沿用同一有界冻结框架 |
 | E4 | Content Query Repository 已统一 projection/fallback 筛选语义 | `content_queries.py` | 不复制第二套 query SQL |
 | E5 | Preview/Create 已冻结 Provider Snapshot、configuration hash 与 expected target count | `content_http.py` | query 必须保持现有确认和幂等边界 |
-| E6 | PR #661 current product head `ca8bcc0` 的 CI / Runtime / Tooling 均绿色 | CI 6171、Runtime 3123、Tooling 1540 | 当前实现可进入合并前完成门禁 |
+| E6 | 指纹增强前的完整产品基线 `ca8bcc0` 已通过 CI / Runtime / Tooling；当前新增同数量成员漂移护栏需由最终 current-head CI 再证明 | CI 6171、Runtime 3123、Tooling 1540 + current-head PR CI | 保留已验证基线，同时要求新增关键路径取得新鲜证据 |
 
 ## 推断与待确认
 
 - 无阻塞推断。
-- 分批冻结没有新增跨批次 MVCC 快照，因此不宣称“Preview 时刻精确成员快照”；Create/Planner 对总数变化 fail closed，每条目标按实际冻结时的 `current_version` 固化，后续版本漂移继续走 stale 语义。
+- 分批冻结不持有跨批次长 MVCC 事务。新 query Run 在成功 Create 时用一个 PostgreSQL Statement Snapshot 对 `content_id + current_version` 全集生成双哈希集合指纹；Planner 最终冻结集合必须匹配该指纹，否则 fail closed。内部指纹不是安全签名，理论上仍存在极低哈希碰撞概率。
 
 # 目标、成功标准与非目标
 
@@ -96,7 +100,7 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 - [x] query 不受 selected 1000 条上限；selected/all 原语义保持。
 - [x] HTTP Contract 对 selected/query/all 的 filters/content_ids 组合 fail closed，并同步 OpenAPI/generated client。
 - [x] query Planner 使用稳定 UUID keyset 分批冻结 ID + Version，全部冻结后才调度 Shard。
-- [x] Preview → Create 目标数变化返回 target-changed；前端重新 Preview，必须再次确认。
+- [x] Preview → Create 目标数变化返回 target-changed；成功 Create 同时固化确认时目标集合指纹；Planner 连同同数量成员替换一起校验，前端冲突后重新 Preview 且必须再次确认。
 - [x] 标签多选与 legacy compatibility 继续复用当前查询事实。
 - [x] 不新增 Schema、Migration、第二任务系统或新的 LLM 并发/RPS 语义。
 - [x] 空目标、Provider 配置、冲突和普通请求失败由现有错误 Contract 提供可区分反馈。
@@ -172,8 +176,8 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 | R2 | query 复用 applied filters，跨分页且不受排序影响 | #660 / AC2 | satisfied | Store query payload + `analysis-all-scope.spec.ts` + Browser query test |
 | R3 | query 无 1000 上限；selected/all 不回归 | #660 / AC3 | satisfied | Contract validator + all/selected regressions |
 | R4 | HTTP Contract 与 generated client 完整 | #660 / AC4 | satisfied | OpenAPI generation drift gate success |
-| R5 | query 有界冻结 Content ID + Version | #660 / AC5 | satisfied | PG integration 用 `freeze_batch_size=1` 证明分批路径 |
-| R6 | Preview/Create/Planner 目标变化 fail closed | #660 / AC6 | satisfied | Create recount + Planner final count + frontend 409 re-preview test |
+| R5 | query 有界冻结 Content ID + Version | #660 / AC5 | satisfied | PG integration 用 `freeze_batch_size=1` 证明分批路径；Create 只保存 Filter + 集合指纹，不搬运全量 ID |
+| R6 | Preview/Create/Planner 目标变化 fail closed | #660 / AC6 | satisfied | Create count + target fingerprint；Planner frozen fingerprint；新增同数量成员替换 PG 回归；frontend 409 re-preview test |
 | R7 | 标签 legacy compatibility 与现有查询语义一致 | #660 / AC7 | satisfied | query 直接复用 `filterSnapshot()` / `_effective_base_statement()` |
 | R8 | 复用现有 Analysis Runtime，无 Migration | #660 / AC8 | satisfied | 现有 Run/Target/Shard/Worker；Runtime Acceptance green |
 | R9 | 用户可区分主要失败类型 | #660 / AC9 | satisfied | Dialog 展示实际 API error；现有 422/503/409 Contract 保持 |
@@ -185,8 +189,9 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 | --- | --- | --- | --- |
 | `contracts/http.py` | selected/query/all Contract | 公开筛选目标 | R2–R4 |
 | `content_http.py` | query Preview/Create、target changed 核对 | 权威确认语义 | R2,R6 |
-| `content_queries.py` | filtered count/keyset batch | 有界冻结且复用查询事实 | R5,R7 |
-| `analysis_high_throughput_planner.py` | query 分批冻结 | 大集合事务边界 | R5,R6 |
+| `content_queries.py` + `analysis_target_snapshot.py` | filtered count/keyset batch + 单 Statement 集合指纹 | 有界冻结且捕获确认时成员集合 | R5,R6,R7 |
+| `analysis_high_throughput.py` + Planner | 已冻结 Target 指纹 + query 分批冻结 | 大集合事务边界与成员一致性 | R5,R6 |
+| `content_analysis_job.py` | 内部 query filter/fingerprint 快照包装与 legacy 恢复 | 无 Migration 保存确认事实 | R6,R8 |
 | Voice Plaza Store/Dialog/Page | 三范围、默认 query、错误/重新确认 | 用户入口 | R1–R3,R9 |
 | OpenAPI/generated client | 正式生成 | Contract 单一事实 | R4 |
 | tests | Contract/PG/Frontend/Browser 回归 | 证明关键边界 | R1–R10 |
@@ -227,7 +232,7 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 
 | 项目 | 结论 | 依据 / 处理方式 |
 | --- | --- | --- |
-| 主要风险 | Query 大集合事务；动态筛选条件自我变化；Preview 后集合漂移 | UUID keyset 分批冻结 + Create/Planner count fail closed + Content Version |
+| 主要风险 | Query 大集合事务；动态筛选条件自我变化；同数量成员替换 | UUID keyset 分批冻结 + Create target fingerprint + Planner frozen fingerprint + Content Version |
 | 兼容性 | additive | selected/all 与历史 query snapshot 保留 |
 | 数据 / Migration | 不适用 | 无 Schema 变化，无历史回填 |
 | 部署 / 运行 | 无新增进程/配置 | 复用 API/Planner/Worker/PostgreSQL Job Runtime |
@@ -245,7 +250,7 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 
 - [x] upstream_re_read：已重新读取 #660 AC1–AC10、当前 main、Voice Plaza Store/Contract/Query/Planner 与 Analysis 文档。
 - [x] change_coverage：AC1–AC10 均映射到实现与当前 PR 证据；没有用前端按钮替代服务端 Query/Planner 语义。
-- [x] reverse_audit：从 UI Scope → applied Filter Snapshot → Preview/Create → DB Run Snapshot → keyset target freeze → Shard 回查，并从 selected/all/legacy query 反查兼容行为。
+- [x] reverse_audit：从 UI Scope → applied Filter Snapshot → Preview → Create count/fingerprint → DB Run Snapshot → keyset target freeze → frozen fingerprint → Shard 回查；另从 selected/all/legacy query 反查兼容行为。
 - [x] unresolved_cleared：无 not_satisfied / 未批准延期；无 Schema/Migration/Provider Probe 缺口。
 
 # 完成证据与状态
@@ -258,23 +263,24 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 | V1 | product head `ca8bcc0` merged-with-main / CI run 6171 | Requirement/Generated/Ruff/mypy/Unit/Contract/API/Frontend/PostgreSQL/Full-stack/CI Gate | 全部 required jobs success | 当前实现、Contract、真实 PG 与浏览器关键路径通过 |
 | V2 | product head `ca8bcc0` / Runtime Acceptance 3123 | Compose Golden Path | success | Runtime 组装、启动、持久化与安全路径无回退 |
 | V3 | product head `ca8bcc0` / Developer Tooling 1540 | Linux + Windows Tooling | 两个 Tooling jobs success | 开发/Compose 工具链无回退 |
-| V4 | PR #661 current diff / GitHub merge ref | mergeable=true，current main merge tree 可生成 | clean merge | 当前主分支无冲突；最终 merge 仍需遵守 required checks |
+| V4 | PR #661 branch sync commit `7e23ec2` | compare main...feature | behind 0 / clean merge | 分支已吸收当前 main，不通过规则 bypass 合并 |
+| V5 | fingerprint delta | PostgreSQL same-count membership-drift regression + unit selected/all short-transaction regression | 当前代码已补测试，最终 current-head CI 待执行完成 | 直接覆盖首轮复核发现的集合漂移投影 |
 
 ## 未验证内容与剩余风险
 
 - 未执行真实付费 LLM Provider Probe；本变更不依赖 Provider 在线事实，且 Requirement #660 明确不要求新增该探测。
 - 不做生产规模吞吐承诺；实现保证有界冻结事务，生产吞吐仍由真实数据分布、PostgreSQL 和 Provider 容量决定。
-- 分批冻结不提供跨所有批次的单一 MVCC 时点；同总数成员替换不会被 count-only 检测，目标以 Planner 各批次实际读取结果为准，该边界已在正式文档明确。
+- 分批冻结不提供跨所有批次的单一 MVCC 时点；新 query Run 通过 Create 集合指纹与 Planner frozen fingerprint 核对同数量成员替换。双 64-bit PostgreSQL 哈希聚合再经 SHA-256 编码属于一致性护栏，不是密码学集合承诺，保留极低碰撞风险。
 
 ## 交付状态
 
 - 提交：产品实现已在 `feature/660-voice-plaza-query-analysis`。
 - 拉取请求：#661，ready for review。
-- CI：product head `ca8bcc0` 的 CI 6171、Runtime 3123、Tooling 1540 全绿；本 Change-only 提交将再次经过项目 Ready/CI 门禁。
-- 合并：待 Change-only current-head 门禁绿色后按用户授权合并 main。
+- CI：完整基线 `ca8bcc0` 的 CI 6171、Runtime 3123、Tooling 1540 已绿色；当前 fingerprint delta 正等待 final current-head required CI。
+- 合并：待 fingerprint delta current-head required checks 全绿后按用户授权合并 main。
 - Change 归档：merge 后按仓库自动归档流程核验。
 - 发布 / 部署：不适用；用户未要求 Release/Deploy，且无 Migration。
 
 ## 备注
 
-本次只恢复并完成治理 Change 文档；产品代码树相对已验证 head `ca8bcc0` 不再变化。
+首轮完成复核发现 count-only 无法识别“总数不变但成员替换”的同根投影，已在同一 Repair Batch 中升级为 Create/Frozen 集合指纹闭环；不新增 Schema/Migration。
