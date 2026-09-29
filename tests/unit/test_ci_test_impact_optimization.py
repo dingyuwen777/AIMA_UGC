@@ -117,10 +117,8 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     assert "      POSTGRES_SUITES: ${{ needs.ci-plan.outputs.postgres_suites }}\n" in postgres_job
     assert "uv run pytest tests/integration/vehicles -q" in postgres_job
 
-    assert (
-        "      - name: Install report validation CJK font\n"
-        "        if: needs.ci-plan.outputs.backend_required == 'true'\n" in text
-    )
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    assert "      - name: Install report validation CJK font\n" in core
 
 
 def test_draft_pr_required_contexts_fail_closed_without_running_full_ci() -> None:
