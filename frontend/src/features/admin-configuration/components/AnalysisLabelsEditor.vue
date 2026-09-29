@@ -36,10 +36,6 @@ const errors = computed(() => {
   }
   if (new Set(allSecondaries).size !== allSecondaries.length) messages.push('二级标签不能跨一级标签重复。')
 
-  const unknown = rows.value.find((row) => row.primary.trim() === '无法分类')
-  if (!unknown || unknown.secondaries.length !== 1 || unknown.secondaries[0]?.trim() !== '无法判断') {
-    messages.push('必须保留“无法分类 / 无法判断”作为兜底标签。')
-  }
   return [...new Set(messages)]
 })
 
@@ -68,7 +64,7 @@ watch(
   { deep: true },
 )
 
-/** 从正式 JSON 结构恢复可编辑行，并自动补回系统必需兜底项。 */
+/** 从正式 JSON 结构恢复可编辑行，不向当前 Scheme 注入 Prompt 未声明的标签。 */
 function loadFromModel(value: string): void {
   syncingFromModel = true
   try {
@@ -81,12 +77,9 @@ function loadFromModel(value: string): void {
         ? [{ id: nextId++, primary, secondaries: [...secondaries] as string[] }]
         : [],
     )
-    if (!nextRows.some((row) => row.primary === '无法分类')) {
-      nextRows.push({ id: nextId++, primary: '无法分类', secondaries: ['无法判断'] })
-    }
     rows.value = nextRows
   } catch {
-    rows.value = [{ id: nextId++, primary: '无法分类', secondaries: ['无法判断'] }]
+    rows.value = []
   } finally {
     syncingFromModel = false
     emit('validity', valid.value)
@@ -100,27 +93,24 @@ function loadFromModel(value: string): void {
   }
 }
 
-/** 新增普通一级标签，系统兜底项不受此操作影响。 */
+/** 新增一级标签。 */
 function addPrimary(): void {
   if (rows.value.length >= 100) return
   rows.value.push({ id: nextId++, primary: '', secondaries: [''] })
 }
 
-/** 移除普通一级标签；系统兜底项不可删除。 */
+/** 移除一级标签。 */
 function removePrimary(row: LabelRow): void {
-  if (row.primary.trim() === '无法分类') return
   rows.value = rows.value.filter((item) => item.id !== row.id)
 }
 
 /** 在指定一级标签下新增二级标签。 */
 function addSecondary(row: LabelRow): void {
-  if (row.primary.trim() === '无法分类') return
   row.secondaries.push('')
 }
 
-/** 移除普通二级标签，但始终为一级标签保留至少一项。 */
+/** 移除二级标签，但始终为一级标签保留至少一项。 */
 function removeSecondary(row: LabelRow, index: number): void {
-  if (row.primary.trim() === '无法分类') return
   if (row.secondaries.length <= 1) return
   row.secondaries.splice(index, 1)
 }
@@ -144,8 +134,7 @@ function removeSecondary(row: LabelRow, index: number): void {
           <input
             v-model="row.primary"
             maxlength="200"
-            :readonly="row.primary === '无法分类'"
-            :aria-label="row.primary === '无法分类' ? '必需一级标签 无法分类' : '一级标签名称'"
+            aria-label="一级标签名称"
           >
         </label>
 
@@ -159,11 +148,10 @@ function removeSecondary(row: LabelRow, index: number): void {
               <input
                 v-model="row.secondaries[index]"
                 maxlength="200"
-                :readonly="row.primary === '无法分类'"
                 :aria-label="`二级标签 ${index + 1}`"
               >
               <button
-                v-if="row.primary !== '无法分类' && row.secondaries.length > 1"
+                v-if="row.secondaries.length > 1"
                 type="button"
                 @click="removeSecondary(row, index)"
               >
@@ -176,26 +164,17 @@ function removeSecondary(row: LabelRow, index: number): void {
         <div class="label-actions">
           <AimaButton
             size="small"
-            :disabled="row.primary === '无法分类'"
             @click="addSecondary(row)"
           >
             新增二级标签
           </AimaButton>
           <AimaButton
             size="small"
-            :disabled="row.primary === '无法分类'"
             @click="removePrimary(row)"
           >
             移除一级标签
           </AimaButton>
         </div>
-
-        <p
-          v-if="row.primary === '无法分类'"
-          class="required-label-note"
-        >
-          必需兜底标签，不能移除。
-        </p>
       </article>
     </div>
 
@@ -286,12 +265,5 @@ function removeSecondary(row: LabelRow, index: number): void {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-}
-.required-label-note {
-  margin: 0;
-  color: var(--aima-text-tertiary);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 20px;
 }
 </style>

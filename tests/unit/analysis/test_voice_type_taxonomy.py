@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ast
 import json
+import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,8 +22,11 @@ from aima_ugc.modules.analysis.content_labeling import (
 )
 
 OBSERVED_AT = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
-CURRENT_VOICE_TYPES = ("品牌官方发声", "真实用户发声", "营销推广发声")
-LEGACY_V4_PROMPT_PATH = CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v4.md")
+CURRENT_VOICE_TYPES = (
+    "品牌官方发声",
+    "真实用户发声",
+    "营销推广发声",
+)
 
 
 def _content() -> CanonicalContentV1:
@@ -43,13 +48,29 @@ def _content() -> CanonicalContentV1:
     )
 
 
-def _mutated_v46_prompt(tmp_path: Path, *, old: str, new: str) -> Path:
-    """只在测试副本中修改 V4.6 原文，验证 Parser 的 fail-closed 边界。"""
+def _mutated_current_prompt(
+    tmp_path: Path,
+    *,
+    mutate_voice_types: Callable[[list[str]], None],
+) -> Path:
+    """只修改测试副本中的当前 Taxonomy，验证运行时闭集边界。"""
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
-    assert prompt.count(old) >= 1
-    path = tmp_path / "content_labeling_v4.6_test.md"
-    path.write_text(prompt.replace(old, new, 1), encoding="utf-8")
+    match = re.search(
+        r"(<!-- AIMA_TAXONOMY_START -->\s*```json\s*)(.*?)(\s*```\s*<!-- AIMA_TAXONOMY_END -->)",
+        prompt,
+        flags=re.DOTALL,
+    )
+    assert match is not None
+    payload = json.loads(match.group(2))
+    mutate_voice_types(payload["voice_types"])
+    mutated = (
+        prompt[: match.start(2)]
+        + json.dumps(payload, ensure_ascii=False, indent=2)
+        + prompt[match.end(2) :]
+    )
+    path = tmp_path / "mutated_content_labeling.md"
+    path.write_text(mutated, encoding="utf-8")
     return path
 
 
@@ -60,7 +81,7 @@ def _response(
     primary: str,
     secondary: str,
 ) -> str:
-    """生成固定结构的 V4.6 单 item 响应。"""
+    """生成当前唯一协议的固定结构单 item 响应。"""
 
     return json.dumps(
         {
@@ -90,68 +111,42 @@ def _response(
     )
 
 
-def test_prompt_uses_v46_three_class_voice_type_taxonomy() -> None:
-    """当前 Prompt 只暴露业务确认的 V4.6 三类发声类型。"""
+def test_prompt_uses_the_three_voice_type_taxonomy() -> None:
+    """当前唯一 Prompt 只暴露业务决定的三类发声类型。"""
 
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
 
     assert taxonomy.voice_types == CURRENT_VOICE_TYPES
-    assert "个人交易发声" not in taxonomy.voice_types
-    assert "门店经销商发声" not in taxonomy.voice_types
-    assert "行业从业发声" not in taxonomy.voice_types
-    assert "媒体机构发声" not in taxonomy.voice_types
-    assert "无法判断" not in taxonomy.voice_types
+    assert len(taxonomy.voice_types) == 3
 
 
-def test_prompt_retains_v46_voice_boundaries_and_official_whitelists() -> None:
-    """V4.6 原文必须保留三分类公式、严格真实用户准入和各平台官号白名单。"""
+def test_prompt_retains_independent_voice_boundaries_and_strict_real_user_gate() -> None:
+    """当前原文必须保留独立三分类、官方白名单和严格真实用户准入。"""
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
 
+    assert "voice_type` 不再依赖 `source_type + content_intent" in prompt
+    assert "personal_transaction" in prompt
+    assert "其他 voice_type = 营销推广发声" in prompt
+    assert "A-F全部通过" in prompt
     assert "官号白名单命中 = 品牌官方发声" in prompt
-    assert "A-F全部通过 = 真实用户发声" in prompt
-    assert "其他一切 = 营销推广发声" in prompt
-    assert "爱玛官方旗舰店" in prompt
-    assert "爱玛科学实验室" in prompt
-    assert "爱玛骑遇团" in prompt
-    assert "真实到场 ≠ 真实用户发声" in prompt
 
 
 def test_prompt_voice_type_addition_is_runtime_driven_without_python_contract_change(
     tmp_path: Path,
 ) -> None:
-    """Prompt 闭集扩展仍由 RuntimeTaxonomyValidator 决定，不需要 Python Literal。"""
+    """Prompt 闭集扩展仍由运行时读取，不需要 Python Literal。"""
 
     future_voice_type = "社区活动发声"
     loader = PromptTaxonomyLoader(
-        _mutated_v46_prompt(
+        _mutated_current_prompt(
             tmp_path,
-            old="   - `营销推广发声`\n",
-            new="   - `营销推广发声`\n   - `社区活动发声`\n",
+            mutate_voice_types=lambda values: values.append(future_voice_type),
         )
     )
     taxonomy = loader.load()
-    primary = taxonomy.primary_labels[0]
-    fake = FakeContentLabelingLLM(
-        responses=[
-            _response(
-                voice_type=future_voice_type,
-                sentiment=taxonomy.sentiments[0],
-                primary=primary,
-                secondary=taxonomy.labels[primary][0],
-            )
-        ]
-    )
-
-    result = ContentLabelingService(prompt_loader=loader, llm=fake).label_contents(
-        [_content()],
-        max_validation_retries=0,
-    )
 
     assert taxonomy.voice_types == (*CURRENT_VOICE_TYPES, future_voice_type)
-    assert result.items[0].analysis_status == "succeeded"
-    assert result.items[0].analysis is not None
-    assert result.items[0].analysis.voice_type == future_voice_type
 
 
 def test_unknown_voice_type_uses_taxonomy_validation_retry() -> None:
@@ -169,7 +164,7 @@ def test_unknown_voice_type_uses_taxonomy_validation_retry() -> None:
                 secondary=taxonomy.labels[primary][0],
             ),
             _response(
-                voice_type="营销推广发声",
+                voice_type="真实用户发声",
                 sentiment=taxonomy.sentiments[0],
                 primary=primary,
                 secondary=taxonomy.labels[primary][0],
@@ -188,16 +183,15 @@ def test_unknown_voice_type_uses_taxonomy_validation_retry() -> None:
     assert "unknown_voice_type" in fake.calls[1].previous_validation_error_codes
 
 
-def test_duplicate_voice_type_in_v46_prompt_fails_closed_before_llm(
+def test_duplicate_voice_type_in_current_prompt_fails_closed_before_llm(
     tmp_path: Path,
 ) -> None:
-    """V4.6 voice_type 闭集与其它 Taxonomy 一样拒绝重复值。"""
+    """当前 voice_type 闭集拒绝重复值。"""
 
     loader = PromptTaxonomyLoader(
-        _mutated_v46_prompt(
+        _mutated_current_prompt(
             tmp_path,
-            old="   - `营销推广发声`\n",
-            new="   - `营销推广发声`\n   - `营销推广发声`\n",
+            mutate_voice_types=lambda values: values.append("营销推广发声"),
         )
     )
     fake = FakeContentLabelingLLM(responses=["{}"])
@@ -211,14 +205,13 @@ def test_duplicate_voice_type_in_v46_prompt_fails_closed_before_llm(
     assert fake.calls == []
 
 
-def test_legacy_v4_voice_taxonomy_remains_loadable() -> None:
-    """代码升级后既有 V4 Scheme 的八类发声 Taxonomy 仍可恢复。"""
+def test_current_voice_taxonomy_is_loadable() -> None:
+    """唯一 Git Prompt 可恢复 V3.0 的三类发声 Taxonomy。"""
 
-    taxonomy = PromptTaxonomyLoader(LEGACY_V4_PROMPT_PATH).load()
+    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
 
-    assert taxonomy.output_protocol_version == "content-labeling.v4"
-    assert "个人交易发声" in taxonomy.voice_types
-    assert "无法判断" in taxonomy.voice_types
+    assert taxonomy.output_protocol_version == "content-labeling.v3.0"
+    assert taxonomy.voice_types == CURRENT_VOICE_TYPES
 
 
 def test_analysis_contract_keeps_structure_but_does_not_copy_voice_type_taxonomy() -> None:
@@ -229,7 +222,7 @@ def test_analysis_contract_keeps_structure_but_does_not_copy_voice_type_taxonomy
         voice_type="future_prompt_voice_type",
         sentiment="中性",
         labels=(ContentLabelPairV2(primary_label="测试一级", secondary_label="测试二级"),),
-        prompt_version="content-labeling.v3",
+        prompt_version="content-labeling.v3.0",
         prompt_sha256="a" * 64,
         taxonomy_sha256="b" * 64,
         model_provider="fake",

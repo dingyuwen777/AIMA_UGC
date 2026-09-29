@@ -74,6 +74,35 @@ def test_validate_changed_fix_only_formats_changed_python_and_regenerates_contra
     assert all("frontend/src/features/voice-plaza/store.ts" not in command for command in rendered)
 
 
+def test_validate_changed_excludes_deleted_python_from_file_level_tools(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """删除的 Python 路径继续参与分类，但不得传给要求文件存在的 Ruff。"""
+    existing = tmp_path / "tests" / "unit" / "test_current.py"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("def test_current():\n    assert True\n", encoding="utf-8")
+
+    script = runpy.run_path(str(SCRIPT_PATH))
+    monkeypatch.setitem(script["build_fix_commands"].__globals__, "ROOT", tmp_path)
+    requirements = {
+        "backend_required": True,
+        "changed_paths": [
+            "tests/unit/test_current.py",
+            "tests/unit/test_deleted.py",
+        ],
+        "backend_targets": ["tests/unit"],
+        "contract_required": False,
+        "frontend_required": False,
+    }
+
+    fix_commands = script["build_fix_commands"](requirements)
+    validation_commands = script["build_validation_commands"](requirements)
+    rendered = [" ".join(command) for command in (*fix_commands, *validation_commands)]
+
+    assert any("tests/unit/test_current.py" in command for command in rendered)
+    assert all("tests/unit/test_deleted.py" not in command for command in rendered)
+
+
 def test_validate_changed_defers_repository_quality_without_inventing_second_mapping() -> None:
     """仓库治理专项没有 classifier targets 时显式留给 CI，而不是硬编码另一套列表。"""
     script = runpy.run_path(str(SCRIPT_PATH))
