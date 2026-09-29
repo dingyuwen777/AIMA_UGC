@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20260929-194448-analysis-scheme-cleanup
 title: 优化 AI 分析规则归档与删除体验
 level: L3
-status: ready_for_review
+status: done
 owner: assistant
 branch: feature/669-analysis-scheme-cleanup
 created: 2026-09-29 19:44:48 +08:00
-updated: 2026-09-29 19:44:48 +08:00
+updated: 2026-09-29
 completion_gate: required
 depends_on: []
 affected_areas:
