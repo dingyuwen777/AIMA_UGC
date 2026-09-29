@@ -17,6 +17,7 @@ def test_validate_changed_reuses_classifier_and_builds_targeted_commands() -> No
             "profile": "cross_component",
             "repository_quality_required": False,
             "backend_required": True,
+            "changed_paths": ["backend/src/aima_ugc/modules/analysis/content_analysis_job.py"],
             "backend_targets": ["tests/unit/analysis"],
             "frontend_required": True,
             "frontend_unit_targets": ["frontend/tests/voice-plaza.spec.ts"],
@@ -66,3 +67,16 @@ def test_validate_changed_fix_only_formats_changed_python_and_regenerates_contra
     assert any("scripts/contracts/generate.py" in command for command in rendered)
     assert any("frontend run generate:api" in command for command in rendered)
     assert all("frontend/src/features/voice-plaza/store.ts" not in command for command in rendered)
+
+
+def test_validate_changed_defers_repository_quality_without_inventing_second_mapping() -> None:
+    """仓库治理专项没有 classifier targets 时显式留给 CI，而不是硬编码另一套列表。"""
+    script = runpy.run_path(str(SCRIPT_PATH))
+    assert script["deferred_ci_layers"](
+        {
+            "repository_quality_required": True,
+            "backend_required": False,
+            "postgres_required": False,
+            "fullstack_required": False,
+        }
+    ) == ("Repository Quality",)

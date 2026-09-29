@@ -97,17 +97,17 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
     """根据 classifier 输出构造无外部服务副作用的本地验证命令。"""
     commands: list[tuple[str, ...]] = []
 
-    if requirements.get("repository_quality_required") and not requirements.get("backend_required"):
-        commands.append(("uv", "run", "pytest", "tests/unit/test_ci_scope.py", "-q"))
-
     if requirements.get("backend_required"):
-        commands.extend(
-            [
-                ("uv", "run", "ruff", "format", "--check", "backend", "tests", "scripts"),
-                ("uv", "run", "ruff", "check", "backend", "tests", "scripts"),
-                ("uv", "run", "mypy", "backend/src"),
-            ]
+        changed_python = tuple(
+            path
+            for path in requirements.get("changed_paths", [])
+            if path.endswith(".py")
+            and path.startswith(("backend/", "tests/", "scripts/", "migrations/"))
         )
+        if changed_python:
+            commands.append(("uv", "run", "ruff", "format", "--check", *changed_python))
+            commands.append(("uv", "run", "ruff", "check", *changed_python))
+        commands.append(("uv", "run", "mypy", "backend/src"))
         commands.extend(
             _all_or_targets(
                 list(requirements.get("backend_targets", [])),
@@ -173,6 +173,8 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
 def deferred_ci_layers(requirements: dict[str, Any]) -> tuple[str, ...]:
     """列出默认不在本地伪造、继续由正式 CI 证明的真实重依赖层。"""
     deferred: list[str] = []
+    if requirements.get("repository_quality_required") and not requirements.get("backend_required"):
+        deferred.append("Repository Quality")
     if requirements.get("repository_quality_required") and not requirements.get("backend_required"):
         deferred.append("Repository Quality")
     if requirements.get("postgres_required"):

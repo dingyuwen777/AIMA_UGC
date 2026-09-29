@@ -163,7 +163,8 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     assert "  quality-core:\n    name: Requirement Traceability and Completion Audit\n    if: always()\n    needs: ci-plan\n" in ci
     assert "Block Draft required evidence" in ci
     assert "Block Draft required evidence" in runtime
-    assert "github.event.pull_request.draft == false" not in ci
+    core = _section(ci, "  quality-core:\n", "  postgres-integration:\n")
+    assert "github.event.pull_request.draft == false" not in core
     assert "github.event.pull_request.draft == false" not in runtime
 
 
@@ -352,8 +353,10 @@ def test_ci_plan_allows_core_postgres_and_fullstack_to_run_in_parallel() -> None
     assert "needs: ci-plan" in core
     assert "needs: ci-plan" in postgres
     assert "needs: quality-core" not in postgres
+    assert "github.event.pull_request.draft == false" in postgres
     assert "needs: ci-plan" in fullstack
     assert "needs: quality-core" not in fullstack
+    assert "github.event.pull_request.draft == false" in fullstack
     assert "      - ci-plan\n" in gate
     assert "      - quality-core\n" in gate
     assert "      - postgres-integration\n" in gate

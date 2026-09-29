@@ -489,7 +489,10 @@ jobs:
   postgres-integration:
     name: PostgreSQL Integration
     needs: ci-plan
-    if: needs.ci-plan.result == 'success' && needs.ci-plan.outputs.postgres_required == 'true'
+    if: >-
+      needs.ci-plan.result == 'success' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      needs.ci-plan.outputs.postgres_required == 'true'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -602,7 +605,10 @@ jobs:
   real-fullstack:
     name: Real Full-stack Golden Path
     needs: ci-plan
-    if: needs.ci-plan.result == 'success' && needs.ci-plan.outputs.fullstack_required == 'true'
+    if: >-
+      needs.ci-plan.result == 'success' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      needs.ci-plan.outputs.fullstack_required == 'true'
     uses: ./.github/workflows/fullstack.yml
     with:
       specs: ${{ needs.ci-plan.outputs.fullstack_specs }}

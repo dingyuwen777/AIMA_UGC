@@ -211,21 +211,22 @@ def _is_report_font_path(path: str) -> bool:
 
 def _backend_targets_for_path(path: str) -> tuple[tuple[str, ...], bool]:
     """把已知后端 Owner 映射到直接单测；未知共享边界由调用方回退 all。"""
-    if path.startswith(("tests/unit/", "tests/api/", "tests/contracts/")) and path.endswith(".py"):
+    if path.startswith(("tests/unit/", "tests/api/", "tests/contracts/")) and path.endswith(
+        ".py"
+    ):
         if Path(path).name == "conftest.py":
             return (), False
         return (path,), True
 
     domain_markers: tuple[tuple[str, tuple[str, ...]], ...] = (
-        ("/modules/analysis/", ("tests/unit/analysis", "tests/unit/content/test_stage12_analysis_planner.py")),
+        (
+            "/modules/analysis/",
+            ("tests/unit/analysis", "tests/unit/content/test_stage12_analysis_planner.py"),
+        ),
         ("/modules/collection/", ("tests/unit/collection",)),
         ("/modules/content/", ("tests/unit/content",)),
         ("/modules/ingestion/", ("tests/unit/ingestion",)),
-        ("/modules/jobs/", ("tests/unit/jobs",)),
-        ("/modules/system/", ("tests/unit/system",)),
         ("/modules/vehicles/", ("tests/unit/vehicles",)),
-        ("/modules/identity/", ("tests/unit/identity",)),
-        ("/platform/", ("tests/unit/platform",)),
     )
     for marker, targets in domain_markers:
         if marker in path:
@@ -311,12 +312,6 @@ def _frontend_targets_for_path(path: str) -> tuple[tuple[str, ...], tuple[str, .
         if path.startswith(marker):
             return unit_targets, e2e_specs, True
 
-    if path == "frontend/src/shared/ui/AimaMultiSelect.vue":
-        return (
-            ("frontend/tests/voice-plaza.spec.ts", "frontend/tests/workbench.spec.ts"),
-            ("frontend/e2e/voice-plaza.spec.ts", "frontend/e2e/workbench.spec.ts"),
-            True,
-        )
     return (), (), False
 
 

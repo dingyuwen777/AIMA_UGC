@@ -133,7 +133,11 @@ def test_draft_pr_required_contexts_fail_closed_without_running_full_ci() -> Non
     assert "github.event.pull_request.draft == true" in core
     assert core.index("Block Draft required evidence") < core.index("      - name: Checkout")
     assert "  ci-gate:\n    name: CI Gate\n    if: always()\n" in text
-    assert "github.event.pull_request.draft == false" not in text
+    assert "github.event.pull_request.draft == false" not in core
+    postgres = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
+    fullstack = _section(text, "  real-fullstack:\n", "  ci-gate:\n")
+    assert "github.event.pull_request.draft == false" in postgres
+    assert "github.event.pull_request.draft == false" in fullstack
 
 
 def test_runtime_draft_pr_fails_closed_before_compose_setup() -> None:
