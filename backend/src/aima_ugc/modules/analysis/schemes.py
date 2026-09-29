@@ -103,7 +103,7 @@ def _render_v46_prompt(definition: AnalysisSchemeDefinitionRequest) -> str:
     if label_match is None:
         raise ValueError("V4.6 Prompt 缺少唯一标签 Taxonomy 区块")
     template_primary_order = re.findall(
-        r"(?m)^## (?P<primary>.+?)\\s*$",
+        r"(?m)^## (?P<primary>.+?)\s*$",
         label_match.group("labels"),
     )
     ordered_primaries = [
