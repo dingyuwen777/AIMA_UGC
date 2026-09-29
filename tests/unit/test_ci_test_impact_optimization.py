@@ -114,15 +114,11 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
 
     postgres_job = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
     assert "fonts-noto-cjk" not in postgres_job
-    assert (
-        "      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}\n" in postgres_job
-    )
+    assert "      POSTGRES_SUITES: ${{ needs.ci-plan.outputs.postgres_suites }}\n" in postgres_job
     assert "uv run pytest tests/integration/vehicles -q" in postgres_job
 
-    assert (
-        "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.backend_required == 'true'\n" in text
-    )
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    assert "      - name: Install report validation CJK font\n" in core
 
 
 def test_draft_pr_required_contexts_fail_closed_without_running_full_ci() -> None:
@@ -133,7 +129,11 @@ def test_draft_pr_required_contexts_fail_closed_without_running_full_ci() -> Non
     assert "github.event.pull_request.draft == true" in core
     assert core.index("Block Draft required evidence") < core.index("      - name: Checkout")
     assert "  ci-gate:\n    name: CI Gate\n    if: always()\n" in text
-    assert "github.event.pull_request.draft == false" not in text
+    assert "github.event.pull_request.draft == false" not in core
+    postgres = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
+    fullstack = _section(text, "  real-fullstack:\n", "  ci-gate:\n")
+    assert "github.event.pull_request.draft == false" in postgres
+    assert "github.event.pull_request.draft == false" in fullstack
 
 
 def test_runtime_draft_pr_fails_closed_before_compose_setup() -> None:

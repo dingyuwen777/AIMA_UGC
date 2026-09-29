@@ -118,6 +118,10 @@
 4. 宿主已验证可自动完成 Draft → Ready 时使用 Draft PR；否则创建普通 PR，并明确“逻辑未就绪”，所有 Ready 门禁完成前禁止 merge；
 5. 保持 `Issue ↔ Change ↔ branch ↔ PR` 稳定关联。PR 使用 `Requirement-Source:`，只有当前 PR 完成整个 Issue 时才使用关闭关键字；
 6. 当前宿主没有相应外部写权限时，在依赖该权限的动作前停止并报告，不用远程空分支、口头关联或本地副本冒充已建立追溯链。
+7. 开发与 Repair 阶段优先保持 Draft，并用 `python scripts/dev/validate_changed.py --base <当前目标分支>` 复用 CI 的 [`scripts/quality/classify_ci_scope.py`](scripts/quality/classify_ci_scope.py) 生成 changed-scope preflight；项目不得再维护第二套 Backend/Frontend/PostgreSQL/Full-stack impact mapping。
+8. Draft 阶段不因为与当前任务无关的 main 前进、Change Archive 提交或其他独立任务机械反复同步 base；只有当前依赖/Contract/共享文件发生真实冲突时提前同步。进入 Final Ready 前统一恢复最新 main、处理真实冲突并重新运行受影响 preflight/Review。
+9. 正式 commit 应是可独立理解和审查的实现 checkpoint。临时 Workflow/CI、debug instrumentation、formatter/generated 中间态、为取得 Red/差异而暂移 Change/Requirement/config 等没有独立交付、回滚、bisect 或审计价值的过程状态默认不提交；可复现 Red、Migration、审计 Evidence 或独立纵向切片除外。
+10. 正常 merge 不依赖 Ruleset bypass。merge 前重新确认 live Requirement、reviewed/current head、current base、required checks 与 blocking Findings；base 漂移会改变待合入组合时，返回 Draft 同步最新 main 并重新取得 Final current-head/current-base Evidence，不用 merge 后 main CI 替代预合并门禁。
 
 ### 正式单元完成定义追溯门禁
 

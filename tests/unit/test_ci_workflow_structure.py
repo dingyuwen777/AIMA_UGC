@@ -50,8 +50,8 @@ def test_completion_workflow_is_removed_after_evidence_moves_into_core() -> None
     assert text.count("Requirement Traceability and Completion Audit") == 1
 
 
-def test_pr_body_edit_revalidates_metadata_without_overwriting_failed_full_evidence() -> None:
-    """edited 只做 metadata，但必须绑定同 SHA 已成功的完整 CI/Runtime 基线。"""
+def test_pr_body_edit_revalidates_metadata_without_cancelling_full_evidence() -> None:
+    """edited 使用独立 lane，并等待同 SHA full baseline，不能取消或冒充 Final CI。"""
     text = CI.read_text(encoding="utf-8")
     assert "- edited" in text
     assert "profile=metadata_only" in text
@@ -59,11 +59,17 @@ def test_pr_body_edit_revalidates_metadata_without_overwriting_failed_full_evide
     assert "repository_required=false" in text
     assert "postgres_required=false" in text
     assert "fullstack_required=false" in text
+    assert "github.event.action == 'edited' && 'metadata' || 'full'" in text
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in text
     assert "Verify metadata edit baseline evidence" in text
     assert '"CI Gate"' in text
     assert '"Compose Golden Path"' in text
     assert "check-runs?per_page=100" in text
-    assert "Metadata edit requires an already-green full evidence baseline" in text
+    assert "actions/runs?head_sha=${HEAD_SHA}&event=pull_request&per_page=100" in text
+    assert "Same-SHA full CI is still running; metadata gate waits for its baseline." in text
+    assert "raise SystemExit(75)" in text
+    assert "sleep 5" in text
+    assert "Timed out waiting for same-SHA full evidence baseline." in text
     assert "github.event.action != 'edited'" in text
 
 
@@ -153,17 +159,23 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     """普通 Ready 保留产品证据 Runner；Hygiene 只在 main push 后占用维护 Runner。"""
     ci = CI.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
-    assert ci.count("runs-on: ubuntu-24.04") == 4
+    assert ci.count("runs-on: ubuntu-24.04") == 5
     assert "  actions-hygiene:" in ci
     hygiene = ci.split("  actions-hygiene:", 1)[1]
     assert "github.event_name == 'push'" in hygiene
     assert "github.ref == 'refs/heads/main'" in hygiene
     assert "needs: ci-gate" in hygiene
     assert runtime.count("runs-on: ubuntu-24.04") == 1
-    assert "needs: quality-core" in ci
+    assert (
+        "  quality-core:\n"
+        "    name: Requirement Traceability and Completion Audit\n"
+        "    if: always()\n"
+        "    needs: ci-plan\n" in ci
+    )
     assert "Block Draft required evidence" in ci
     assert "Block Draft required evidence" in runtime
-    assert "github.event.pull_request.draft == false" not in ci
+    core = _section(ci, "  quality-core:\n", "  postgres-integration:\n")
+    assert "github.event.pull_request.draft == false" not in core
     assert "github.event.pull_request.draft == false" not in runtime
 
 
@@ -177,13 +189,16 @@ def test_frontend_typechecks_once_through_build() -> None:
     assert "npm --prefix frontend run typecheck\n" not in text
 
 
-def test_backend_unit_suite_installs_cjk_font_prerequisite() -> None:
-    """完整后端单测包含 Reporting 渲染，因此进入 backend suite 前必须准备 CJK 字体。"""
+def test_backend_font_setup_only_runs_for_full_or_reporting_evidence() -> None:
+    """精准 Backend target 不为无关 Reporting 测试支付字体安装成本。"""
     text = CI.read_text(encoding="utf-8")
-    assert (
-        "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.backend_required == 'true'\n" in text
+    font_step = _section(
+        text,
+        "      - name: Install report validation CJK font\n",
+        "      - name: Verify required runtime versions\n",
     )
+    assert "needs.ci-plan.outputs.backend_targets == 'all'" in font_step
+    assert "needs.ci-plan.outputs.report_font_required == 'true'" in font_step
     assert text.index("Install report validation CJK font") < text.index(
         "Unit, Contract and API tests"
     )
@@ -224,11 +239,11 @@ def test_special_core_costs_are_conditioned_on_actual_inputs() -> None:
 
     assert (
         "      - name: Audit frontend dependencies\n"
-        "        if: steps.classify.outputs.frontend_audit_required == 'true'\n" in ci
+        "        if: needs.ci-plan.outputs.frontend_audit_required == 'true'\n" in ci
     )
     assert (
         "      - name: Build and verify Wheel\n"
-        "        if: steps.classify.outputs.package_required == 'true'\n" in ci
+        "        if: needs.ci-plan.outputs.package_required == 'true'\n" in ci
     )
 
 
@@ -329,3 +344,61 @@ def test_tooling_keeps_linux_and_windows_as_independent_jobs() -> None:
 
     gate = _section(tooling, "  main-evidence:\n", "  linux-tooling:\n")
     assert gate.count("      - name: Checkout\n") == 1
+
+
+def test_ci_plan_allows_core_postgres_and_fullstack_to_run_in_parallel() -> None:
+    """轻量 CI Plan 只提供 scope，三个重 Evidence Owner 不再彼此串行等待。"""
+    text = CI.read_text(encoding="utf-8")
+    plan = _section(text, "  ci-plan:\n", "  quality-core:\n")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    postgres = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
+    fullstack = _section(text, "  real-fullstack:\n", "  ci-gate:\n")
+    gate = _section(text, "  ci-gate:\n", "  actions-hygiene:\n")
+
+    assert "name: CI Plan" in plan
+    assert "Classify changed scope" in plan
+    assert "if: always()" in core
+    assert "Block failed CI Plan" in core
+    assert "PLAN_RESULT: ${{ needs.ci-plan.result }}" in gate
+    assert 'test "${PLAN_RESULT}" = "success"' in gate
+    assert "needs: ci-plan" in core
+    assert "needs: ci-plan" in postgres
+    assert "needs: quality-core" not in postgres
+    assert "github.event.pull_request.draft == false" in postgres
+    assert "needs: ci-plan" in fullstack
+    assert "needs: quality-core" not in fullstack
+    assert "github.event.pull_request.draft == false" in fullstack
+    assert "      - ci-plan\n" in gate
+    assert "      - quality-core\n" in gate
+    assert "      - postgres-integration\n" in gate
+    assert "      - real-fullstack\n" in gate
+
+
+def test_core_consumes_selected_backend_and_frontend_targets_from_ci_plan() -> None:
+    """Core 的 Targeted Evidence 只消费 Plan 输出，不重新计算 changed scope。"""
+    text = CI.read_text(encoding="utf-8")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    assert "BACKEND_TARGETS: ${{ needs.ci-plan.outputs.backend_targets }}" in core
+    assert "FRONTEND_UNIT_TARGETS: ${{ needs.ci-plan.outputs.frontend_unit_targets }}" in core
+    assert "FRONTEND_E2E_SPECS: ${{ needs.ci-plan.outputs.frontend_e2e_specs }}" in core
+    assert "scripts/quality/classify_ci_scope.py" not in core
+
+
+def test_targeted_backend_does_not_pay_global_api_suite() -> None:
+    """Backend targeted profile 只运行 classifier targets；全量 API 仅属于 all fallback。"""
+    text = CI.read_text(encoding="utf-8")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    step = _section(
+        core,
+        "      - name: Unit, Contract and API tests\n",
+        "      - name: Architecture and ownership gates\n",
+    )
+    all_branch = step.split('if [[ " ${BACKEND_TARGETS} " == *" all "* ]]; then', 1)[1].split(
+        'elif [[ -n "${BACKEND_TARGETS}" ]]; then', 1
+    )[0]
+    targeted_branch = step.split('elif [[ -n "${BACKEND_TARGETS}" ]]; then', 1)[1].split("else", 1)[
+        0
+    ]
+    assert "uv run pytest tests/api -q" in all_branch
+    assert "uv run pytest tests/api -q" not in targeted_branch
+    assert 'uv run pytest "${targets[@]}" -q' in targeted_branch
