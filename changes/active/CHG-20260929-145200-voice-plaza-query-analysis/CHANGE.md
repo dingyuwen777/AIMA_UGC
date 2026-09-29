@@ -20,8 +20,6 @@ affected_paths:
   - backend/src/aima_ugc/bootstrap/content_http.py
   - backend/src/aima_ugc/bootstrap/analysis_high_throughput_planner.py
   - backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-  - backend/src/aima_ugc/adapters/persistence/postgres/analysis_high_throughput.py
-  - backend/src/aima_ugc/adapters/persistence/postgres/analysis_target_snapshot.py
   - backend/src/aima_ugc/modules/analysis/content_analysis_job.py
   - backend/src/aima_ugc/modules/analysis/README.md
   - contracts/openapi/openapi.json
@@ -189,8 +187,8 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 | --- | --- | --- | --- |
 | `contracts/http.py` | selected/query/all Contract | 公开筛选目标 | R2–R4 |
 | `content_http.py` | query Preview/Create、target changed 核对 | 权威确认语义 | R2,R6 |
-| `content_queries.py` + `analysis_target_snapshot.py` | filtered count/keyset batch + 单 Statement 集合指纹 | 有界冻结且捕获确认时成员集合 | R5,R6,R7 |
-| `analysis_high_throughput.py` + Planner | 已冻结 Target 指纹 + query 分批冻结 | 大集合事务边界与成员一致性 | R5,R6 |
+| `content_queries.py` | filtered count/keyset batch + Create/Frozen 集合指纹 | 有界冻结且捕获确认时成员集合 | R5,R6,R7 |
+| Planner | query 分批冻结并校验 Frozen Target 指纹 | 大集合事务边界与成员一致性 | R5,R6 |
 | `content_analysis_job.py` | 内部 query filter/fingerprint 快照包装与 legacy 恢复 | 无 Migration 保存确认事实 | R6,R8 |
 | Voice Plaza Store/Dialog/Page | 三范围、默认 query、错误/重新确认 | 用户入口 | R1–R3,R9 |
 | OpenAPI/generated client | 正式生成 | Contract 单一事实 | R4 |
