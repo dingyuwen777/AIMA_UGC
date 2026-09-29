@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-145200-voice-plaza-query-analysis
 title: 声音广场 AI 分析支持当前筛选结果全集
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: feature/660-voice-plaza-query-analysis
 created: 2026-09-29
