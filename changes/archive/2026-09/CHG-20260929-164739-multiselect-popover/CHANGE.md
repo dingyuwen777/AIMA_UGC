@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-164739-multiselect-popover
 title: 修复声音广场多选下拉交互
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/665-multiselect-popover
 created: 2026-09-29
