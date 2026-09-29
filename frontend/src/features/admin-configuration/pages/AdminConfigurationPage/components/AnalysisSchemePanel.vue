@@ -398,7 +398,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
       class="scheme-layout"
     >
       <section class="card scheme-history">
-        <h2>规则与版本</h2>
+        <h2>版本历史</h2>
         <details
           v-for="scheme in schemes"
           :key="scheme.id"
