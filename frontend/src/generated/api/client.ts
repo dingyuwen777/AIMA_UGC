@@ -21,8 +21,6 @@ export const ContentAnalysisStatus = {
   stale: 'stale',
 } as const;
 
-
-
 export type ContentFilterSnapshotCompetitionScopesItem = typeof ContentFilterSnapshotCompetitionScopesItem[keyof typeof ContentFilterSnapshotCompetitionScopesItem];
 
 
@@ -33,8 +31,6 @@ export const ContentFilterSnapshotCompetitionScopesItem = {
   other_only: 'other_only',
   none_detected: 'none_detected',
 } as const;
-
-
 
 export type PlatformName = typeof PlatformName[keyof typeof PlatformName];
 
@@ -47,8 +43,6 @@ export const PlatformName = {
   kuaishou: 'kuaishou',
 } as const;
 
-
-
 export type ContentRelevance = typeof ContentRelevance[keyof typeof ContentRelevance];
 
 
@@ -56,8 +50,6 @@ export const ContentRelevance = {
   relevant: 'relevant',
   irrelevant: 'irrelevant',
 } as const;
-
-
 
 /**
  * @minLength 1
@@ -1505,7 +1497,6 @@ export interface ContentLabelPairResponse {
   secondary_label: string;
 }
 
-
 export interface ContentAnalysisResponse {
   analyzed_at?: string | null;
   labels?: ContentLabelPairResponse[];
@@ -1519,7 +1510,6 @@ export interface ContentAnalysisResponse {
   status: ContentAnalysisStatus;
   voice_type?: ContentVoiceType | null;
 }
-
 
 export type ContentTargetSelectionScope = typeof ContentTargetSelectionScope[keyof typeof ContentTargetSelectionScope];
 
@@ -3903,6 +3893,8 @@ secondary_labels?: string[];
 export const getGetFeishuPublicationJobUrl = (jobId: string,) => {
 
 
+
+
   return `/api/v1/admin/feishu-publication-jobs/${jobId}`
 }
 
@@ -3928,7 +3920,10 @@ export const getFeishuPublicationJob = async (jobId: string, options?: RequestIn
 }
 
 
+
 export const getCreateFeishuReportPublicationUrl = () => {
+
+
 
 
   return `/api/v1/admin/feishu-report-publications`
@@ -3962,7 +3957,10 @@ formData.append(`start_date`, bodyCreateFeishuReportPublication.start_date);
 }
 
 
+
 export const getCreateFeishuRepresentativeSelectionUrl = () => {
+
+
 
 
   return `/api/v1/admin/feishu-representative-selections`
@@ -3993,7 +3991,10 @@ formData.append(`file`, bodyCreateFeishuRepresentativeSelection.file);
 }
 
 
+
 export const getUpdateAnalysisSchemeDraftUrl = (versionId: string,) => {
+
+
 
 
   return `/api/v1/analysis-scheme-versions/${versionId}`
@@ -4023,7 +4024,10 @@ export const updateAnalysisSchemeDraft = async (versionId: string,
 }
 
 
+
 export const getPublishAnalysisSchemeUrl = (versionId: string,) => {
+
+
 
 
   return `/api/v1/analysis-scheme-versions/${versionId}/publish`
@@ -4053,7 +4057,10 @@ export const publishAnalysisScheme = async (versionId: string,
 }
 
 
+
 export const getRollbackAnalysisSchemeUrl = (versionId: string,) => {
+
+
 
 
   return `/api/v1/analysis-scheme-versions/${versionId}/rollback`
@@ -4083,7 +4090,10 @@ export const rollbackAnalysisScheme = async (versionId: string,
 }
 
 
+
 export const getListAnalysisSchemesUrl = () => {
+
+
 
 
   return `/api/v1/analysis-schemes`
@@ -4112,7 +4122,10 @@ export const listAnalysisSchemes = async ( options?: RequestInit): Promise<Analy
 }
 
 
+
 export const getCreateAnalysisSchemeDraftUrl = () => {
+
+
 
 
   return `/api/v1/analysis-schemes`
@@ -4141,7 +4154,10 @@ export const createAnalysisSchemeDraft = async (analysisSchemeCreateDraftRequest
 }
 
 
+
 export const getListArchivedAnalysisSchemesUrl = () => {
+
+
 
 
   return `/api/v1/analysis-schemes/lifecycle/archived`
@@ -4169,7 +4185,10 @@ export const listArchivedAnalysisSchemes = async ( options?: RequestInit): Promi
 }
 
 
+
 export const getDeleteAnalysisSchemeUrl = (schemeId: string,) => {
+
+
 
 
   return `/api/v1/analysis-schemes/${schemeId}`
@@ -4197,7 +4216,10 @@ export const deleteAnalysisScheme = async (schemeId: string, options?: RequestIn
 }
 
 
+
 export const getArchiveAnalysisSchemeUrl = (schemeId: string,) => {
+
+
 
 
   return `/api/v1/analysis-schemes/${schemeId}/archive`
@@ -4225,7 +4247,10 @@ export const archiveAnalysisScheme = async (schemeId: string, options?: RequestI
 }
 
 
+
 export const getCopyAnalysisSchemeUrl = (schemeId: string,) => {
+
+
 
 
   return `/api/v1/analysis-schemes/${schemeId}/copy`
@@ -4254,7 +4279,10 @@ export const copyAnalysisScheme = async (schemeId: string,
 }
 
 
+
 export const getGetAnalysisSchemeDeleteEligibilityUrl = (schemeId: string,) => {
+
+
 
 
   return `/api/v1/analysis-schemes/${schemeId}/delete-eligibility`
@@ -4282,7 +4310,10 @@ export const getAnalysisSchemeDeleteEligibility = async (schemeId: string, optio
 }
 
 
+
 export const getRestoreAnalysisSchemeUrl = (schemeId: string,) => {
+
+
 
 
   return `/api/v1/analysis-schemes/${schemeId}/restore`
@@ -4310,7 +4341,10 @@ export const restoreAnalysisScheme = async (schemeId: string, options?: RequestI
 }
 
 
+
 export const getListContentAnalysisRunsUrl = () => {
+
+
 
 
   return `/api/v1/analysis/content-runs`
@@ -4338,7 +4372,10 @@ export const listContentAnalysisRuns = async ( options?: RequestInit): Promise<A
 }
 
 
+
 export const getCreateContentAnalysisRunUrl = () => {
+
+
 
 
   return `/api/v1/analysis/content-runs`
@@ -4366,7 +4403,10 @@ export const createContentAnalysisRun = async (analysisContentRunCreateRequest: 
 }
 
 
+
 export const getPreviewContentAnalysisRunUrl = () => {
+
+
 
 
   return `/api/v1/analysis/content-runs/preview`
@@ -4394,7 +4434,10 @@ export const previewContentAnalysisRun = async (analysisContentRunPreviewRequest
 }
 
 
+
 export const getGetContentAnalysisRunUrl = (runId: string,) => {
+
+
 
 
   return `/api/v1/analysis/content-runs/${runId}`
@@ -4422,7 +4465,10 @@ export const getContentAnalysisRun = async (runId: string, options?: RequestInit
 }
 
 
+
 export const getCancelContentAnalysisRunUrl = (runId: string,) => {
+
+
 
 
   return `/api/v1/analysis/content-runs/${runId}/cancel`
@@ -4448,6 +4494,7 @@ export const cancelContentAnalysisRun = async (runId: string, options?: RequestI
   const data: AnalysisContentRunResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListAuditEventsUrl = (params?: ListAuditEventsParams,) => {
@@ -4488,7 +4535,10 @@ export const listAuditEvents = async (params?: ListAuditEventsParams, options?: 
 }
 
 
+
 export const getListAuthConnectorsUrl = () => {
+
+
 
 
   return `/api/v1/auth/connectors`
@@ -4522,6 +4572,7 @@ export const listAuthConnectors = async ( options?: RequestInit): Promise<AuthCo
   const data: AuthConnectorListResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getCompleteFeishuLoginUrl = (params?: CompleteFeishuLoginParams,) => {
@@ -4562,6 +4613,7 @@ export const completeFeishuLogin = async (params?: CompleteFeishuLoginParams, op
 }
 
 
+
 export const getStartFeishuLoginUrl = (params?: StartFeishuLoginParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -4598,6 +4650,7 @@ export const startFeishuLogin = async (params?: StartFeishuLoginParams, options?
   const data: unknown = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getCompleteFeishuLoginForConnectorUrl = (connectorCode: string,
@@ -4640,6 +4693,7 @@ export const completeFeishuLoginForConnector = async (connectorCode: string,
 }
 
 
+
 export const getStartFeishuLoginForConnectorUrl = (connectorCode: string,
     params?: StartFeishuLoginForConnectorParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -4680,7 +4734,10 @@ export const startFeishuLoginForConnector = async (connectorCode: string,
 }
 
 
+
 export const getLogoutCurrentSessionUrl = () => {
+
+
 
 
   return `/api/v1/auth/logout`
@@ -4709,7 +4766,10 @@ export const logoutCurrentSession = async ( options?: RequestInit): Promise<unkn
 }
 
 
+
 export const getCreateCanonicalReplayUrl = () => {
+
+
 
 
   return `/api/v1/canonical-replays`
@@ -4737,7 +4797,10 @@ export const createCanonicalReplay = async (canonicalReplayCreateRequest: Canoni
 }
 
 
+
 export const getCreateAllCanonicalReplaysUrl = () => {
+
+
 
 
   return `/api/v1/canonical-replays/all`
@@ -4765,7 +4828,10 @@ export const createAllCanonicalReplays = async (canonicalReplayAllCreateRequest:
 }
 
 
+
 export const getCancelAndRevokeAllCanonicalReplaysUrl = (replayRequestId: string,) => {
+
+
 
 
   return `/api/v1/canonical-replays/all/${replayRequestId}/cancel-and-revoke`
@@ -4794,7 +4860,10 @@ export const cancelAndRevokeAllCanonicalReplays = async (replayRequestId: string
 }
 
 
+
 export const getRevokeAllCanonicalReplaysUrl = (replayRequestId: string,) => {
+
+
 
 
   return `/api/v1/canonical-replays/all/${replayRequestId}/revoke`
@@ -4823,7 +4892,10 @@ export const revokeAllCanonicalReplays = async (replayRequestId: string, options
 }
 
 
+
 export const getGetCanonicalReplayUrl = (runId: string,) => {
+
+
 
 
   return `/api/v1/canonical-replays/${runId}`
@@ -4851,7 +4923,10 @@ export const getCanonicalReplay = async (runId: string, options?: RequestInit): 
 }
 
 
+
 export const getCancelCanonicalReplayUrl = (runId: string,) => {
+
+
 
 
   return `/api/v1/canonical-replays/${runId}/cancel`
@@ -4879,7 +4954,10 @@ export const cancelCanonicalReplay = async (runId: string, options?: RequestInit
 }
 
 
+
 export const getGetCollectionCapabilitiesUrl = () => {
+
+
 
 
   return `/api/v1/collection-capabilities`
@@ -4905,6 +4983,7 @@ export const getCollectionCapabilities = async ( options?: RequestInit): Promise
   const data: CollectionCapabilitiesResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListCollectionPlansUrl = (params?: ListCollectionPlansParams,) => {
@@ -4944,7 +5023,10 @@ export const listCollectionPlans = async (params?: ListCollectionPlansParams, op
 }
 
 
+
 export const getCreateCollectionPlanUrl = () => {
+
+
 
 
   return `/api/v1/collection-plans`
@@ -4972,7 +5054,10 @@ export const createCollectionPlan = async (collectionPlanCreateRequest: Collecti
 }
 
 
+
 export const getDeleteCollectionPlanUrl = (planId: string,) => {
+
+
 
 
   return `/api/v1/collection-plans/${planId}`
@@ -5000,7 +5085,10 @@ export const deleteCollectionPlan = async (planId: string, options?: RequestInit
 }
 
 
+
 export const getGetCollectionPlanUrl = (planId: string,) => {
+
+
 
 
   return `/api/v1/collection-plans/${planId}`
@@ -5028,7 +5116,10 @@ export const getCollectionPlan = async (planId: string, options?: RequestInit): 
 }
 
 
+
 export const getUpdateCollectionPlanUrl = (planId: string,) => {
+
+
 
 
   return `/api/v1/collection-plans/${planId}`
@@ -5057,7 +5148,10 @@ export const updateCollectionPlan = async (planId: string,
 }
 
 
+
 export const getArchiveCollectionPlanUrl = (planId: string,) => {
+
+
 
 
   return `/api/v1/collection-plans/${planId}/archive`
@@ -5085,7 +5179,10 @@ export const archiveCollectionPlan = async (planId: string, options?: RequestIni
 }
 
 
+
 export const getCopyCollectionPlanUrl = (planId: string,) => {
+
+
 
 
   return `/api/v1/collection-plans/${planId}/copy`
@@ -5114,7 +5211,10 @@ export const copyCollectionPlan = async (planId: string,
 }
 
 
+
 export const getGetCollectionPlanDeleteEligibilityUrl = (planId: string,) => {
+
+
 
 
   return `/api/v1/collection-plans/${planId}/delete-eligibility`
@@ -5142,7 +5242,10 @@ export const getCollectionPlanDeleteEligibility = async (planId: string, options
 }
 
 
+
 export const getUpdateCollectionPlanEnabledUrl = (planId: string,) => {
+
+
 
 
   return `/api/v1/collection-plans/${planId}/enabled`
@@ -5171,7 +5274,10 @@ export const updateCollectionPlanEnabled = async (planId: string,
 }
 
 
+
 export const getRestoreCollectionPlanUrl = (planId: string,) => {
+
+
 
 
   return `/api/v1/collection-plans/${planId}/restore`
@@ -5199,7 +5305,10 @@ export const restoreCollectionPlan = async (planId: string, options?: RequestIni
 }
 
 
+
 export const getCreateCollectionRunUrl = () => {
+
+
 
 
   return `/api/v1/collection-runs`
@@ -5227,7 +5336,10 @@ export const createCollectionRun = async (collectionRunCreateRequest: Collection
 }
 
 
+
 export const getGetCollectionRunUrl = (runId: string,) => {
+
+
 
 
   return `/api/v1/collection-runs/${runId}`
@@ -5253,6 +5365,7 @@ export const getCollectionRun = async (runId: string, options?: RequestInit): Pr
   const data: CollectionRunResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListCollectionRuntimeRunsUrl = (params?: ListCollectionRuntimeRunsParams,) => {
@@ -5300,7 +5413,10 @@ export const listCollectionRuntimeRuns = async (params?: ListCollectionRuntimeRu
 }
 
 
+
 export const getGetCollectionRuntimeSummaryUrl = () => {
+
+
 
 
   return `/api/v1/collection-runtime/summary`
@@ -5328,7 +5444,10 @@ export const getCollectionRuntimeSummary = async ( options?: RequestInit): Promi
 }
 
 
+
 export const getGetContentAnalysisCapabilitiesUrl = () => {
+
+
 
 
   return `/api/v1/content-analysis-capabilities`
@@ -5356,7 +5475,10 @@ export const getContentAnalysisCapabilities = async ( options?: RequestInit): Pr
 }
 
 
+
 export const getGetContentAnalysisJobUrl = (jobId: string,) => {
+
+
 
 
   return `/api/v1/content-analysis-jobs/${jobId}`
@@ -5384,7 +5506,10 @@ export const getContentAnalysisJob = async (jobId: string, options?: RequestInit
 }
 
 
+
 export const getCreateContentAnalysisUrl = () => {
+
+
 
 
   return `/api/v1/content-analysis-requests`
@@ -5412,7 +5537,10 @@ export const createContentAnalysis = async (contentAnalysisSubmitRequest: Conten
 }
 
 
+
 export const getGetContentAnalysisTaxonomyUrl = () => {
+
+
 
 
   return `/api/v1/content-analysis-taxonomy`
@@ -5441,7 +5569,10 @@ export const getContentAnalysisTaxonomy = async ( options?: RequestInit): Promis
 }
 
 
+
 export const getCreateContentAvailabilityObservationUrl = () => {
+
+
 
 
   return `/api/v1/content-availability-observations`
@@ -5469,7 +5600,10 @@ export const createContentAvailabilityObservation = async (contentAvailabilityOb
 }
 
 
+
 export const getGetContentFilterOptionsUrl = () => {
+
+
 
 
   return `/api/v1/content-filter-options`
@@ -5498,7 +5632,10 @@ export const getContentFilterOptions = async ( options?: RequestInit): Promise<C
 }
 
 
+
 export const getCreateContentRelevanceReviewUrl = () => {
+
+
 
 
   return `/api/v1/content-relevance-reviews`
@@ -5524,6 +5661,7 @@ export const createContentRelevanceReview = async (contentRelevanceReviewRequest
   const data: ContentRelevanceReviewResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListContentsUrl = (params?: ListContentsParams,) => {
@@ -5571,7 +5709,10 @@ export const listContents = async (params?: ListContentsParams, options?: Reques
 }
 
 
+
 export const getCountContentsUrl = () => {
+
+
 
 
   return `/api/v1/contents/count`
@@ -5597,6 +5738,7 @@ export const countContents = async (contentCountRequest: ContentCountRequest, op
   const data: ContentCountResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getGetContentUrl = (contentId: string,
@@ -5638,7 +5780,10 @@ export const getContent = async (contentId: string,
 }
 
 
+
 export const getReviewContentAnalysisUrl = (contentId: string,) => {
+
+
 
 
   return `/api/v1/contents/${contentId}/analysis-review`
@@ -5666,6 +5811,7 @@ export const reviewContentAnalysis = async (contentId: string,
   const data: ContentAnalysisManualReviewResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListContentCommentsUrl = (contentId: string,
@@ -5707,7 +5853,10 @@ export const listContentComments = async (contentId: string,
 }
 
 
+
 export const getReviewContentVehiclesUrl = (contentId: string,) => {
+
+
 
 
   return `/api/v1/contents/${contentId}/vehicles`
@@ -5736,7 +5885,10 @@ export const reviewContentVehicles = async (contentId: string,
 }
 
 
+
 export const getListDataExportsUrl = () => {
+
+
 
 
   return `/api/v1/data-exports`
@@ -5764,7 +5916,10 @@ export const listDataExports = async ( options?: RequestInit): Promise<DataExpor
 }
 
 
+
 export const getCreateDataExportUrl = () => {
+
+
 
 
   return `/api/v1/data-exports`
@@ -5792,7 +5947,10 @@ export const createDataExport = async (dataExportSubmitRequest: DataExportSubmit
 }
 
 
+
 export const getGetDataExportUrl = (exportId: string,) => {
+
+
 
 
   return `/api/v1/data-exports/${exportId}`
@@ -5820,7 +5978,10 @@ export const getDataExport = async (exportId: string, options?: RequestInit): Pr
 }
 
 
+
 export const getDownloadDataExportUrl = (exportId: string,) => {
+
+
 
 
   return `/api/v1/data-exports/${exportId}/download`
@@ -5847,7 +6008,10 @@ export const downloadDataExport = async (exportId: string, options?: RequestInit
 }
 
 
+
 export const getListDataImportCampaignsUrl = () => {
+
+
 
 
   return `/api/v1/data-import-campaigns`
@@ -5875,7 +6039,10 @@ export const listDataImportCampaigns = async ( options?: RequestInit): Promise<H
 }
 
 
+
 export const getCreateLocalDataImportCampaignUrl = () => {
+
+
 
 
   return `/api/v1/data-import-campaigns/local`
@@ -5904,7 +6071,10 @@ export const createLocalDataImportCampaign = async (localDataImportCampaignCreat
 }
 
 
+
 export const getCreateServerDataImportCampaignUrl = () => {
+
+
 
 
   return `/api/v1/data-import-campaigns/server`
@@ -5933,7 +6103,10 @@ export const createServerDataImportCampaign = async (historicalCampaignCreateReq
 }
 
 
+
 export const getGetDataImportCampaignUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}`
@@ -5961,7 +6134,10 @@ export const getDataImportCampaign = async (campaignId: string, options?: Reques
 }
 
 
+
 export const getCancelDataImportCampaignUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/cancel`
@@ -5989,7 +6165,10 @@ export const cancelDataImportCampaign = async (campaignId: string, options?: Req
 }
 
 
+
 export const getListDataImportCampaignConflictsUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/conflicts`
@@ -6017,7 +6196,10 @@ export const listDataImportCampaignConflicts = async (campaignId: string, option
 }
 
 
+
 export const getFinalizeLocalDataImportCampaignUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/finalize`
@@ -6045,7 +6227,10 @@ export const finalizeLocalDataImportCampaign = async (campaignId: string, option
 }
 
 
+
 export const getListDataImportCampaignItemsUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/items`
@@ -6073,8 +6258,11 @@ export const listDataImportCampaignItems = async (campaignId: string, options?: 
 }
 
 
+
 export const getUploadLocalDataImportFileUrl = (campaignId: string,
     itemId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/items/${itemId}/content`
@@ -6106,7 +6294,10 @@ formData.append(`file`, bodyUploadLocalDataImportFile.file);
 }
 
 
+
 export const getRetryDataImportCampaignFailedItemsUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/retry-failed`
@@ -6134,7 +6325,10 @@ export const retryDataImportCampaignFailedItems = async (campaignId: string, opt
 }
 
 
+
 export const getPreviewDataImportCampaignRevocationUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/revocation-preview`
@@ -6163,7 +6357,10 @@ export const previewDataImportCampaignRevocation = async (campaignId: string, op
 }
 
 
+
 export const getRevokeDataImportCampaignUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/revoke`
@@ -6193,7 +6390,10 @@ export const revokeDataImportCampaign = async (campaignId: string,
 }
 
 
+
 export const getStartDataImportCampaignUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/start`
@@ -6221,7 +6421,10 @@ export const startDataImportCampaign = async (campaignId: string, options?: Requ
 }
 
 
+
 export const getGetCollectionCampaignSupplementEligibilityUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/data-import-campaigns/${campaignId}/supplement-eligibility`
@@ -6247,6 +6450,7 @@ export const getCollectionCampaignSupplementEligibility = async (campaignId: str
   const data: CollectionCampaignSupplementEligibilityResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListDataImportServerDirectoriesUrl = (params?: ListDataImportServerDirectoriesParams,) => {
@@ -6286,7 +6490,10 @@ export const listDataImportServerDirectories = async (params?: ListDataImportSer
 }
 
 
+
 export const getGetExportColumnCatalogUrl = () => {
+
+
 
 
   return `/api/v1/export-columns`
@@ -6314,7 +6521,10 @@ export const getExportColumnCatalog = async ( options?: RequestInit): Promise<Ex
 }
 
 
+
 export const getListHistoricalImportCampaignsUrl = () => {
+
+
 
 
   return `/api/v1/historical-import-campaigns`
@@ -6342,7 +6552,10 @@ export const listHistoricalImportCampaigns = async ( options?: RequestInit): Pro
 }
 
 
+
 export const getCreateHistoricalImportCampaignUrl = () => {
+
+
 
 
   return `/api/v1/historical-import-campaigns`
@@ -6371,7 +6584,10 @@ export const createHistoricalImportCampaign = async (historicalCampaignCreateReq
 }
 
 
+
 export const getGetHistoricalImportCampaignUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/historical-import-campaigns/${campaignId}`
@@ -6399,7 +6615,10 @@ export const getHistoricalImportCampaign = async (campaignId: string, options?: 
 }
 
 
+
 export const getCancelHistoricalImportCampaignUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/historical-import-campaigns/${campaignId}/cancel`
@@ -6427,7 +6646,10 @@ export const cancelHistoricalImportCampaign = async (campaignId: string, options
 }
 
 
+
 export const getListHistoricalImportCampaignConflictsUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/historical-import-campaigns/${campaignId}/conflicts`
@@ -6455,7 +6677,10 @@ export const listHistoricalImportCampaignConflicts = async (campaignId: string, 
 }
 
 
+
 export const getListHistoricalImportCampaignItemsUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/historical-import-campaigns/${campaignId}/items`
@@ -6483,7 +6708,10 @@ export const listHistoricalImportCampaignItems = async (campaignId: string, opti
 }
 
 
+
 export const getRetryHistoricalImportCampaignFailedItemsUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/historical-import-campaigns/${campaignId}/retry-failed`
@@ -6511,7 +6739,10 @@ export const retryHistoricalImportCampaignFailedItems = async (campaignId: strin
 }
 
 
+
 export const getStartHistoricalImportCampaignUrl = (campaignId: string,) => {
+
+
 
 
   return `/api/v1/historical-import-campaigns/${campaignId}/start`
@@ -6537,6 +6768,7 @@ export const startHistoricalImportCampaign = async (campaignId: string, options?
   const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListHistoricalImportDirectoriesUrl = (params?: ListHistoricalImportDirectoriesParams,) => {
@@ -6576,6 +6808,7 @@ export const listHistoricalImportDirectories = async (params?: ListHistoricalImp
 }
 
 
+
 export const getListImportBatchesUrl = (params?: ListImportBatchesParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -6613,7 +6846,10 @@ export const listImportBatches = async (params?: ListImportBatchesParams, option
 }
 
 
+
 export const getCreateImportBatchUrl = () => {
+
+
 
 
   return `/api/v1/import-batches`
@@ -6647,7 +6883,10 @@ formData.append(`file`, bodyCreateImportBatch.file);
 }
 
 
+
 export const getGetImportBatchSummaryUrl = () => {
+
+
 
 
   return `/api/v1/import-batches/summary`
@@ -6675,7 +6914,10 @@ export const getImportBatchSummary = async ( options?: RequestInit): Promise<Imp
 }
 
 
+
 export const getGetImportBatchUrl = (batchId: string,) => {
+
+
 
 
   return `/api/v1/import-batches/${batchId}`
@@ -6703,7 +6945,10 @@ export const getImportBatch = async (batchId: string, options?: RequestInit): Pr
 }
 
 
+
 export const getGetCollectionBatchSupplementEligibilityUrl = (batchId: string,) => {
+
+
 
 
   return `/api/v1/import-batches/${batchId}/supplement-eligibility`
@@ -6731,7 +6976,10 @@ export const getCollectionBatchSupplementEligibility = async (batchId: string, o
 }
 
 
+
 export const getGetJobUrl = (jobId: string,) => {
+
+
 
 
   return `/api/v1/jobs/${jobId}`
@@ -6757,6 +7005,7 @@ export const getJob = async (jobId: string, options?: RequestInit): Promise<JobS
   const data: JobStatusResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListKeywordPacksUrl = (params?: ListKeywordPacksParams,) => {
@@ -6796,7 +7045,10 @@ export const listKeywordPacks = async (params?: ListKeywordPacksParams, options?
 }
 
 
+
 export const getCreateKeywordPackUrl = () => {
+
+
 
 
   return `/api/v1/keyword-packs`
@@ -6824,7 +7076,10 @@ export const createKeywordPack = async (keywordPackCreateRequest: KeywordPackCre
 }
 
 
+
 export const getDeleteKeywordPackUrl = (packId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}`
@@ -6852,7 +7107,10 @@ export const deleteKeywordPack = async (packId: string, options?: RequestInit): 
 }
 
 
+
 export const getGetKeywordPackUrl = (packId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}`
@@ -6880,7 +7138,10 @@ export const getKeywordPack = async (packId: string, options?: RequestInit): Pro
 }
 
 
+
 export const getUpdateKeywordPackUrl = (packId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}`
@@ -6909,7 +7170,10 @@ export const updateKeywordPack = async (packId: string,
 }
 
 
+
 export const getArchiveKeywordPackUrl = (packId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}/archive`
@@ -6937,7 +7201,10 @@ export const archiveKeywordPack = async (packId: string, options?: RequestInit):
 }
 
 
+
 export const getCopyKeywordPackUrl = (packId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}/copy`
@@ -6966,7 +7233,10 @@ export const copyKeywordPack = async (packId: string,
 }
 
 
+
 export const getGetKeywordPackDeleteEligibilityUrl = (packId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}/delete-eligibility`
@@ -6994,7 +7264,10 @@ export const getKeywordPackDeleteEligibility = async (packId: string, options?: 
 }
 
 
+
 export const getUpdateKeywordPackEnabledUrl = (packId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}/enabled`
@@ -7023,7 +7296,10 @@ export const updateKeywordPackEnabled = async (packId: string,
 }
 
 
+
 export const getAddKeywordToPackUrl = (packId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}/keywords`
@@ -7052,8 +7328,11 @@ export const addKeywordToPack = async (packId: string,
 }
 
 
+
 export const getUpdateKeywordInPackUrl = (packId: string,
     keywordId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}/keywords/${keywordId}`
@@ -7083,8 +7362,11 @@ export const updateKeywordInPack = async (packId: string,
 }
 
 
+
 export const getRemoveKeywordFromPackUrl = (packId: string,
     keywordId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}/keywords/${keywordId}/remove`
@@ -7114,7 +7396,10 @@ export const removeKeywordFromPack = async (packId: string,
 }
 
 
+
 export const getRestoreKeywordPackUrl = (packId: string,) => {
+
+
 
 
   return `/api/v1/keyword-packs/${packId}/restore`
@@ -7140,6 +7425,7 @@ export const restoreKeywordPack = async (packId: string, options?: RequestInit):
   const data: KeywordPackResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListNotificationsUrl = (params?: ListNotificationsParams,) => {
@@ -7179,7 +7465,10 @@ export const listNotifications = async (params?: ListNotificationsParams, option
 }
 
 
+
 export const getMarkNotificationsReadUrl = () => {
+
+
 
 
   return `/api/v1/notifications/read`
@@ -7207,7 +7496,10 @@ export const markNotificationsRead = async (notificationMarkReadRequest: Notific
 }
 
 
+
 export const getGetCurrentPrincipalUrl = () => {
+
+
 
 
   return `/api/v1/principal`
@@ -7234,6 +7526,7 @@ export const getCurrentPrincipal = async ( options?: RequestInit): Promise<Curre
   const data: CurrentPrincipalResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListProviderConfigsUrl = (params?: ListProviderConfigsParams,) => {
@@ -7274,7 +7567,10 @@ export const listProviderConfigs = async (params?: ListProviderConfigsParams, op
 }
 
 
+
 export const getCreateProviderConfigUrl = () => {
+
+
 
 
   return `/api/v1/provider-configs`
@@ -7303,7 +7599,10 @@ export const createProviderConfig = async (providerConfigCreateRequest: Provider
 }
 
 
+
 export const getListArchivedProviderConfigsUrl = () => {
+
+
 
 
   return `/api/v1/provider-configs/lifecycle/archived`
@@ -7331,7 +7630,10 @@ export const listArchivedProviderConfigs = async ( options?: RequestInit): Promi
 }
 
 
+
 export const getDeleteProviderConfigUrl = (providerConfigId: string,) => {
+
+
 
 
   return `/api/v1/provider-configs/${providerConfigId}`
@@ -7359,7 +7661,10 @@ export const deleteProviderConfig = async (providerConfigId: string, options?: R
 }
 
 
+
 export const getUpdateProviderConfigUrl = (providerConfigId: string,) => {
+
+
 
 
   return `/api/v1/provider-configs/${providerConfigId}`
@@ -7389,7 +7694,10 @@ export const updateProviderConfig = async (providerConfigId: string,
 }
 
 
+
 export const getArchiveProviderConfigUrl = (providerConfigId: string,) => {
+
+
 
 
   return `/api/v1/provider-configs/${providerConfigId}/archive`
@@ -7417,7 +7725,10 @@ export const archiveProviderConfig = async (providerConfigId: string, options?: 
 }
 
 
+
 export const getGetProviderConfigDeleteEligibilityUrl = (providerConfigId: string,) => {
+
+
 
 
   return `/api/v1/provider-configs/${providerConfigId}/delete-eligibility`
@@ -7445,7 +7756,10 @@ export const getProviderConfigDeleteEligibility = async (providerConfigId: strin
 }
 
 
+
 export const getRestoreProviderConfigUrl = (providerConfigId: string,) => {
+
+
 
 
   return `/api/v1/provider-configs/${providerConfigId}/restore`
@@ -7473,7 +7787,10 @@ export const restoreProviderConfig = async (providerConfigId: string, options?: 
 }
 
 
+
 export const getTestProviderConfigConnectionUrl = (providerConfigId: string,) => {
+
+
 
 
   return `/api/v1/provider-configs/${providerConfigId}/test-connection`
@@ -7501,7 +7818,10 @@ export const testProviderConfigConnection = async (providerConfigId: string, opt
 }
 
 
+
 export const getListArchivedCollectionPlansUrl = () => {
+
+
 
 
   return `/api/v1/resource-lifecycle/collection-plans/archived`
@@ -7529,7 +7849,10 @@ export const listArchivedCollectionPlans = async ( options?: RequestInit): Promi
 }
 
 
+
 export const getListArchivedKeywordPacksUrl = () => {
+
+
 
 
   return `/api/v1/resource-lifecycle/keyword-packs/archived`
@@ -7555,6 +7878,7 @@ export const listArchivedKeywordPacks = async ( options?: RequestInit): Promise<
   const data: ResourceLifecycleListResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getListVehicleBrandsUrl = (params?: ListVehicleBrandsParams,) => {
@@ -7594,7 +7918,10 @@ export const listVehicleBrands = async (params?: ListVehicleBrandsParams, option
 }
 
 
+
 export const getCreateVehicleBrandUrl = () => {
+
+
 
 
   return `/api/v1/vehicle-brands`
@@ -7622,7 +7949,10 @@ export const createVehicleBrand = async (brandCreateRequest: BrandCreateRequest,
 }
 
 
+
 export const getDeleteVehicleBrandUrl = (brandId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-brands/${brandId}`
@@ -7650,7 +7980,10 @@ export const deleteVehicleBrand = async (brandId: string, options?: RequestInit)
 }
 
 
+
 export const getGetVehicleBrandUrl = (brandId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-brands/${brandId}`
@@ -7678,7 +8011,10 @@ export const getVehicleBrand = async (brandId: string, options?: RequestInit): P
 }
 
 
+
 export const getUpdateVehicleBrandUrl = (brandId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-brands/${brandId}`
@@ -7707,7 +8043,10 @@ export const updateVehicleBrand = async (brandId: string,
 }
 
 
+
 export const getAddVehicleBrandAliasUrl = (brandId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-brands/${brandId}/aliases`
@@ -7736,8 +8075,11 @@ export const addVehicleBrandAlias = async (brandId: string,
 }
 
 
+
 export const getDeleteVehicleBrandAliasUrl = (brandId: string,
     aliasId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-brands/${brandId}/aliases/${aliasId}`
@@ -7766,7 +8108,10 @@ export const deleteVehicleBrandAlias = async (brandId: string,
 }
 
 
+
 export const getGetVehicleCatalogReadinessUrl = () => {
+
+
 
 
   return `/api/v1/vehicle-catalog/readiness`
@@ -7792,6 +8137,7 @@ export const getVehicleCatalogReadiness = async ( options?: RequestInit): Promis
   const data: BrandVehicleCatalogReadinessResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getGetBrandVehicleCatalogSnapshotUrl = (params?: GetBrandVehicleCatalogSnapshotParams,) => {
@@ -7839,6 +8185,7 @@ export const getBrandVehicleCatalogSnapshot = async (params?: GetBrandVehicleCat
 }
 
 
+
 export const getListVehicleModelsUrl = (params?: ListVehicleModelsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -7877,7 +8224,10 @@ export const listVehicleModels = async (params?: ListVehicleModelsParams, option
 }
 
 
+
 export const getCreateVehicleModelUrl = () => {
+
+
 
 
   return `/api/v1/vehicle-models`
@@ -7906,7 +8256,10 @@ export const createVehicleModel = async (vehicleModelCreateRequest: VehicleModel
 }
 
 
+
 export const getDeleteVehicleModelUrl = (vehicleModelId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-models/${vehicleModelId}`
@@ -7935,7 +8288,10 @@ export const deleteVehicleModel = async (vehicleModelId: string, options?: Reque
 }
 
 
+
 export const getGetVehicleModelUrl = (vehicleModelId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-models/${vehicleModelId}`
@@ -7964,7 +8320,10 @@ export const getVehicleModel = async (vehicleModelId: string, options?: RequestI
 }
 
 
+
 export const getUpdateVehicleModelUrl = (vehicleModelId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-models/${vehicleModelId}`
@@ -7994,7 +8353,10 @@ export const updateVehicleModel = async (vehicleModelId: string,
 }
 
 
+
 export const getAssignVehicleModelBrandUrl = (vehicleModelId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-models/${vehicleModelId}/brand`
@@ -8023,7 +8385,10 @@ export const assignVehicleModelBrand = async (vehicleModelId: string,
 }
 
 
+
 export const getMergeVehicleModelUrl = (vehicleModelId: string,) => {
+
+
 
 
   return `/api/v1/vehicle-models/${vehicleModelId}/merge`
@@ -8053,7 +8418,10 @@ export const mergeVehicleModel = async (vehicleModelId: string,
 }
 
 
+
 export const getGetWorkbenchLayoutUrl = () => {
+
+
 
 
   return `/api/v1/workbench/layout`
@@ -8081,7 +8449,10 @@ export const getWorkbenchLayout = async ( options?: RequestInit): Promise<Workbe
 }
 
 
+
 export const getUpdateWorkbenchLayoutUrl = () => {
+
+
 
 
   return `/api/v1/workbench/layout`
@@ -8107,6 +8478,7 @@ export const updateWorkbenchLayout = async (workbenchLayoutUpdateRequest: Workbe
   const data: WorkbenchLayoutResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getGetWorkbenchMindUrl = (params?: GetWorkbenchMindParams,) => {
@@ -8154,6 +8526,7 @@ export const getWorkbenchMind = async (params?: GetWorkbenchMindParams, options?
 }
 
 
+
 export const getGetWorkbenchStreamUrl = (params?: GetWorkbenchStreamParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -8197,6 +8570,7 @@ export const getWorkbenchStream = async (params?: GetWorkbenchStreamParams, opti
   const data: WorkbenchStreamResponse = body ? JSON.parse(body) : {}
   return data
 }
+
 
 
 export const getGetWorkbenchTrendUrl = (params?: GetWorkbenchTrendParams,) => {
@@ -8244,7 +8618,10 @@ export const getWorkbenchTrend = async (params?: GetWorkbenchTrendParams, option
 }
 
 
+
 export const getHealthLiveUrl = () => {
+
+
 
 
   return `/health/live`
@@ -8273,7 +8650,10 @@ export const healthLive = async ( options?: RequestInit): Promise<HealthResponse
 }
 
 
+
 export const getHealthReadyUrl = () => {
+
+
 
 
   return `/health/ready`
