@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-122246-production-cjk-font
 title: 修复生产容器中文报告字体缺失并补齐失败诊断
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: fix/production-cjk-font
 created: 2026-09-29
@@ -78,11 +78,11 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 
 ## 成功标准
 
-- [ ] 新 Backend 镜像内普通/粗体 CJK resolver 都返回真实文件。
-- [ ] 新 Backend 镜像内实际生成含中文的词云 PNG 成功。
-- [ ] 报告 Worker 捕获 `ValueError` / `RuntimeError` 时记录稳定 ERROR 事件，并保持原有 Job 错误码。
-- [ ] 文档给出 release 根目录下的自检命令，并明确合并不等于生产部署。
-- [ ] PR 最新 HEAD 的相关测试、构建、Review 与 CI 满足门禁。
+- [x] 新 Backend 镜像内普通/粗体 CJK resolver 都返回真实文件。
+- [x] 新 Backend 镜像内实际生成含中文的词云 PNG 成功。
+- [x] 报告 Worker 捕获 `ValueError` / `RuntimeError` 时记录稳定 ERROR 事件，并保持原有 Job 错误码。
+- [x] 文档给出 release 根目录下的自检命令，并明确合并不等于生产部署。
+- [x] PR 代码/风险 HEAD 的相关测试、构建与独立 Review 已通过；本完成证据提交继续由 required CI 作为 merge 门禁。
 
 ## 范围
 
@@ -160,10 +160,10 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | Backend 镜像包含 resolver 支持的 Regular/Bold CJK 字体 | #657 / AC1 | not_satisfied | 待 Dockerfile 实现与镜像 smoke |
-| R2 | 正式镜像内中文词云渲染成功 | #657 / AC2 | not_satisfied | 待真实 Docker runtime smoke |
+| R1 | Backend 镜像包含 resolver 支持的 Regular/Bold CJK 字体 | #657 / AC1 | satisfied | `Dockerfile` 安装 `fonts-noto-cjk`；Runtime Acceptance run 36522965753 在正式 Worker 镜像内确认两类 resolver 均返回真实文件 |
+| R2 | 正式镜像内中文词云渲染成功 | #657 / AC2 | satisfied | Runtime Acceptance run 36522965753 在正式 Worker 镜像内渲染“爱玛/续航”词云并由 Pillow 成功校验 PNG |
 | R3 | 内部异常写安全诊断事件且错误码兼容 | #657 / AC3 | satisfied | `log_exception_event()` 实现；参数化 `ValueError` / `RuntimeError` 回归 2 passed |
-| R4 | 相关自动回归和 PR 最新 HEAD CI 通过 | #657 / AC4 | not_satisfied | 待定向/相关测试与 CI |
+| R4 | 相关自动回归和 PR 最新 HEAD CI 通过 | #657 / AC4 | satisfied | 代码/风险 HEAD `5a4c835c`：Runtime 36522965753、Release 36522965731、Linux/Windows Tooling 36522965758 均通过；完成证据提交的 required CI 继续阻塞 merge，只有全绿才合并 |
 | R5 | 运行文档提供正确自检与部署生效边界 | #657 / AC5 | satisfied | Operations 第 11 节给出 release 根目录 resolver/render smoke 与旧镜像边界 |
 
 # 计划改动
@@ -184,8 +184,8 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 - [x] 行为变化建立失败证据
 - [x] 完成最小实现
 - [x] 同步受影响的长期文档
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 取得仍覆盖当前版本的验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -228,10 +228,10 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 
 # 完成审计
 
-- [ ] upstream_re_read：实现完成后重读 #657 AC、生产 Traceback、Dockerfile、Worker、Reporting/Operations。
-- [ ] change_coverage：逐条核对 AC1–AC5 与实现、测试、文档和 CI。
-- [ ] reverse_audit：从正式镜像到 resolver/render、从 Worker 内部异常到日志/Job 结果双向复核；前后端、数据库反向审计因无相关边界而不适用。
-- [ ] unresolved_cleared：Ready 前清零全部 `not_satisfied`，生产部署后复验作为明确剩余交付阶段记录。
+- [x] upstream_re_read：2026-09-29 在代码/风险 HEAD `5a4c835c` 后重读 #657 AC、生产 Traceback、Dockerfile、Worker、Reporting resolver、Runtime Workflow 与 Operations。
+- [x] change_coverage：逐条核对 AC1–AC5；AC1–AC2 由真实 Compose 镜像 smoke 覆盖，AC3 由参数化回归覆盖，AC4 由相关回归/Runtime/Release/Tooling 覆盖，AC5 由 Operations 覆盖。
+- [x] reverse_audit：已从 Dockerfile → Backend/Worker image → Regular/Bold resolver → 中文 PNG 反查，并从 Worker 内部异常 → 安全日志 → 兼容 Job result 反查；前端、数据库无本次能力或数据变化，记为不适用。
+- [x] unresolved_cleared：全部 Requirement 已有源代码/测试/CI/文档证据；生产部署后复验保留为本次未授权的后续运维步骤，不伪装为已部署。
 
 # 完成证据与状态
 
@@ -247,17 +247,20 @@ Issue #657 记录了生产飞书报告两次失败及容器内最小复现。用
 | V6 | working tree / Windows Python 3.14.7 | Workflow structure/impact + Docker + Worker + visuals + logging 相关回归 | 59 passed, 2 skipped | Runtime Workflow 静态接线与相关行为回归通过；Linux 字体真实渲染仍由 Runtime CI 负责 |
 | V7 | working tree / project quality scripts | `check_docs.py`、`check_docs_facts.py`、`check_architecture.py`、`check_agent_governance.py` | 全部 exit 0 | 文档链接/事实、架构边界与项目治理接线通过 |
 | V8 | PR head `c17c751e` / Ubuntu 24.04 Runtime Acceptance run 36522455696 | Compose 构建正式 Backend/Frontend 并进入 Worker 执行 CJK smoke | Backend/Worker 启动成功且 `resolve_cjk_font()` 返回后，smoke 因错误地无参调用 `resolve_cjk_bold_font()` 失败；Release dry-run run 36522455537 已 success | 发现验证脚本/Operations 命令未遵守现有 bold resolver 的 `fallback` 参数 Contract；不是字体包缺失，需修正后重跑 |
+| V9 | PR code/risk head `5a4c835c` / Ubuntu 24.04 Runtime Acceptance run 36522965753 | `Compose Golden Path` 构建正式 Backend/Worker，执行 Regular/Bold resolver、中文词云渲染与 Pillow PNG 校验 | success，3m36s | 正式 Linux Worker 镜像已切断字体缺失路径，普通/粗体文件和中文渲染均可用 |
+| V10 | PR code/risk head `5a4c835c` / Release run 36522965731 | `Build and replay offline candidate` | success，2m52s | 正式 Backend target 可进入离线 Release bundle，并按 no-build/no-pull 边界严格回放 |
+| V11 | reviewed head `5a4c835c` / 独立盲审与测试复核 | 对 Dockerfile、Runtime、Worker、测试、Operations 与 Change 做双向审查；补跑 workflow/change-impact/Docker 静态回归 | 修复 1 个已发现的 P1（bold resolver 参数）；修复后无其他 P0–P3；独立复核 48 passed，Docker source 8 passed | 代码、验收脚本、Release/运行文档和测试充分性已由两个独立审查角色复核 |
 
 ## 未验证内容与剩余风险
 
-- 本机 Docker Desktop Engine 未运行，无法在本机取得 Linux 镜像证据；已把 resolver + 中文词云真实 smoke 放入 `Runtime Acceptance / Compose Golden Path`，PR 转 Ready 后由 Ubuntu Runner 构建同一正式 Backend target 验证。该 CI 结果在取得前阻塞 Ready/merge。
+- 本机 Docker Desktop Engine 未运行，因此本机没有 Linux 镜像证据；已由 Ubuntu Runtime Acceptance run 36522965753 构建同一正式 Backend target 并完成 resolver + 中文词云真实 smoke，不再把 Windows 静态检查当镜像证据。
 - 生产部署/真实报告重跑未获本任务授权；新 Release 上线后的服务器复验仍是交付后的运维步骤。
 
 ## 交付状态
 
-- 提交：待创建。
-- 拉取请求：待创建。
-- CI：待执行。
+- 提交：`23d5cab5`（Red/Change）、`c17c751e`（实现）、`5a4c835c`（修正验收脚本 Contract）；本文件为完成证据提交。
+- 拉取请求：#659，已转 Ready；Requirement Source 为 #657。
+- CI：代码/风险 HEAD 的 Runtime、Release、Linux/Windows Tooling 已通过；本完成证据提交需取得 required CI 全绿后才允许 merge。
 - 合并：用户已授权，满足门禁后 guarded merge。
 - Change 归档：合并后等待仓库自动归档并验证。
 - 发布 / 部署：未授权，不执行。
