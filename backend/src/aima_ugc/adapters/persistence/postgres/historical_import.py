@@ -6,10 +6,11 @@ import hashlib
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import case, func, insert, literal, select, update
+from sqlalchemy import BigInteger, case, func, insert, literal, select, true, update
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -65,12 +66,21 @@ class PostgresHistoricalImportRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def get_campaign(self, campaign_id: UUID, *, for_update: bool = False) -> RowMapping | None:
+    def get_campaign(
+        self,
+        campaign_id: UUID,
+        *,
+        for_update: bool = False,
+        for_no_key_update: bool = False,
+    ) -> RowMapping | None:
         statement = select(historical_import_campaigns_table).where(
             historical_import_campaigns_table.c.id == campaign_id
         )
         if for_update:
             statement = statement.with_for_update()
+        elif for_no_key_update:
+            # Chunk 外键写入持有父行 KEY SHARE；调度只改非键列，避免锁升级死锁。
+            statement = statement.with_for_update(key_share=True)
         return self._session.execute(statement).mappings().one_or_none()
 
     def get_campaign_by_idempotency_key(self, key: str) -> RowMapping | None:
@@ -96,6 +106,61 @@ class PostgresHistoricalImportRepository:
             ).mappings()
         )
 
+    def settled_campaign_stats(self, campaign_ids: Iterable[UUID]) -> dict[UUID, dict[str, int]]:
+        """按已结算 Chunk 摘要读取运行中统计，不反复扫描逐行账本或争用父行。"""
+
+        ids = tuple(dict.fromkeys(campaign_ids))
+        if not ids:
+            return {}
+        item = historical_import_campaign_items_table
+        fields = (
+            "created",
+            "filled",
+            "updated",
+            "unchanged",
+            "conflict",
+            "filtered",
+            "duplicate",
+            "invalid",
+            "failed",
+        )
+
+        def safe_count(key: str) -> Any:
+            value = item.c.stats[key].astext
+            return case(
+                (value.op("~")(r"^[0-9]{1,18}$"), sql_cast(value, BigInteger)),
+                else_=0,
+            )
+
+        counts = [
+            func.coalesce(
+                func.sum(case((item.c.status == "succeeded", safe_count(key)), else_=0)),
+                0,
+            ).label(key)
+            for key in fields
+        ]
+        failed_rows = func.coalesce(
+            func.sum(
+                case(
+                    (item.c.status.in_(("failed", "cancelled")), item.c.row_count),
+                    else_=0,
+                )
+            ),
+            0,
+        ).label("unprocessed_failed")
+        rows = self._session.execute(
+            select(item.c.campaign_id, *counts, failed_rows)
+            .where(item.c.campaign_id.in_(ids), item.c.item_kind == "chunk")
+            .group_by(item.c.campaign_id)
+        ).mappings()
+        return {
+            cast(UUID, row["campaign_id"]): {
+                key: int(row[key]) + (int(row["unprocessed_failed"]) if key == "failed" else 0)
+                for key in fields
+            }
+            for row in rows
+        }
+
     def campaign_progresses(
         self,
         campaign_ids: Iterable[UUID],
@@ -119,34 +184,12 @@ class PostgresHistoricalImportRepository:
                 .filter(item.c.status.not_in(("discovered", "snapshotting")))
                 .label("completed_file_count"),
                 func.coalesce(func.sum(source_progress), 0).label("progress_points"),
+                func.coalesce(func.sum(item.c.completed_row_count), 0).label("completed_row_count"),
+                func.coalesce(func.sum(item.c.failed_chunk_count), 0).label("failed_chunk_count"),
             )
             .select_from(item.outerjoin(jobs_table, jobs_table.c.id == item.c.job_id))
             .where(
                 item.c.item_kind == "source_file",
-                item.c.campaign_id.in_(unique_ids),
-            )
-            .group_by(item.c.campaign_id)
-            .subquery()
-        )
-        chunk_totals = (
-            select(
-                item.c.campaign_id.label("campaign_id"),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (
-                                item.c.status.in_(("succeeded", "failed", "cancelled")),
-                                item.c.row_count,
-                            ),
-                            else_=0,
-                        )
-                    ),
-                    0,
-                ).label("completed_row_count"),
-                func.count().filter(item.c.status == "failed").label("failed_chunk_count"),
-            )
-            .where(
-                item.c.item_kind == "chunk",
                 item.c.campaign_id.in_(unique_ids),
             )
             .group_by(item.c.campaign_id)
@@ -161,16 +204,12 @@ class PostgresHistoricalImportRepository:
                     "completed_file_count"
                 ),
                 func.coalesce(source_totals.c.progress_points, 0).label("progress_points"),
-                func.coalesce(chunk_totals.c.completed_row_count, 0).label("completed_row_count"),
-                func.coalesce(chunk_totals.c.failed_chunk_count, 0).label("failed_chunk_count"),
+                func.coalesce(source_totals.c.completed_row_count, 0).label("completed_row_count"),
+                func.coalesce(source_totals.c.failed_chunk_count, 0).label("failed_chunk_count"),
             )
             .outerjoin(
                 source_totals,
                 source_totals.c.campaign_id == historical_import_campaigns_table.c.id,
-            )
-            .outerjoin(
-                chunk_totals,
-                chunk_totals.c.campaign_id == historical_import_campaigns_table.c.id,
             )
             .where(historical_import_campaigns_table.c.id.in_(unique_ids))
         ).mappings()
@@ -430,7 +469,7 @@ class PostgresHistoricalImportRepository:
         )
 
     def schedule_snapshot_jobs(self, campaign_id: UUID, *, max_in_flight: int) -> int:
-        if self.get_campaign(campaign_id, for_update=True) is None:
+        if self.get_campaign(campaign_id, for_no_key_update=True) is None:
             raise HistoricalCampaignNotFound
         active = cast(
             int,
@@ -878,8 +917,11 @@ class PostgresHistoricalImportRepository:
         )
         return tuple(batches)
 
-    def prepare_failed_retry(self, campaign_id: UUID) -> dict[UUID, UUID]:
-        """只重置失败 Chunk，并为其来源创建引用同一快照 Artifact 的新 Batch。"""
+    def prepare_failed_retry(
+        self,
+        campaign_id: UUID,
+    ) -> tuple[dict[UUID, UUID], tuple[UUID, ...]]:
+        """重置失败 Chunk，并返回新 Batch 与需要重新激活的不可变 Source Artifact。"""
 
         campaign = self.get_campaign(campaign_id, for_update=True)
         if campaign is None:
@@ -910,12 +952,14 @@ class PostgresHistoricalImportRepository:
             ).mappings()
         }
         batches: dict[UUID, UUID] = {}
+        source_artifact_ids: set[UUID] = set()
         policy_version = _batch_policy_version(cast(str, campaign["ingestion_policy"]))
         for source_id in sorted(source_ids, key=str):
             source = source_rows[source_id]
             artifact_id = cast(UUID | None, source["artifact_id"])
             if artifact_id is None:
                 raise HistoricalCampaignConflict("失败项来源缺少不可变 Artifact")
+            source_artifact_ids.add(artifact_id)
             previous_batch_id = previous.get(source_id)
             batch_id = uuid4()
             self._session.execute(
@@ -965,7 +1009,7 @@ class PostgresHistoricalImportRepository:
             .where(historical_import_campaigns_table.c.id == campaign_id)
             .values(status="queued", error_summary=None, finished_at=None)
         )
-        return batches
+        return batches, tuple(sorted(source_artifact_ids, key=str))
 
     def schedule_import_jobs(
         self,
@@ -974,7 +1018,7 @@ class PostgresHistoricalImportRepository:
         source_batches: dict[UUID, UUID],
         max_in_flight: int,
     ) -> int:
-        if self.get_campaign(campaign_id, for_update=True) is None:
+        if self.get_campaign(campaign_id, for_no_key_update=True) is None:
             raise HistoricalCampaignNotFound
         active = cast(
             int,
@@ -993,45 +1037,48 @@ class PostgresHistoricalImportRepository:
         if slots == 0:
             return 0
         chunk = historical_import_campaign_items_table
+        source = chunk.alias("historical_source")
         active_chunk = historical_import_campaign_items_table.alias("active_historical_chunk")
         active_for_same_source = (
             select(active_chunk.c.id)
             .where(
                 active_chunk.c.campaign_id == campaign_id,
                 active_chunk.c.item_kind == "chunk",
-                active_chunk.c.parent_item_id == chunk.c.parent_item_id,
+                active_chunk.c.parent_item_id == source.c.id,
                 active_chunk.c.status.in_(("queued", "running")),
             )
             .exists()
         )
-        ranked_ready = (
+        first_ready = (
             select(
                 chunk.c.id.label("chunk_id"),
-                func.row_number()
-                .over(
-                    partition_by=chunk.c.parent_item_id,
-                    order_by=chunk.c.ordinal,
-                )
-                .label("source_rank"),
             )
             .where(
-                chunk.c.campaign_id == campaign_id,
+                chunk.c.parent_item_id == source.c.id,
                 chunk.c.item_kind == "chunk",
                 chunk.c.status == "ready",
-                chunk.c.parent_item_id.in_(tuple(source_batches)),
-                ~active_for_same_source,
             )
-            .subquery("ranked_ready_historical_chunks")
+            .order_by(chunk.c.ordinal)
+            .limit(1)
+            .correlate(source)
+            .lateral("first_ready_historical_chunk")
         )
         chunk_rows = tuple(
             self._session.execute(
                 select(chunk)
-                .join(ranked_ready, ranked_ready.c.chunk_id == chunk.c.id)
+                .select_from(
+                    source.join(first_ready, true()).join(
+                        chunk, chunk.c.id == first_ready.c.chunk_id
+                    )
+                )
                 .where(
-                    ranked_ready.c.source_rank == 1,
+                    source.c.campaign_id == campaign_id,
+                    source.c.item_kind == "source_file",
+                    source.c.id.in_(tuple(source_batches)),
+                    ~active_for_same_source,
                 )
                 .order_by(
-                    chunk.c.relative_path,
+                    source.c.relative_path,
                     chunk.c.ordinal,
                 )
                 .limit(slots)
@@ -1240,20 +1287,18 @@ class PostgresHistoricalImportRepository:
                 )
                 .values(status="running", started_at=func.clock_timestamp())
             )
-        campaign_id = self._session.scalar(
-            select(historical_import_campaign_items_table.c.campaign_id).where(
-                historical_import_campaign_items_table.c.id == item_id
+
+    def mark_campaign_running(self, campaign_id: UUID) -> None:
+        """内容写入结束后再更新父状态，避免并行 Chunk 提前争用父行。"""
+
+        self._session.execute(
+            update(historical_import_campaigns_table)
+            .where(
+                historical_import_campaigns_table.c.id == campaign_id,
+                historical_import_campaigns_table.c.status == "queued",
             )
+            .values(status="running")
         )
-        if campaign_id is not None:
-            self._session.execute(
-                update(historical_import_campaigns_table)
-                .where(
-                    historical_import_campaigns_table.c.id == campaign_id,
-                    historical_import_campaigns_table.c.status == "queued",
-                )
-                .values(status="running")
-            )
 
     def complete_chunk(self, item_id: UUID, *, stats: dict[str, object]) -> None:
         self._session.execute(
@@ -1274,22 +1319,36 @@ class PostgresHistoricalImportRepository:
                 )
             ),
         )
-        chunk_statuses = tuple(
-            self._session.execute(
-                select(historical_import_campaign_items_table.c.status).where(
-                    historical_import_campaign_items_table.c.parent_item_id == source_id,
-                    historical_import_campaign_items_table.c.item_kind == "chunk",
-                )
-            ).scalars()
-        )
-        if chunk_statuses and all(
-            value in {"succeeded", "failed", "cancelled"} for value in chunk_statuses
-        ):
+        item = historical_import_campaign_items_table
+        active_statuses = ("discovered", "snapshotting", "ready", "queued", "running")
+
+        def chunk_exists(
+            *, source: bool, statuses: tuple[str, ...] | None = None
+        ) -> ColumnElement[bool]:
+            conditions = [item.c.item_kind == "chunk"]
+            conditions.append(
+                item.c.parent_item_id == source_id if source else item.c.campaign_id == campaign_id
+            )
+            if statuses is not None:
+                conditions.append(item.c.status.in_(statuses))
+            return select(literal(1)).where(*conditions).exists()
+
+        source_has_chunks, source_has_active = self._session.execute(
+            select(
+                chunk_exists(source=True),
+                chunk_exists(source=True, statuses=active_statuses),
+            )
+        ).one()
+        if source_has_chunks and not source_has_active:
             # Chunk 运行期间只读取轻量状态；完整账本聚合只在 Batch 收口时执行一次。
             # 否则每完成一个 Chunk 都会重复扫描累计增长的逐行账本，整体退化为 O(n²)。
             batch_counts = self._batch_accounting_counts(batch_id, source_id)
-            has_failed = any(value == "failed" for value in chunk_statuses)
-            has_cancelled = any(value == "cancelled" for value in chunk_statuses)
+            has_failed, has_cancelled = self._session.execute(
+                select(
+                    chunk_exists(source=True, statuses=("failed",)),
+                    chunk_exists(source=True, statuses=("cancelled",)),
+                )
+            ).one()
             batch_status = "failed" if has_failed or has_cancelled else "succeeded"
             source_status = (
                 "failed" if has_failed else "cancelled" if has_cancelled else "succeeded"
@@ -1321,37 +1380,44 @@ class PostgresHistoricalImportRepository:
                 .where(historical_import_campaign_items_table.c.id == source_id)
                 .values(status=source_status, finished_at=func.clock_timestamp())
             )
-        campaign_statuses = tuple(
-            self._session.execute(
-                select(historical_import_campaign_items_table.c.status).where(
-                    historical_import_campaign_items_table.c.campaign_id == campaign_id,
-                    historical_import_campaign_items_table.c.item_kind == "chunk",
-                )
-            ).scalars()
-        )
-        if campaign_statuses and all(
-            value in {"succeeded", "failed", "cancelled"} for value in campaign_statuses
-        ):
-            source_statuses = tuple(
-                self._session.execute(
-                    select(historical_import_campaign_items_table.c.status).where(
-                        historical_import_campaign_items_table.c.campaign_id == campaign_id,
-                        historical_import_campaign_items_table.c.item_kind == "source_file",
+        campaign_has_chunks, campaign_has_active = self._session.execute(
+            select(
+                chunk_exists(source=False),
+                chunk_exists(source=False, statuses=active_statuses),
+            )
+        ).one()
+        if campaign_has_chunks and not campaign_has_active:
+            (
+                has_failed_chunk,
+                has_cancelled_chunk,
+                has_succeeded_chunk,
+                has_failed_source,
+                has_cancelled_source,
+            ) = self._session.execute(
+                select(
+                    chunk_exists(source=False, statuses=("failed",)),
+                    chunk_exists(source=False, statuses=("cancelled",)),
+                    chunk_exists(source=False, statuses=("succeeded",)),
+                    select(literal(1))
+                    .where(
+                        item.c.campaign_id == campaign_id,
+                        item.c.item_kind == "source_file",
+                        item.c.status == "failed",
                     )
-                ).scalars()
-            )
-            has_failed = any(value == "failed" for value in campaign_statuses) or any(
-                value == "failed" for value in source_statuses
-            )
-            has_cancelled = any(value == "cancelled" for value in campaign_statuses) or any(
-                value == "cancelled" for value in source_statuses
-            )
-            if has_failed:
-                status = (
-                    "partial_failed"
-                    if any(value == "succeeded" for value in campaign_statuses)
-                    else "failed"
+                    .exists(),
+                    select(literal(1))
+                    .where(
+                        item.c.campaign_id == campaign_id,
+                        item.c.item_kind == "source_file",
+                        item.c.status == "cancelled",
+                    )
+                    .exists(),
                 )
+            ).one()
+            has_failed = has_failed_chunk or has_failed_source
+            has_cancelled = has_cancelled_chunk or has_cancelled_source
+            if has_failed:
+                status = "partial_failed" if has_succeeded_chunk else "failed"
             elif has_cancelled:
                 status = "cancelled"
             else:

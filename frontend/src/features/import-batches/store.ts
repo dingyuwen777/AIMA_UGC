@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 
 import type {
   CollectionCapabilitiesResponse,
+  CanonicalReplayAllOperationResponse,
   DataImportIngestionPolicy,
   DataImportRevocationPreviewResponse,
   DataImportRevocationResponse,
@@ -77,6 +78,7 @@ export interface DataImportLocalFileSelection {
 }
 
 export type SupplementSourceKind = 'campaign' | 'batch'
+export type CanonicalReplayCancelResult = 'accepted' | 'unconfirmed' | 'rejected'
 
 export interface SupplementSourceSelection {
   kind: SupplementSourceKind
@@ -101,6 +103,20 @@ const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
 ]
 
 const LOCAL_CAMPAIGN_UPLOAD_CONCURRENCY = 3
+const REPLAY_CANCEL_UNCONFIRMED = '取消请求结果暂未确认；系统会继续刷新任务状态，也可点击“重试取消并撤回”。'
+
+function replayCancelStateConfirmsRequest(lifecycle: string | undefined, initial: string | null): boolean {
+  return lifecycle === 'cancelling' || lifecycle === 'reverting' || lifecycle === 'reverted' ||
+    (lifecycle === 'revert_failed' && initial !== 'revert_failed')
+}
+
+function replayLifecycleRank(lifecycle: string | undefined): number {
+  if (lifecycle === 'active') return 0
+  if (lifecycle === 'cancelling') return 1
+  if (lifecycle === 'reverting') return 2
+  if (lifecycle === 'reverted' || lifecycle === 'revert_failed') return 3
+  return -1
+}
 
 function errorMessage(error: unknown): string {
   if (error instanceof ImportApiError) return error.message
@@ -174,6 +190,21 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   let refreshInFlight = false
   let appliedListParams: ListCollectionRuntimeRunsParams = { limit: 20 }
   let supplementPlatformVersion = 0
+  const unconfirmedReplayRequestId = ref<string | null>(null)
+  const unconfirmedReplayInitialLifecycle = ref<string | null>(null)
+  const acceptedReplayCancellationRequestId = ref<string | null>(null)
+  const acceptedReplayCancellationLifecycle = ref<string | null>(null)
+  const selectedCanonicalReplayCancellationUnconfirmed = computed(
+    () =>
+      unconfirmedReplayRequestId.value !== null &&
+      selectedCanonicalReplay.value?.canonical_replay_request_id === unconfirmedReplayRequestId.value,
+  )
+  const selectedCanonicalReplayCancellationPending = computed(
+    () =>
+      acceptedReplayCancellationRequestId.value !== null &&
+      selectedCanonicalReplay.value?.canonical_replay_request_id ===
+        acceptedReplayCancellationRequestId.value,
+  )
 
   const hasActiveJobs = computed(
     () =>
@@ -184,6 +215,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       selectedRun.value?.status === 'running' ||
       selectedCanonicalReplay.value?.status === 'queued' ||
       selectedCanonicalReplay.value?.status === 'running' ||
+      (selectedCanonicalReplay.value?.canonical_replay_request_id ===
+        unconfirmedReplayRequestId.value && unconfirmedReplayRequestId.value !== null) ||
       historicalCampaigns.value.some((campaign) =>
         ['uploading', 'discovering', 'snapshotting', 'queued', 'running', 'cancelling'].includes(
           campaign.status,
@@ -243,7 +276,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       loadingNext.value = false
     }
     refreshInFlight = true
-    error.value = null
+    error.value = unconfirmedReplayRequestId.value ? REPLAY_CANCEL_UNCONFIRMED : null
     try {
       const [page, kpis, batchDetail, runDetail] = await Promise.all([
         refreshWindow(version, silent ? items.value.length : 0, params),
@@ -265,11 +298,55 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       if (batchDetail !== null) selectedBatch.value = batchDetail
       if (runDetail !== null) selectedRun.value = runDetail
       if (selectedCanonicalReplay.value) {
-        selectedCanonicalReplay.value = page.items.find(
+        const current = selectedCanonicalReplay.value
+        const fresh = page.items.find(
           (item) =>
             item.record_type === 'canonical_replay' &&
-            item.record_id === selectedCanonicalReplay.value?.record_id,
-        ) ?? selectedCanonicalReplay.value
+            item.record_id === current.record_id,
+        )
+        const freshLifecycle = fresh?.canonical_replay_stats?.lifecycle_status
+        const currentLifecycle = current.canonical_replay_stats?.lifecycle_status
+        if (
+          fresh &&
+          acceptedReplayCancellationRequestId.value === fresh.canonical_replay_request_id &&
+          replayLifecycleRank(freshLifecycle) < replayLifecycleRank(currentLifecycle) &&
+          fresh.canonical_replay_stats &&
+          current.canonical_replay_stats
+        ) {
+          selectedCanonicalReplay.value = {
+            ...fresh,
+            canonical_replay_stats: {
+              ...fresh.canonical_replay_stats,
+              lifecycle_status: current.canonical_replay_stats.lifecycle_status,
+            },
+          }
+        } else {
+          selectedCanonicalReplay.value = fresh ?? current
+        }
+      }
+      if (
+        unconfirmedReplayRequestId.value &&
+        selectedCanonicalReplay.value?.canonical_replay_request_id === unconfirmedReplayRequestId.value &&
+        replayCancelStateConfirmsRequest(
+          selectedCanonicalReplay.value.canonical_replay_stats?.lifecycle_status,
+          unconfirmedReplayInitialLifecycle.value,
+        )
+      ) {
+        unconfirmedReplayRequestId.value = null
+        unconfirmedReplayInitialLifecycle.value = null
+        error.value = null
+      }
+      const acceptedFreshLifecycle = page.items.find(
+        (item) => item.canonical_replay_request_id === acceptedReplayCancellationRequestId.value,
+      )?.canonical_replay_stats?.lifecycle_status
+      if (
+        acceptedReplayCancellationRequestId.value &&
+        acceptedReplayCancellationLifecycle.value &&
+        replayLifecycleRank(acceptedFreshLifecycle) >=
+          replayLifecycleRank(acceptedReplayCancellationLifecycle.value)
+      ) {
+        acceptedReplayCancellationRequestId.value = null
+        acceptedReplayCancellationLifecycle.value = null
       }
     } catch (reason) {
       if (version === refreshVersion) error.value = errorMessage(reason)
@@ -342,18 +419,66 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedCanonicalReplay.value = item
   }
 
-  async function cancelAndRevokeSelectedCanonicalReplay(): Promise<boolean> {
+  /** 先应用 POST 返回的父状态，避免并发轮询跳过刷新后重新显示取消按钮。 */
+  function applyCanonicalReplayOperation(response: CanonicalReplayAllOperationResponse): void {
+    const selected = selectedCanonicalReplay.value
+    if (
+      !selected ||
+      selected.canonical_replay_request_id !== response.request_id ||
+      !selected.canonical_replay_stats
+    ) return
+    selectedCanonicalReplay.value = {
+      ...selected,
+      canonical_replay_stats: {
+        ...selected.canonical_replay_stats,
+        lifecycle_status: response.lifecycle_status,
+        reversible: response.reversible,
+        reversal_job_id: response.reversal_job_id,
+      },
+    }
+  }
+
+  async function cancelAndRevokeSelectedCanonicalReplay(): Promise<CanonicalReplayCancelResult> {
     const requestId = selectedCanonicalReplay.value?.canonical_replay_request_id
-    if (!requestId || actingCanonicalReplay.value) return false
+    const initialLifecycle = selectedCanonicalReplay.value?.canonical_replay_stats?.lifecycle_status ?? null
+    if (!requestId || actingCanonicalReplay.value) return 'rejected'
     actingCanonicalReplay.value = true
+    acceptedReplayCancellationRequestId.value = null
+    acceptedReplayCancellationLifecycle.value = null
+    unconfirmedReplayRequestId.value = null
+    unconfirmedReplayInitialLifecycle.value = null
     error.value = null
     try {
-      await cancelAndRevokeCanonicalReplay(requestId)
+      const operation = await cancelAndRevokeCanonicalReplay(requestId)
+      acceptedReplayCancellationRequestId.value = requestId
+      acceptedReplayCancellationLifecycle.value = operation.lifecycle_status
+      applyCanonicalReplayOperation(operation)
       await refresh(true)
-      return true
+      return 'accepted'
     } catch (reason) {
-      error.value = errorMessage(reason)
-      return false
+      acceptedReplayCancellationRequestId.value = null
+      acceptedReplayCancellationLifecycle.value = null
+      if (reason instanceof ImportApiError && reason.status < 500) {
+        error.value = errorMessage(reason)
+        return 'rejected'
+      }
+      // 代理超时或断网无法证明请求未提交；以新鲜的父任务状态核对。
+      await refresh(true)
+      const selected = selectedCanonicalReplay.value
+      if (
+        selected?.canonical_replay_request_id === requestId &&
+        replayCancelStateConfirmsRequest(
+          selected.canonical_replay_stats?.lifecycle_status,
+          initialLifecycle,
+        )
+      ) {
+        error.value = null
+        return 'accepted'
+      }
+      unconfirmedReplayRequestId.value = requestId
+      unconfirmedReplayInitialLifecycle.value = initialLifecycle
+      error.value = REPLAY_CANCEL_UNCONFIRMED
+      return 'unconfirmed'
     } finally {
       actingCanonicalReplay.value = false
     }
@@ -601,15 +726,38 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       campaign,
       ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
     ]
+    if (['revoking', 'revoked'].includes(campaign.status)) {
+      historicalRevocationPreview.value = await previewHistoricalCampaignRevocation(campaignId)
+    }
   }
 
   async function refreshHistoricalCampaignSummary(campaignId: string): Promise<void> {
     const campaign = await fetchHistoricalCampaign(campaignId)
+    if (selectedHistoricalCampaign.value?.id !== campaignId) return
     selectedHistoricalCampaign.value = campaign
     historicalCampaigns.value = [
       campaign,
       ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
     ]
+  }
+
+  /** 运行中同步最新统计与已结算来源项，避免详情只在终态才显示处理结果。 */
+  async function refreshHistoricalCampaignLive(campaignId: string): Promise<void> {
+    await Promise.all([
+      fetchHistoricalCampaign(campaignId).then((campaign) => {
+        if (selectedHistoricalCampaign.value?.id !== campaignId) return
+        selectedHistoricalCampaign.value = campaign
+        historicalCampaigns.value = [
+          campaign,
+          ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
+        ]
+      }),
+      fetchHistoricalCampaignItems(campaignId).then((campaignItems) => {
+        if (selectedHistoricalCampaign.value?.id !== campaignId) return
+        historicalCampaignItems.value = campaignItems.items
+        historicalCampaignItemsHasMore.value = Boolean(campaignItems.has_more)
+      }),
+    ])
   }
 
   async function submitHistoricalCampaign(
@@ -763,6 +911,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
         reason: reason?.trim() || null,
       })
       historicalRevocation.value = result
+      // 短请求已把 Campaign 改为 revoking；同步父状态才能让详情轮询继续跟进完成。
+      await refreshHistoricalCampaignSummary(campaignId)
       historicalRevocationPreview.value = await previewHistoricalCampaignRevocation(campaignId)
       await refresh(true)
       return result
@@ -812,6 +962,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedBatch,
     selectedRun,
     selectedCanonicalReplay,
+    selectedCanonicalReplayCancellationUnconfirmed,
+    selectedCanonicalReplayCancellationPending,
     capabilities,
     campaignOptions,
     batchOptions,
@@ -868,6 +1020,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     loadMoreHistoricalDirectory,
     refreshHistoricalCampaign,
     refreshHistoricalCampaignSummary,
+    refreshHistoricalCampaignLive,
     submitHistoricalCampaign,
     submitLocalCampaign,
     actOnHistoricalCampaign,

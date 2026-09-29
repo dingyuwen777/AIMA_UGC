@@ -86,15 +86,28 @@ class BrandUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
     role: BrandRole | None = None
     status: BrandStatus | None = None
+    aliases: tuple[str, ...] | None = Field(default=None, max_length=100)
 
     @field_validator("display_name", mode="before")
     @classmethod
     def trim_display_name(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
 
+    @field_validator("aliases", mode="before")
+    @classmethod
+    def validate_aliases(cls, value: object) -> object:
+        """显式提交 aliases 时按与创建相同的稳定身份去重；缺省表示保持不变。"""
+
+        return None if value is None else _normalize_aliases(value)
+
     @model_validator(mode="after")
     def require_change(self) -> BrandUpdateRequest:
-        if self.display_name is None and self.role is None and self.status is None:
+        if (
+            self.display_name is None
+            and self.role is None
+            and self.status is None
+            and self.aliases is None
+        ):
             raise ValueError("品牌更新必须至少包含一个字段")
         return self
 

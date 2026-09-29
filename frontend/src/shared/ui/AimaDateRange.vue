@@ -3,7 +3,11 @@ import { computed, nextTick, ref } from 'vue'
 import AimaButton from './AimaButton.vue'
 
 const props = withDefaults(defineProps<{ from: string; to: string; label?: string }>(), { label: '发布时间范围' })
-const emit = defineEmits<{ 'update:from': [value: string]; 'update:to': [value: string] }>()
+const emit = defineEmits<{
+  'update:from': [value: string]
+  'update:to': [value: string]
+  'update:range': [value: { from: string; to: string }]
+}>()
 const trigger = ref<HTMLButtonElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
 const open = ref(false)
@@ -44,9 +48,10 @@ const days = computed(() => {
 /** 打开时恢复已确认范围，并把面板放在视口内的触发器附近。 */
 async function show(): Promise<void> {
   if (open.value) { panel.value?.hidePopover(); return }
-  draftFrom.value = props.from
-  draftTo.value = props.to
-  focused.value = props.from || today()
+  const dates = [props.from, props.to].filter(Boolean).sort()
+  draftFrom.value = dates[0] ?? ''
+  draftTo.value = dates[1] ?? ''
+  focused.value = draftTo.value || draftFrom.value || today()
   month.value = focused.value.slice(0, 7)
   const box = trigger.value!.getBoundingClientRect()
   position.value = { left: `${Math.max(12, Math.min(box.right - 258, window.innerWidth - 270))}px`, top: `${Math.max(12, Math.min(box.bottom + 6, window.innerHeight - 410))}px` }
@@ -96,8 +101,12 @@ async function focusDate(): Promise<void> {
 
 /** 确认后由业务 Store 转换为北京时间边界；单日选择使用相同起止日。 */
 function confirm(): void {
-  emit('update:from', draftFrom.value)
-  emit('update:to', draftTo.value || draftFrom.value)
+  const dates = [draftFrom.value, draftTo.value || draftFrom.value].filter(Boolean).sort()
+  const from = dates[0] ?? ''
+  const to = dates[1] ?? from
+  emit('update:range', { from, to })
+  emit('update:from', from)
+  emit('update:to', to)
   panel.value?.hidePopover()
   trigger.value?.focus()
 }

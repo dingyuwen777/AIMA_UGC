@@ -1,6 +1,6 @@
 # 4000 万历史迁移与 Analysis Run 运行手册
 
-本文负责**当前已经实现的软件怎样安全运行、排障和进入生产 Go/No-Go**。软件能力已完成；公司服务器容量门禁、生产写授权、正式 4000 万执行与全量对账仍未完成，当前状态见 [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../roadmap/03_4000万历史数据迁移实施方案.md)。
+本文负责**当前已经实现的软件怎样安全运行、排障和进入生产 Go/No-Go**。软件能力已完成；公司服务器容量门禁、生产写授权、正式 4000 万执行与全量对账仍未完成，当前状态见 [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../roadmap/02_4000万历史数据迁移实施方案.md)。
 
 精确字段以 Pydantic Contract、SQLAlchemy Table、Alembic Migration 和生成 OpenAPI/Client 为准；本文不复制第二套 Schema。
 
@@ -116,7 +116,7 @@ uploading（仅本地）
 文件成功才调用 finalize。服务端仍逐 Item 校验大小、SHA-256、冻结清单和 Campaign 状态，因此前端
 并发不会绕过 Artifact/取消边界。
 
-导入阶段按冻结的 `chunk_rows` 和 `max_in_flight_jobs` 有界调度。不同文件可以并行；同一文件保持稳定 Chunk 顺序，避免跨 Chunk 的首行身份顺序漂移。取消、人工重试、Lease 接管和终态回调继续复用 PostgreSQL Job Runtime 的 Lease/Fencing/Deadline 语义。
+导入阶段按 Campaign 冻结的 `chunk_rows` 切分，并按当前代码管理的 Job 窗口有界调度。不同文件可以并行；同一文件保持稳定 Chunk 顺序，避免跨 Chunk 的首行身份顺序漂移。取消、人工重试、Lease 接管和终态回调继续复用 PostgreSQL Job Runtime 的 Lease/Fencing/Deadline 语义。
 
 页面运行中只轮询 Campaign 汇总，不重复读取全部 Chunk。Item/冲突页面可以是有界预览；完整逐行事实仍以 PostgreSQL 账本为准。
 
@@ -217,11 +217,9 @@ freshness 也在同一批次内集合读取、锁定、冲突校验和写入。V
 同一个原子批次，不表示所有数据形态都固定执行相同数量 SQL。
 
 声音广场投影仍在同一业务事务内同步刷新，任务提交后下一次页面查询即可看到数据，不依赖异步回填
-Job。Alembic
-[`migrations/versions/20260924_0061_voice_plaza_statement_triggers.py`](../../migrations/versions/20260924_0061_voice_plaza_statement_triggers.py)
-把逐行 Trigger 收敛为语句级 transition-table Trigger：一条批量 SQL 只触发一次集合刷新，同时维护
-投影和筛选计数。部署必须先备份并执行数据库升级，再启动使用本版本代码的 API/Worker；代码回滚时
-按正式流程 downgrade 可恢复旧逐行 Trigger，不能只回滚镜像而留下未确认的数据库状态。
+Job。语句级 transition-table Trigger 属于独立的声音广场交付单元，不在本 PR #580 的 Migration
+范围内；本 PR 的数据库变更只覆盖飞书镜像 0060→0062。该独立交付单元的升级、回滚和集成证据
+由其所属 Change 单独维护，不能只回滚镜像而留下未确认的数据库状态。
 
 批次开始只做无锁 Fence 资格检查；业务写入、来源贡献、自动证据、Replay ledger 和 checkpoint 仍在
 同一事务中，提交前会锁住 Job 并再次验证 Fence。取消或 Lease 接管若先发生，本批全部写入回滚；若
@@ -236,7 +234,8 @@ Job。Alembic
 Content 总数，随后按每批实际处理量推进进度；完成前仍会检查是否存在未结清 ledger，不再每批重扫
 全部剩余账本。
 
-预检证明表由 Alembic `20260923_0060` 建立，语句级声音广场同步由 `20260924_0061` 建立。部署时先
+预检证明表由独立 Change 的 Alembic `20260923_0060` 建立；本 PR 的飞书镜像 claim 由 `20260924_0062`
+接续。部署时先
 按正式流程备份并升级数据库，再启动新 API/Worker；历史文件不批量盲信原有摘要，也不要求停机一次性回填：首次重筛逐件
 完整验证后回填，文件被替换或元数据/验证规则变化会失效。当前验证规则的非 Schema 语义改变时，
 开发必须提升验证版本，避免沿用旧证明。这里不自动执行服务器 Migration 或全量重筛。
@@ -539,4 +538,4 @@ analysis_content_runs
 
 - `tests/**/test_stage12_*.py`
 - [`frontend/e2e-fullstack/stage12-historical-analysis.spec.ts`](../../frontend/e2e-fullstack/stage12-historical-analysis.spec.ts)
-- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../roadmap/02_4000万历史数据迁移实施方案.md)

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+from collections.abc import Mapping
 from pathlib import PurePosixPath
 from typing import BinaryIO, Literal, cast
 from uuid import UUID, uuid4
@@ -75,7 +77,14 @@ from aima_ugc.modules.ingestion.http import (
 )
 from aima_ugc.modules.ingestion.xlsx_security import MAX_XLSX_FILE_BYTES
 from aima_ugc.modules.system.models import AuditEvent
-from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactSizeLimitError
+from aima_ugc.platform.capacity import select_chunk_rows
+from aima_ugc.platform.logging import log_event
+from aima_ugc.platform.storage import (
+    ArtifactRecord,
+    ArtifactService,
+    ArtifactSizeLimitError,
+    ArtifactStateConflict,
+)
 from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
@@ -87,6 +96,26 @@ class PostgresHistoricalImportHttpService:
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
         self._browser = HistoricalDirectoryBrowser(runtime.settings.historical_import_root)
+
+    def _log_campaign_capacity(
+        self,
+        *,
+        campaign_id: UUID,
+        source_kind: str,
+        profile: dict[str, object],
+    ) -> None:
+        """记录冻结 Chunk 与创建时窗口；后续投放会重新读取 Worker 资源。"""
+
+        log_event(
+            self._runtime.logger,
+            logging.INFO,
+            "capacity.campaign_profile_frozen",
+            "历史导入 Campaign 已冻结 Chunk 粒度和创建时窗口",
+            campaign_id=str(campaign_id),
+            source_kind=source_kind,
+            chunk_rows=profile.get("chunk_rows"),
+            initial_max_in_flight_jobs=profile.get("max_in_flight_jobs"),
+        )
 
     def list_directories(
         self,
@@ -141,8 +170,13 @@ class PostgresHistoricalImportHttpService:
             "schema_version": "historical-import-profile.v1",
             "profile": request.profile,
             "relative_paths": list(request.relative_paths),
-            "chunk_rows": self._runtime.settings.historical_chunk_rows,
-            "max_in_flight_jobs": self._runtime.settings.historical_max_in_flight_jobs,
+            "chunk_rows": min(
+                self._runtime.settings.historical_chunk_rows,
+                select_chunk_rows(self._runtime.worker_resources()),
+            ),
+            "max_in_flight_jobs": self._runtime.job_window(
+                "historical", ceiling=self._runtime.settings.historical_max_in_flight_jobs
+            ),
         }
         # 复用既有 JSONB 列承载版本化 Brand/Vehicle Snapshot；列名保留物理兼容。
         # Stage 7 再清理旧列名。
@@ -168,7 +202,7 @@ class PostgresHistoricalImportHttpService:
                     ingestion_policy=request.ingestion_policy,
                 )
                 if (
-                    campaign["profile_snapshot"] != profile_snapshot
+                    not _same_requested_profile(campaign["profile_snapshot"], profile_snapshot)
                     or campaign["keyword_pack_snapshot"] != filter_snapshot_json
                     or campaign["recursive"] != request.recursive
                     or campaign["source_kind"] != "server_path"
@@ -199,10 +233,16 @@ class PostgresHistoricalImportHttpService:
                         "selected_brand_count": len(filter_snapshot.catalog.selected_brand_ids),
                     },
                 )
-                return HistoricalCampaignCreatedResponse(
+                response = HistoricalCampaignCreatedResponse(
                     campaign_id=resolved_id,
                     discovery_job_id=job.id,
                 )
+            self._log_campaign_capacity(
+                campaign_id=resolved_id,
+                source_kind="server_path",
+                profile=cast(dict[str, object], campaign["profile_snapshot"]),
+            )
+            return response
         except HistoricalCampaignConflict as exc:
             raise HistoricalCampaignStateConflict from exc
         finally:
@@ -226,8 +266,13 @@ class PostgresHistoricalImportHttpService:
                 {"relative_path": relative_path, "byte_size": byte_size}
                 for relative_path, byte_size in files
             ],
-            "chunk_rows": self._runtime.settings.historical_chunk_rows,
-            "max_in_flight_jobs": self._runtime.settings.historical_max_in_flight_jobs,
+            "chunk_rows": min(
+                self._runtime.settings.historical_chunk_rows,
+                select_chunk_rows(self._runtime.worker_resources()),
+            ),
+            "max_in_flight_jobs": self._runtime.job_window(
+                "historical", ceiling=self._runtime.settings.historical_max_in_flight_jobs
+            ),
         }
         filter_snapshot_json = cast(
             dict[str, object],
@@ -250,7 +295,7 @@ class PostgresHistoricalImportHttpService:
                     initial_status="uploading",
                 )
                 if (
-                    campaign["profile_snapshot"] != profile_snapshot
+                    not _same_requested_profile(campaign["profile_snapshot"], profile_snapshot)
                     or campaign["keyword_pack_snapshot"] != filter_snapshot_json
                     or campaign["source_kind"] != "local_upload"
                     or campaign["ingestion_policy"] != request.ingestion_policy
@@ -278,7 +323,7 @@ class PostgresHistoricalImportHttpService:
                         "selected_brand_count": len(filter_snapshot.catalog.selected_brand_ids),
                     },
                 )
-                return LocalDataImportCampaignCreatedResponse(
+                response = LocalDataImportCampaignCreatedResponse(
                     campaign_id=campaign_id,
                     upload_items=tuple(
                         LocalDataImportUploadItemResponse(
@@ -288,6 +333,12 @@ class PostgresHistoricalImportHttpService:
                         for row in items
                     ),
                 )
+            self._log_campaign_capacity(
+                campaign_id=campaign_id,
+                source_kind="local_upload",
+                profile=cast(dict[str, object], campaign["profile_snapshot"]),
+            )
+            return response
         except HistoricalCampaignConflict as exc:
             raise HistoricalCampaignStateConflict from exc
         finally:
@@ -404,7 +455,9 @@ class PostgresHistoricalImportHttpService:
                 repository.finalize_local_upload(campaign_id)
                 repository.schedule_snapshot_jobs(
                     campaign_id,
-                    max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
+                    max_in_flight=self._runtime.job_window(
+                        "historical", ceiling=self._runtime.settings.historical_max_in_flight_jobs
+                    ),
                 )
                 self._audit(
                     session,
@@ -470,8 +523,23 @@ class PostgresHistoricalImportHttpService:
                 repository = PostgresHistoricalImportRepository(session)
                 rows = repository.list_campaigns()
                 progresses = repository.campaign_progresses(row["id"] for row in rows)
+                live_ids = (
+                    row["id"]
+                    for row in rows
+                    if row["status"] in {"queued", "running", "cancelling"}
+                )
+                live_stats = repository.settled_campaign_stats(live_ids)
                 return HistoricalCampaignListResponse(
-                    items=tuple(_campaign_response(row, progresses[row["id"]]) for row in rows)
+                    items=tuple(
+                        _campaign_response(
+                            row,
+                            progresses[row["id"]],
+                            stats_override=live_stats.get(row["id"], {})
+                            if row["status"] in {"queued", "running", "cancelling"}
+                            else None,
+                        )
+                        for row in rows
+                    )
                 )
         finally:
             session.close()
@@ -485,7 +553,12 @@ class PostgresHistoricalImportHttpService:
                 if row is None:
                     raise HistoricalCampaignNotFound
                 progress = repository.campaign_progresses((campaign_id,))[campaign_id]
-                return _campaign_response(row, progress)
+                live_stats = (
+                    repository.settled_campaign_stats((campaign_id,)).get(campaign_id, {})
+                    if row["status"] in {"queued", "running", "cancelling"}
+                    else None
+                )
+                return _campaign_response(row, progress, stats_override=live_stats)
         finally:
             session.close()
 
@@ -614,16 +687,26 @@ class PostgresHistoricalImportHttpService:
                     scheduled = repository.schedule_import_jobs(
                         campaign_id=campaign_id,
                         source_batches=batches,
-                        max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
+                        max_in_flight=self._runtime.job_window(
+                            "historical",
+                            ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                        ),
                     )
                     if scheduled == 0:
                         raise HistoricalCampaignConflict("Campaign 没有可执行 Chunk")
                 elif action == "retry":
-                    batches = repository.prepare_failed_retry(campaign_id)
+                    batches, source_artifact_ids = repository.prepare_failed_retry(campaign_id)
+                    artifacts = PostgresArtifactMetadataRepository(session)
+                    for artifact_id in source_artifact_ids:
+                        # 与 Campaign 重入同事务撤销旧 TTL；cleanup 已认领时整次重试回滚。
+                        artifacts.reactivate_import_source(artifact_id)
                     scheduled = repository.schedule_import_jobs(
                         campaign_id=campaign_id,
                         source_batches=batches,
-                        max_in_flight=self._runtime.settings.historical_max_in_flight_jobs,
+                        max_in_flight=self._runtime.job_window(
+                            "historical",
+                            ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                        ),
                     )
                     if scheduled == 0:
                         raise HistoricalCampaignConflict("Campaign 没有可重试 Chunk")
@@ -643,7 +726,7 @@ class PostgresHistoricalImportHttpService:
                 return _campaign_response(row, progress)
         except RepositoryCampaignNotFound as exc:
             raise HistoricalCampaignNotFound from exc
-        except HistoricalCampaignConflict as exc:
+        except (HistoricalCampaignConflict, ArtifactStateConflict) as exc:
             raise HistoricalCampaignStateConflict from exc
         finally:
             session.close()
@@ -675,8 +758,14 @@ class PostgresHistoricalImportHttpService:
 def _campaign_response(
     row: RowMapping,
     progress: HistoricalCampaignProgress,
+    *,
+    stats_override: Mapping[str, object] | None = None,
 ) -> HistoricalCampaignResponse:
-    raw_stats = cast(dict[str, object], row["stats"] or {})
+    raw_stats = (
+        stats_override
+        if stats_override is not None
+        else cast(dict[str, object], row["stats"] or {})
+    )
     stats = HistoricalCampaignStatsResponse(
         **{
             name: value
@@ -749,6 +838,17 @@ def _stream_sha256(source: BinaryIO) -> str:
     except (OSError, ValueError) as exc:
         raise InvalidImportFile from exc
     return digest.hexdigest()
+
+
+def _same_requested_profile(existing: object, requested: dict[str, object]) -> bool:
+    """幂等重试只比较用户输入；自动容量选择沿用首次冻结值。"""
+
+    if not isinstance(existing, dict):
+        return False
+    automatically_selected = {"chunk_rows", "max_in_flight_jobs"}
+    return {key: value for key, value in existing.items() if key not in automatically_selected} == {
+        key: value for key, value in requested.items() if key not in automatically_selected
+    }
 
 
 __all__ = ["PostgresHistoricalImportHttpService"]

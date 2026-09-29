@@ -16,6 +16,15 @@ def test_load_settings_uses_explicit_environment_and_resolves_paths(tmp_path) ->
             "AIMA_DB_NAME": "ugc_test",
             "AIMA_DB_USER": "ugc_user",
             "AIMA_DB_CONNECT_TIMEOUT_SECONDS": "5",
+            "AIMA_FEISHU_BASE_URL": "https://open.feishu.cn",
+            "AIMA_FEISHU_APP_ID": "cli-test",
+            "AIMA_FEISHU_APP_TOKEN": "app-test",
+            "AIMA_FEISHU_WIKI_TOKEN": "wiki-test",
+            "AIMA_FEISHU_TABLE_ID": "tbl-test",
+            "AIMA_FEISHU_APP_SECRET_FILE": "feishu_app_secret",
+            "AIMA_FEISHU_TIMEOUT_SECONDS": "45",
+            "AIMA_FEISHU_MAX_RETRIES": "4",
+            "AIMA_FEISHU_DRY_RUN": "false",
             "AIMA_UNRELATED": "ignored",
         },
         base_dir=tmp_path,
@@ -35,6 +44,16 @@ def test_load_settings_uses_explicit_environment_and_resolves_paths(tmp_path) ->
     assert settings.db_name == "ugc_test"
     assert settings.db_user == "ugc_user"
     assert settings.db_connect_timeout_seconds == 5
+    assert settings.feishu_base_url == "https://open.feishu.cn"
+    assert settings.feishu_app_id == "cli-test"
+    assert settings.feishu_app_token == "app-test"
+    assert settings.feishu_wiki_token == "wiki-test"
+    assert settings.feishu_table_id == "tbl-test"
+    assert settings.feishu_app_secret_filename == "feishu_app_secret"
+    assert settings.feishu_timeout_seconds == 45
+    assert settings.feishu_max_retries == 4
+    assert settings.feishu_dry_run is False
+    assert settings.feishu_app_secret_path == (tmp_path / "var/secrets/feishu_app_secret").resolve()
 
 
 def test_load_settings_defaults_are_repository_relative(tmp_path) -> None:
@@ -43,3 +62,24 @@ def test_load_settings_defaults_are_repository_relative(tmp_path) -> None:
     assert settings.data_dir == (tmp_path / ".runtime/data").resolve()
     assert settings.log_dir == (tmp_path / ".runtime/logs").resolve()
     assert settings.secret_dir == (tmp_path / ".runtime/secrets").resolve()
+
+
+def test_runtime_sizing_ignores_legacy_environment_values(tmp_path) -> None:
+    """历史环境值不能覆盖代码统一管理的事务与安全边界。"""
+
+    settings = load_settings(
+        {
+            "AIMA_HISTORICAL_CHUNK_ROWS": "100",
+            "AIMA_HISTORICAL_MAX_SCAN_FILES": "100000",
+            "AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH": "32",
+            "AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS": "16",
+            "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS": "16",
+        },
+        base_dir=tmp_path,
+    )
+
+    assert settings.historical_chunk_rows == 4_000
+    assert settings.historical_max_scan_files == 10_000
+    assert settings.historical_max_directory_depth == 8
+    assert settings.historical_max_in_flight_jobs is None
+    assert settings.analysis_run_max_in_flight_jobs is None

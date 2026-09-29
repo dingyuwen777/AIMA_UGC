@@ -17,7 +17,7 @@ affected_areas:
 affected_paths:
   - backend/src/aima_ugc/contracts/http.py
   - backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-  - migrations/versions/20260924_0062_voice_plaza_multi_value_filters.py
+  - migrations/versions/20260928_0075_voice_plaza_multi_value_filters.py
   - contracts/openapi/openapi.json
   - frontend/src/generated/api/client.ts
   - frontend/src/features/voice-plaza/
@@ -27,7 +27,7 @@ contracts:
   - ContentFilterSnapshot.voice_type -> voice_types
   - ContentFilterSnapshot.sentiment -> sentiments
 data_changes:
-  - migrations/versions/20260924_0062_voice_plaza_multi_value_filters.py
+  - migrations/versions/20260928_0075_voice_plaza_multi_value_filters.py
 ---
 
 # 变更摘要
@@ -63,7 +63,7 @@ data_changes:
 | E1 | Contract 中 `voice_type`/`sentiment` 为单值 | `backend/src/aima_ugc/contracts/http.py` `ContentFilterSnapshot` | 需要改为多值元组 |
 | E2 | 后端过滤使用 `==` 等值 | `content_queries.py` `_apply_projection_filters`/`_apply_filters` | 需改为 `.in_()` |
 | E3 | 历史快照存于 JSONB | `analysis_content_runs.filter_snapshot`、`reporting_data_exports.request_snapshot` | 需要数据 Migration 回填 |
-| E4 | 远端 main 新增 0060/0061 两个 migration | `git ls-tree main migrations/versions/` | 新 migration 排到 0062，`down_revision=20260924_0061` |
+| E4 | 远端 main 迁移链已到 20260928_0074 | `git ls-tree main migrations/versions/` | 本 PR 迁移重排为 20260928_0075，`down_revision=20260928_0074` |
 | E5 | 生成目录需与 Contract 一致 | CI `generate.py --check` + `check_compatibility.py` | OpenAPI/Client 需重新生成 |
 
 ## 推断与待确认
@@ -102,7 +102,7 @@ data_changes:
 | 决策维度 | 当前决定 | 依据 | 影响 |
 | --- | --- | --- | --- |
 | 接口与契约 | voice_type/sentiment 改为多值元组 | E1 | 破坏性，需重新生成 OpenAPI/Client |
-| 数据与迁移 | 单值 JSONB 回填为单元素数组 | E3/E4 | 新增 0062 Migration |
+| 数据与迁移 | 单值 JSONB 回填为单元素数组 | E3/E4 | 新增 0075 Migration |
 | 兼容性 | 历史快照由 Migration 无损回填 | E3 | 已保存请求仍可解析 |
 | 部署与回滚 | Migration 提供 downgrade，多值无法无损回退时报错 | E4 | 回滚边界明确 |
 | 设计与视觉基线 | 移除内容类型/竞争范围筛选，相关性保留；数量显示移至分页区（空列表保留“共 0 条”） | Owner 决定 | 同步更新 docs/guides/01 §7.2 与 voice-plaza-design.spec.ts，Figma 待同步 |
@@ -121,7 +121,7 @@ data_changes:
 → _apply_projection_filters/_apply_filters 使用 .in_()
 
 步骤 3：Migration 回填
-→ 新增 20260924_0062
+→ 新增 20260928_0075
 → 单值转单元素数组，downgrade 反向
 
 步骤 4：重新生成
@@ -138,7 +138,7 @@ data_changes:
 | 决策 | 依据证据 | 为什么采用这个方案 |
 | --- | --- | --- |
 | D1 | E1/E2 | 单值改多值 + IN 过滤是最小充分实现 |
-| D2 | E3/E4 | 新增 0062 Migration 回填，避免破坏历史快照 |
+| D2 | E3/E4 | 新增 0075 Migration 回填，避免破坏历史快照 |
 | D3 | E5 | 重新生成 OpenAPI/Client 保持机器一致性 |
 
 ## 备选方案与取舍
@@ -150,7 +150,7 @@ data_changes:
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 情感、发声类型支持多选 | #592 / AC1 | satisfied | E1/E2 + Contract 多值 + IN 过滤 |
-| R2 | 历史筛选快照兼容 | #592 / AC2 | satisfied | E3 + 0062 Migration |
+| R2 | 历史筛选快照兼容 | #592 / AC2 | satisfied | E3 + 0075 Migration |
 | R3 | 前端筛选区多选并移除冗余维度 | #592 / AC3 | satisfied | 前端 VoicePlazaFilters/store 改动 |
 | R4 | 生成物与 Contract 一致 | #592 / AC4 | satisfied | OpenAPI/Client 重新生成 |
 
@@ -160,7 +160,7 @@ data_changes:
 | --- | --- | --- | --- |
 | backend/src/aima_ugc/contracts/http.py | voice_type/sentiment 改多值元组 | 多选 | R1 / E1 |
 | backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py | 过滤改 `.in_()` | 多值过滤 | R1 / E2 |
-| migrations/versions/20260924_0062_voice_plaza_multi_value_filters.py | 新增数据 Migration 回填 | 历史快照兼容 | R2 / E3 |
+| migrations/versions/20260928_0075_voice_plaza_multi_value_filters.py | 新增数据 Migration 回填 | 历史快照兼容 | R2 / E3 |
 | contracts/openapi/openapi.json、frontend/src/generated/api/client.ts | 重新生成 | 机器一致性 | R4 / E5 |
 | frontend/src/features/voice-plaza/ | 多选 + 移除冗余筛选 UI | 前端交互 | R3 |
 | frontend/tests/、tests/contracts/ | 同步测试 | 回归 | R1/R3 |
@@ -191,14 +191,14 @@ data_changes:
 | 项目 | 结论 | 依据 / 处理方式 |
 | --- | --- | --- |
 | 主要风险 | 破坏性 Contract 变更 | 重新生成 + Migration 回填 |
-| 兼容性 | 历史快照兼容 | 0062 回填单值 |
-| 数据 / Migration | 新增 0062 | down_revision=20260924_0061 |
+| 兼容性 | 历史快照兼容 | 0075 回填单值 |
+| 数据 / Migration | 新增 0075 | down_revision=20260928_0074 |
 | 部署 / 运行 | 不适用 | 无部署配置变化 |
-| 回滚 / 恢复 | downgrade 提供，多值无法无损回退时报错 | 0062 downgrade |
+| 回滚 / 恢复 | downgrade 提供，多值无法无损回退时报错 | 0075 downgrade |
 
 # 文档、依赖、部署与发布影响
 
-- **长期文档**：同步更新 `docs/guides/01_Figma与前端设计开发工作流.md` §7.2，记录声音广场筛选维度（移除内容类型/竞争范围，相关性保留）与数量显示位置变更（Owner 批准，Figma 待同步）。
+- **长期文档**：`docs/guides/01_Figma与前端设计开发工作流.md` 已在 main 被整体重写为高层接线指南（不再保留逐页 §7.2），本次合并按 main 新版保留；声音广场筛选维度变更（移除内容类型/竞争范围、相关性保留、平台/情感/发声类型多选、数量显示移至分页区）由本 Change 记录、Issue #592 Owner 决定与 `voice-plaza-design.spec.ts` 承载（Figma 待同步）。
 - **依赖 / Runtime**：不适用，无依赖升级。
 - **配置 / Secret**：不适用。
 - **部署 / Release**：不适用。
@@ -218,7 +218,7 @@ data_changes:
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | git | `git diff main...feature` | 仅 12 个声音广场文件 | 无无关改动 |
-| V2 | git | `git ls-tree main migrations/versions/` | 远端 0060/0061 保留 | 迁移链正确 |
+| V2 | git | `git ls-tree main migrations/versions/` | 远端迁移链 0001..0074 保留，本 PR 迁移重排为 0075 | 迁移链正确 |
 | V3 | 本地 | `check_change_completion.py --require-active-ready` | exit 0 | Change 结构门禁通过 |
 
 ## 未验证内容与剩余风险

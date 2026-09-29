@@ -6,6 +6,7 @@ import { apiErrorMessage } from '../../../shared/api/http'
 import { formatDateTime } from '../../../shared/domain/beijingTime'
 import AimaButton from '../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../shared/ui/AimaFeedbackBanner.vue'
+import { useTransientNotice } from '../../../shared/ui/useTransientNotice'
 import {
   addProviderConfig,
   archiveProvider,
@@ -39,7 +40,7 @@ const saving = ref(false)
 const pendingConnectionIds = reactive(new Set<string>())
 const error = ref<string | null>(null)
 const loadError = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const { message: notice, show: showNotice, clear: clearNotice } = useTransientNotice()
 const connectionResult = ref<ProviderConnectionTestResponse | null>(null)
 let connectionRequestVersion = 0
 
@@ -178,7 +179,7 @@ function resetDraft(preserveFeedback = false): void {
   })
   connectionResult.value = null
   error.value = null
-  if (!preserveFeedback) notice.value = null
+  if (!preserveFeedback) clearNotice()
 }
 
 function selectItem(item: ProviderConfigResponse, preserveFeedback = false): void {
@@ -200,7 +201,7 @@ function selectItem(item: ProviderConfigResponse, preserveFeedback = false): voi
   })
   connectionResult.value = null
   error.value = null
-  if (!preserveFeedback) notice.value = null
+  if (!preserveFeedback) clearNotice()
 }
 
 function maxRpsValue(): number | null {
@@ -213,7 +214,7 @@ async function save(): Promise<void> {
   if (!formValid.value) return
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     let saved: ProviderConfigResponse
     let success: string
@@ -254,7 +255,7 @@ async function save(): Promise<void> {
     }
     draft.apiKey = ''
     await load(saved.id)
-    notice.value = success
+    showNotice(success)
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -268,7 +269,7 @@ async function testConnection(): Promise<void> {
   const providerId = draft.id
   pendingConnectionIds.add(providerId)
   error.value = null
-  notice.value = null
+  clearNotice()
   connectionResult.value = null
   try {
     const result = await testProviderConnection(providerId)
@@ -286,11 +287,11 @@ async function archiveCurrent(): Promise<void> {
   if (!window.confirm(`确认归档服务配置“${item.display_name}”吗？归档后新任务不会再使用它，历史任务的冻结配置不会改变。`)) return
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     await archiveProvider(item.id)
     await Promise.all([load(), loadArchived()])
-    notice.value = '服务配置已归档。'
+    showNotice('服务配置已归档。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -301,11 +302,11 @@ async function archiveCurrent(): Promise<void> {
 async function restoreArchived(item: ResourceLifecycleResponse): Promise<void> {
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     await restoreArchivedProvider(item.id)
     await Promise.all([load(item.id), loadArchived()])
-    notice.value = '服务配置已恢复，当前保持停用且不会自动成为默认配置。请在对应的 AI 模型或 TikHub 标签查看。'
+    showNotice('服务配置已恢复，当前保持停用且不会自动成为默认配置。请在对应的 AI 模型或 TikHub 标签查看。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -316,7 +317,7 @@ async function restoreArchived(item: ResourceLifecycleResponse): Promise<void> {
 async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void> {
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     const eligibility = await fetchProviderDeleteEligibility(item.id)
     if (!eligibility.eligible) {
@@ -326,7 +327,7 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
     if (!window.confirm(`确认永久删除已归档服务配置“${item.name}”吗？此操作只允许从未进入业务历史的配置。`)) return
     await deleteArchivedProvider(item.id)
     await loadArchived()
-    notice.value = '未进入业务历史的服务配置已永久删除。'
+    showNotice('未进入业务历史的服务配置已永久删除。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {

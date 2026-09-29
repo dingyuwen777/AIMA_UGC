@@ -20,6 +20,7 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.canonical_replay_tables import (
     canonical_replay_all_requests_table,
+    canonical_replay_content_changes_table,
 )
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
@@ -50,11 +51,14 @@ def _campaign_available(
 def content_has_active_source(
     content_id: ColumnElement[UUID],
     *,
+    rule_filter_visible: ColumnElement[bool],
     excluding_campaign_id: UUID | None = None,
 ) -> ColumnElement[bool]:
     """返回可用于 SELECT/COUNT 的统一来源可见性谓词。
 
-    `excluding_campaign_id` 用于撤销预览：目标 Campaign 即使尚未真正写入撤销事实，也按已撤销处理。
+    调用方必须传入与 `content_id` 来自同一 FROM 身份的规则可见性列，
+    避免别名或 CTE 查询隐式引入 `contents` 笛卡尔积。`excluding_campaign_id`
+    用于撤销预览：目标 Campaign 即使尚未真正写入撤销事实，也按已撤销处理。
     历史单文件 Import 等无法映射到 Data Import Campaign 的来源视为不可撤销的有效来源。
     """
 
@@ -179,6 +183,14 @@ def content_has_active_source(
         )
     )
 
+    reverted_replay_change = exists(
+        select(literal(1)).where(
+            canonical_replay_content_changes_table.c.all_request_id
+            == contents_table.c.replay_visibility_owner_id,
+            canonical_replay_content_changes_table.c.content_id == content_id,
+            canonical_replay_content_changes_table.c.reverted_at.is_not(None),
+        )
+    )
     reverted_replay_owner = exists(
         select(literal(1))
         .select_from(
@@ -190,10 +202,14 @@ def content_has_active_source(
         )
         .where(
             contents_table.c.id == content_id,
-            canonical_replay_all_requests_table.c.lifecycle_status == "reverted",
+            or_(
+                canonical_replay_all_requests_table.c.lifecycle_status == "reverted",
+                reverted_replay_change,
+            ),
         )
     )
     return and_(
+        rule_filter_visible.is_(True),
         or_(
             direct_import_source,
             collection_candidate_source,

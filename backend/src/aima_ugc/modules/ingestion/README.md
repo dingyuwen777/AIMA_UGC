@@ -86,7 +86,7 @@ ingestion_policy
 完整跨模块链路：
 
 - [`docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
-- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/02_4000万历史数据迁移实施方案.md)
 
 ---
 
@@ -326,6 +326,7 @@ failed
 - 结构失败/取消但尚未逐行进入业务事务的整段行，由冻结 Chunk 行范围/row_count 形成可对账失败/取消事实，不制造海量伪行账本；
 - 人工 retry 的新 Batch 使用当前集合式数据库逻辑继承前一 Batch 已提交身份集合，失败 Chunk 中跨 Chunk 重复行仍稳定为 `duplicate`；
 - 同一文件按当前调度只执行最早 ready Chunk，保证跨 Chunk 身份的稳定首行胜出；不同文件可以利用有界窗口并行；
+- 历史 Campaign 的完成行数和失败 Chunk 数由 Chunk 终态在同事务增量维护到各 Source Item；详情与运行中心汇总 Source，调度按 Source 索引取最早 ready Chunk，避免大文件每次收口和轮询重扫全部 Chunk；
 - 排队 Chunk 取消时同步收敛 Item/Batch/Campaign 终态和行数汇总，不依赖不会发生的 Worker 回调；
 - 不同 Chunk 的来源 Request/Attempt 按不可变 Chunk Artifact 区分。
 
@@ -377,6 +378,8 @@ AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动
 
 原 Campaign、Source/Chunk Artifact、逐行 outcome、Raw、旧 Content Version 和审计继续保留；同一 Campaign 重复撤销幂等。`standard_observation` 与 `historical_fill_only` 都在各自业务写事务中记录 Contribution，因此机制上线后的新导入进入同一可撤销模型。
 
+撤销导入只排队执行该 Campaign 的贡献撤销，不自动发起全量重筛。采集运行中心把撤销中、已撤销的 Campaign 分别呈现为运行中、已取消，同时保留原始阶段，便于区分普通取消与数据撤销。
+
 ### 8.2 Persistent Canonical Replay 怎样补入新命中内容
 
 Replay 用于 Brand、Vehicle、Alias 或确定性 Resolver 扩展后重筛以前已经成功归一化、但当时
@@ -394,11 +397,19 @@ POST /api/v1/canonical-replays
 → Brand/Vehicle Evidence + checkpoint + 对账统计
 ```
 
-管理员“品牌与车型”页的“重筛入库”使用 `POST /api/v1/canonical-replays/all`。后端自动枚举
-全部合法历史 Canonical，在一个事务中冻结当前全部 active Brand/Vehicle 目录和选择摘要，并按
-100 个 Artifact 一组创建多个既有 Replay Run/Job；每个 Run 使用当前最大 `batch_size=1000`。
+管理员“品牌与车型”页的“重筛入库”使用 `POST /api/v1/canonical-replays/all`。受理事务冻结
+当前全部 active Brand/Vehicle 目录和数据库时间边界并创建 Planner Job；Planner 自动枚举该
+时间边界以前的全部合法历史 Canonical，按 100 个 Artifact 一组创建多个既有 Replay Run/Job；每个 Run 持久化兼容提示
+`batch_size=1000`。所有 Replay Worker 都把持久 `batch_size` 作为起始提示，而不是运行时
+硬上限，并根据有效 CPU、可用内存、相邻档实测吞吐、事务墙钟和前台压力继续升档或回落；
+升级前尚未完成的任务在新 Worker 接管后也使用同一控制器。
 所有 Job 一次排队，可由多个 Worker 并行领取；单 Worker 仍按队列逐个执行。100 表示每个 Run
 包含的 Canonical 文件上限，不是内容行数上限，单个文件仍以 Reader 流式读取。
+
+统一 Data Import 在创建 Campaign 时按 Worker 有效资源从 500、1,000、2,000、4,000 行中
+冻结 Chunk 大小；重试和接管继续使用相同边界。4,000 是当前事务安全护栏，扩容优先增加受
+全局预算约束的 Job 并发。Worker 进程池为导入和取消协调保留前台进程，Replay/撤回使用后台
+写槽；前台任务出现压力后，新后台事务收缩，避免数据处理吞吐增长挤占 API 稳定性。
 
 全量请求可以通过请求级 `cancel-and-revoke` 或 `revoke` 管理接口撤回。前者先请求未终态子 Job
 协作取消，全部子 Job 终态后再创建 `ingestion.canonical-replay-reversal.v1`；后者直接对终态请求
@@ -413,13 +424,27 @@ POST /api/v1/canonical-replays
 Attempt。Scope-only 或其它无法证明的旧关系失败关闭；当前没有 legacy 转换分支。API 的空
 `brand_ids` 表示冻结当时全部 active Brand，非空集合表示只冻结明确选择的 active Brand。
 
+全量重筛创建时排除正在撤销或已撤销 Campaign 的 Chunk；显式选择同类来源失败关闭。已经排队的全量重筛在 Worker 预检和逐件读取前重新核对来源资格：失效的 Chunk 跳过并推进检查点，其余有效输入继续。若撤销与同一 Chunk 的入库批次并发，批次事务读取并锁定 Campaign 状态，撤销中的来源不会继续写入。撤销前已提交的重筛写入不会因此自动回滚，需要对该全量重筛请求使用现有的请求级撤回。
+
 Worker 在第一次写 Content 前预检**全部**所选 Artifact，而不只是第一个；预检因此会额外完整
 打开一次输入集，容量规划必须把这部分 Artifact I/O 算入。业务阶段每件 Artifact 只打开一次并
-连续流式取批，按 `batch_size` 在当前 Fencing Token 下原子写 Content/Evidence、Run 内去重身份、
-checkpoint 与统计，不会每批从第 0 行重读。接管时只对当前 Artifact 从头线性跳过已提交行；未
-提交事务不会留下去重身份或统计。重复 Replay 不产生
+连续流式读取；兼容单文件和 Provider Canonical 可以跨 Artifact 累计到自适应 `batch_size`，
+再在当前 Fencing Token 下原子写 Content/Evidence、Run 内去重身份、跨文件 checkpoint 与统计。
+统一 Data Import 的 Canonical 已是有界 Chunk，继续按单 Chunk 聚合，避免与 Campaign 撤销跨界。
+接管时只对当前 Artifact 从头线性跳过已提交行；未提交事务不会留下去重身份或统计。重复 Replay 不产生
 第二条 Content：同一 Run 的重复输入计入 `duplicates_removed`，数据库已有 Content 计入
 `existing_convergence`，新建 Content 计入 `rows_ingested`。
+
+全量 Replay 的每个匹配 Content 同时进入请求级命中账本；同一 Content 跨 Artifact/Run 只要
+任一 Canonical 命中就保留。只有全部子 Job 成功后，最后一个终态事务才发布这个命中并集：
+所有 Canonical 都未命中的 Content 通过统一 `content_has_active_source` 门禁退出业务读取，
+运行、失败或取消中的请求不发布半完成结果。受理时间之后的普通有效入库优先恢复可见性；
+撤回当前发布快照时重新发布最近一次仍 active 的成功快照。这个过程保留 Raw、Canonical、
+Content Version、来源和审计，不物理删除 `contents`。
+
+普通入库只在既有批量 `INSERT/UPDATE` 中附带规则可见性和正常命中时间，不增加逐条数据库
+往返。终态发布先形成可见性变化集合，再用一次集合 `UPDATE` 修改 Content；派生声音广场投影
+按 1,000 个 ID 分批刷新。页面与导出读取物化状态，不在读取热路径重复计算全历史命中集合。
 
 前端提供全部历史 Canonical 创建入口，并在采集运行中心的请求级详情 Modal 提供取消/撤回与
 进度结果；显式 Artifact 创建、单 Run 查询和取消仍通过管理员 API。Replay 不自动创建 Analysis
@@ -657,7 +682,7 @@ historical_content.py（历史批量补空专用实现）
 先看：
 
 ```text
-docs/roadmap/03_4000万历史数据迁移实施方案.md
+docs/roadmap/02_4000万历史数据迁移实施方案.md
 docs/operations/02_4000万历史迁移与Analysis Run运行手册.md
 ```
 
@@ -746,7 +771,7 @@ frontend/e2e-fullstack/stage12-historical-analysis.spec.ts
 ## 17. 深入阅读
 
 - [`docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
-- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/02_4000万历史数据迁移实施方案.md)
 - [`docs/operations/02_4000万历史迁移与Analysis Run运行手册.md`](../../../../../docs/operations/02_4000万历史迁移与Analysis%20Run运行手册.md)
 - [`docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
 - [`docs/blueprint/02_采集系统与数据标准化.md`](../../../../../docs/blueprint/02_采集系统与数据标准化.md)

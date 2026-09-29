@@ -40,6 +40,8 @@ src/main.ts
 
 - [`frontend/src/app/routes.ts`](src/app/routes.ts)
 
+登录、无权限和工作台随应用首包加载；声音广场、采集运行中心、采集策略与管理员配置在进入对应路由时加载。路由路径、身份守卫和页面数据调用链不因此改变。
+
 不要从菜单、截图或历史 Stage 文档猜当前页面。
 
 ---
@@ -48,7 +50,7 @@ src/main.ts
 
 | 路径 | 页面 | 代码入口 |
 | --- | --- | --- |
-| `/` | 工作台 | [`frontend/src/views/HomeView.vue`](src/views/HomeView.vue)，当前仅展示“开发中”图片，功能后续实现 |
+| `/` | 工作台 | [`frontend/src/views/HomeView.vue`](src/views/HomeView.vue) → [`frontend/src/features/workbench/pages/WorkbenchPage.vue`](src/features/workbench/pages/WorkbenchPage.vue)，展示声音流、品牌用户心智、UGC 趋势与用户布局 |
 | `/login` | 飞书登录 | [`frontend/src/views/LoginView.vue`](src/views/LoginView.vue)，未登录（后端 401）时由守卫改道至此 |
 | `/no-access` | 无访问权限 | [`frontend/src/views/NoAccessView.vue`](src/views/NoAccessView.vue)，已登录但无权限（后端 403）时改道至此 |
 | `/collection-runtime` | 采集运行中心 | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue`](src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue) |
@@ -74,7 +76,7 @@ settings/
 dashboard/
 ```
 
-页面。Analysis Run 的创建与取消仍由声音广场承担，Data Import Campaign 仍由采集运行中心承担；全局任务中心只是 `AppShell` 内的跨页面只读聚合入口，不新增独立 `/jobs` 路由，也不代表后端已经存在一个万能 Task/Job 业务资源。
+独立 Route。工作台已经由 `features/workbench/` 承担，但继续复用根路径 `/`，没有另建 `/dashboard`。Analysis Run 的创建与取消仍由声音广场承担，Data Import Campaign 仍由采集运行中心承担；全局任务中心只是 `AppShell` 内的跨页面只读聚合入口，不新增独立 `/jobs` 路由，也不代表后端已经存在一个万能 Task/Job 业务资源。
 
 ---
 
@@ -397,13 +399,13 @@ src/shared/
 
 任务中心固定入口只占顶部工具区，不在每个页面正文重复一块“任务历史”；业务页面只在当前任务会直接影响本页操作时显示必要的 contextual 状态，例如声音广场的活动 Analysis Run。通知中心仍负责需要用户关注的消息，任务中心负责后台运行状态，两者不合并语义。
 
-工作台当前按用户确认展示静态“开发中”图片，图片内的示意数据和控件没有接入业务功能；采集操作仍从采集运行中心进入。除此以外，未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。飞书真实登录、Gold Set/双人审批、个人导出列 Profile 当前都不作为已实现页面能力。
+工作台由 `src/features/workbench/` 负责：页面消费 Generated Client，按当前 active Analysis Scheme/Taxonomy 展示声音流、一级用户心智和 UGC 趋势；个人布局通过显式编辑草稿保存，Analysis Run 进度复用全局任务中心轮询后合并刷新。工作台不会替代采集运行中心或声音广场：采集动作仍从采集运行中心进入，聚合洞察可深链到声音广场核对原声。除此以外，未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。飞书真实登录、Gold Set/双人审批、个人导出列 Profile 当前都不作为已实现页面能力。
 
 全局样式只放真正跨页面 Token/reset。当前 `src/shared/ui/` 提供页面头、按钮、代码内 SVG 图标、反馈 Banner 和模态弹窗；采集策略 KPI、表格、弹窗/抽屉的业务内容和表单仍留在 Feature 内，不把业务规则塞进万能公共组件。
 
 页面私有视觉优先留在 Page/Component，避免改一处全局 CSS 把多个页面一起破坏。
 
-管理员配置的 AI 模型与 TikHub 复用 `ProviderConfigurationPanel`，测试连接仅使用已保存配置；组件维护在途配置身份和响应归属，防止重复请求及旧结果串到其他配置。保存时锁定表单，失败保留草稿。AI 分析规则保存后用服务端返回的新版本建立编辑基线，发布前要求当前修改已保存。品牌目录、旗下车型、操作记录与报告策略保持明确 Owner 和独立滚动边界；`ReportStrategyPanel` 当前只负责两份 XLSX、日期、本地校验与“后端未接入”提示，不调用不存在的报告 API，也不伪造任务或飞书链接。对应 Browser 场景见 [`frontend/e2e/admin-configuration-figma.spec.ts`](e2e/admin-configuration-figma.spec.ts) 和 [`frontend/e2e/admin-configuration-release2.spec.ts`](e2e/admin-configuration-release2.spec.ts)，真实保存、连接测试和资源生命周期见 [`frontend/e2e-fullstack/admin-product-capabilities.spec.ts`](e2e-fullstack/admin-product-capabilities.spec.ts)。
+管理员配置的 AI 模型与 TikHub 复用 `ProviderConfigurationPanel`，测试连接仅使用已保存配置；组件维护在途配置身份和响应归属，防止重复请求及旧结果串到其他配置。保存时锁定表单，失败保留草稿。AI 分析规则保存后用服务端返回的新版本建立编辑基线，发布前要求当前修改已保存。品牌目录、旗下车型、操作记录与报告策略保持明确 Owner 和独立滚动边界；`ReportStrategyPanel` 通过 `api.ts` 调用真实的双 XLSX 上传、报告 Job 查询和轮询接口，默认 Dry Run 下展示真实生成结果但不伪造飞书链接。对应 Browser 场景见 [`frontend/e2e/admin-configuration-figma.spec.ts`](e2e/admin-configuration-figma.spec.ts) 和 [`frontend/e2e/admin-configuration-release2.spec.ts`](e2e/admin-configuration-release2.spec.ts)，真实保存、连接测试和资源生命周期见 [`frontend/e2e-fullstack/admin-product-capabilities.spec.ts`](e2e-fullstack/admin-product-capabilities.spec.ts)。
 
 新增页面：
 
@@ -730,7 +732,7 @@ npm --prefix frontend run test:e2e:fullstack
 
 后续是否实现、何时实现看：
 
-[`docs/roadmap/02_生产上线实施路线.md`](../docs/roadmap/02_生产上线实施路线.md)
+[`docs/roadmap/01_生产上线实施路线.md`](../docs/roadmap/01_生产上线实施路线.md)
 
 ---
 
@@ -742,7 +744,7 @@ npm --prefix frontend run test:e2e:fullstack
 - Collection 策略：[`docs/blueprint/08_采集策略与平台能力.md`](../docs/blueprint/08_采集策略与平台能力.md)
 - AI：[`docs/appendix/07_AI舆情打标与分析实现.md`](../docs/appendix/07_AI舆情打标与分析实现.md)
 - Data Import：[`docs/appendix/08_数据入口与统一入库实现.md`](../docs/appendix/08_数据入口与统一入库实现.md)
-- Stage 12 软件与生产门禁：[`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../docs/roadmap/03_4000万历史数据迁移实施方案.md)
+- Stage 12 软件与生产门禁：[`docs/roadmap/02_4000万历史数据迁移实施方案.md`](../docs/roadmap/02_4000万历史数据迁移实施方案.md)
 - Excel Export：[`docs/appendix/06_Excel统一数据导出与离线调试.md`](../docs/appendix/06_Excel统一数据导出与离线调试.md)
 - 测试分层与真实验收边界：[`docs/04_测试与调试说明.md`](../docs/04_测试与调试说明.md)
-- 后续阶段/Production Go-Live：[`docs/roadmap/02_生产上线实施路线.md`](../docs/roadmap/02_生产上线实施路线.md)
+- 后续阶段/Production Go-Live：[`docs/roadmap/01_生产上线实施路线.md`](../docs/roadmap/01_生产上线实施路线.md)

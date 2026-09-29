@@ -32,6 +32,10 @@ canonical_replay_all_requests_table = Table(
     Column("batch_size", Integer(), nullable=False),
     Column("created_by", Text(), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("accepted_before", DateTime(timezone=True), nullable=False),
+    Column("filter_snapshot", JSONB()),
+    Column("planning_status", Text(), nullable=False, server_default=text("'planned'")),
+    Column("planner_job_id", Uuid(), ForeignKey("jobs.id"), unique=True),
     Column("reversible", Boolean(), nullable=False, server_default=text("false")),
     Column("lifecycle_status", Text(), nullable=False, server_default=text("'active'")),
     Column("reversal_job_id", Uuid(), ForeignKey("jobs.id"), unique=True),
@@ -46,6 +50,13 @@ canonical_replay_all_requests_table = Table(
     Column("skipped_content_count", BigInteger(), nullable=False, server_default=text("0")),
     Column("restored_evidence_count", BigInteger(), nullable=False, server_default=text("0")),
     Column("skipped_evidence_count", BigInteger(), nullable=False, server_default=text("0")),
+    Column(
+        "reconciliation_status",
+        Text(),
+        nullable=False,
+        server_default=text("'legacy'"),
+    ),
+    Column("reconciled_at", DateTime(timezone=True)),
     CheckConstraint(
         "char_length(client_idempotency_key) between 1 and 120",
         name="idempotency_key_length",
@@ -57,8 +68,24 @@ canonical_replay_all_requests_table = Table(
     CheckConstraint("batch_size = 1000", name="batch_size_fixed"),
     CheckConstraint("char_length(created_by) between 1 and 200", name="created_by_length"),
     CheckConstraint(
+        "planning_status in ('queued','running','planned','failed','cancelled')",
+        name="planning_status_allowed",
+    ),
+    CheckConstraint(
         "lifecycle_status in ('active','cancelling','reverting','reverted','revert_failed')",
         name="lifecycle_status_allowed",
+    ),
+    CheckConstraint(
+        "filter_snapshot is null or jsonb_typeof(filter_snapshot) = 'object'",
+        name="filter_snapshot_object",
+    ),
+    CheckConstraint(
+        "reconciliation_status in ('legacy','pending','succeeded')",
+        name="reconciliation_status_allowed",
+    ),
+    CheckConstraint(
+        "(reconciliation_status = 'succeeded') = (reconciled_at is not null)",
+        name="reconciliation_consistent",
     ),
     CheckConstraint(
         "reverted_content_count >= 0 and hidden_content_count >= 0 "
@@ -70,6 +97,20 @@ canonical_replay_all_requests_table = Table(
         "reversal_requested_by is null or char_length(reversal_requested_by) between 1 and 200",
         name="reversal_requested_by_length",
     ),
+    info={"owner": "ingestion"},
+)
+
+canonical_replay_filter_state_table = Table(
+    "canonical_replay_filter_state",
+    metadata,
+    Column("singleton", Boolean(), primary_key=True, server_default=text("true")),
+    Column(
+        "active_request_id",
+        Uuid(),
+        ForeignKey("canonical_replay_all_requests.id"),
+    ),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("singleton", name="singleton_true"),
     info={"owner": "ingestion"},
 )
 
@@ -273,10 +314,23 @@ Index(
     canonical_replay_content_changes_table.c.created_at,
     canonical_replay_content_changes_table.c.id,
 )
+Index(
+    "ix_canonical_replay_content_changes_active_request_content",
+    canonical_replay_content_changes_table.c.all_request_id,
+    canonical_replay_content_changes_table.c.content_id,
+    postgresql_where=canonical_replay_content_changes_table.c.reverted_at.is_(None),
+)
+Index(
+    "ix_canonical_replay_content_changes_reverted_visibility",
+    canonical_replay_content_changes_table.c.all_request_id,
+    canonical_replay_content_changes_table.c.content_id,
+    postgresql_where=canonical_replay_content_changes_table.c.reverted_at.is_not(None),
+)
 
 __all__ = [
     "canonical_replay_all_requests_table",
     "canonical_replay_content_changes_table",
+    "canonical_replay_filter_state_table",
     "canonical_replay_run_artifacts_table",
     "canonical_replay_runs_table",
     "canonical_replay_seen_content_table",

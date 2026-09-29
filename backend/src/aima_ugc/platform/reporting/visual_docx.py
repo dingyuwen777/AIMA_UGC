@@ -11,9 +11,9 @@ from .chart_spec import ChartSpec
 from .docx_package import _A, _C, _PIC, _R, _W, _WP, DocxBuilder, _ImageAsset
 from .visuals import theme
 
-_PRIMARY_LEFT_WIDTH = 8_050
+_PRIMARY_LEFT_WIDTH = 4_000
 _PRIMARY_RIGHT_WIDTH = theme.CONTENT_WIDTH_TWIPS - _PRIMARY_LEFT_WIDTH
-_VISUAL_LEFT_WIDTH = 7_500
+_VISUAL_LEFT_WIDTH = 3_900
 _VISUAL_RIGHT_WIDTH = theme.CONTENT_WIDTH_TWIPS - _VISUAL_LEFT_WIDTH
 _COMPACT_DAILY_DIMENSIONS_PER_TABLE = 5
 
@@ -72,8 +72,8 @@ class ReportDocxBuilder(DocxBuilder):
             right,
             image_path,
             alt_text=alt_text,
-            max_width_emu=4_400_000,
-            max_height_emu=3_150_000,
+            max_width_emu=2_650_000,
+            max_height_emu=3_200_000,
         )
         ET.SubElement(left, f"{{{_W}}}p")
         ET.SubElement(right, f"{{{_W}}}p")
@@ -89,7 +89,7 @@ class ReportDocxBuilder(DocxBuilder):
         image_path: Path | None = None,
         alt_text: str = "",
     ) -> None:
-        """左侧展示 Top Ranking，右侧展示 Chart/词云，剩余数据转紧凑明细。"""
+        """左侧展示紧凑 Top Ranking，右侧展示 Chart 或词云。"""
 
         if len(headers) < 3:
             raise ValueError("Ranking 组合视图至少需要标签、数量、占比三列")
@@ -97,7 +97,6 @@ class ReportDocxBuilder(DocxBuilder):
             raise ValueError("Ranking 组合视图必须且只能提供 Chart 或图片")
         limit = max(1, min(top_n, len(rows)))
         top_rows = rows[:limit]
-        remainder = rows[limit:]
         caption = "AIMARankingChart" if chart is not None else "AIMARankingImage"
         outer = self._new_layout_table(
             self.body,
@@ -110,10 +109,13 @@ class ReportDocxBuilder(DocxBuilder):
         left = self._new_cell(visual_row, _VISUAL_LEFT_WIDTH, pad=100)
         right = self._new_cell(visual_row, _VISUAL_RIGHT_WIDTH, pad=145)
         self._append_section_label(left, f"Top {limit}")
-        self._append_ranking_table(left, top_rows, start_rank=1, show_progress=True)
+        self._append_ranking_table(left, top_rows, start_rank=1, show_progress=False)
         if chart is not None:
             self._append_chart(
-                right, chart, width_emu=4_650_000, height_emu=_ranking_visual_height(limit)
+                right,
+                chart,
+                width_emu=2_700_000,
+                height_emu=min(_ranking_visual_height(limit), 3_400_000),
             )
         else:
             assert image_path is not None
@@ -121,13 +123,11 @@ class ReportDocxBuilder(DocxBuilder):
                 right,
                 image_path,
                 alt_text=alt_text,
-                max_width_emu=4_650_000,
-                max_height_emu=3_300_000,
+                max_width_emu=2_700_000,
+                max_height_emu=3_400_000,
             )
         ET.SubElement(left, f"{{{_W}}}p")
         ET.SubElement(right, f"{{{_W}}}p")
-        if remainder:
-            self._append_compact_remainder(remainder, start_rank=limit + 1)
         self._add_after_layout_spacing()
 
     def add_table_visual(
@@ -150,7 +150,7 @@ class ReportDocxBuilder(DocxBuilder):
         left = self._new_cell(visual_row, _VISUAL_LEFT_WIDTH, pad=80)
         right = self._new_cell(visual_row, _VISUAL_RIGHT_WIDTH, pad=130)
         self._append_editorial_table(left, headers, rows)
-        self._append_chart(right, chart, width_emu=4_650_000, height_emu=3_250_000)
+        self._append_chart(right, chart, width_emu=2_700_000, height_emu=3_000_000)
         ET.SubElement(left, f"{{{_W}}}p")
         ET.SubElement(right, f"{{{_W}}}p")
         self._add_after_layout_spacing()
@@ -200,8 +200,8 @@ class ReportDocxBuilder(DocxBuilder):
         self._append_chart_inline(
             paragraph,
             self.chart_count,
-            width_emu=8_900_000,
-            height_emu=3_000_000,
+            width_emu=5_200_000,
+            height_emu=2_700_000,
         )
 
     def _new_layout_table(
@@ -313,7 +313,8 @@ class ReportDocxBuilder(DocxBuilder):
         start_rank: int,
         show_progress: bool,
     ) -> None:
-        table = self._new_layout_table(parent, (760, 3_420, 1_500, 1_450), caption="AIMARankingTop")
+        widths = (440, 1_900, 820, 840)
+        table = self._new_layout_table(parent, widths, caption="AIMARankingTop")
         for offset, row_values in enumerate(rows):
             rank = start_rank + offset
             tr = ET.SubElement(table, f"{{{_W}}}tr")
@@ -322,7 +323,7 @@ class ReportDocxBuilder(DocxBuilder):
             for column, value in enumerate(
                 (f"{rank:02d}", row_values[0], row_values[1], row_values[2])
             ):
-                width = (760, 3_420, 1_500, 1_450)[column]
+                width = widths[column]
                 cell = self._new_cell(tr, width, pad=45)
                 p = ET.SubElement(cell, f"{{{_W}}}p")
                 p_pr = ET.SubElement(p, f"{{{_W}}}pPr")
@@ -350,9 +351,9 @@ class ReportDocxBuilder(DocxBuilder):
                 bar_row = ET.SubElement(table, f"{{{_W}}}tr")
                 bar_row_pr = ET.SubElement(bar_row, f"{{{_W}}}trPr")
                 ET.SubElement(bar_row_pr, f"{{{_W}}}cantSplit")
-                spacer = self._new_cell(bar_row, 760, pad=0)
+                spacer = self._new_cell(bar_row, widths[0], pad=0)
                 ET.SubElement(spacer, f"{{{_W}}}p")
-                bar_cell = self._new_cell(bar_row, 4_920, pad=0)
+                bar_cell = self._new_cell(bar_row, sum(widths[1:]), pad=0)
                 bar_cell_pr = bar_cell.find(f"./{{{_W}}}tcPr")
                 assert bar_cell_pr is not None
                 ET.SubElement(bar_cell_pr, f"{{{_W}}}gridSpan", {f"{{{_W}}}val": "3"})

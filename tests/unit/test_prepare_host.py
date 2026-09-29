@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "deploy"))
 import prepare_host as host_preparation  # noqa: E402
 
 
+@pytest.mark.skipif(os.name == "nt", reason="验证 POSIX geteuid/chown/chmod 行为")
 def test_runtime_bind_compatible_relaxes_only_data_and_logs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -51,6 +53,7 @@ def test_runtime_bind_compatible_relaxes_only_data_and_logs(
     )
 
 
+@pytest.mark.skipif(os.name == "nt", reason="验证 POSIX geteuid/chown/chmod 行为")
 def test_non_strict_directory_keeps_structural_checks_but_tolerates_posix_translation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -73,6 +76,7 @@ def test_non_strict_directory_keeps_structural_checks_but_tolerates_posix_transl
     assert (tmp_path / "runtime/data").is_dir()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="验证 POSIX geteuid/chown/chmod 行为")
 def test_default_runtime_preparation_keeps_all_directory_permissions_strict(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -1,7 +1,7 @@
 """声音广场筛选支持情感、发声类型多值，并回填历史快照。
 
-Revision ID: 20260924_0062
-Revises: 20260924_0061
+Revision ID: 20260928_0075
+Revises: 20260928_0074
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from typing import Any
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260924_0062"
-down_revision: str | Sequence[str] | None = "20260924_0061"
+revision: str = "20260928_0075"
+down_revision: str | Sequence[str] | None = "20260928_0074"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

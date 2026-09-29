@@ -99,6 +99,13 @@ contents_table = Table(
         Uuid(),
         ForeignKey("canonical_replay_all_requests.id"),
     ),
+    Column(
+        "rule_filter_visible",
+        Boolean(),
+        nullable=False,
+        server_default=text("true"),
+    ),
+    Column("latest_normal_filter_match_at", DateTime(timezone=True)),
     UniqueConstraint("platform", "external_content_id"),
     CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),
     CheckConstraint("current_version >= 1", name="current_version_positive"),

@@ -47,7 +47,7 @@
 
 ## 治理校准后的项目边界
 
-- Worker 持久 Job 的精确注册以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为机器事实；当前正式架构文档已经同步十二种 Job，不再保留旧版本摘要。
+- Worker 持久 Job 的精确注册以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为机器事实；正式架构文档与当前 Registry 保持同步，不在本文件冻结数量。
 - 当前正式项目文档只维护 AIMA 自己的产品、架构、Contract、Schema、测试、CI、部署和开发导航；不在 AIMA 文档树复制外部通用治理规则或其安装、运行实现说明。
 - 永久 CI 只验证 AIMA 自己可维护的项目治理接线、文档/Secret、Change Ready 和产品质量；外部通用治理能力自身的源码回归不复制到业务仓库。
 - 项目中由安装流程维护的受管文件不作为 AIMA 项目事实源；普通业务开发不直接改写，版本更新通过正式安装/升级流程完成。
@@ -59,7 +59,7 @@
 1. 先读本文件；
 2. AIMA 项目规则和当前机器事实始终继续生效；通用研发方法不得覆盖或替代项目事实；
 3. 再读 [`docs/blueprint/README.md`](docs/blueprint/README.md) 和 [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md)；
-4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)；
+4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 [`docs/roadmap/01_生产上线实施路线.md`](docs/roadmap/01_生产上线实施路线.md)；
 5. 如果需要快速找到真实代码入口，读 [`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)；
 6. 按任务读取对应 Product、Blueprint、Roadmap、Operations、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
 7. 只读取与任务直接相关的内容，不用“全仓全部读一遍”代替真正理解调用链；
@@ -78,7 +78,7 @@
 | API、Job、Worker、前端 | [`docs/blueprint/04_后端任务API与前端.md`](docs/blueprint/04_后端任务API与前端.md) |
 | 日志、安全、运行边界 | [`docs/blueprint/05_日志安全部署与运维.md`](docs/blueprint/05_日志安全部署与运维.md) |
 | 当前开发环境怎么运行 | [`docs/02_环境运行与部署.md`](docs/02_环境运行与部署.md) |
-| 下一阶段、生产上线、Release/Backup/回滚 | [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md) + [`docs/operations/01_生产部署与离线Release方案.md`](docs/operations/01_生产部署与离线Release方案.md) |
+| 下一阶段、生产上线、Release/Backup/回滚 | [`docs/roadmap/01_生产上线实施路线.md`](docs/roadmap/01_生产上线实施路线.md) + [`docs/operations/01_生产部署与离线Release方案.md`](docs/operations/01_生产部署与离线Release方案.md) |
 | 开发/测试/CI/Git | [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) |
 | 用户可见行为/前后端/Full-stack/Provider 测试分层 | [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) + 当前实际测试与 CI 配置 |
 | 重大跨模块决定 | [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md) |
@@ -362,16 +362,23 @@ ingestion.import-excel.v2
 ingestion.historical-discover.v1
 ingestion.historical-snapshot.v1
 ingestion.historical-import-chunk.v2
+ingestion.data-import-revocation.v1
 analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
 vehicles.content-reclassification.v1
 ingestion.canonical-replay.v1
+ingestion.canonical-replay-cancellation.v1
 ingestion.canonical-replay-reversal.v1
+ingestion.canonical-replay-shard.v1
+ingestion.reversal-shard.v1
 content.voice-plaza-projection-backfill.v1
+workbench.snapshot-refresh.v1
 ```
 
-三个 `ingestion.historical-*` 是统一 Data Import Campaign 沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 负责按冻结目录对旧 Content 补齐 Brand/Vehicle Evidence；`ingestion.canonical-replay.v1` 负责用任务创建时冻结的当前 Brand/Vehicle 目录重放已持久化 Canonical，`ingestion.canonical-replay-reversal.v1` 负责根据同事务贡献账本撤回该次全历史重筛仍独占的业务变化；`content.voice-plaza-projection-backfill.v1` 负责按 UUID keyset 分块补齐声音广场派生读模型，增量写入仍由 Content 事实变更同步刷新。物理名称保留兼容，不构成平行任务系统。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
+`ingestion.data-import-revocation.v1` 按持久断点分批撤销已完成 Campaign 的来源贡献；运行中根据已提交批次耗时与有效资源调整下一批大小。大任务的父 Job 可通过 `ingestion.reversal-shard.v1` 按互斥 Content 范围分片；Replay Run 可通过 `ingestion.canonical-replay-shard.v1` 在原 Run 内按稳定内容身份分片。两种子 Job 均由通用 Job Runtime 领取，父任务完成前必须结清全部子 Job 与业务分片。
+
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner；`vehicles.content-reclassification.v1` 负责按冻结目录对旧 Content 补齐 Brand/Vehicle Evidence；`ingestion.canonical-replay.v1` 负责用任务创建时冻结的当前 Brand/Vehicle 目录重放已持久化 Canonical；`ingestion.canonical-replay-cancellation.v1` 在 HTTP 已提交父取消意图后分批通知子 Job，可由预留 Worker 领取；`ingestion.canonical-replay-reversal.v1` 根据同事务贡献账本撤回该次全历史重筛仍独占的业务变化；`content.voice-plaza-projection-backfill.v1` 负责按 UUID keyset 分块补齐声音广场派生读模型，增量写入仍由 Content 事实变更同步刷新。物理名称保留兼容，不构成平行任务系统。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
 
 Job 必须支持：
 

@@ -12,9 +12,13 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "0 19 * * 0"
 
 permissions:
   contents: read
+  pull-requests: read
+  checks: read
 
 concurrency:
   group: runtime-${{ github.event.pull_request.number || github.ref }}
@@ -31,11 +35,46 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve reusable Runtime evidence on main
+        id: reuse
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolver_output="${RUNNER_TEMP}/runtime-main-evidence.outputs"
+          : > "${resolver_output}"
+          if python3 scripts/quality/resolve_main_evidence.py \
+            --repository "${GITHUB_REPOSITORY}" \
+            --commit "${GITHUB_SHA}" \
+            --required-check "Compose Golden Path" \
+            --github-output "${resolver_output}"; then
+            cat "${resolver_output}" >> "${GITHUB_OUTPUT}"
+          else
+            resolver_status=$?
+            {
+              echo "reusable=false"
+              echo "reason=resolver_execution_failed"
+              echo "source_pr="
+              echo "source_head="
+              echo "current_tree="
+              echo "source_tree="
+            } >> "${GITHUB_OUTPUT}"
+            echo "::warning::Runtime evidence resolver failed; falling back to real Runtime validation (exit=${resolver_status})"
+          fi
+
       - name: Detect Runtime risk changes
         id: scope
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${{ steps.reuse.outputs.reusable }}" == "true" ]]; then
+            echo "runtime_required=false" >> "${GITHUB_OUTPUT}"
+            echo "main tree matches merged PR #${{ steps.reuse.outputs.source_pr }} and source Compose Golden Path is green; reuse Runtime evidence."
+            exit 0
+          fi
+
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
           else
@@ -67,8 +106,13 @@ jobs:
             echo "No Runtime-relevant changes detected; stable Compose Golden Path check succeeds without rebuilding the stack."
           fi
 
+      - name: Reuse merged PR Runtime evidence
+        if: steps.reuse.outputs.reusable == 'true'
+        shell: bash
+        run: echo "Compose Golden Path evidence is reused from the final merged PR because both revisions have the same Git tree."
+
       - name: Fast-path unchanged Runtime
-        if: steps.scope.outputs.runtime_required != 'true'
+        if: steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required != 'true'
         shell: bash
         run: echo "Runtime topology, packaging, bootstrap, migration and startup surfaces are unchanged."
 

@@ -177,7 +177,10 @@ class PostgresContentQueryRepository:
                     exists(
                         select(contents_table.c.id).where(
                             contents_table.c.id == content_id,
-                            content_has_active_source(contents_table.c.id),
+                            content_has_active_source(
+                                contents_table.c.id,
+                                rule_filter_visible=contents_table.c.rule_filter_visible,
+                            ),
                         )
                     )
                 )
@@ -219,7 +222,12 @@ class PostgresContentQueryRepository:
             .select_from(
                 content.outerjoin(analysis, current_analysis).outerjoin(manual, current_manual)
             )
-            .where(content_has_active_source(content.c.id))
+            .where(
+                content_has_active_source(
+                    content.c.id,
+                    rule_filter_visible=content.c.rule_filter_visible,
+                )
+            )
         )
 
     def list_filter_values(self) -> ContentFilterValues:
@@ -359,7 +367,10 @@ class PostgresContentQueryRepository:
             )
             .where(
                 content.c.id.in_(content_ids),
-                content_has_active_source(content.c.id),
+                content_has_active_source(
+                    content.c.id,
+                    rule_filter_visible=content.c.rule_filter_visible,
+                ),
             )
             .order_by(order)
         )
@@ -372,7 +383,12 @@ class PostgresContentQueryRepository:
             self._session.scalar(
                 select(func.count())
                 .select_from(contents_table)
-                .where(content_has_active_source(contents_table.c.id))
+                .where(
+                    content_has_active_source(
+                        contents_table.c.id,
+                        rule_filter_visible=contents_table.c.rule_filter_visible,
+                    )
+                )
             )
             or 0,
         )
@@ -388,7 +404,10 @@ class PostgresContentQueryRepository:
         if limit <= 0:
             raise ValueError("limit 必须大于 0")
         statement = select(contents_table.c.id, contents_table.c.current_version).where(
-            content_has_active_source(contents_table.c.id)
+            content_has_active_source(
+                contents_table.c.id,
+                rule_filter_visible=contents_table.c.rule_filter_visible,
+            )
         )
         if after_content_id is not None:
             statement = statement.where(contents_table.c.id > after_content_id)
@@ -965,7 +984,12 @@ class PostgresContentQueryRepository:
         statement = (
             select(*selected)
             .select_from(source_join)
-            .where(content_has_active_source(content.c.id))
+            .where(
+                content_has_active_source(
+                    content.c.id,
+                    rule_filter_visible=content.c.rule_filter_visible,
+                )
+            )
         )
         statement = _apply_filters(
             statement,

@@ -10,6 +10,7 @@ import AppShell from '../../../../app/layouts/AppShell.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
+import { useTransientNotice } from '../../../../shared/ui/useTransientNotice'
 import {
   type SupplementSourceSelection,
   useImportBatchesStore,
@@ -29,7 +30,8 @@ const router = useRouter()
 const dataImportOpen = ref(false)
 const supplementOpen = ref(false)
 const initialSupplementSource = ref<SupplementSourceSelection | null>(null)
-const notice = ref<string | null>(null)
+const { message: notice, show: showNotice } = useTransientNotice()
+const persistentNotice = ref<string | null>(null)
 const batchDetailOpen = computed({
   get: () => store.selectedBatch !== null,
   set: (open: boolean) => {
@@ -67,7 +69,7 @@ async function openCampaignFromRoute(): Promise<void> {
   try {
     await store.refreshHistoricalCampaign(campaignId)
   } catch {
-    showNotice('指定导入任务暂不可打开，请从列表重新选择。')
+    persistentNotice.value = '指定导入任务暂不可打开，请从列表重新选择。'
   }
 }
 
@@ -129,15 +131,20 @@ async function copy(value: string): Promise<void> {
   try {
     if (!navigator.clipboard) throw new Error('Clipboard API unavailable')
     await navigator.clipboard.writeText(value)
+    persistentNotice.value = null
     showNotice('ID 已复制。')
   } catch {
-    showNotice('复制失败，请检查浏览器剪贴板权限。')
+    persistentNotice.value = '复制失败，请检查浏览器剪贴板权限。'
   }
 }
 
 async function cancelAndRevokeReplay(): Promise<void> {
-  if (await store.cancelAndRevokeSelectedCanonicalReplay()) {
+  const result = await store.cancelAndRevokeSelectedCanonicalReplay()
+  if (result === 'accepted') {
+    persistentNotice.value = null
     showNotice('已请求取消；所有子任务结束后会自动撤回本次已入库数据。')
+  } else if (result === 'unconfirmed') {
+    persistentNotice.value = '请求结果暂未确认，请查看任务状态。'
   }
 }
 
@@ -145,14 +152,6 @@ async function revokeReplay(): Promise<void> {
   if (await store.revokeSelectedCanonicalReplay()) {
     showNotice('撤回任务已提交，可在本弹窗中持续查看进度和结果。')
   }
-}
-
-/** 页面 Toast 使用单一短时状态，后来的消息不会被旧定时器提前清除。 */
-function showNotice(message: string): void {
-  notice.value = message
-  window.setTimeout(() => {
-    if (notice.value === message) notice.value = null
-  }, 2600)
 }
 
 /** 从导入详情跳到声音广场时继续使用真实来源标识筛选。 */
@@ -234,6 +233,14 @@ async function viewRunResults(runId: string): Promise<void> {
     >
       采集运行刷新失败，当前列表已保留，请稍后重试。
     </AimaFeedbackBanner>
+    <AimaFeedbackBanner
+      v-if="persistentNotice"
+      class="page-error"
+      tone="warning"
+      role="alert"
+    >
+      {{ persistentNotice }}
+    </AimaFeedbackBanner>
 
     <div class="list-heading">
       <strong>采集运行记录</strong>
@@ -276,6 +283,8 @@ async function viewRunResults(runId: string): Promise<void> {
       v-model="canonicalReplayDetailOpen"
       :item="store.selectedCanonicalReplay"
       :acting="store.actingCanonicalReplay"
+      :cancel-unconfirmed="store.selectedCanonicalReplayCancellationUnconfirmed"
+      :cancel-pending="store.selectedCanonicalReplayCancellationPending"
       @refresh="store.refresh(true)"
       @copy="copy"
       @cancel-and-revoke="cancelAndRevokeReplay"

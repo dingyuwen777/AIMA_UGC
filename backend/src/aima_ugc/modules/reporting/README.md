@@ -84,6 +84,11 @@ reporting_data_export_items
 
 Worker 后续严格按这些版本读取。
 
+受理时复用 Content Query 的目标选择语句，在同一个 PostgreSQL 事务中用
+`INSERT ... SELECT` 写入这些冻结项，并取得目标数量；API 不先把全部候选
+加载为 Python 对象。显式选择中不可用的 Content 会被过滤，剩余项仍按
+请求顺序连续编号。空选择会回滚 Export 与 Job，维持原有错误语义。
+
 这和 Analysis Request 冻结 Content Version 是同一类原则：**长任务不能在执行时重新解释已经变化的业务选择。**
 
 ---
@@ -393,7 +398,8 @@ Analysis 字段
 
 ```text
 ContentFilterSnapshot / DataExportSubmitRequest
-→ reporting_http.py 冻结 targets
+→ reporting_http.py 取得共享目标选择语句
+→ PostgresDataExportRepository.create() 集合冻结 ID、Version、Ordinal
 → request_snapshot
 → API Test
 → generated Client

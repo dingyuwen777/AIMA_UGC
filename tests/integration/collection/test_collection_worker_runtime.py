@@ -206,9 +206,17 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             "analysis.content-run-plan.v1",
             "reporting.content-export-excel.v1",
             "vehicles.content-reclassification.v1",
+            "ingestion.canonical-replay-plan.v1",
             "ingestion.canonical-replay.v1",
+            "ingestion.canonical-replay-cancellation.v1",
             "ingestion.canonical-replay-reversal.v1",
+            "ingestion.data-import-revocation.v1",
+            "ingestion.reversal-shard.v1",
+            "ingestion.canonical-replay-shard.v1",
             "content.voice-plaza-projection-backfill.v1",
+            "workbench.snapshot-refresh.v1",
+            "administration.feishu-report-publication.v1",
+            "administration.feishu-representative-selection.v1",
         )
         assert worker.run_once() is True
         assert worker.run_once() is False

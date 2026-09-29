@@ -53,14 +53,14 @@ describe('采集运行中心 release-2 Figma 基线', () => {
     expect(source).toContain('CollectionRuntimePage/components/')
   })
 
-  it('主列表使用 1212px 七列产品表格与 Figma 状态进度组件', async () => {
+  it('主列表使用容纳完整计数的七列产品表格与 Figma 状态进度组件', async () => {
     const [tableSource, statusSource] = await Promise.all([
       readRuntimeSource('components/CollectionRuntimeTable.vue'),
       readRuntimeSource('components/CollectionRuntimeStatusProgress.vue'),
     ])
 
     expect(tableSource).toContain('<span>处理环节</span>')
-    expect(tableSource).toContain('min-width: 1212px')
+    expect(tableSource).toContain('min-width: 1400px')
     expect(tableSource).toContain('<CollectionRuntimeStatusProgress')
     expect(tableSource).not.toContain('<span>{{ elapsed(')
     expect(statusSource).toContain('status-pill')

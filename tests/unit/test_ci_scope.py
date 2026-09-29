@@ -118,25 +118,33 @@ def test_collection_persistence_change_runs_only_collection_postgres_and_relevan
     )
 
 
-def test_content_integration_test_change_runs_only_content_postgres_without_fullstack() -> None:
+def test_content_integration_test_change_runs_only_changed_postgres_target_without_fullstack() -> (
+    None
+):
     requirements = _requirements("tests/integration/content/test_postgres_ingestion.py")
 
     assert requirements.profile == "persistence"
     assert requirements.backend_required is True
     assert requirements.postgres_required is True
-    assert requirements.postgres_suites == ("content",)
+    assert requirements.postgres_targets == (
+        "tests/integration/content/test_postgres_ingestion.py",
+    )
+    assert requirements.postgres_suites == ()
     assert requirements.fullstack_required is False
     assert requirements.fullstack_specs == ()
 
 
-def test_vehicle_integration_test_change_runs_vehicle_postgres_suite() -> None:
+def test_vehicle_integration_test_change_runs_only_changed_postgres_target() -> None:
     requirements = _requirements(
         "tests/integration/vehicles/test_content_reclassification_postgres.py"
     )
 
     assert requirements.profile == "persistence"
     assert requirements.postgres_required is True
-    assert requirements.postgres_suites == ("vehicles",)
+    assert requirements.postgres_targets == (
+        "tests/integration/vehicles/test_content_reclassification_postgres.py",
+    )
+    assert requirements.postgres_suites == ()
     assert requirements.fullstack_required is False
 
 
@@ -269,7 +277,7 @@ def test_unknown_new_fullstack_spec_fails_closed_to_entire_suite() -> None:
     assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
-def test_mixed_frontend_and_backend_change_requires_cross_component_proof() -> None:
+def test_mixed_frontend_and_backend_change_selects_known_journey_instead_of_all() -> None:
     requirements = _requirements(
         "frontend/src/features/voice-plaza/store.ts",
         "backend/src/aima_ugc/platform/time.py",
@@ -279,7 +287,76 @@ def test_mixed_frontend_and_backend_change_requires_cross_component_proof() -> N
     assert requirements.frontend_required is True
     assert requirements.backend_required is True
     assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ("manual-relevance-review.spec.ts",)
+
+
+def test_workbench_persistence_change_uses_exact_postgres_targets() -> None:
+    requirements = _requirements("backend/src/aima_ugc/adapters/persistence/postgres/workbench.py")
+
+    assert requirements.postgres_required is True
+    assert requirements.postgres_targets == (
+        "tests/integration/content/test_workbench_runtime.py",
+        "tests/integration/content/test_workbench_scheme_bootstrap.py",
+    )
+    assert requirements.postgres_suites == ()
+    assert requirements.fullstack_required is False
+
+
+def test_historical_import_persistence_uses_owned_domain_suites_and_known_journeys() -> None:
+    requirements = _requirements(
+        "backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py"
+    )
+
+    assert requirements.postgres_required is True
+    assert requirements.postgres_targets == ()
+    assert requirements.postgres_suites == ("content", "ingestion")
+    assert requirements.fullstack_specs == (
+        "excel-import.spec.ts",
+        "stage12-historical-analysis.spec.ts",
+    )
+
+
+def test_unknown_new_user_journey_fails_closed_to_fullstack() -> None:
+    requirements = _requirements(
+        "frontend/src/features/new-critical-flow/page.vue",
+        "backend/src/aima_ugc/bootstrap/new_critical_flow_http.py",
+    )
+
+    assert requirements.profile == "contract"
+    assert requirements.fullstack_required is True
     assert requirements.fullstack_specs == FULLSTACK_ALL
+
+
+def test_workbench_frontend_and_backend_change_has_no_unrelated_real_fullstack() -> None:
+    requirements = _requirements(
+        "backend/src/aima_ugc/adapters/persistence/postgres/workbench.py",
+        "frontend/src/features/workbench/pages/WorkbenchPage.vue",
+    )
+
+    assert requirements.profile == "cross_component"
+    assert requirements.frontend_required is True
+    assert requirements.backend_required is True
+    assert requirements.postgres_required is True
+    assert requirements.fullstack_required is False
+
+
+def test_frontend_dependency_audit_only_runs_for_dependency_inputs() -> None:
+    ordinary = _requirements("frontend/src/features/workbench/pages/WorkbenchPage.vue")
+    lock_change = _requirements("frontend/package-lock.json")
+
+    assert ordinary.frontend_required is True
+    assert ordinary.frontend_audit_required is False
+    assert lock_change.frontend_required is True
+    assert lock_change.frontend_audit_required is True
+
+
+def test_wheel_build_only_runs_for_python_package_inputs() -> None:
+    ordinary = _requirements("backend/src/aima_ugc/platform/time.py")
+    package = _requirements("pyproject.toml")
+
+    assert ordinary.backend_required is True
+    assert ordinary.package_required is False
+    assert package.package_required is True
 
 
 def test_ci_self_change_and_unknown_path_fail_closed_to_full() -> None:
@@ -348,7 +425,10 @@ def test_github_output_exposes_each_required_layer_and_selected_suites(tmp_path:
     assert values["frontend_required"] == "false"
     assert values["contract_required"] == "false"
     assert values["postgres_required"] == "true"
+    assert values["postgres_targets"] == ""
     assert values["postgres_suites"] == "content ingestion"
+    assert values["frontend_audit_required"] == "false"
+    assert values["package_required"] == "false"
     assert values["fullstack_required"] == "true"
     assert values["stack_smoke_required"] == "false"
     assert values["report_font_required"] == "false"

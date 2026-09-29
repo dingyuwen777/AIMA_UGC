@@ -56,6 +56,7 @@ from aima_ugc.platform.time import beijing_now
 from .runtime import PlatformRuntime
 from .runtime_config import new_secret_ref
 
+SLOW_VEHICLE_CREATE_MS = 1_000
 SLOW_VEHICLE_UPDATE_MS = 1_000
 
 
@@ -74,18 +75,27 @@ class PostgresAdministrationHttpService:
         principal: Principal,
         request_id: str,
     ) -> VehicleModelResponse:
-        """创建车型并记录管理员审计。"""
+        """创建车型并记录管理员审计；慢请求输出安全的数据库阶段耗时。"""
 
         principal.require_administrator()
-        session = self._runtime.database.new_session()
+        timings = StageTimings()
+        outcome = "failed"
+        commit_started: float | None = None
+        session = None
+        model: VehicleModel | None = None
         try:
+            with timings.measure("session_create"):
+                session = self._runtime.database.new_session()
             with session.begin():
                 repository = PostgresVehicleCatalogRepository(session)
                 brand_repository = PostgresBrandVehicleRepository(session)
+                with timings.measure("db_checkout"):
+                    session.connection()
                 if body.brand_id is None:
                     raise AdministrationConflict("新建 active 车型必须绑定 active 品牌")
                 try:
-                    brand_repository.require_active_brand(body.brand_id)
+                    with timings.measure("brand_check"):
+                        brand_repository.require_active_brand(body.brand_id)
                 except LookupError as exc:
                     raise AdministrationResourceNotFound from exc
                 except RuntimeError as exc:
@@ -98,25 +108,50 @@ class PostgresAdministrationHttpService:
                     series_name=body.series_name,
                     category_name=body.category_name,
                     actor_ref=principal.principal_id,
+                    timings=timings,
                 )
-                _audit(
-                    session,
-                    principal=principal,
-                    request_id=request_id,
-                    event_type="vehicle_model_created",
-                    object_type="vehicle_model",
-                    object_id=str(model.id),
-                    detail={
-                        "code": model.code,
-                        "brand_id": str(model.brand_id),
-                        "catalog_version": model.catalog_version,
-                    },
-                )
-                return _vehicle_response(repository, model)
+                with timings.measure("audit"):
+                    _audit(
+                        session,
+                        principal=principal,
+                        request_id=request_id,
+                        event_type="vehicle_model_created",
+                        object_type="vehicle_model",
+                        object_id=str(model.id),
+                        detail={
+                            "code": model.code,
+                            "brand_id": str(model.brand_id),
+                            "catalog_version": model.catalog_version,
+                        },
+                    )
+                with timings.measure("response_projection"):
+                    response = _vehicle_response(repository, model)
+                commit_started = perf_counter()
+            timings.record_elapsed("commit", commit_started)
+            commit_started = None
+            outcome = "success"
+            return response
         except IntegrityError as exc:
             raise AdministrationConflict from exc
         finally:
-            session.close()
+            if commit_started is not None:
+                timings.record_elapsed("commit", commit_started)
+            if session is not None:
+                session.close()
+            duration_ms = timings.total_ms
+            if duration_ms >= SLOW_VEHICLE_CREATE_MS:
+                log_event(
+                    self._runtime.logger,
+                    logging.WARNING,
+                    "administration.vehicle_model_create_slow",
+                    "车型新增保存耗时达到慢请求阈值",
+                    request_id=request_id,
+                    vehicle_model_id=None if model is None else str(model.id),
+                    changed_fields=sorted(body.model_fields_set),
+                    outcome=outcome,
+                    duration_ms=duration_ms,
+                    stage_ms=timings.stage_ms,
+                )
 
     def list_vehicle_models(self, query: VehicleModelListQuery) -> VehicleModelListResponse:
         """读取车型目录；普通用户可消费只读目录。"""

@@ -13,6 +13,7 @@ const generated = vi.hoisted(() => ({
   listKeywordPacks: vi.fn(),
   listDataImportCampaigns: vi.fn(),
   getDataImportCampaign: vi.fn(),
+  listDataImportCampaignItems: vi.fn(),
   getImportBatch: vi.fn(),
   createImportBatch: vi.fn(),
 }))
@@ -26,6 +27,7 @@ import {
   fetchCollectionRuntimeList,
 } from '../src/features/import-batches/api'
 import { useImportBatchesStore } from '../src/features/import-batches/store'
+import { runtimeStageLabel } from '../src/features/import-batches/format'
 
 function batch(id: string, status: 'succeeded' | 'failed', rowsIngested: number) {
   return {
@@ -83,6 +85,11 @@ describe('collection runtime feature', () => {
     })
   })
 
+  it('shows distinct import revocation stages', () => {
+    expect(runtimeStageLabel('revoking')).toBe('正在撤销导入')
+    expect(runtimeStageLabel('revoked')).toBe('已撤销导入')
+  })
+
   it('delegates the unified list query to the Orval client', async () => {
     await fetchCollectionRuntimeList({ record_types: ['tikhub_discovery', 'tikhub_batch_supplement'], status: 'running', limit: 20 })
     expect(generated.listCollectionRuntimeRuns).toHaveBeenCalledWith({ record_types: ['tikhub_discovery', 'tikhub_batch_supplement'], status: 'running', limit: 20 })
@@ -116,6 +123,25 @@ describe('collection runtime feature', () => {
     expect(generated.listCollectionRuntimeRuns).toHaveBeenCalledOnce()
     expect(generated.getCollectionRuntimeSummary).toHaveBeenCalledOnce()
     expect(store.items[0]?.record_type).toBe('tikhub_discovery')
+  })
+
+  it('updates running campaign statistics and settled source results on the same refresh', async () => {
+    const store = useImportBatchesStore()
+    store.selectedHistoricalCampaign = { id: 'campaign-1', status: 'running', stats: { created: 0 } } as typeof store.selectedHistoricalCampaign & object
+    generated.getDataImportCampaign.mockResolvedValue({
+      id: 'campaign-1', status: 'running', stats: { created: 12 },
+    })
+    generated.listDataImportCampaignItems.mockResolvedValue({
+      items: [{ id: 'item-1', status: 'succeeded', relative_path: 'part-1.xlsx' }],
+      has_more: false,
+    })
+
+    await store.refreshHistoricalCampaignLive('campaign-1')
+
+    expect(store.selectedHistoricalCampaign?.stats?.created).toBe(12)
+    expect(store.historicalCampaignItems.map((item) => item.id)).toEqual(['item-1'])
+    expect(generated.getDataImportCampaign).toHaveBeenCalledWith('campaign-1')
+    expect(generated.listDataImportCampaignItems).toHaveBeenCalledWith('campaign-1')
   })
 
   it('keeps an older selected usable Import Batch available in the supplement drawer', async () => {

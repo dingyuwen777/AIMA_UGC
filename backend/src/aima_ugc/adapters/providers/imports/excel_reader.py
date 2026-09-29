@@ -9,6 +9,7 @@ from typing import Any
 from openpyxl import load_workbook
 
 from .excel_profile import ExcelImportProfile
+from .fast_excel_reader import iter_worksheet_values
 from .models import ExcelImportRow
 
 
@@ -32,7 +33,7 @@ def iter_excel_rows(
         worksheet = workbook[selected_sheet]
         # 部分来源工具会把 dimension 错写为 A1:A1；流式读取不能信任该元数据。
         worksheet.reset_dimensions()
-        rows = worksheet.iter_rows(values_only=True)
+        rows = iter_worksheet_values(workbook, worksheet)
         try:
             raw_headers = next(rows)
         except StopIteration as exc:

@@ -102,11 +102,11 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         <div class="stat-error">
           <span>失败</span><strong>{{ formatNumber(item.stats.failed_count) }}</strong>
         </div>
-        <div><span>内容</span><strong>{{ formatNumber(item.stats.content_count) }}</strong></div>
-        <div><span>评论</span><strong>{{ formatNumber(item.stats.comment_count) }}</strong></div>
+        <div><span>内容（按范围累计）</span><strong>{{ formatNumber(item.stats.content_count) }}</strong></div>
+        <div><span>评论（按范围累计）</span><strong>{{ formatNumber(item.stats.comment_count) }}</strong></div>
         <div><span>一级评论</span><strong>{{ formatNumber(item.stats.root_comment_count) }}</strong></div>
         <div><span>回复</span><strong>{{ formatNumber(item.stats.reply_count) }}</strong></div>
-        <div><span>相关性过滤</span><strong>{{ formatNumber(item.stats.filtered_count) }}</strong></div>
+        <div><span>品牌车型过滤</span><strong>{{ formatNumber(item.stats.filtered_count) }}</strong></div>
       </section>
       <template v-if="item.mode === 'batch_supplement'">
         <h3>平台评论覆盖</h3>

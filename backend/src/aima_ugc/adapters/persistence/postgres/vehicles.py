@@ -155,34 +155,40 @@ class PostgresVehicleCatalogRepository:
         brand_id: UUID | None = None,
         series_name: str | None = None,
         category_name: str | None = None,
+        timings: StageTimings | None = None,
     ) -> VehicleModel:
-        """创建车型并在同一事务追加目录版本和别名。"""
+        """创建车型并在同一事务追加目录版本和别名；可选记录真实数据库阶段。"""
 
-        catalog_version = self.next_catalog_version(reason="vehicle_created", actor_ref=actor_ref)
+        with timings.measure("catalog_version") if timings else nullcontext():
+            catalog_version = self.next_catalog_version(
+                reason="vehicle_created", actor_ref=actor_ref
+            )
         model_id = uuid4()
         now = beijing_now()
-        row = (
-            self._session.execute(
-                insert(vehicle_models_table)
-                .values(
-                    id=model_id,
-                    code=code,
-                    display_name=display_name,
-                    brand_id=brand_id,
-                    series_name=series_name,
-                    category_name=category_name,
-                    status="active",
-                    version=1,
-                    catalog_version=catalog_version,
-                    created_at=now,
-                    updated_at=now,
+        with timings.measure("model_insert") if timings else nullcontext():
+            row = (
+                self._session.execute(
+                    insert(vehicle_models_table)
+                    .values(
+                        id=model_id,
+                        code=code,
+                        display_name=display_name,
+                        brand_id=brand_id,
+                        series_name=series_name,
+                        category_name=category_name,
+                        status="active",
+                        version=1,
+                        catalog_version=catalog_version,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    .returning(vehicle_models_table)
                 )
-                .returning(vehicle_models_table)
+                .mappings()
+                .one()
             )
-            .mappings()
-            .one()
-        )
-        self._replace_aliases(model_id, aliases, created_at=now)
+        with timings.measure("alias_replace") if timings else nullcontext():
+            self._replace_aliases(model_id, aliases, created_at=now)
         return _vehicle_from_row(row)
 
     def get_model(self, model_id: UUID, *, for_update: bool = False) -> VehicleModel | None:
@@ -314,7 +320,7 @@ class PostgresVehicleCatalogRepository:
                 brand_status = self._session.scalar(
                     select(vehicle_brands_table.c.status)
                     .where(vehicle_brands_table.c.id == requested_brand_id)
-                    .with_for_update()
+                    .with_for_update(key_share=True)
                 )
             if brand_status != "active":
                 raise RuntimeError("active 车型只能绑定有效 active 品牌")
@@ -623,6 +629,61 @@ class PostgresVehicleCatalogRepository:
             )
         return True
 
+    def restore_automatic_evidence_batch(
+        self,
+        entries: tuple[tuple[UUID, int, list[dict[str, object]], list[dict[str, object]]], ...],
+    ) -> set[UUID]:
+        """集合撤回未改变 Content Version 的自动车型证据。"""
+
+        if not entries:
+            return set()
+        pairs = tuple((content_id, version) for content_id, version, _, _ in entries)
+        if len(set(pairs)) != len(pairs):
+            raise ValueError("批量撤回车型证据包含重复 Content Version")
+        self._lock_vehicle_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        snapshots = self.snapshot_automatic_evidence_batch(
+            pairs=tuple(pair for pair in pairs if pair not in locked)
+        )
+        restored: set[UUID] = set()
+        changed: list[tuple[UUID, int]] = []
+        values: list[dict[str, object]] = []
+        for content_id, version, expected_after, before in entries:
+            pair = (content_id, version)
+            if pair in locked or snapshots[pair] != expected_after:
+                continue
+            restored.add(content_id)
+            if before == expected_after:
+                continue
+            changed.append(pair)
+            values.extend(_decode_evidence_row(row) for row in before)
+        if changed:
+            self._session.execute(
+                delete(content_vehicle_evidence_table).where(
+                    tuple_(
+                        content_vehicle_evidence_table.c.content_id,
+                        content_vehicle_evidence_table.c.content_version,
+                    ).in_(changed),
+                    content_vehicle_evidence_table.c.is_manual_locked.is_(False),
+                )
+            )
+        if values:
+            self._session.execute(insert(content_vehicle_evidence_table), values)
+        return restored
+
     def carry_manual_review(
         self,
         *,
@@ -675,6 +736,84 @@ class PostgresVehicleCatalogRepository:
         if values:
             self._session.execute(insert(content_vehicle_evidence_table), values)
         return True
+
+    def carry_manual_review_batch(self, entries: tuple[tuple[UUID, int, int], ...]) -> set[UUID]:
+        """先集合锁定并筛选人工锁，仅对确有人工结论的版本执行继承。"""
+
+        pairs = tuple((content_id, source) for content_id, source, _ in entries)
+        if not pairs:
+            return set()
+        self._lock_vehicle_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        carried: set[UUID] = set()
+        for content_id, source, target in entries:
+            if (content_id, source) in locked and self.carry_manual_review(
+                content_id=content_id, source_version=source, target_version=target
+            ):
+                carried.add(content_id)
+        return carried
+
+    def restore_automatic_evidence_new_version_batch(
+        self,
+        entries: tuple[
+            tuple[UUID, int, int, list[dict[str, object]], list[dict[str, object]]], ...
+        ],
+    ) -> set[UUID]:
+        """集合核对来源快照，并把撤回前自动证据克隆到新 Content Version。"""
+
+        pairs = tuple((content_id, source) for content_id, source, _, _, _ in entries)
+        if not pairs:
+            return set()
+        if len(set(pairs)) != len(pairs) or any(
+            source == target for _, source, target, _, _ in entries
+        ):
+            raise ValueError("新版本车型证据批量撤回的版本对不合法")
+        self._lock_vehicle_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        snapshots = self.snapshot_automatic_evidence_batch(
+            pairs=tuple(pair for pair in pairs if pair not in locked)
+        )
+        restored: set[UUID] = set()
+        values: list[dict[str, object]] = []
+        for content_id, source, target, expected_after, before in entries:
+            pair = (content_id, source)
+            if pair in locked or snapshots[pair] != expected_after:
+                continue
+            restored.add(content_id)
+            for row in before:
+                value = _decode_evidence_row(row)
+                value["id"] = uuid4()
+                value["content_version"] = target
+                values.append(value)
+        if values:
+            self._session.execute(insert(content_vehicle_evidence_table), values)
+        return restored
 
     def append_automatic_alias_evidence_batch(
         self,
@@ -847,6 +986,7 @@ class PostgresVehicleCatalogRepository:
         self,
         *,
         entries: tuple[tuple[UUID, int, tuple[ContentVehicleEvidence, ...]], ...],
+        timings: StageTimings | None = None,
     ) -> tuple[int, int]:
         """集合追加既有 Content Version 的 Import 车型证据，并保持人工锁优先。"""
 
@@ -862,21 +1002,23 @@ class PostgresVehicleCatalogRepository:
                 for item in evidence
             ):
                 raise ValueError("批量 Import 车型证据身份非法")
-        self._lock_vehicle_review_writes(pairs)
-        locked_pairs = set(
-            self._session.execute(
-                select(
-                    content_vehicle_review_locks_table.c.content_id,
-                    content_vehicle_review_locks_table.c.content_version,
-                ).where(
-                    tuple_(
+        with timings.measure("vehicle_advisory_lock") if timings else nullcontext():
+            self._lock_vehicle_review_writes(pairs)
+        with timings.measure("vehicle_manual_lock_read") if timings else nullcontext():
+            locked_pairs = set(
+                self._session.execute(
+                    select(
                         content_vehicle_review_locks_table.c.content_id,
                         content_vehicle_review_locks_table.c.content_version,
-                    ).in_(pairs),
-                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                    ).where(
+                        tuple_(
+                            content_vehicle_review_locks_table.c.content_id,
+                            content_vehicle_review_locks_table.c.content_version,
+                        ).in_(pairs),
+                        content_vehicle_review_locks_table.c.is_locked.is_(True),
+                    )
                 )
             )
-        )
         values = [
             {
                 "id": item.id,
@@ -897,16 +1039,17 @@ class PostgresVehicleCatalogRepository:
             for item in evidence
         ]
         inserted = 0
-        for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
-            result = cast(
-                CursorResult[Any],
-                self._session.execute(
-                    pg_insert(content_vehicle_evidence_table)
-                    .values(list(chunk))
-                    .on_conflict_do_nothing(constraint="uq_content_vehicle_evidence_identity")
-                ),
-            )
-            inserted += result.rowcount or 0
+        with timings.measure("vehicle_upsert") if timings else nullcontext():
+            for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+                result = cast(
+                    CursorResult[Any],
+                    self._session.execute(
+                        pg_insert(content_vehicle_evidence_table)
+                        .values(list(chunk))
+                        .on_conflict_do_nothing(constraint="uq_content_vehicle_evidence_identity")
+                    ),
+                )
+                inserted += result.rowcount or 0
         return inserted, len(locked_pairs)
 
     def replace_automatic_alias_evidence_batch(
@@ -959,25 +1102,39 @@ class PostgresVehicleCatalogRepository:
                 .values(is_active=False)
             )
 
-        values = [
-            {
-                "id": item.id,
-                "content_id": item.content_id,
-                "content_version": item.content_version,
-                "vehicle_model_id": item.vehicle_model_id,
-                "source": item.source,
-                "matched_text": item.matched_text,
-                "source_field": item.source_field,
-                "catalog_version": item.catalog_version,
-                "confidence": item.confidence,
-                "is_manual_locked": False,
-                "is_active": True,
-                "created_at": item.created_at,
-            }
-            for content_id, content_version, evidence in entries
-            if (content_id, content_version) not in locked_pairs
-            for item in evidence
-        ]
+        values: list[dict[str, object]] = []
+        seen: set[tuple[UUID, int, UUID, str, int]] = set()
+        for content_id, content_version, evidence in entries:
+            if (content_id, content_version) in locked_pairs:
+                continue
+            for item in evidence:
+                identity = (
+                    item.content_id,
+                    item.content_version,
+                    item.vehicle_model_id,
+                    item.source,
+                    item.catalog_version,
+                )
+                # PostgreSQL 单条 ON CONFLICT UPDATE 不允许同一唯一键出现两次。
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                values.append(
+                    {
+                        "id": item.id,
+                        "content_id": item.content_id,
+                        "content_version": item.content_version,
+                        "vehicle_model_id": item.vehicle_model_id,
+                        "source": item.source,
+                        "matched_text": item.matched_text,
+                        "source_field": item.source_field,
+                        "catalog_version": item.catalog_version,
+                        "confidence": item.confidence,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": item.created_at,
+                    }
+                )
         if values:
             statement = pg_insert(content_vehicle_evidence_table).values(values)
             self._session.execute(
@@ -994,6 +1151,146 @@ class PostgresVehicleCatalogRepository:
                 )
             )
         return len(values), len(locked_pairs)
+
+    def converge_automatic_alias_evidence_for_replay(
+        self,
+        *,
+        entries: tuple[tuple[UUID, int, tuple[ContentVehicleEvidence, ...]], ...],
+        source_pairs: tuple[tuple[UUID, int] | None, ...],
+        replace_existing: bool,
+    ) -> tuple[
+        dict[tuple[UUID, int], list[dict[str, object]]],
+        dict[tuple[UUID, int], list[dict[str, object]]],
+    ]:
+        """一次锁定、一次快照并收敛 Replay 车型证据，直接返回精确 before/after。"""
+
+        if len(entries) != len(source_pairs):
+            raise ValueError("Replay 车型证据 source pair 数量不一致")
+        if not entries:
+            return {}, {}
+        target_pairs = tuple(sorted({(item[0], item[1]) for item in entries}, key=str))
+        source_pair_values = tuple(item for item in source_pairs if item is not None)
+        lock_pairs = tuple(sorted(set(target_pairs).union(source_pair_values), key=str))
+        for content_id, content_version, evidence in entries:
+            if any(
+                item.content_id != content_id
+                or item.content_version != content_version
+                or item.source != "alias_match"
+                or item.is_manual_locked
+                for item in evidence
+            ):
+                raise ValueError("Replay 自动车型证据身份非法")
+
+        self._lock_vehicle_review_writes(lock_pairs)
+        frozen = self.snapshot_automatic_evidence_batch(pairs=lock_pairs)
+        before_by_pair = {pair: [dict(row) for row in frozen[pair]] for pair in source_pair_values}
+        after_by_pair = {pair: [dict(row) for row in frozen[pair]] for pair in target_pairs}
+        locked_pairs = set(
+            self._session.execute(
+                select(
+                    content_vehicle_review_locks_table.c.content_id,
+                    content_vehicle_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_vehicle_review_locks_table.c.content_id,
+                        content_vehicle_review_locks_table.c.content_version,
+                    ).in_(target_pairs),
+                    content_vehicle_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        unlocked_pairs = tuple(item for item in target_pairs if item not in locked_pairs)
+
+        def merge_after(row: RowMapping) -> None:
+            """把数据库实际持久行并入目标快照，保留真实 ID 与时间。"""
+
+            pair = (cast(UUID, row["content_id"]), cast(int, row["content_version"]))
+            rendered = _json_evidence_row(row)
+            rows = after_by_pair[pair]
+            for index, current in enumerate(rows):
+                if current["id"] == rendered["id"]:
+                    rows[index] = rendered
+                    break
+            else:
+                rows.append(rendered)
+
+        if replace_existing and unlocked_pairs:
+            updated = self._session.execute(
+                update(content_vehicle_evidence_table)
+                .where(
+                    tuple_(
+                        content_vehicle_evidence_table.c.content_id,
+                        content_vehicle_evidence_table.c.content_version,
+                    ).in_(unlocked_pairs),
+                    content_vehicle_evidence_table.c.source == "alias_match",
+                    content_vehicle_evidence_table.c.is_active.is_(True),
+                    content_vehicle_evidence_table.c.is_manual_locked.is_(False),
+                )
+                .values(is_active=False)
+                .returning(content_vehicle_evidence_table)
+            ).mappings()
+            for row in updated:
+                merge_after(row)
+
+        values: list[dict[str, object]] = []
+        seen: set[tuple[UUID, int, UUID, str, int]] = set()
+        for content_id, content_version, evidence in entries:
+            if (content_id, content_version) in locked_pairs:
+                continue
+            for item in evidence:
+                identity = (
+                    item.content_id,
+                    item.content_version,
+                    item.vehicle_model_id,
+                    item.source,
+                    item.catalog_version,
+                )
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                values.append(
+                    {
+                        "id": item.id,
+                        "content_id": item.content_id,
+                        "content_version": item.content_version,
+                        "vehicle_model_id": item.vehicle_model_id,
+                        "source": item.source,
+                        "matched_text": item.matched_text,
+                        "source_field": item.source_field,
+                        "catalog_version": item.catalog_version,
+                        "confidence": item.confidence,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": item.created_at,
+                    }
+                )
+        if values:
+            statement = pg_insert(content_vehicle_evidence_table).values(values)
+            persistence = (
+                statement.on_conflict_do_update(
+                    constraint="uq_content_vehicle_evidence_identity",
+                    set_={
+                        "matched_text": statement.excluded.matched_text,
+                        "source_field": statement.excluded.source_field,
+                        "confidence": statement.excluded.confidence,
+                        "is_manual_locked": False,
+                        "is_active": True,
+                        "created_at": statement.excluded.created_at,
+                    },
+                )
+                if replace_existing
+                else statement.on_conflict_do_nothing(
+                    constraint="uq_content_vehicle_evidence_identity"
+                )
+            )
+            persisted = self._session.execute(
+                persistence.returning(content_vehicle_evidence_table)
+            ).mappings()
+            for row in persisted:
+                merge_after(row)
+        for rows in after_by_pair.values():
+            rows.sort(key=lambda item: str(item["id"]))
+        return before_by_pair, after_by_pair
 
     def replace_manual_evidence(
         self,

@@ -1,924 +1,361 @@
-# AIMA_UGC HTTP API 实现说明
+# AIMA_UGC API 使用语义与调用指南
 
-本文面向前端开发、接口联调和后端开发，说明**当前代码真正注册的 HTTP API、每组接口背后的 Application Service/Job/数据 Owner，以及修改接口时需要同步什么**。
+本文面向前端开发、接口联调和后端开发，解释 **AIMA HTTP API 的稳定调用语义、领域边界和机器事实入口**。
 
-精确机器事实始终以以下当前仓库 Owner 为准：
+它不再手工维护完整 Route/字段清单。完整 Method、Path、Request、Response、operationId 和生成 Client 的唯一机器事实是：
 
-- [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py)
-- [`backend/src/aima_ugc/contracts/runtime.py`](../backend/src/aima_ugc/contracts/runtime.py)
-- [`backend/src/aima_ugc/contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)
-- [`backend/src/aima_ugc/bootstrap/api.py`](../backend/src/aima_ugc/bootstrap/api.py)
-- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
-- [`backend/src/aima_ugc/entrypoints/api_main.py`](../backend/src/aima_ugc/entrypoints/api_main.py)
-- [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json)
-- [`frontend/src/generated/api/`](../frontend/src/generated/api/)
+- [backend/src/aima_ugc/contracts/http.py](../backend/src/aima_ugc/contracts/http.py)
+- [contracts/openapi/openapi.json](../contracts/openapi/openapi.json)
+- [frontend/src/generated/api/](../frontend/src/generated/api/)
 
-本文不会提前写不存在的 `/alerts`、`/reports` 等未来 URL；接口真正进入最终 FastAPI Assembly + OpenAPI + Test 后，才属于当前 API。
+运行能力、管理、人工复核等领域还会使用各自 Pydantic Contract；精确集合以当前 FastAPI Assembly 与 OpenAPI 为准。
 
----
+## 1. 先理解两类调用
 
-# 1. API 调用链
+### 普通查询
 
-普通查询：
-
-```text
+~~~text
 Vue Feature
-→ generated API Client
+→ Generated Client
 → FastAPI Route
-→ Query/Application Service
+→ Query / Application Service
 → PostgreSQL Query Repository
 → Response Model
-```
+~~~
 
-耗时任务：
+页面不直接理解数据库表；Router 不直接拼 SQL。
 
-```text
-Vue / HTTP Client
-→ FastAPI Route
-→ 短事务创建业务父事实 + 当前阶段必须存在的 Job
-→ 202 Accepted
-→ Worker 认领 Job
-→ 执行业务
-→ 更新业务父事实 / Job Result
-→ 前端轮询查询
-```
+### 长任务
 
-Router 不直接 SQL，也不直接请求 TikHub/LLM。目录发现、XLSX 预检/Chunk、历史导入、Analysis Run Planner、Analysis Shard、Excel Export 等长任务都不能退回 HTTP 请求内同步跑完。
+~~~text
+HTTP 请求
+→ 短事务冻结用户输入 / 业务父事实
+→ 创建持久 Job
+→ 返回已受理
+→ Worker 认领并执行
+→ 更新父事实、进度、结果
+→ 前端查询 / 轮询
+~~~
 
----
+采集、数据导入、Canonical Replay、AI Analysis、Excel Export 等耗时能力不能退回一个 HTTP 请求里同步跑完。
 
-# 2. Contract、生成 Client 与错误结构
+长任务的关键语义不是“哪个 URL 名字好看”，而是：
 
-HTTP Request/Response 主要维护在：
+- 创建时冻结哪些输入；
+- 谁拥有业务终态；
+- Job 如何重试、取消和恢复；
+- 前端查询的是业务父事实还是内部 Job；
+- 哪些结果已经提交，哪些只是排队。
 
-- [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py)
+架构说明见 [docs/blueprint/04_后端任务API与前端.md](blueprint/04_后端任务API与前端.md)。
 
-运行能力类的安全只读 Contract：
+## 2. Contract 和生成 Client
 
-- [`backend/src/aima_ugc/contracts/runtime.py`](../backend/src/aima_ugc/contracts/runtime.py)
+生成链固定为：
 
-人工相关性复核 Contract：
-
-- [`backend/src/aima_ugc/contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)
-
-生成链：
-
-```text
-Pydantic
+~~~text
+Pydantic Request / Response
 → FastAPI OpenAPI
 → contracts/openapi/openapi.json
 → Orval
 → frontend/src/generated/api/
-```
+~~~
 
-统一错误：
+Generated Client 是生成物，不手工修改。
 
-```text
-HttpErrorResponse
-```
+后端 Contract 变化时，应同步机器生成链和相应 API/Contract/Frontend Evidence；不要在 Markdown 再手抄一套完整字段表，也不要在前端用平行 Type 掩盖 Contract 漂移。
 
-主要结构：
+## 3. 统一错误语义
 
-```json
-{
-  "type": "https://aima.example/problems/xxx",
-  "title": "错误标题",
-  "status": 422,
-  "detail": "可安全展示的说明",
-  "request_id": "...",
-  "errors": []
-}
-```
+业务错误使用统一 Problem Response 语义，并携带 request_id 便于关联日志。
 
-规则：
+常见 HTTP 语义：
 
-- 业务失败不返回 200；
-- 未找到通常是 404；
-- 状态冲突/结果未就绪通常是 409；
-- 请求 Contract 不合法通常是 422；
-- 422 会用同一 `request_id` 记录安全的字段路径和错误码，响应/前端也可展示这些定位信息；日志不记录被拒绝的字段值或完整请求体；
-- 未预期异常返回安全 500，不暴露 SQL、Secret、内部路径或 traceback；
-- `request_id` 用来关联应用日志。
+- 404：目标资源不存在；
+- 409：当前资源状态或结果就绪条件冲突；
+- 422：请求 Contract 不合法；
+- 401：没有有效身份；
+- 403：已有身份但没有所需权限；
+- 500：未预期内部错误，响应不得暴露 SQL、Secret、内部路径或 traceback。
 
-生成目录禁止手工修改；后端 Contract 变化后必须重新生成 OpenAPI/generated Client 并跑对应 Contract/API/Frontend 验证。
+精确错误结构以 OpenAPI / Pydantic 为准。日志可以记录安全字段路径和错误码，不应把被拒绝的敏感值或完整 Secret 写进日志。
 
----
+## 4. Health：live 和 ready 不是一回事
 
-# 3. Health API
+live 只回答“API 进程能否响应”。
 
-## `GET /health/live`
-
-作用：进程是否存活并能响应 HTTP。
-
-不是：数据库完整业务检查、TikHub 实时 Probe、LLM 在线/余额证明。
-
-## `GET /health/ready`
-
-当前 Readiness 检查关键本地/基础依赖边界，包括：
-
-- PostgreSQL；
-- ArtifactStore；
-- 日志目录。
-
-代码：
-
-- [`backend/src/aima_ugc/bootstrap/api.py`](../backend/src/aima_ugc/bootstrap/api.py)
-- [`backend/src/aima_ugc/platform/health.py`](../backend/src/aima_ugc/platform/health.py)
-
-
----
-
-## 3.1 管理员 Provider 配置 API
-
-LLM 与采集 Provider 的运行时配置统一由管理员配置中心维护；Secret 明文只在写请求进入后端 Secret Store，读取响应、数据库审计和日志均不得返回 API Key 或内部 `secret_ref`。
-
-### `GET /api/v1/provider-configs`
-
-管理员读取 LLM/TikHub Provider 的安全投影。可按 `provider_kind=llm|collection` 筛选；响应通过 `secret_configured` 表示密钥是否已经配置。
-
-### `POST /api/v1/provider-configs`
-
-创建新的 Provider 配置。LLM 需要 `model`；Collection Provider 不使用 `model`。提交 `api_key` 时服务端创建不可变 Secret 引用，数据库仅保存该引用。
-
-### `PUT /api/v1/provider-configs/{provider_config_id}`
-
-完整更新可变 Provider 字段。省略 `api_key` 表示保持当前 Secret；提供新 `api_key` 表示轮换到新的不可变 Secret 版本。保存成功后**无需重启服务**：之后新建的 Analysis/Collection Run 读取当前数据库配置；已创建 Run 与同 Run 自动重试继续使用创建时冻结的运行时快照。
-
-实现边界：
-
-- [`backend/src/aima_ugc/contracts/administration.py`](../backend/src/aima_ugc/contracts/administration.py)
-- [`backend/src/aima_ugc/bootstrap/administration_http.py`](../backend/src/aima_ugc/bootstrap/administration_http.py)
-- [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../backend/src/aima_ugc/bootstrap/runtime_config.py)
-- [`backend/src/aima_ugc/platform/security/secrets.py`](../backend/src/aima_ugc/platform/security/secrets.py)
-
----
-
-## 3.2 品牌 / 车型目录管理 API
-
-Stage 2 在 Stage 1 的 Brand/Vehicle Schema 上提供独立可用的目录管理、准备度与冻结 Snapshot 能力。精确 Request/Response、Method、operationId 仍以当前 OpenAPI 为机器事实；实现边界位于：
-
-- [`backend/src/aima_ugc/contracts/brand_vehicle.py`](../backend/src/aima_ugc/contracts/brand_vehicle.py)
-- [`backend/src/aima_ugc/bootstrap/brand_vehicle_http.py`](../backend/src/aima_ugc/bootstrap/brand_vehicle_http.py)
-- [`backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py`](../backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py)
-
-当前公开路径：
-
-```text
-GET    /api/v1/vehicle-brands
-POST   /api/v1/vehicle-brands
-GET    /api/v1/vehicle-brands/{brand_id}
-PUT    /api/v1/vehicle-brands/{brand_id}
-DELETE /api/v1/vehicle-brands/{brand_id}
-POST   /api/v1/vehicle-brands/{brand_id}/aliases
-DELETE /api/v1/vehicle-brands/{brand_id}/aliases/{alias_id}
-PUT    /api/v1/vehicle-models/{vehicle_model_id}/brand
-GET    /api/v1/vehicle-catalog/readiness
-GET    /api/v1/vehicle-catalog/snapshot
-```
-
-关键语义：
-
-- Brand CRUD、Alias 与 Vehicle 品牌归属变化共用唯一 `vehicle_catalog_versions`；
-- 新建 active Vehicle 必须显式绑定有效 active Brand；Stage 1 前遗留的未归属 active Vehicle 不会被名称或 Keyword Pack 猜测回填；
-- `GET /api/v1/vehicle-catalog/readiness` 面向管理员暴露尚未完成有效 Brand 归属的 active Vehicle；
-- Snapshot 支持 `all_active` 与 `selected` Brand Scope。选择 Brand 自动包含其全部 active Vehicle，并冻结 Brand/Vehicle/Alias、目录版本与全局 Alias 歧义上下文；
-- 跨 Brand/Vehicle 的同名 Alias 保留为冲突事实，Resolver fail-safe，不猜唯一实体；
-- 统一 Snapshot/Resolver 已由 Excel Import 与 TikHub Discovery 复用；精确运行语义分别见第 4、5 节。
-
-# 4. Collection Runtime API
-
-代码：
-
-- [`backend/src/aima_ugc/bootstrap/collection_http.py`](../backend/src/aima_ugc/bootstrap/collection_http.py)
-- [`backend/src/aima_ugc/modules/collection/http.py`](../backend/src/aima_ugc/modules/collection/http.py)
-- [`backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py`](../backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py)
-
-## 4.1 `GET /api/v1/collection-capabilities`
-
-用于前端读取当前可执行 Provider Config、Platform Capability 和 Provider-neutral Search 选项。平台支持的排序、时间筛选、评论/二级评论等不能在前端维护第二套能力表。
-
-## 4.2 `POST /api/v1/collection-runs`
-
-创建一次手工 Collection Run。
-
-当前模式：
-
-```text
-discovery
-→ Keyword Pack 逐词搜索 + Brand Scope 入库前过滤
-
-batch_supplement
-→ 基于 Data Import Campaign 或兼容 Import Batch 做补采
-```
-
-补采请求必须且只能提交 `data_import_campaign_id` 或 `import_batch_id` 之一。新页面优先使用 Campaign；旧 Batch 字段继续保持兼容。
-
-Discovery 必须提交至少一个 `keyword_pack_ids`；`brand_ids` 为空表示冻结全部 active Brand，非空表示 selected Brand Scope。Collection 创建接口不再接收 `vehicle_model_ids`；车型通过所选 Brand 对应的 active Vehicle 与 Alias 进入冻结 Filter Snapshot。实际 Scope 数量只由平台和去重后的 Search Terms 决定，不按 Vehicle Alias 扩展。
-
-HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Worker 完成。
-
-## 4.3 `GET /api/v1/collection-runs/{run_id}`
-
-读取一个 Run 当前状态、Scope、进度、统计、错误摘要等。Scope 返回 Provider-neutral 运行事实，不把 TikHub 私有分页 Cursor 当公共 Contract。
-
-辅助补采 Scope 额外返回可选的 `identity_status`、`comment_stage` 与 `comment_coverage`；其统计区分 `root_comment_count` 和 `reply_count`，由已持久化的 Candidate/Comment 事实汇总。Run 统计也汇总这两个分项。`identity_status` 区分解析中、已确认、不可获取、歧义和冲突；`comment_stage` 区分一级评论抓取、回复抓取与结束。精确枚举和字段类型以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 中的 `CollectionScopeResponse` 及生成 OpenAPI 为准。
-
-## 4.4 `GET /api/v1/collection-runtime/runs`
-
-采集运行中心统一 Read Model，可投影 Data Import Campaign、兼容 Excel Import、TikHub Run 与全历史 Canonical Replay Request。统一发生在 Query 层，不表示数据库把这些父事实合成万能表。Campaign 下的物理 Chunk Batch 不再作为兼容 Excel Import 重复投影或计入 KPI；同理，`canonical_replay_all_requests` 对应一条 `canonical_replay` 记录，关联的多个 Replay Run/Job 只提供聚合状态、按 Artifact 加权的进度和统计，不重复成为列表记录。
-
-## 4.5 `GET /api/v1/collection-runtime/summary`
-
-返回运行中心 KPI Read Model。精确字段以当前 `CollectionRuntimeSummaryResponse` 为准。
-
----
-
-# 5. 统一 Data Import API：当前页面主导入工作流
-
-当前采集运行中心只有一个“导入数据”入口，页面主工作流使用 `/api/v1/data-import-*`。
+ready 回答“当前服务是否具备运行所需基础依赖”，包括数据库、ArtifactStore、日志等本地关键边界。
 
 实现入口：
 
-- [`backend/src/aima_ugc/bootstrap/historical_import_http.py`](../backend/src/aima_ugc/bootstrap/historical_import_http.py)
-- [`backend/src/aima_ugc/bootstrap/historical_import_worker.py`](../backend/src/aima_ugc/bootstrap/historical_import_worker.py)
-- [`backend/src/aima_ugc/modules/ingestion/historical_http.py`](../backend/src/aima_ugc/modules/ingestion/historical_http.py)
-- [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](../backend/src/aima_ugc/modules/ingestion/historical_jobs.py)
-- [`backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py`](../backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py)
-- [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue`](../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue)
+- [backend/src/aima_ugc/bootstrap/api.py](../backend/src/aima_ugc/bootstrap/api.py)
+- [backend/src/aima_ugc/platform/health.py](../backend/src/aima_ugc/platform/health.py)
 
-完整业务语义：
+Provider 实时网络、余额或业务任务成功不由 readiness 证明。
 
-- [`docs/appendix/08_数据入口与统一入库实现.md`](appendix/08_数据入口与统一入库实现.md)
-- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)
+## 5. 身份、管理员和 Secret 边界
 
-## 5.1 `GET /api/v1/data-import-sources/server/directories`
+AIMA 的业务身份是 Provider-neutral Principal。当前角色与认证状态说明见 [docs/product/03_角色权限与产品状态.md](product/03_角色权限与产品状态.md)。
 
-枚举管理员批准的服务器只读根目录内的目录/`.xlsx` 元数据。
+管理员 Provider 配置遵守：
 
-安全边界：
+~~~text
+写入 API Key
+→ Secret Store
 
-- HTTP 只接受/返回批准根内相对路径；
-- 拒绝绝对路径、`..`、UNC/设备路径和路径逃逸；
-- 拒绝 Symlink/Junction/Reparse Point 等链接组件；
-- 这是只读发现能力，不是通用文件管理器。
+数据库
+→ 保存非敏感 Runtime 配置 + secret_ref
 
-## 5.2 `POST /api/v1/data-import-campaigns/server`
+读取 API / 审计 / 日志
+→ 不返回 Secret 明文
+~~~
 
-从批准服务器目录创建 Data Import Campaign。
+更新 Provider Config 后，新建 Run 使用当前数据库配置；已经创建的 Run/自动重试继续使用创建时冻结的运行事实，避免同一任务中途漂移。
 
-创建时独立冻结：
+实现入口：
 
-```text
-source_kind = server_path
-ingestion_policy = standard_observation | historical_fill_only
-```
+- [backend/src/aima_ugc/contracts/administration.py](../backend/src/aima_ugc/contracts/administration.py)
+- [backend/src/aima_ugc/bootstrap/administration_http.py](../backend/src/aima_ugc/bootstrap/administration_http.py)
 
-`source_kind` 只决定文件怎样获得；`ingestion_policy` 决定 Content Owner 写入语义，二者不能互相推导。
+## 6. 品牌 / 车型目录：目录事实和运行快照分开
 
-## 5.3 `POST /api/v1/data-import-campaigns/local`
+管理员维护 Brand、Alias、Vehicle 归属；任务执行时不能每一步重新读取实时目录。
 
-根据浏览器显式选择的本地文件/文件夹清单创建本地 Campaign。页面只提交安全相对路径、大小和必要元数据，不获得/提交本机绝对路径。
+创建导入或采集任务时，会冻结对应 Brand/Vehicle Filter Snapshot。选择全部 active Brand 或指定 Brand，最终都转成可审计的运行快照。
 
-## 5.4 `PUT /api/v1/data-import-campaigns/{campaign_id}/items/{item_id}/content`
+重要语义：
 
-为本地 Campaign 的一个冻结 Source Item 流式上传 `.xlsx` 内容。
+- active Vehicle 必须有合法 Brand 归属；
+- Alias 冲突保留为冲突事实，Resolver fail-safe，不猜唯一实体；
+- 目录版本变化不会反向改写已创建任务的 Snapshot；
+- Excel 与 TikHub 可以复用同一 Brand/Vehicle Resolver，但搜索关键词与品牌过滤不是一件事。
 
-重复 PUT 必须与被冻结的文件名、大小和 SHA-256 等身份一致；不能用重试替换成另一份文件。
+长期边界见 [docs/blueprint/02_采集系统与数据标准化.md](blueprint/02_采集系统与数据标准化.md)。
 
-## 5.5 `POST /api/v1/data-import-campaigns/{campaign_id}/finalize`
+## 7. Collection：能力由后端投影，前端不维护平台 if/else
 
-本地上传清单全部完成后显式 finalize，进入后续 Snapshot/Preflight/Chunk 流程。服务器来源由自身 Discover/Snapshot 状态机推进，不使用浏览器本地字节上传。
+Collection API 的核心资源包括：
 
-## 5.6 Campaign 查询
+- 平台/Provider Capability；
+- 手工 Run；
+- Run/Scope 进度；
+- 采集运行中心统一 Read Model。
 
-```text
-GET /api/v1/data-import-campaigns
-GET /api/v1/data-import-campaigns/{campaign_id}
-GET /api/v1/data-import-campaigns/{campaign_id}/items
-GET /api/v1/data-import-campaigns/{campaign_id}/conflicts
-```
+前端读取后端 Capability 决定排序、时间筛选、评论/二级评论等可用能力，不能维护第二套平台能力表。
 
-Campaign Response 中的 `progress` 来自 PostgreSQL 持久事实集合式聚合：
+当前运行模式的业务差异、Supplement 和评论阶段说明见：
 
-```text
-发现阶段
-→ 总量未知，允许不确定进度，不伪造百分比
+- [docs/blueprint/08_采集策略与平台能力.md](blueprint/08_采集策略与平台能力.md)
+- [docs/collection/README.md](collection/README.md)
 
-预检/快照
-→ Source Item / Snapshot Job 的真实进度
+采集运行中心把不同父资源投影成统一列表，不代表数据库存在一个“万能运行表”。
 
-迁移
-→ 冻结 Chunk row_count 与终态行数的真实聚合
-```
+## 8. Data Import：来源和写入策略是两个维度
 
-## 5.7 Campaign 操作
+当前页面的主导入工作流是 Data Import Campaign。
 
-```text
-POST /api/v1/data-import-campaigns/{campaign_id}/start
-POST /api/v1/data-import-campaigns/{campaign_id}/cancel
-POST /api/v1/data-import-campaigns/{campaign_id}/retry-failed
-```
+两类来源：
 
-当前 Worker 物理 Job type：
+~~~text
+local_upload
+server_path
+~~~
 
-```text
-ingestion.historical-discover.v1
-ingestion.historical-snapshot.v1
-ingestion.historical-import-chunk.v2
-```
+两类写入策略：
 
-物理名称沿用 `historical_*` 是兼容选择，不代表当前页面存在第二套“历史导入”业务入口。
+~~~text
+standard_observation
+historical_fill_only
+~~~
 
-`historical_fill_only` 的长期规则是只补空值、不覆盖已有非空 Current、差异留冲突账本；`standard_observation` 继续使用普通字段新鲜度语义。导入不会自动创建 AI Job。
+来源只决定输入文件怎样安全进入系统；写入策略决定 Content Owner 怎样处理 Current/Version/Metric。二者不能互相推导。
 
-## 5.8 `GET /api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility`
+### 本地上传
 
-返回一个 Campaign 当前可用于辅助补采的平台和目标数量。目标从逐行来源账本反查 Content，因此 `unchanged` 行不需要伪造新 Content Version 也能保留补采资格；当前有效 AI 结果为不相关或缺少可执行 Provider locator 的内容不会进入结果。
+浏览器先提交冻结文件清单，再逐 Item 上传内容，全部完成后 finalize。重试上传必须仍与被冻结的文件身份一致，不能用同一个 Item 替换成另一份文件。
 
-`diagnostics` 保留五个平台的直接目标、可精确解析候选、阻塞数量和原因；仅有不可获取链接的平台仍可见，但不能据此发起错误 ID 的评论请求。
+### 服务器目录
 
----
+只能枚举管理员批准、只读挂载的根目录内相对路径；拒绝绝对路径、路径逃逸和链接组件。它不是通用服务器文件管理 API。
 
-# 6. 兼容 Excel Import API
+### Campaign 终态
 
-旧单文件 Import 仍是合法兼容 Contract，但**不是当前页面的第二套主导入入口**。
+进度来自 PostgreSQL 持久事实，不由前端猜百分比。取消、失败重试、冲突、补采资格和撤销都围绕同一个 Campaign 业务父事实工作。
 
-代码：
+具体实现和排障见 [docs/appendix/08_数据入口与统一入库实现.md](appendix/08_数据入口与统一入库实现.md)。
 
-```text
-backend/src/aima_ugc/bootstrap/import_http.py
-backend/src/aima_ugc/bootstrap/import_worker.py
-backend/src/aima_ugc/modules/ingestion/
-```
+## 9. 兼容 Import / Historical API 为什么还存在
 
-## 6.1 `POST /api/v1/import-batches`
+旧 Import Batch 与 Historical Import Contract 仍可能存在于当前 OpenAPI，用于兼容历史调用和数据；它们不等于当前页面需要维持第二套主导入入口。
 
-接受一个 multipart `.xlsx` 和可选的重复字段 `brand_ids`；最多 100 个且不得重复，空集合表示在创建时冻结全部 active Brand。服务保存 Input Artifact，冻结 `BrandVehicleFilterSnapshot`，创建 `processing_import_batches + ingestion.import-excel.v2 Job`，真正处理由 Worker 完成。Excel Search 明确不适用，`keyword_pack_ids`、`vehicle_model_ids` 和其它未声明字段会被拒绝；旧 v1 Job 不再注册。
+判断一个 API 是否仍存在、是否标记 deprecated，以 [contracts/openapi/openapi.json](../contracts/openapi/openapi.json) 为准，不以本文的人工列表判断。
 
-## 6.2 查询
+长期原则：
 
-```text
-GET /api/v1/import-batches
-GET /api/v1/import-batches/summary
-GET /api/v1/import-batches/{batch_id}
-GET /api/v1/jobs/{job_id}
-```
+~~~text
+兼容入口可以继续存在
+≠
+产品必须继续暴露平行主流程
+~~~
 
-`GET /api/v1/jobs/{job_id}` 由 Import HTTP Service 暴露通用 Job Read Model；这不表示 `jobs` 表中所有内部 Job 自动成为公共 API。
+## 10. Persistent Canonical Replay
 
-## 6.3 `GET /api/v1/import-batches/{batch_id}/supplement-eligibility`
+Replay 解决“Canonical 已经存在，但现在的 Brand/Vehicle 目录能够得到新的合法归类”的场景。
 
-这是采集补采前的只读资格投影。后端按当前 Analysis Identity 读取该 Import Batch 对应的现有 Content Target，并按五个平台返回真实 `target_count`；接口本身不创建 Collection Run，也不把声音广场列表查询结果当资格依据。真正创建补采 Run 时，服务端仍会重新冻结/校验同一目标事实，因此该接口是前端展示与预检入口，不是最终写入守卫。
+HTTP 层负责：
 
-`diagnostics` 与 Campaign 资格使用相同的平台、可解析和阻塞语义。微博长文章及未证明精确归属的快手、微博视频、B站短链计入阻塞原因；已验证的小红书和抖音短链才计入待解析。
+- 冻结目标 Artifact / 全量选择；
+- 冻结当前目录快照；
+- 建立幂等业务请求与持久 Job；
+- 提供查询、取消和撤回入口。
 
-## 6.4 Historical Import 兼容 API
+Worker 才负责预检、Replay、去重、Content Owner 收敛和贡献账本。
 
-Stage 12 当前页面主流程使用 `data-import-campaigns`，但下列 Historical Import HTTP Contract 仍存在于当前 generated OpenAPI，且 HTTP 层没有标记 `deprecated`；它们属于兼容业务入口，不能描述成“已删除”，也不能再当成当前页面的第二套主工作流：
+撤回不根据“现在看起来像谁创建了这条 Content”猜测，而按 Replay 当时原子记录的可逆贡献和当前后续接管状态恢复；后续写入、人工锁和共享来源优先受到保护。
 
-```text
-GET  /api/v1/historical-import/directories
-GET  /api/v1/historical-import-campaigns
-POST /api/v1/historical-import-campaigns
-GET  /api/v1/historical-import-campaigns/{campaign_id}
-GET  /api/v1/historical-import-campaigns/{campaign_id}/items
-GET  /api/v1/historical-import-campaigns/{campaign_id}/conflicts
-POST /api/v1/historical-import-campaigns/{campaign_id}/start
-POST /api/v1/historical-import-campaigns/{campaign_id}/cancel
-POST /api/v1/historical-import-campaigns/{campaign_id}/retry-failed
-```
+详细实现见 [docs/appendix/08_数据入口与统一入库实现.md](appendix/08_数据入口与统一入库实现.md)。
 
-精确 Method、Schema、operationId 和当前是否存在始终以 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
+## 11. Content：列表、详情和评论分页是不同 Read Model
 
-## 6.5 Persistent Canonical Replay
+声音广场的 Content 查询读取当前业务视图，AI irrelevant 不物理删除 Content 事实。
 
-```text
-POST /api/v1/canonical-replays
-POST /api/v1/canonical-replays/all
-POST /api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke
-POST /api/v1/canonical-replays/all/{replay_request_id}/revoke
-GET  /api/v1/canonical-replays/{run_id}
-POST /api/v1/canonical-replays/{run_id}/cancel
-```
+详情可以返回审计/展示信息；评论浏览使用独立分页 Read Model，避免把一个详情响应当成无限评论容器。
 
-六个接口都要求后端确认管理员角色。显式创建请求提交客户端幂等键、1—100 个已知 Canonical
-Artifact ID、可选 Brand ID 和有界批大小；空 Brand 集合表示冻结创建时全部 active Brand。
-服务只接受可证明属于当前 Excel Import v2、Data Import Pure Canonical Chunk v2 或 TikHub
-Discovery Search Attempt 的 linked Artifact，并在同一 PostgreSQL 事务创建 Replay Run 与
-`ingestion.canonical-replay.v1` Job。API 返回 202，Worker 才执行全输入预检、当前
-Brand/Vehicle Resolver/Filter、持久去重与 Content Owner 收敛。
+评论线程必须依赖已持久化的 root / parent identity，而不是让前端根据正文、作者名或当前页位置猜父子关系。
 
-全量创建请求只提交客户端幂等键。后端自动选择全部合法历史 Canonical，冻结当前全部 active
-Brand/Vehicle 目录，按每 100 个 Artifact 建立一个 Replay Run，并固定使用 1000 行写入批次；
-响应返回选中 Artifact 数和创建的子 Run 数。全量请求的选择摘要和子 Run 归属持久化保存，同一
-幂等键下输入集合或创建者漂移返回 409，空选择返回零任务。
+Content / Comment 的精确 Query 参数、Cursor 和字段以 OpenAPI 为准；用户行为见 [docs/product/02_当前产品能力与用户流程.md](product/02_当前产品能力与用户流程.md)。
 
-查询响应包含冻结目录版本、Artifact 顺序、checkpoint、Job 状态与
-`rows_seen / rows_matched / rows_filtered_out / duplicates_removed / rows_ingested /
-existing_convergence / invalid_artifact_rows` 统计。精确字段、状态和错误仍以生成 OpenAPI 为准，
-文档不复制完整 Schema。单 Run 取消沿用统一 Job 协作取消语义；全量请求的取消会等待子 Job
-收敛后自动排队撤回，终态请求可直接排队撤回。撤回只根据本请求写入时原子记录的贡献账本，
-逆转仍归本请求所有的 Content Current、业务可见性和自动 Brand/Vehicle Evidence；后续其他来源
-写入、人工锁和历史版本不动。没有账本的旧请求失败关闭。当前入口是正式管理员 API，尚无前端
-逐 Run 页面；它不会调用 Provider，也不会自动创建 AI 任务。
-管理员页面提供全量创建入口；创建后可在采集运行中心按“历史重筛”类型查看一条请求级记录、
-聚合进度、子任务状态和处理统计。详情为 Modal，并提供全量请求级取消/撤回；撤回阶段与统计仍
-归入原记录。该运行中心投影复用现有 all-request、Run 和 Job 表，不新增平行状态机。
+## 12. 人工 Relevance / Analysis 覆盖不是改写模型历史
 
-实现：
+人工相关性决定和 Analysis 人工覆盖都绑定当前业务版本/维度，追加自己的审计事实。
 
-- [`backend/src/aima_ugc/bootstrap/canonical_replay_http.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_http.py)
-- [`backend/src/aima_ugc/bootstrap/canonical_replay_worker.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_worker.py)
-- [`backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py`](../backend/src/aima_ugc/bootstrap/canonical_replay_reversal_worker.py)
-- [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py)
+模型原始结果不会因为人工纠正被直接删除。撤销人工覆盖后，系统才能回到当前有效 AI/继承语义。
 
----
+这保证“模型当时给过什么结论”和“当前业务最终采用什么结论”可以同时追溯。
 
-# 7. Content / 声音广场 API
+## 13. Analysis Run：Preview / Run / Shard 分层
 
-代码：
+新版 Analysis 页面语义：
 
-- [`backend/src/aima_ugc/bootstrap/content_http.py`](../backend/src/aima_ugc/bootstrap/content_http.py)
-- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
-- [`backend/src/aima_ugc/modules/content/query.py`](../backend/src/aima_ugc/modules/content/query.py)
-- [`backend/src/aima_ugc/modules/content/content_cursor.py`](../backend/src/aima_ugc/modules/content/content_cursor.py)
+~~~text
+Preview
+→ 明确目标、当前 Provider/Taxonomy、预计运行边界
 
-前端：
+Run
+→ 冻结目标 Content Version 与运行快照
 
-```text
-frontend/src/features/voice-plaza/
-```
+Planner / Shard Job
+→ 后台有界执行
 
-## 7.1 `GET /api/v1/contents`
+Run Read Model
+→ 用户查看一轮任务的历史、进度和结果
+~~~
 
-用于声音广场列表、Analysis/Export 目标查询的基础 Read Model。`voice_plaza_projection_state=ready` 后，请求从一行一 Content 的增量投影按 Cursor 读取，不在请求内重建全库 Analysis/Review 窗口；回填完成前继续使用兼容查询以保证结果完整。
+旧 content-analysis request 入口仍可兼容，但不应该被文档描述成新版页面唯一入口。
 
-查询层组合：
+详细实现见 [docs/appendix/07_AI舆情打标与分析实现.md](appendix/07_AI舆情打标与分析实现.md)。
 
-- Content Current / current version；
-- 当前版本匹配的 Analysis；
-- AI 原始 relevance；
-- 最新人工相关性事件形成的 `effective_relevance / relevance_source`；
-- 来源链；
-- 作者和 Current Metrics。
-- 当前 Content Version 的有效 Brand/Vehicle Evidence。
+## 14. Export：创建请求和文件就绪分开
 
-列表项中的 `brands[]` 提供 Brand 稳定引用、角色和可审计 Evidence；`vehicles[]` 按合并后的有效车型展示，并嵌套其当前目录 Brand（旧数据允许为 `null`）。`competition_scope` 由 `brands[].role` 派生，取值为 `owned_only / competitor_only / mixed / other_only / none_detected`，不是独立持久字段。
+正式 Excel Export 创建时冻结目标 Content Version，后台 Job 生成 Artifact。下载只有在 Artifact 已就绪时成功；结果未就绪不能返回一个空文件冒充成功。
 
-`brand_ids`、`vehicle_model_ids`、`competition_scopes` 可组合筛选：不同维度按 AND，同一维度多个值按 OR。筛选快照同时绑定 Cursor，并被 List、Count、Analysis query target 和 Export query target 共用；调用方切换筛选后必须从第一页开始。
+Excel 格式和离线调试见 [docs/appendix/06_Excel统一数据导出与离线调试.md](appendix/06_Excel统一数据导出与离线调试.md)。
 
-默认列表按**有效相关性**排除当前仍为 irrelevant 的内容；没有 current Analysis 的 Content 仍可显示。
+Word 报告当前是独立离线 Reporting 能力；是否已经存在正式 HTTP Report 资源只看当前 OpenAPI，不从计划文档猜。
 
-Analysis 状态：
+## 15. Keyword Pack 和 Collection Plan 的职责
 
-```text
-completed
-stale
-pending
-```
+Keyword Pack 提供 TikHub Discovery 的 Search Terms。
 
-AI 原判仍在 `analysis_content_results.relevance`，没有复制为 `contents.is_relevant`。
+Collection Plan 冻结周期采集所需的 Keyword Pack、Brand Scope、Schedule 等事实；Scheduler 只产生调度事实，真正 Provider 调用由 Worker 执行。
 
-## 7.2 `GET /api/v1/contents/{content_id}`
+完整 Scheduler 行为见 [docs/appendix/05_Scheduler调度执行与停机恢复.md](appendix/05_Scheduler调度执行与停机恢复.md)。
 
-读取详情，包括 media、comments、coverage、source_records 等审计/展示数据。单条详情不会因为 AI irrelevant 物理删除或隐藏 Content 业务事实。
+Search Terms、Brand/Vehicle Filter 和 AI Relevance 是三层不同语义，不要合并成一个“关键词相关性”开关。
 
-可选查询参数 `include_comments` 默认是 `true`。详情内嵌的 `comments` 继续保留，用于兼容已有调用；它最多返回 100 条，不能作为完整评论浏览接口。已经使用独立评论分页的调用方应传 `include_comments=false`，避免在详情请求中重复读取评论；响应结构不变，`comments` 返回空数组。
+## 16. Resource Lifecycle：归档、恢复、删除、撤销不是一个动作
 
-## 7.3 `GET /api/v1/contents/{content_id}/comments`
+Keyword Pack、Collection Plan、Provider Config、Analysis Scheme 等配置资源需要保留历史引用时，归档优先于物理删除。
 
-声音广场评论区使用的 PostgreSQL 分页 Read Model：
+永久删除由服务端根据真实引用资格判断，前端不能仅因为列表上“没有使用”就直接 DELETE。
 
-- 不传 `root_comment_id` 时读取一级评论，按发布时间倒序、Comment UUID 倒序稳定续页；
-- 传 `root_comment_id` 时读取该一级评论线程下的回复，按发布时间正序、Comment UUID 正序稳定续页；
-- `root_comment_id`、`parent_comment_id` 和 `parent_author_display_name` 用于表达线程归属和“回复谁”，前端不得从正文或当前页位置猜测父子关系；
-- `ingested_reply_count` 是数据库中该线程当前已有的回复数；`total_count` 是当前分页范围总数，`ingested_total_count` 是该内容全部已采集评论数；
-- Cursor 与 Content、根评论条件和固定排序绑定，不能跨内容或跨线程复用。
+Data Import Campaign 撤销是另一类动作：撤回该来源仍拥有的业务贡献，但保留 Raw、Canonical、审计和共享来源事实。
 
-接口只读取已经通过正式采集/补采链路写入 PostgreSQL 的评论，不读取 `imports_test`、staging 或 JSONL 调试产物。声音广场分别显示平台报告数、已采集数和当前已显示数，避免把分页未加载误写成补采缺失。
+统一说明见 [docs/appendix/11_业务资源生命周期与数据撤销实现.md](appendix/11_业务资源生命周期与数据撤销实现.md)。
 
-## 7.4 `POST /api/v1/content-relevance-reviews`
+## 17. Cursor 分页
 
-对当前 Content Version 追加人工相关性决定：
+多个列表使用不透明 Cursor，而不是让客户端理解数据库排序键。
 
-```text
-relevant
-irrelevant
-inherit_ai
-```
+客户端只原样回传 next_cursor：
 
-模型原始 Result 不 UPDATE/DELETE；人工决定写入 `analysis_content_relevance_reviews`。批量请求先校验/锁定全部目标，任一目标不可操作时整批失败；已有人工覆盖要切到相反结论必须先撤销。精确 Contract 看 [`backend/src/aima_ugc/contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)。
+- 不解析；
+- 不修改；
+- 不跨筛选条件复用；
+- 不自己生成。
 
-## 7.5 内容人工覆盖、Count、可用状态与通知
+Cursor 与查询条件、排序和资源身份绑定。精确编码由对应模块与 Contract 持有，不在本文复制。
 
-```text
-POST /api/v1/contents/count
-PUT  /api/v1/contents/{content_id}/analysis-review
-PUT  /api/v1/contents/{content_id}/vehicles
-POST /api/v1/content-availability-observations
-GET  /api/v1/notifications
-PUT  /api/v1/notifications/read
-```
+## 18. 前端如何找到正确 API
 
-Count 用独立 `none/exact/estimated` 语义，不替换 Cursor。车型与 Analysis 人工覆盖绑定当前 Content Version，并按维度显式锁定/解锁；Analysis 人工覆盖只纠正当前版本已完成的 AI 结果。Availability 追加观察历史，技术失败不能形成 `unavailable_confirmed`，确认下架还必须关联真实 Provider Attempt 或 Raw Artifact。Notification 按当前 Principal 隔离 Inbox/Read State，不替代 Job/Export/Run 状态机。
+当前页面 Route 的机器事实是 [frontend/src/app/routes.ts](../frontend/src/app/routes.ts)。
 
----
+页面与 API 的映射原则：
 
-# 8. Content Analysis API：当前新版 Run + 兼容 Request
+~~~text
+Page / Store
+→ Feature api.ts
+→ Generated Client
+→ OpenAPI Contract
+~~~
 
-代码：
+当前页面能力和 Feature Owner 见 [frontend/README.md](../frontend/README.md)。后端存在兼容资源，不代表前端需要建立独立页面。
 
-- [`backend/src/aima_ugc/contracts/runtime.py`](../backend/src/aima_ugc/contracts/runtime.py)
-- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
-- [`backend/src/aima_ugc/bootstrap/analysis_taxonomy_http.py`](../backend/src/aima_ugc/bootstrap/analysis_taxonomy_http.py)
-- [`backend/src/aima_ugc/bootstrap/content_http.py`](../backend/src/aima_ugc/bootstrap/content_http.py)
-- [`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py)
-- [`backend/src/aima_ugc/modules/analysis/content_analysis_job.py`](../backend/src/aima_ugc/modules/analysis/content_analysis_job.py)
-- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis.py`](../backend/src/aima_ugc/adapters/persistence/postgres/analysis.py)
+## 19. 修改 API 时检查什么
 
-详细：
+### 查询字段变化
 
-[`docs/appendix/07_AI舆情打标与分析实现.md`](appendix/07_AI舆情打标与分析实现.md)
+至少检查：
 
-## 8.1 `GET /api/v1/content-analysis-capabilities`
-
-安全只读能力投影，只返回当前 API/Worker 是否形成可执行 LLM 本地配置所需的 `configured` 等允许字段。
-
-源码开发和正式 Worker 必须从同一个当前 `settings.external_secret_root` 读取 LLM Secret；源码 launcher 通过 `AIMA_EXTERNAL_SECRET_DIR` 暴露外部 Secret Root。内部 PostgreSQL/Cursor Secret Root 不是 LLM Secret Root。
-
-这个接口不会返回 Base URL、Model、API Key、Secret 路径，也不证明外部 LLM 此刻网络/余额正常。
-
-## 8.2 `GET /api/v1/content-analysis-taxonomy`
-
-声音广场的人工纠正需要当前合法的情感、发声类型和两级标签，但浏览器不能直接读取 Prompt 文件，也不能再维护一份平行枚举。这个只读接口只投影数据库 active Analysis Scheme 的 Prompt/Taxonomy 版本 Hash 和安全分类目录；不会返回 Prompt 正文、判断规则、模型配置、Secret 路径或 API Key，也不会混入历史 Scheme 值。
-
-Taxonomy 读取或校验失败时，接口使用统一 Problem Response 返回 `503 content_analysis_taxonomy_unavailable`。前端必须禁用依赖 active Taxonomy 的人工纠正并显示错误和 `request_id`，不能回退到旧硬编码；内容列表和筛选目录仍可独立使用。
-
-## 8.3 `GET /api/v1/content-filter-options`
-
-声音广场下拉选项的唯一后端目录。平台、相关性和分析状态来自正式 Contract，内容类型来自当前可见 Content Current；情感、发声类型和两级标签按 active Taxonomy 顺序优先，再追加当前可见最新 Analysis/人工覆盖中仍存在的历史值。历史项明确返回 `source=historical`，但不会写回或扩大 active Taxonomy。
-
-历史值来自由逐 Content 贡献增量维护的持久聚合目录，不从旧 Content Version、失效来源或全表原始结果做无边界 `DISTINCT`。Response 的 `catalog_status` 为 `building` 时表示历史目录仍在回填；已返回选项、平台、相关性、分析状态和 active Taxonomy 值仍可立即使用，前端只提示后台同步，不把平台筛选误报为不可用。真正读取失败仍不阻断内容列表。精确 Response 以 [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py) 和 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
-
-## 8.4 `POST /api/v1/analysis/content-runs/preview`
-
-新版页面先预检用户显式选择的 Content，返回冻结目标数、预计 Shard 等创建 Run 前所需信息/身份。
-
-当前新版 Run 只开放显式选择的 **1—1000 个 Content ID**；query scope 暂不作为新版页面 Contract 开放。
-
-## 8.5 `POST /api/v1/analysis/content-runs`
-
-创建 Analysis Run Header + `analysis.content-run-plan.v1` Planner Job。
-
-Planner 在 PostgreSQL 中：
-
-```text
-冻结 content_id + content_version
-→ 复核 Preview 数量
-→ 有界创建 analysis.content-label.v1 Shard Job
-```
-
-HTTP 不扫描/物化百万级目标，也不直接执行 LLM。
-
-## 8.6 Run 查询/取消
-
-```text
-GET  /api/v1/analysis/content-runs
-GET  /api/v1/analysis/content-runs/{run_id}
-POST /api/v1/analysis/content-runs/{run_id}/cancel
-```
-
-不同 Run 对同一 Content Version 的结果全部保留；Current 按 Run 创建顺序选择，较新 Run 失败/取消不会删除旧成功结果。页面进度使用冻结 `target_count` 和持久 Shard 进度，不从前端猜测。
-
-## 8.7 `POST /api/v1/content-analysis-requests`
-
-这是兼容入口，不是新版页面主入口。它继续兼容既有 selected/query 语义和既有 `request_id/job_id` Response，但当前后台也会纳入 Analysis Run/Shard 模型并保持冻结 Content Version 的语义。
-
-不要再把它描述成“当前新版 Analysis 唯一入口”或“直接创建一个覆盖全部目标的单一 Analysis Job”。
-
-## 8.8 `GET /api/v1/content-analysis-jobs/{job_id}`
-
-兼容读取 Analysis Job 状态/Result。新版页面主要以 Analysis Run 资源展示一轮用户任务的历史和进度。
-
-当前真实 Analysis Worker Job type：
-
-```text
-analysis.content-run-plan.v1
-analysis.content-label.v1
-```
-
----
-
-# 9. 正式 Excel Export API
-
-代码：
-
-```text
-backend/src/aima_ugc/bootstrap/reporting_http.py
-backend/src/aima_ugc/bootstrap/export_worker.py
-backend/src/aima_ugc/modules/reporting/
-```
-
-## 9.1 `POST /api/v1/data-exports`
-
-创建正式 Excel Export。创建时冻结目标 Content Version，随后创建：
-
-```text
-reporting.content-export-excel.v1
-```
-
-Export Column Catalog v2 增加可选的“品牌、品牌角色、竞品范围、车型”列。Brand/Vehicle Evidence 按冻结的 `content_version` 投影，竞品范围由冻结版本的 Brand Role 派生；这些列默认不选，不改变既有默认导出表头。
-
-## 9.2 查询/下载
-
-```text
-GET /api/v1/data-exports
-GET /api/v1/data-exports/{export_id}
-GET /api/v1/data-exports/{export_id}/download
-```
-
-列表当前没有自动等价于创建请求 Filter 的分页 Contract；精确 Query 以 OpenAPI 为准。下载只有 Artifact 已就绪时成功，未就绪返回状态冲突，不返回空文件。
-
-当前没有 Word Report 的正式 `/reports` API；离线 Word Report 位于 `backend/src/aima_ugc/platform/reporting/`。
-
----
-
-# 10. Keyword Pack API
-
-当前 Route：
-
-```text
-POST /api/v1/keyword-packs
-GET  /api/v1/keyword-packs
-POST /api/v1/keyword-packs/{pack_id}/keywords
-GET  /api/v1/keyword-packs/{pack_id}
-PUT  /api/v1/keyword-packs/{pack_id}/enabled
-```
-
-Keyword Pack 是 TikHub Discovery 的 Search Terms 来源。Discovery Run 使用 `collection-run-config.v2`，分别冻结 Search Snapshot 与 Brand/Vehicle Filter Snapshot；旧 Global Keyword Relevance 配置、`/api/v1/relevance-config` 和 v1 Run Contract 已删除。正式 Excel/Data Import Campaign 不执行 Search，也不接收 Keyword Pack，只冻结 Brand/Vehicle Filter Snapshot。AI/人工 Relevance 继续属于 Analysis 与查询语义。
-
----
-
-# 11. Collection Plan API
-
-代码：
-
-- [`backend/src/aima_ugc/bootstrap/collection_strategy_http.py`](../backend/src/aima_ugc/bootstrap/collection_strategy_http.py)
-- [`backend/src/aima_ugc/modules/collection/planning.py`](../backend/src/aima_ugc/modules/collection/planning.py)
-
-当前：
-
-```text
-POST /api/v1/collection-plans
-GET  /api/v1/collection-plans
-GET  /api/v1/collection-plans/{plan_id}
-PUT  /api/v1/collection-plans/{plan_id}/enabled
-```
-
-当前 Scheduler 长期边界：
-
-```text
-timezone = Asia/Shanghai
-misfire_policy = latest_only
-max_catch_up_runs = 0
-```
-
-Plan 的 `keyword_pack_ids` 提供 Search Terms，`brand_ids` 提供过滤范围；Plan 中空 `brand_ids` 表示 all-active。Plan/Run 不再接收 Discovery `vehicle_model_ids`。Plan Response 保留提交的 `brand_ids`；Run Response 返回任务创建时实际冻结的 Brand UUID，因而 all-active Run 也能显示当时纳入的具体 Brand。前端生成类型以当前 OpenAPI 为准。
-
-完整 Scheduler 语义：[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](appendix/05_Scheduler调度执行与停机恢复.md)。
-
-## 11.1 Principal、车型与管理员配置
-
-
-飞书登录与会话（Cookie 名 `aima_session`，属性 `HttpOnly` + `SameSite=Lax` + `Path=/`，`Secure` 按环境）：
-
-```text
-GET    /api/v1/auth/connectors
-GET    /api/v1/auth/feishu/login
-GET    /api/v1/auth/feishu/callback
-GET    /api/v1/auth/feishu/{connector_code}/login
-GET    /api/v1/auth/feishu/{connector_code}/callback
-POST   /api/v1/auth/logout
-```
-
-`/connectors` 只返回可登录企业的 `code/display_name`，单企业或未配置时返回空列表；带 `{connector_code}` 的路由按企业隔离 App ID、Secret 引用、用户组和 OAuth state。`/login` 生成一次性 state 后 302 到飞书授权页，`?return_to=` 只允许站内相对路径；`/callback` 校验并原子消费 state、用对应企业的授权码换令牌、取用户、查用户组、判角色、建会话后 302 回 `return_to`；`/logout` **在服务端撤销会话**并清 Cookie。无会话访问受保护接口返回 `401`，已登录但角色不足返回 `403`。未配置飞书时登录/回调返回 `503`、企业列表为空，进程沿用开发身份；登出保持幂等 `204`。
-
-
-```text
-GET    /api/v1/principal
-GET    /api/v1/vehicle-models
-POST   /api/v1/vehicle-models
-GET    /api/v1/vehicle-models/{vehicle_model_id}
-PUT    /api/v1/vehicle-models/{vehicle_model_id}
-DELETE /api/v1/vehicle-models/{vehicle_model_id}
-POST   /api/v1/vehicle-models/{vehicle_model_id}/merge
-GET    /api/v1/analysis-schemes
-POST   /api/v1/analysis-schemes
-PUT    /api/v1/analysis-scheme-versions/{version_id}
-POST   /api/v1/analysis-scheme-versions/{version_id}/publish
-POST   /api/v1/analysis-scheme-versions/{version_id}/rollback
-GET    /api/v1/audit-events
-GET    /api/v1/export-columns
-```
-
-Provider-neutral Principal 只允许 `administrator/user`。车型、词包等只读目录可供普通业务页面消费；车型修改/合并/删除、词包写入、采集计划写入、Scheme 管理和审计查询均由后端管理员守卫保护。第一版不强制双人审批，但配置修改、发布和回滚必须记录审计。完整字段以 [`backend/src/aima_ugc/contracts/administration.py`](../backend/src/aima_ugc/contracts/administration.py) 和当前 OpenAPI 为准。
-
----
-
-# 12. Cursor 分页
-
-当前多个列表使用不透明 Cursor，而不是简单 Offset 页码。
-
-典型实现：
-
-```text
-Content
-→ backend/src/aima_ugc/modules/content/content_cursor.py
-
-Import Batch
-→ backend/src/aima_ugc/modules/ingestion/import_batch_cursor.py
-
-Collection Runtime
-→ backend/src/aima_ugc/modules/collection/runtime_cursor.py
-```
-
-前端只原样回传 `next_cursor`，禁止解析/改写内部 Cursor、跨筛选复用或把数据库密码当 Cursor signing key。
-
-Data Import 目录/Campaign 的分页/游标以其当前 Pydantic Contract 和 `historical_*` 实现为准，不强行复用 Import Batch Cursor。
-
----
-
-# 13. 当前前端与 API 对应关系
-
-真实路由：
-
-- [`frontend/src/app/routes.ts`](../frontend/src/app/routes.ts)
-
-当前页面：
-
-```text
-/collection-runtime
-→ collection-runs / collection-runtime
-→ data-import-* 当前统一导入入口
-→ import-batches 兼容运行事实
-
-/collection-strategy
-→ keyword-packs / collection-plans
-
-/voice-plaza
-→ contents / content-relevance-reviews
-→ content-analysis-capabilities
-→ analysis/content-runs
-→ data-exports
-
-/admin/configuration
-→ principal / brands / vehicle-models
-→ analysis-schemes / audit-events
-```
-
-当前后端有兼容 `/api/v1/content-analysis-requests`、`/api/v1/import-batches`、`/historical-import-*`，不表示前端要维持平行主入口。
-
-后端有 `data-exports` API，但没有独立 `/export` Route；Analysis Run 在 `/voice-plaza`，也没有独立 Analysis 管理 Route。
-
----
-
-# 14. 修改 API 时的完整影响面
-
-## 新增/修改 Query 字段
-
-```text
-Pydantic Contract
-→ Query Service/Repository
-→ Cursor query hash（如果改变结果集）
-→ API Test
+~~~text
+Contract
+→ Query Service / Repository
+→ Cursor query identity（受影响时）
+→ API / Contract Evidence
 → OpenAPI
-→ generated Client
-→ Frontend Feature
-→ 当前文档
-```
+→ Generated Client
+→ Frontend consumer
+→ 文档语义
+~~~
 
-## 新增长任务
+### 长任务变化
 
-```text
+至少检查：
+
+~~~text
 业务父事实
-→ 版本化 Job Payload/Handler
-→ Worker Registry
-→ Executor
-→ Retry/Deadline/Fencing/Progress/Cancel
-→ API Contract
-→ API + Integration Tests
-```
+→ Job Payload / Registry / Handler
+→ Retry / Fence / Progress / Cancel
+→ HTTP Contract
+→ Worker / Integration Evidence
+→ 用户 Read Model
+~~~
 
-## 修改 Response
+### Response 变化
 
-```text
-兼容性判断
-→ Pydantic Response
-→ Route
-→ API Test
-→ OpenAPI regenerate
-→ Orval regenerate
-→ Frontend typecheck/test
-```
+先做兼容性判断，再更新 Pydantic / Route / OpenAPI / Generated Client / consumer。不要用前端 any 或手写平行 Type 掩盖不一致。
 
-不要用前端 `as any`、手写平行 Type 或 Mock Contract 掩盖后端变更。
+通用实现与 Review 方法遵守 [AGENTS.md](../AGENTS.md) 指定的 Agent_Skills 治理，本页只给 AIMA 的事实链。
 
----
-
-# 15. 本地联调如何确认 API 事实
+## 20. 联调时从机器事实开始
 
 推荐顺序：
 
-```text
-1. 看 contracts/http.py / runtime.py / relevance_review.py
-2. 看 bootstrap/api.py / 各领域 HTTP Assembly / entrypoints/api_main.py
-3. 看 contracts/openapi/openapi.json
-4. 看 frontend/src/generated/api/
-5. 看对应 API/Contract/Full-stack tests
-6. 再按当前 OpenAPI 构造人工请求
-```
+1. [contracts/openapi/openapi.json](../contracts/openapi/openapi.json)
+2. 对应 Pydantic Contract
+3. 对应 FastAPI Assembly / Application Service
+4. [frontend/src/generated/api/](../frontend/src/generated/api/)
+5. 对应 API / Contract / Integration / Full-stack test
+6. 必要时再构造人工请求
 
-本文是人类导航，不替代 OpenAPI。
-
----
-
-# 16. 当前明确不存在的 API / 产品资源
-
-当前最终系统不能被描述成已经有：
-
-```text
-/api/v1/alerts
-/api/v1/reports
-/api/v1/client-events
-LLM 配置编辑 / Secret 查询 API
-独立顶层 /api/v1/analysis-runs 资源
-```
-
-当前 Analysis Run 的真实路径是 `/api/v1/analysis/content-runs`，并由声音广场使用。未来资源进入最终 FastAPI Assembly + OpenAPI + 测试后再加入本文。
-
----
-
-# 17. 相关文档
-
-- API/Job/Frontend 架构：[`docs/blueprint/04_后端任务API与前端.md`](blueprint/04_后端任务API与前端.md)
-- 数据入口：[`docs/appendix/08_数据入口与统一入库实现.md`](appendix/08_数据入口与统一入库实现.md)
-- Stage 12 已实现软件与生产门禁：[`docs/roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)
-- Analysis：[`docs/appendix/07_AI舆情打标与分析实现.md`](appendix/07_AI舆情打标与分析实现.md)
-- Excel Export：[`docs/appendix/06_Excel统一数据导出与离线调试.md`](appendix/06_Excel统一数据导出与离线调试.md)
-- PostgreSQL：[`docs/appendix/01_PostgreSQL查询与调试实战.md`](appendix/01_PostgreSQL查询与调试实战.md)
-- 代码修改导航：[`docs/01_代码结构与修改导航.md`](01_代码结构与修改导航.md)
-
-
----
-
-# 17. 资源生命周期与导入撤销扩展 API
-
-本节只做当前 OpenAPI 的导航和业务边界说明；精确 Request/Response 字段继续以生成 OpenAPI 为唯一机器事实。归档与永久删除是不同动作：归档用于日常目录整理，永久删除始终由服务端引用资格判断。
-
-## 17.1 Data Import Campaign 撤销
-
-- `GET /api/v1/data-import-campaigns/{campaign_id}/revocation-preview`：只读评估可撤销性和影响；不写撤销事实。
-- `POST /api/v1/data-import-campaigns/{campaign_id}/revoke`：在资格允许时提交可审计撤销；共享来源数据继续保留。
-
-## 17.2 Keyword Pack 生命周期
-
-- `POST /api/v1/keyword-packs/{pack_id}/copy`
-- `POST /api/v1/keyword-packs/{pack_id}/archive`
-- `POST /api/v1/keyword-packs/{pack_id}/restore`
-- `GET /api/v1/keyword-packs/{pack_id}/delete-eligibility`
-- `PUT /api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}`
-- `POST /api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}/remove`
-- `GET /api/v1/resource-lifecycle/keyword-packs/archived`
-
-关键词成员文本修改只替换当前 Pack 的关系，不会修改其它 Pack 共享的 Keyword 实体。
-
-## 17.3 Collection Plan 生命周期
-
-- `POST /api/v1/collection-plans/{plan_id}/copy`
-- `POST /api/v1/collection-plans/{plan_id}/archive`
-- `POST /api/v1/collection-plans/{plan_id}/restore`
-- `GET /api/v1/collection-plans/{plan_id}/delete-eligibility`
-- `GET /api/v1/resource-lifecycle/collection-plans/archived`
-
-计划主体仍通过现有更新 Contract 编辑并提升 `schedule_version`；恢复后保持停用。
-
-## 17.4 Provider Config 生命周期与连接测试
-
-- `GET /api/v1/provider-configs/lifecycle/archived`
-- `POST /api/v1/provider-configs/{provider_config_id}/test-connection`
-- `POST /api/v1/provider-configs/{provider_config_id}/archive`
-- `POST /api/v1/provider-configs/{provider_config_id}/restore`
-- `GET /api/v1/provider-configs/{provider_config_id}/delete-eligibility`
-
-连接测试只返回安全状态、用户可读说明和延迟，不回显 Secret 或第三方原始响应。
-
-## 17.5 Analysis Scheme 生命周期
-
-- `GET /api/v1/analysis-schemes/lifecycle/archived`
-- `POST /api/v1/analysis-schemes/{scheme_id}/copy`
-- `POST /api/v1/analysis-schemes/{scheme_id}/archive`
-- `POST /api/v1/analysis-schemes/{scheme_id}/restore`
-- `GET /api/v1/analysis-schemes/{scheme_id}/delete-eligibility`
-- `DELETE /api/v1/analysis-schemes/{scheme_id}`
-
-当前生效 Scheme 不能归档；曾发布或进入 Analysis Run 历史的 Scheme 不能永久删除。
+本文是人类语义导航，**不是完整 API Catalog**。新增或删除 Route 后，OpenAPI 已经是精确事实；只有当调用语义、领域边界或读者任务发生变化时才需要同步本文。

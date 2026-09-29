@@ -15,6 +15,9 @@ from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
     PostgresCollectionRunExecutionGateway,
 )
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
+from aima_ugc.modules.administration.feishu_publication_jobs import (
+    register_feishu_publication_jobs,
+)
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
     ContentAnalysisPlanJobHandler,
@@ -32,12 +35,28 @@ from aima_ugc.modules.content.read_model_job import (
 )
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
 from aima_ugc.modules.ingestion.canonical_replay import (
+    CanonicalReplayCancellationJobHandler,
     CanonicalReplayJobHandler,
+    CanonicalReplayPlanJobHandler,
     CanonicalReplayReversalJobHandler,
+    register_canonical_replay_cancellation_job,
     register_canonical_replay_job,
+    register_canonical_replay_plan_job,
     register_canonical_replay_reversal_job,
 )
 from aima_ugc.modules.ingestion.historical_jobs import register_historical_jobs
+from aima_ugc.modules.ingestion.replay_shards import (
+    CanonicalReplayShardJobHandler,
+    register_replay_shard_job,
+)
+from aima_ugc.modules.ingestion.reversal_shards import (
+    ReversalShardJobHandler,
+    register_reversal_shard_job,
+)
+from aima_ugc.modules.ingestion.revocation_jobs import (
+    DataImportRevocationJobHandler,
+    register_data_import_revocation_job,
+)
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
     register_data_export_job,
@@ -47,15 +66,32 @@ from aima_ugc.modules.vehicles.content_reclassification import (
     ContentReclassificationJobHandler,
     register_content_reclassification_job,
 )
+from aima_ugc.modules.workbench.jobs import (
+    WorkbenchSnapshotJobHandler,
+    register_workbench_snapshot_job,
+)
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
 from aima_ugc.platform.security import read_secret_file, validate_secret_ref
 from aima_ugc.platform.storage import ArtifactService
 
+from .adaptive_shard_worker import (
+    AdaptiveShardCoordinator,
+    replay_shard_terminal_callback,
+    reversal_shard_terminal_callback,
+)
 from .analysis_concurrent_worker import ConcurrentPostgresContentAnalysisJobExecutor
 from .analysis_high_throughput_planner import (
     HighThroughputContentAnalysisPlanJobExecutor,
     create_high_throughput_analysis_job_terminal_callback,
+)
+from .canonical_replay_cancellation_worker import (
+    PostgresCanonicalReplayCancellationJobExecutor,
+    canonical_replay_cancellation_terminal_callback,
+)
+from .canonical_replay_planner_worker import (
+    PostgresCanonicalReplayPlanJobExecutor,
+    canonical_replay_plan_terminal_callback,
 )
 from .canonical_replay_reversal_worker import (
     PostgresCanonicalReplayReversalJobExecutor,
@@ -66,14 +102,23 @@ from .canonical_replay_worker import PostgresCanonicalReplayJobExecutor
 from .content_media_cache import PostgresContentMediaCacheService
 from .content_reclassification_worker import PostgresContentReclassificationJobExecutor
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
+from .feishu_publication_worker import PostgresFeishuPublicationJobExecutor
 from .historical_cancellation import historical_cancellation_terminal_callback
 from .historical_import_worker import PostgresHistoricalImportJobExecutor
+from .import_revocation_worker import (
+    PostgresImportRevocationJobExecutor,
+    data_import_revocation_terminal_callback,
+)
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
 from .media_cache_collection_scope import MediaCachingTikHubCollectionScopeExecutor
 from .runtime import PlatformRuntime, create_platform_runtime
 from .voice_plaza_projection_worker import (
     PostgresVoicePlazaProjectionJobExecutor,
     voice_plaza_projection_job_terminal_callback,
+)
+from .workbench_snapshot_worker import (
+    PostgresWorkbenchSnapshotJobExecutor,
+    workbench_snapshot_job_terminal_callback,
 )
 
 
@@ -208,20 +253,68 @@ def create_collection_job_registry(
         registry,
         ContentReclassificationJobHandler(PostgresContentReclassificationJobExecutor(runtime)),
     )
+    register_canonical_replay_plan_job(
+        registry,
+        CanonicalReplayPlanJobHandler(PostgresCanonicalReplayPlanJobExecutor(runtime)),
+        terminal_callback=canonical_replay_plan_terminal_callback,
+    )
+    replay_executor = PostgresCanonicalReplayJobExecutor(runtime)
     register_canonical_replay_job(
         registry,
-        CanonicalReplayJobHandler(PostgresCanonicalReplayJobExecutor(runtime)),
+        CanonicalReplayJobHandler(replay_executor),
         terminal_callback=canonical_replay_job_terminal_callback,
     )
+    register_canonical_replay_cancellation_job(
+        registry,
+        CanonicalReplayCancellationJobHandler(
+            PostgresCanonicalReplayCancellationJobExecutor(runtime)
+        ),
+        terminal_callback=canonical_replay_cancellation_terminal_callback,
+    )
+    replay_reversal_executor = PostgresCanonicalReplayReversalJobExecutor(runtime)
+    import_revocation_executor = PostgresImportRevocationJobExecutor(runtime)
+    adaptive_shards = AdaptiveShardCoordinator(
+        runtime,
+        import_processor=import_revocation_executor,
+        replay_processor=replay_reversal_executor,
+        replay_run_processor=replay_executor,
+    )
+    import_revocation_executor.shard_coordinator = adaptive_shards
+    replay_reversal_executor.shard_coordinator = adaptive_shards
+    replay_executor.shard_coordinator = adaptive_shards
     register_canonical_replay_reversal_job(
         registry,
-        CanonicalReplayReversalJobHandler(PostgresCanonicalReplayReversalJobExecutor(runtime)),
+        CanonicalReplayReversalJobHandler(replay_reversal_executor),
         terminal_callback=canonical_replay_reversal_terminal_callback,
+    )
+    register_data_import_revocation_job(
+        registry,
+        DataImportRevocationJobHandler(import_revocation_executor),
+        terminal_callback=data_import_revocation_terminal_callback,
+    )
+    register_reversal_shard_job(
+        registry,
+        ReversalShardJobHandler(adaptive_shards),
+        terminal_callback=reversal_shard_terminal_callback,
+    )
+    register_replay_shard_job(
+        registry,
+        CanonicalReplayShardJobHandler(adaptive_shards),
+        terminal_callback=replay_shard_terminal_callback,
     )
     register_voice_plaza_projection_job(
         registry,
         VoicePlazaProjectionJobHandler(PostgresVoicePlazaProjectionJobExecutor(runtime)),
         terminal_callback=voice_plaza_projection_job_terminal_callback,
+    )
+    register_workbench_snapshot_job(
+        registry,
+        WorkbenchSnapshotJobHandler(PostgresWorkbenchSnapshotJobExecutor(runtime)),
+        terminal_callback=workbench_snapshot_job_terminal_callback,
+    )
+    register_feishu_publication_jobs(
+        registry,
+        PostgresFeishuPublicationJobExecutor(runtime),
     )
     return registry
 
@@ -233,6 +326,8 @@ def create_job_worker(
     worker_id: str,
     lease_seconds: int,
     retry_delay_seconds: int,
+    supported_job_types: tuple[str, ...] | None = None,
+    minimum_priority: int | None = None,
 ) -> JobWorker:
     """用正式 DatabaseRuntime 组装一个 Job Worker。"""
 
@@ -242,6 +337,8 @@ def create_job_worker(
         worker_id=worker_id,
         lease_seconds=lease_seconds,
         retry_delay_seconds=retry_delay_seconds,
+        supported_job_types=supported_job_types,
+        minimum_priority=minimum_priority,
     )
 
 

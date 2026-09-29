@@ -11,6 +11,7 @@ import { apiErrorMessage } from '../../../../../shared/api/http'
 import { formatDateTime } from '../../../../../shared/domain/beijingTime'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
+import { useTransientNotice } from '../../../../../shared/ui/useTransientNotice'
 import {
   activateScheme,
   addSchemeDraft,
@@ -30,7 +31,7 @@ import { formatRuntimeStatus } from '../../../presentation'
 const saving = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const { message: notice, show: showNotice, clear: clearNotice } = useTransientNotice()
 const schemes = ref<AnalysisSchemeResponse[]>([])
 const archivedSchemes = ref<ResourceLifecycleResponse[]>([])
 const selectedSchemeVersionId = ref('')
@@ -203,7 +204,7 @@ function validateSchemeDefinition(definition: AnalysisSchemeDefinitionRequest): 
 async function saveSchemeDraft(): Promise<void> {
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     const definition = schemeDefinition()
     validateSchemeDefinition(definition)
@@ -225,7 +226,7 @@ async function saveSchemeDraft(): Promise<void> {
     const draft = saved.versions.find((item) => item.status === 'draft')
     selectedSchemeVersionId.value = draft?.id ?? ''
     if (draft) syncSchemeDraft(saved, draft)
-    notice.value = 'AI 分析规则草稿已保存并记录操作。'
+    showNotice('AI 分析规则草稿已保存并记录操作。')
     await loadSchemes()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -248,7 +249,7 @@ async function copySelectedScheme(): Promise<void> {
   if (!selected || !schemeCopyName.value.trim()) return
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     const copied = await copyScheme(selected.scheme.id, { name: schemeCopyName.value.trim() })
     schemeCopyEditing.value = false
@@ -256,7 +257,7 @@ async function copySelectedScheme(): Promise<void> {
     await loadSchemes()
     const draft = copied.versions.find((item) => item.status === 'draft') ?? copied.versions[0]
     if (draft) selectSchemeVersion(draft.id)
-    notice.value = 'AI 分析规则副本已创建为草稿。'
+    showNotice('AI 分析规则副本已创建为草稿。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -271,12 +272,12 @@ async function archiveSelectedScheme(): Promise<void> {
   if (!window.confirm(`确认归档 AI 分析规则“${selected.scheme.name}”吗？当前生效规则会被服务端阻止归档，历史版本和历史分析任务不会被删除。`)) return
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     await archiveScheme(selected.scheme.id)
     selectedSchemeVersionId.value = ''
     await Promise.all([loadSchemes(), loadArchivedSchemes()])
-    notice.value = 'AI 分析规则已归档。'
+    showNotice('AI 分析规则已归档。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -288,14 +289,14 @@ async function archiveSelectedScheme(): Promise<void> {
 async function restoreArchivedAnalysisScheme(item: ResourceLifecycleResponse): Promise<void> {
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     await restoreArchivedScheme(item.id)
     await Promise.all([loadSchemes(), loadArchivedSchemes()])
     const restored = schemes.value.find((scheme) => scheme.id === item.id)
     const version = restored?.versions.find((entry) => entry.status === 'draft') ?? restored?.versions[0]
     if (version) selectSchemeVersion(version.id)
-    notice.value = 'AI 分析规则已恢复；恢复后不会自动发布或生效。'
+    showNotice('AI 分析规则已恢复；恢复后不会自动发布或生效。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -307,7 +308,7 @@ async function restoreArchivedAnalysisScheme(item: ResourceLifecycleResponse): P
 async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Promise<void> {
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     const eligibility = await fetchSchemeDeleteEligibility(item.id)
     if (!eligibility.eligible) {
@@ -317,7 +318,7 @@ async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Pr
     if (!window.confirm(`确认永久删除已归档 AI 分析规则“${item.name}”吗？只有从未发布、从未被分析任务使用的纯草稿规则才允许删除。`)) return
     await deleteArchivedScheme(item.id)
     await loadArchivedSchemes()
-    notice.value = '未发布且未使用的归档 AI 分析规则已永久删除。'
+    showNotice('未发布且未使用的归档 AI 分析规则已永久删除。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -331,10 +332,10 @@ async function publishVersion(version: AnalysisSchemeVersionResponse): Promise<v
   if (!window.confirm('发布后，新建的 AI 分析任务会使用此版本；正在运行的任务不受影响。是否发布？')) return
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     await activateScheme(version.id, version.version)
-    notice.value = 'AI 分析规则已发布并记录操作。'
+    showNotice('AI 分析规则已发布并记录操作。')
     await loadSchemes()
   } catch (reason) {
     error.value = apiErrorMessage(reason)
@@ -349,10 +350,10 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
   if (!window.confirm(`确认恢复到版本 ${version.version}？系统会完整记录本次操作。`)) return
   saving.value = true
   error.value = null
-  notice.value = null
+  clearNotice()
   try {
     await restoreScheme(version.id, version.version)
-    notice.value = `已恢复到版本 ${version.version} 并记录操作。`
+    showNotice(`已恢复到版本 ${version.version} 并记录操作。`)
     await loadSchemes()
   } catch (reason) {
     error.value = apiErrorMessage(reason)

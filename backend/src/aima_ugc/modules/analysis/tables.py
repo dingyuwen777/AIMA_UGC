@@ -82,6 +82,13 @@ analysis_content_runs_table = Table(
     info={"owner": "analysis"},
 )
 
+Index(
+    "ix_analysis_runs_scheme_sequence",
+    analysis_content_runs_table.c.analysis_scheme_version_id,
+    analysis_content_runs_table.c.sequence_no,
+    analysis_content_runs_table.c.id,
+)
+
 analysis_content_run_targets_table = Table(
     "analysis_content_run_targets",
     metadata,

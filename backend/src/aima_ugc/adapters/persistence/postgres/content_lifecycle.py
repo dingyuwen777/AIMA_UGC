@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Generator
 from datetime import datetime
+from itertools import batched
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import cast as sql_cast
+from sqlalchemy import column, delete, insert, select, tuple_, update
+from sqlalchemy import values as sql_values
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import Select
 
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
@@ -77,6 +82,37 @@ _COLLECTION_TABLES = {
 }
 
 
+def campaign_contributions_query(campaign_id: UUID) -> Select[Any]:
+    """按 Campaign 的两种来源身份选择真实写入的 Contribution Delta。"""
+
+    contribution = content_source_contributions_table
+    attempt = provider_request_attempts_table
+    request = provider_requests_table
+    batch = processing_import_batches_table
+    campaign_item = historical_import_campaign_items_table
+    scope = collection_scopes_table
+    run = collection_runs_table
+    return (
+        select(contribution)
+        .select_from(
+            contribution.join(attempt, attempt.c.id == contribution.c.provider_attempt_id)
+            .join(request, request.c.id == attempt.c.provider_request_id)
+            .outerjoin(batch, batch.c.id == request.c.import_batch_id)
+            .outerjoin(
+                campaign_item,
+                campaign_item.c.id == batch.c.historical_campaign_item_id,
+            )
+            .outerjoin(scope, scope.c.id == request.c.scope_id)
+            .outerjoin(run, run.c.id == scope.c.run_id)
+        )
+        .where(
+            (campaign_item.c.campaign_id == campaign_id)
+            | (run.c.data_import_campaign_id == campaign_id)
+        )
+        .order_by(contribution.c.created_at, contribution.c.id)
+    )
+
+
 class PostgresContentLifecycleRepository:
     """Content Owner 唯一执行来源撤销后的 Current/Version 重组。"""
 
@@ -86,33 +122,38 @@ class PostgresContentLifecycleRepository:
     def list_campaign_contributions(self, campaign_id: UUID) -> tuple[RowMapping, ...]:
         """按实际写入顺序读取 Campaign 文件导入与后续补采的来源 Delta。"""
 
-        contribution = content_source_contributions_table
-        attempt = provider_request_attempts_table
-        request = provider_requests_table
-        batch = processing_import_batches_table
-        campaign_item = historical_import_campaign_items_table
-        scope = collection_scopes_table
-        run = collection_runs_table
-        rows = self._session.execute(
-            select(contribution)
-            .select_from(
-                contribution.join(attempt, attempt.c.id == contribution.c.provider_attempt_id)
-                .join(request, request.c.id == attempt.c.provider_request_id)
-                .outerjoin(batch, batch.c.id == request.c.import_batch_id)
-                .outerjoin(
-                    campaign_item,
-                    campaign_item.c.id == batch.c.historical_campaign_item_id,
-                )
-                .outerjoin(scope, scope.c.id == request.c.scope_id)
-                .outerjoin(run, run.c.id == scope.c.run_id)
+        return tuple(
+            self._session.execute(self._campaign_contributions_query(campaign_id)).mappings()
+        )
+
+    def iter_campaign_contributions(
+        self, campaign_id: UUID, *, after_content_id: UUID | None = None
+    ) -> Generator[RowMapping]:
+        """按 Content 连续流式读取撤销账本，避免 Campaign 全量驻留应用内存。"""
+
+        statement = self._campaign_contributions_query(campaign_id)
+        if after_content_id is not None:
+            statement = statement.where(
+                content_source_contributions_table.c.content_id > after_content_id
             )
-            .where(
-                (campaign_item.c.campaign_id == campaign_id)
-                | (run.c.data_import_campaign_id == campaign_id)
+        result = self._session.execute(
+            statement.order_by(None)
+            .order_by(
+                content_source_contributions_table.c.content_id,
+                content_source_contributions_table.c.created_at,
+                content_source_contributions_table.c.id,
             )
-            .order_by(contribution.c.created_at, contribution.c.id)
+            .execution_options(stream_results=True, yield_per=500)
         ).mappings()
-        return tuple(rows)
+        try:
+            yield from result
+        finally:
+            result.close()
+
+    def _campaign_contributions_query(self, campaign_id: UUID) -> Select[Any]:
+        """复用同一来源归属条件，供全量兼容入口和流式撤销入口使用。"""
+
+        return campaign_contributions_query(campaign_id)
 
     def apply_campaign_revocation(
         self,
@@ -234,6 +275,260 @@ class PostgresContentLifecycleRepository:
             versions.append((content_id, version_no))
         return tuple(versions)
 
+    def apply_contributions_batch(
+        self,
+        contributions: tuple[RowMapping, ...],
+        *,
+        revoked_at: datetime,
+    ) -> dict[UUID, int]:
+        """批量回退 Content、Account 与 Collection Delta，保留逐字段归属判断。"""
+
+        if revoked_at.utcoffset() is None:
+            raise ValueError("revoked_at 必须包含时区")
+        by_content: dict[UUID, list[RowMapping]] = defaultdict(list)
+        for contribution in contributions:
+            delta = contribution["delta"]
+            if (
+                not isinstance(delta, dict)
+                or delta.get("schema_version") != "content-source-contribution.v1"
+                or not isinstance(delta.get("collections") or {}, dict)
+                or set(delta.get("collections") or {}) - set(_COLLECTION_TABLES)
+            ):
+                raise ValueError("Content 来源贡献 Delta 版本或 Collection 不受支持")
+            by_content[cast(UUID, contribution["content_id"])].append(contribution)
+
+        versions: dict[UUID, int] = {}
+        field_columns = tuple(sorted(set(_CONTENT_FIELD_COLUMNS.values())))
+        for page in batched(sorted(by_content, key=str), 500, strict=False):
+            content_ids = tuple(page)
+            currents = {
+                cast(UUID, row["id"]): dict(row)
+                for row in self._session.execute(
+                    select(contents_table)
+                    .where(contents_table.c.id.in_(content_ids))
+                    .order_by(contents_table.c.id)
+                    .with_for_update()
+                ).mappings()
+            }
+            version_rows = {
+                cast(UUID, row["content_id"]): row
+                for row in self._session.execute(
+                    select(content_versions_table).where(
+                        tuple_(
+                            content_versions_table.c.content_id,
+                            content_versions_table.c.version_no,
+                        ).in_(
+                            tuple(
+                                (content_id, currents[content_id]["current_version"])
+                                for content_id in content_ids
+                            )
+                        )
+                    )
+                ).mappings()
+            }
+            requested_collection_fields = {
+                str(field_name)
+                for content_id in content_ids
+                for contribution in by_content[content_id]
+                for field_name in cast(
+                    dict[str, object],
+                    cast(dict[str, object], contribution["delta"]).get("collections") or {},
+                )
+            }
+            collection_rows: dict[str, dict[UUID, list[dict[str, object]]]] = {}
+            for field_name in sorted(requested_collection_fields):
+                table = _COLLECTION_TABLES[field_name]
+                order_column = (
+                    table.c.id_type if field_name == "alternate_ids" else table.c.position
+                )
+                rows_by_content: dict[UUID, list[dict[str, object]]] = defaultdict(list)
+                for row in self._session.execute(
+                    select(table)
+                    .where(table.c.content_id.in_(content_ids))
+                    .order_by(table.c.content_id, order_column)
+                ).mappings():
+                    rows_by_content[cast(UUID, row["content_id"])].append(
+                        {str(key): value for key, value in row.items() if key != "content_id"}
+                    )
+                collection_rows[field_name] = rows_by_content
+
+            account_ids = sorted(
+                {
+                    UUID(str(account_change["account_id"]))
+                    for content_id in content_ids
+                    for contribution in by_content[content_id]
+                    if isinstance(
+                        account_change := cast(dict[str, Any], contribution["delta"]).get(
+                            "account"
+                        ),
+                        dict,
+                    )
+                    and account_change.get("account_id")
+                },
+                key=str,
+            )
+            account_cache = {
+                cast(UUID, row["id"]): dict(row)
+                for row in self._session.execute(
+                    select(accounts_table)
+                    .where(accounts_table.c.id.in_(account_ids))
+                    .order_by(accounts_table.c.id)
+                    .with_for_update()
+                ).mappings()
+            }
+            if set(account_ids) != set(account_cache):
+                raise ValueError("Content 来源贡献引用的 Account 不存在")
+            changed_account_ids: set[UUID] = set()
+            updates: list[dict[str, object]] = []
+            new_versions: list[dict[str, object]] = []
+            changed_collections: dict[str, list[UUID]] = defaultdict(list)
+            restored_collections: dict[str, list[dict[str, object]]] = defaultdict(list)
+            for content_id in content_ids:
+                current = currents[content_id]
+                version_row = version_rows[content_id]
+                author_snapshot = (
+                    dict(cast(dict[str, Any], version_row["author_snapshot"]))
+                    if isinstance(version_row["author_snapshot"], dict)
+                    else None
+                )
+                raw_freshness = current.get("field_observed_at") or {}
+                if not isinstance(raw_freshness, dict):
+                    raise ValueError("Content field_observed_at 必须是对象")
+                freshness = {str(key): str(value) for key, value in raw_freshness.items()}
+                ordered = sorted(
+                    by_content[content_id],
+                    key=lambda row: (row["created_at"], str(row["id"])),
+                    reverse=True,
+                )
+                collection_cache = {
+                    field_name: tuple(collection_rows[field_name][content_id])
+                    for field_name in requested_collection_fields
+                }
+                collection_updates: dict[str, list[dict[str, object]]] = {}
+                for contribution in ordered:
+                    author_snapshot = self._apply_delta(
+                        content_id=content_id,
+                        current=current,
+                        freshness=freshness,
+                        author_snapshot=author_snapshot,
+                        delta=cast(dict[str, Any], contribution["delta"]),
+                        collection_cache=collection_cache,
+                        collection_updates=collection_updates,
+                        account_cache=account_cache,
+                        changed_account_ids=changed_account_ids,
+                    )
+                for field_name, restored_rows in collection_updates.items():
+                    changed_collections[field_name].append(content_id)
+                    restored_collections[field_name].extend(
+                        {"content_id": content_id, **row} for row in restored_rows
+                    )
+                version_no = cast(int, current["current_version"]) + 1
+                source = ordered[0]
+                updates.append(
+                    {
+                        "target_content_id": content_id,
+                        **{name: current[name] for name in field_columns},
+                        "field_observed_at": freshness,
+                        "current_version": version_no,
+                        "updated_at": revoked_at,
+                    }
+                )
+                new_versions.append(
+                    {
+                        "id": uuid4(),
+                        "content_id": content_id,
+                        "version_no": version_no,
+                        "content_type": current["content_type"],
+                        "title": current["title"],
+                        "text": current["text"],
+                        "canonical_url": current["canonical_url"],
+                        "share_url": current["share_url"],
+                        "author_snapshot": author_snapshot,
+                        "published_at": current["published_at"],
+                        "source_updated_at": current["source_updated_at"],
+                        "status": current["status"],
+                        "provider_attempt_id": source["provider_attempt_id"],
+                        "raw_artifact_id": source["raw_artifact_id"],
+                        "observed_at": revoked_at,
+                    }
+                )
+                versions[content_id] = version_no
+            for field_name in sorted(changed_collections):
+                table = _COLLECTION_TABLES[field_name]
+                self._session.execute(
+                    delete(table).where(table.c.content_id.in_(changed_collections[field_name]))
+                )
+                if restored_collections[field_name]:
+                    self._session.execute(insert(table), restored_collections[field_name])
+
+            if changed_account_ids:
+                account_columns = (
+                    *tuple(sorted(set(_ACCOUNT_FIELD_COLUMNS.values()))),
+                    "field_observed_at",
+                )
+                account_values = sql_values(
+                    column("target_account_id", accounts_table.c.id.type),
+                    *(column(name, accounts_table.c[name].type) for name in account_columns),
+                    name="account_reversal_values",
+                ).data(
+                    tuple(
+                        (
+                            account_id,
+                            *(account_cache[account_id][name] for name in account_columns),
+                        )
+                        for account_id in sorted(changed_account_ids, key=str)
+                    )
+                )
+                self._session.execute(
+                    update(accounts_table)
+                    .where(
+                        accounts_table.c.id
+                        == sql_cast(account_values.c.target_account_id, accounts_table.c.id.type)
+                    )
+                    .values(
+                        {
+                            name: sql_cast(account_values.c[name], accounts_table.c[name].type)
+                            for name in account_columns
+                        }
+                    )
+                )
+            updated_columns = (*field_columns, "field_observed_at", "current_version", "updated_at")
+            batch_values = sql_values(
+                column("target_content_id", contents_table.c.id.type),
+                *(column(name, contents_table.c[name].type) for name in updated_columns),
+                name="reversal_values",
+            ).data(
+                tuple(
+                    (row["target_content_id"], *(row[name] for name in updated_columns))
+                    for row in updates
+                )
+            )
+            self._session.execute(
+                update(contents_table)
+                .where(
+                    contents_table.c.id
+                    == sql_cast(batch_values.c.target_content_id, contents_table.c.id.type)
+                )
+                .values(
+                    {
+                        name: sql_cast(batch_values.c[name], contents_table.c[name].type)
+                        for name in updated_columns
+                    }
+                )
+            )
+            self._session.execute(insert(content_versions_table).values(new_versions))
+        return versions
+
+    def apply_simple_contributions_batch(
+        self,
+        contributions: tuple[RowMapping, ...],
+        *,
+        revoked_at: datetime,
+    ) -> dict[UUID, int]:
+        """兼容既有调用；批量实现已支持完整 Account 与 Collection Delta。"""
+
+        return self.apply_contributions_batch(contributions, revoked_at=revoked_at)
+
     def _apply_delta(
         self,
         *,
@@ -242,6 +537,10 @@ class PostgresContentLifecycleRepository:
         freshness: dict[str, str],
         author_snapshot: dict[str, Any] | None,
         delta: dict[str, Any],
+        collection_cache: dict[str, tuple[dict[str, object], ...]] | None = None,
+        collection_updates: dict[str, list[dict[str, object]]] | None = None,
+        account_cache: dict[UUID, dict[str, Any]] | None = None,
+        changed_account_ids: set[UUID] | None = None,
     ) -> dict[str, Any] | None:
         """仅当 Current 仍匹配来源写入后的值/marker 时回退该字段。"""
 
@@ -284,26 +583,47 @@ class PostgresContentLifecycleRepository:
             before_rows = decode_contribution_value(change.get("before"))
             if not isinstance(after_rows, list) or not isinstance(before_rows, list):
                 raise ValueError("Contribution Collection rows 必须是数组")
-            if self._collection_rows(content_id, field_name) != tuple(after_rows):
+            current_rows = (
+                self._collection_rows(content_id, field_name)
+                if collection_cache is None
+                else collection_cache.get(field_name, ())
+            )
+            if current_rows != tuple(after_rows):
                 continue
-            table = _COLLECTION_TABLES[field_name]
-            self._session.execute(delete(table).where(table.c.content_id == content_id))
-            if before_rows:
-                self._session.execute(
-                    insert(table),
-                    [
-                        {"content_id": content_id, **cast(dict[str, object], row)}
-                        for row in before_rows
-                    ],
-                )
+            if collection_cache is None:
+                table = _COLLECTION_TABLES[field_name]
+                self._session.execute(delete(table).where(table.c.content_id == content_id))
+                if before_rows:
+                    self._session.execute(
+                        insert(table),
+                        [
+                            {"content_id": content_id, **cast(dict[str, object], row)}
+                            for row in before_rows
+                        ],
+                    )
+            else:
+                if collection_updates is None:
+                    raise ValueError("集合预读必须同时提供写入缓冲")
+                collection_cache[field_name] = tuple(before_rows)
+                collection_updates[field_name] = before_rows
             _restore_freshness(freshness, field_name, change.get("before_freshness"))
 
         account_change = delta.get("account")
         if isinstance(account_change, dict):
-            self._apply_account_delta(account_change)
+            self._apply_account_delta(
+                account_change,
+                account_cache=account_cache,
+                changed_account_ids=changed_account_ids,
+            )
         return author_snapshot
 
-    def _apply_account_delta(self, account_change: dict[str, Any]) -> None:
+    def _apply_account_delta(
+        self,
+        account_change: dict[str, Any],
+        *,
+        account_cache: dict[UUID, dict[str, Any]] | None = None,
+        changed_account_ids: set[UUID] | None = None,
+    ) -> None:
         """按 Account 自己的 field_observed_at 只回退仍由目标来源独占的账号字段。"""
 
         account_id_raw = account_change.get("account_id")
@@ -311,13 +631,20 @@ class PostgresContentLifecycleRepository:
         if not account_id_raw or not isinstance(fields, dict):
             return
         account_id = UUID(str(account_id_raw))
-        row = dict(
-            self._session.execute(
-                select(accounts_table).where(accounts_table.c.id == account_id).with_for_update()
+        if account_cache is None:
+            row = dict(
+                self._session.execute(
+                    select(accounts_table)
+                    .where(accounts_table.c.id == account_id)
+                    .with_for_update()
+                )
+                .mappings()
+                .one()
             )
-            .mappings()
-            .one()
-        )
+        else:
+            if changed_account_ids is None:
+                raise ValueError("Account 预读必须同时提供写入缓冲")
+            row = account_cache[account_id]
         raw_freshness = row.get("field_observed_at") or {}
         if not isinstance(raw_freshness, dict):
             raise ValueError("Account field_observed_at 必须是对象")
@@ -333,11 +660,16 @@ class PostgresContentLifecycleRepository:
             updates[column] = decode_contribution_value(change.get("before"))
             _restore_freshness(freshness, path, change.get("before_freshness"))
         if updates:
-            self._session.execute(
-                update(accounts_table)
-                .where(accounts_table.c.id == account_id)
-                .values(**updates, field_observed_at=freshness)
-            )
+            if account_cache is None:
+                self._session.execute(
+                    update(accounts_table)
+                    .where(accounts_table.c.id == account_id)
+                    .values(**updates, field_observed_at=freshness)
+                )
+            else:
+                row.update(updates)
+                row["field_observed_at"] = freshness
+                cast(set[UUID], changed_account_ids).add(account_id)
 
     def _collection_rows(
         self,

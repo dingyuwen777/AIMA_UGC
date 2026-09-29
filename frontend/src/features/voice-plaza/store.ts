@@ -189,16 +189,6 @@ function errorMessage(error: unknown): string {
   return '请求失败，请稍后重试。'
 }
 
-function relevanceReviewNotice(
-  decision: ContentRelevanceReviewRequestDecision,
-  result: ContentRelevanceReviewResponse,
-): string {
-  const unchanged = result.unchanged_count > 0 ? `，${result.unchanged_count} 条无需变化` : ''
-  if (decision === 'relevant') return `已人工标记 ${result.changed_count} 条内容为相关${unchanged}。`
-  if (decision === 'irrelevant') return `已人工标记 ${result.changed_count} 条内容为不相关${unchanged}。`
-  return `已撤销 ${result.changed_count} 条人工相关性判断${unchanged}。`
-}
-
 export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const taskCenter = useTaskCenterStore()
   const { analysisRuns, hasActiveAnalysisRuns, cancellingAnalysisRunId } = storeToRefs(taskCenter)
@@ -253,7 +243,6 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   let countAbortController: AbortController | null = null
   const error = ref<string | null>(null)
   const listError = ref<string | null>(null)
-  const notice = ref<string | null>(null)
   let analysisDraft: {
     targets: AnalysisRunTargetSelection
     clientIdempotencyKey: string
@@ -716,14 +705,12 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     if (contentIds.length === 0 || reviewingRelevance.value) return null
     reviewingRelevance.value = true
     error.value = null
-    notice.value = null
     try {
       const result = await submitContentRelevanceReview({
         content_ids: [...contentIds],
         decision,
       })
       selectedIds.value = selectedIds.value.filter((id) => !contentIds.includes(id))
-      notice.value = relevanceReviewNotice(decision, result)
       await refreshLoadedWindow()
       return result
     } catch (reason) {
@@ -749,7 +736,6 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         unlock_existing: unlockExisting,
       })
       detail.value = await fetchContentDetail(detail.value.id)
-      notice.value = '车型人工结论已保存；后续自动识别不会覆盖当前人工结果。'
       await refreshLoadedWindow()
       return true
     } catch (reason) {
@@ -773,7 +759,6 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         content_version: detail.value.content_version,
       })
       detail.value = await fetchContentDetail(detail.value.id)
-      notice.value = '分析人工纠正已保存；如需替换已确认结果，请先确认解除当前人工结论。'
       await refreshLoadedWindow()
       await refreshFilterOptions()
       return true
@@ -917,7 +902,6 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     Object.assign(filters, copyFilters(EMPTY_FILTERS))
     Object.assign(appliedFilters, copyFilters(EMPTY_FILTERS))
     clearSelection()
-    notice.value = null
     countRevision += 1
     countAbortController?.abort()
     countAbortController = null
@@ -1020,7 +1004,6 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     countLoading,
     error,
     listError,
-    notice,
     refresh,
     refreshResults,
     refreshAnalysisCapabilities,

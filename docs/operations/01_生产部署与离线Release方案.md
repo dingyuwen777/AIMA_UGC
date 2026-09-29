@@ -2,7 +2,7 @@
 
 本文维护 AIMA_UGC **当前已经存在的部署与离线 Release 能力、服务器运行方法，以及尚未闭环的 Production 操作边界**。
 
-本文不是施工阶段记录。历史上 Internal V1、Release 建设过程和当时的 CI/PR 证据由 [`changes/archive/`](../../changes/archive/) 与 Git 历史承载；完整 Production 尚未完成的目标统一由 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md) 维护。
+本文不是施工阶段记录。历史上 Internal V1、Release 建设过程和当时的 CI/PR 证据由 [`changes/archive/`](../../changes/archive/) 与 Git 历史承载；完整 Production 尚未完成的目标统一由 [`docs/roadmap/01_生产上线实施路线.md`](../roadmap/01_生产上线实施路线.md) 维护。
 
 ## 1. 当前结论
 
@@ -26,9 +26,9 @@
 
 因此不能再把 Dockerfile、Compose、离线 Bundle 或 no-build/no-pull 重放整体描述成“尚未实现”。
 
-完整 Production 仍是 **No-Go**。当前未闭环项包括企业 Authentication、真实公网/企业入口的 TLS 与浏览器安全验收、协调 PostgreSQL + Artifact Backup/Restore、SBOM/独立签名/provenance、正式服务器发布/回滚闭环，以及真实生产安全、容量、Soak 和恢复验收。详见 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)。
+完整 Production 仍是 **No-Go**。当前未闭环项包括企业 Authentication、真实公网/企业入口的 TLS 与浏览器安全验收、协调 PostgreSQL + Artifact Backup/Restore、SBOM/独立签名/provenance、正式服务器发布/回滚闭环，以及真实生产安全、容量、Soak 和恢复验收。详见 [`docs/roadmap/01_生产上线实施路线.md`](../roadmap/01_生产上线实施路线.md)。
 
-日常源码/本地运行见 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)；Windows Docker Desktop 见 [`docs/guides/03_Windows Docker Desktop Compose运行.md`](../guides/03_Windows%20Docker%20Desktop%20Compose运行.md)。
+日常源码/本地运行见 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)；Windows Docker Desktop 见 [`docs/guides/03_Windows_Docker_Desktop_Compose运行.md`](../guides/03_Windows_Docker_Desktop_Compose运行.md)。
 
 ---
 
@@ -62,6 +62,8 @@ frontend
 | `postgres` | 唯一业务事实库 |
 
 `bootstrap` 与 `configure` 都是部署装配动作，不是常驻业务服务。Worker 当前实际注册内容以 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 为机器事实。
+
+工作台聚合快照的 Migration 只创建可重建快照表、数据修订序列与投影 statement trigger，不在 Alembic 内扫描或回填既有 Content。升级顺序保持 `migrate → worker → api/frontend`：Worker 启动后幂等安排默认近 30 日心智与趋势预热；预热完成前 API 对冷筛选返回真实 preparing 状态，同一 Scheme/Taxonomy 的兼容成功快照继续可读，旧口径快照不会混入当前结果。回滚应用镜像不删除快照或 canonical 事实；需要删除新增结构时只能通过后续批准的 Migration 处理。
 
 ---
 
@@ -264,6 +266,10 @@ SHA256SUMS
 ```text
 images.tar
 compose.yaml
+compose.windows.yaml
+start_compose.py
+stop_compose.py
+reset_keep_vehicle_catalog.sh
 env.production.example
 release-manifest.json
 migration-manifest.json
@@ -288,17 +294,31 @@ Bundle **不得包含**：
 
 ## 9. 服务器离线部署
 
-正式服务器取得已经验证的 Bundle 后，运行原则是：
+正式服务器取得已经验证的 Bundle 后，先校验并导入镜像，再使用 Bundle 自带的启停脚本。日常运行入口统一为：
+
+```bash
+# 启动
+python3 start_compose.py --env-file /data/AIMA_UGC/env.production
+
+# 停止：保留容器、网络和全部持久数据
+python3 stop_compose.py --env-file /data/AIMA_UGC/env.production
+```
+
+完整启动流程是：
 
 ```text
 校验 SHA256SUMS
 → docker load -i images.tar
 → 使用服务器自己的受保护 env.production
 → 对新环境填写模板默认启用的 TikHub / LLM API Key
-→ docker compose config --quiet
-→ docker compose up --no-build --pull never --wait
+→ start_compose.py
+   → 生成 compose.auto.yaml
+   → docker compose config --quiet
+   → docker compose up --no-build --pull never --wait
 → health / business smoke
 ```
+
+[`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py) 与启动脚本使用同一份 env / Compose / `compose.auto.yaml`，执行有序 `stop`。只有明确需要删除容器/网络、做底层排障或恢复时，才直接使用对应 `docker compose down` 等命令。
 
 服务器实际 `env.production` 可以长期保持：
 
@@ -427,7 +447,27 @@ Backup Set = PostgreSQL + ArtifactStore
 
 当前完整协调 Backup/Restore **尚未实现**。不能把独立数据库 dump、独立文件拷贝或 Release Bundle 称为已经验证的一致性 Backup Set。
 
-正式实现目标包括：维护/写屏障、一致性点、PostgreSQL 捕获、Artifact manifest/snapshot、校验和、Restore、数据库↔Artifact reconciliation、RPO/RTO 和恢复演练。具体实施属于 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md) 中独立高风险工作。
+正式实现目标包括：维护/写屏障、一致性点、PostgreSQL 捕获、Artifact manifest/snapshot、校验和、Restore、数据库↔Artifact reconciliation、RPO/RTO 和恢复演练。具体实施属于 [`docs/roadmap/01_生产上线实施路线.md`](../roadmap/01_生产上线实施路线.md) 中独立高风险工作。
+
+### 明确要求清空业务数据时
+
+Linux Release 包提供 [`scripts/deploy/reset_keep_vehicle_catalog.sh`](../../scripts/deploy/reset_keep_vehicle_catalog.sh)。它是**重置工具，不是 Backup/Restore**。重置脚本本身会先停止业务服务并在结束后保持停止状态，因此这里**不需要再额外执行 [`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py)**；确认结果后只用启动脚本恢复服务。
+
+从 Release 根目录运行，先预检，再在确认不需要保留既有业务数据和 Artifact 后执行：
+
+```bash
+bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --dry-run
+bash reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --execute
+python3 start_compose.py --env-file /data/AIMA_UGC/env.production
+```
+
+`--execute` 默认要求交互输入 `RESET-AIMA-BUSINESS-DATA`；只有明确授权的非交互场景才使用 `--yes`。品牌/车型目录按执行前现状原样保留，允许品牌、车型或别名部分或全部为空，不需要额外“允许空目录”参数。
+
+脚本停止 Frontend/API/Worker/Scheduler/Configure/Migrate，备份五张品牌/车型目录表，并在一个事务里清空其余 public 表；因此采集运行、历史导入、Job、管理员操作审计、Content、Provider 配置和 Artifact 元数据都会归零。它随后恢复被清库删除的声音广场单例状态种子，并清空当前 Compose 挂载的 `runtime/data/artifacts` 实体文件；`alembic_version` 和完整品牌/车型目录保留。执行后会同时核对目录行数与五张目录表的内容指纹，任一不一致都失败关闭并保持业务服务停止。原始 Excel 目录、Secret、env、日志和 PostgreSQL 数据目录不删除。失败或成功都保持业务服务停止，须核对结果后使用该 Release 的启动脚本重新装配 Configure。目录备份只覆盖品牌/车型，不能恢复被删除的业务数据和 Artifact。
+
+脚本会拒绝不认识的非 public 持久表、Extension 管理的 public 表、保留目录指向待清空表的外键，以及 Artifact 目录中的嵌套挂载点。执行前应核对 dry-run 列出的待清空表；若原始 Excel 不齐全，业务数据无法通过本工具恢复。旧 Release 不包含该脚本，不能把仓库新脚本直接当作已部署版本的运行事实。
+
+若数据库仍保留历史来源 Artifact 元数据，但对应实体文件已经被外部脚本删除，快照 Job 会以 `historical_source_artifact_missing` 失败并记录 `historical_import.snapshot_io_failed` 的安全诊断字段；它不会凭数据库元数据臆造原文件，也不会重复进行无收益的 I/O 重试。需要从保留的原始 Excel 重新创建导入任务，或按已验证的一致性备份同时恢复数据库与 Artifact。
 
 ---
 
@@ -510,8 +550,9 @@ Release identity / Workflow
 - [`compose.windows.yaml`](../../compose.windows.yaml)：Windows storage-only override；
 - [`env.production.example`](../../env.production.example)：服务器配置 Schema；
 - [`scripts/deploy/prepare_host.py`](../../scripts/deploy/prepare_host.py)：Host Root/权限初始化；
+- [`scripts/deploy/start_compose.py`](../../scripts/deploy/start_compose.py) 与 [`scripts/deploy/stop_compose.py`](../../scripts/deploy/stop_compose.py)：离线 Release 的跨平台资源规划及启停入口，外部 env 长期保持不变；
 - [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py)：Worker Registry；
 - [`docs/blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)：长期运行、安全和恢复边界；
-- [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)：尚未完成的 Production 门禁。
+- [`docs/roadmap/01_生产上线实施路线.md`](../roadmap/01_生产上线实施路线.md)：尚未完成的 Production 门禁。
 
 不要用历史 Stage 编号、旧 PR 日志或单次 CI 结果代替当前代码、Workflow、Manifest 和目标服务器证据。

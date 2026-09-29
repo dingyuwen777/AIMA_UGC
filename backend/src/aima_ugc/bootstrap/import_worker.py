@@ -11,6 +11,7 @@ from time import perf_counter
 from uuid import UUID
 
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,11 +23,23 @@ from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.manual_ingestion import (
     PostgresProcessingImportBatchRepository,
 )
+from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
+    defer_voice_plaza_projection,
+    flush_deferred_voice_plaza_projection,
+)
+from aima_ugc.adapters.persistence.postgres.workload_slots import (
+    acquire_foreground_write_priority,
+)
 from aima_ugc.adapters.providers.imports import (
     ExcelImportRejectedRowsError,
     convert_excel_to_canonical_jsonl,
 )
 from aima_ugc.contracts.canonical import CanonicalContentV1
+from aima_ugc.modules.collection.tables import (
+    provider_request_attempts_table,
+    provider_requests_table,
+)
+from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.ingestion import ProcessingImportBatchRecord
 from aima_ugc.modules.ingestion.brand_vehicle_filter import (
     BrandVehicleFilterSnapshot,
@@ -41,6 +54,7 @@ from aima_ugc.modules.ingestion.xlsx_security import (
     XlsxResourceLimitError,
     validate_xlsx_archive,
 )
+from aima_ugc.platform.capacity import detect_resources
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.logging import log_event
@@ -243,7 +257,7 @@ class PostgresImportJobExecutor:
                 ingestion_started = perf_counter()
                 diagnostic_stage = "ingesting"
                 diagnostic_operation = "persist_content_batch"
-                rows_ingested = self._ingest_v2(
+                rows_ingested, foreground_wait_ms = self._ingest_v2(
                     execution,
                     artifact=artifact,
                     fence=fence,
@@ -273,6 +287,7 @@ class PostgresImportJobExecutor:
                     canonical_write_ms=canonical_write_ms,
                     preparation_ms=preparation_ms,
                     ingestion_ms=ingestion_ms,
+                    foreground_wait_ms=foreground_wait_ms,
                     duration_ms=duration_ms,
                     temporary_bytes=_directory_bytes(work_dir),
                     temporary_peak_bytes=temporary_peak_bytes,
@@ -357,7 +372,7 @@ class PostgresImportJobExecutor:
         rows_matched: int,
         rows_filtered_out: int,
         duplicates_removed: int,
-    ) -> int:
+    ) -> tuple[int, int]:
         """在 Job/Batch 当前执行锁内完成 Content 与 Brand/Vehicle Evidence 同事务写入。"""
 
         self._stage(
@@ -376,6 +391,10 @@ class PostgresImportJobExecutor:
             with session.begin():
                 jobs = PostgresJobRepository(session)
                 jobs.validate_current_execution(fence)
+                foreground_priority = acquire_foreground_write_priority(
+                    session,
+                    resources=detect_resources(),
+                )
                 batch = PostgresProcessingImportBatchRepository(session).get_by_job_id(
                     fence.job_id,
                     for_update=True,
@@ -383,7 +402,7 @@ class PostgresImportJobExecutor:
                 if batch is None:
                     raise LookupError("Import Batch 不存在")
                 if batch.status == "succeeded":
-                    return _stat(batch.stats, "rows_ingested")
+                    return _stat(batch.stats, "rows_ingested"), foreground_priority.wait_ms
                 current_artifact = PostgresArtifactMetadataRepository(session).get(
                     batch.input_artifact_id
                 )
@@ -391,6 +410,7 @@ class PostgresImportJobExecutor:
                     raise LookupError("Import Source Artifact 不存在")
                 if current_artifact.id != artifact.id:
                     raise RuntimeError("Import Source Artifact 在 Attempt 内发生变化")
+                defer_voice_plaza_projection(session)
                 write = ingest_unified_content_batch(
                     session=session,
                     batch_id=batch.id,
@@ -401,7 +421,26 @@ class PostgresImportJobExecutor:
                     brand_vehicle_filter_snapshot=execution.payload.filter_snapshot,
                 )
                 jobs.lock_current_execution(fence)
-                return write.rows_ingested
+                affected_content_ids = tuple(
+                    session.scalars(
+                        select(content_source_contributions_table.c.content_id)
+                        .select_from(
+                            content_source_contributions_table.join(
+                                provider_request_attempts_table,
+                                provider_request_attempts_table.c.id
+                                == content_source_contributions_table.c.provider_attempt_id,
+                            ).join(
+                                provider_requests_table,
+                                provider_requests_table.c.id
+                                == provider_request_attempts_table.c.provider_request_id,
+                            )
+                        )
+                        .where(provider_requests_table.c.import_batch_id == batch.id)
+                        .distinct()
+                    )
+                )
+                flush_deferred_voice_plaza_projection(session, affected_content_ids)
+                return write.rows_ingested, foreground_priority.wait_ms
         finally:
             session.close()
 

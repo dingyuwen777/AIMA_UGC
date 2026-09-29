@@ -12,7 +12,10 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, bindparam, insert, or_, select, tuple_, update
+from sqlalchemy import and_, bindparam, func, insert, or_, select, tuple_, update
+from sqlalchemy import cast as sql_cast
+from sqlalchemy import column as sql_column
+from sqlalchemy import values as sql_values
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -302,23 +305,25 @@ class PostgresContentRepository:
             for metric in _CONTENT_METRICS:
                 state.setdefault(f"current_{metric}", None)
             state["replay_visibility_owner_id"] = replay_visibility_owner_id
+            state["rule_filter_visible"] = replay_visibility_owner_id is None
             candidates.append((observation, content_id, state, attempt_id, raw_id))
 
         created: dict[tuple[str, str], UUID] = {}
         for candidate_chunk in batched(candidates, _MULTI_VALUES_INSERT_ROWS, strict=False):
-            statement = (
-                pg_insert(contents_table)
-                .on_conflict_do_nothing(
-                    index_elements=[
-                        contents_table.c.platform,
-                        contents_table.c.external_content_id,
-                    ]
+            insert_statement = pg_insert(contents_table)
+            if replay_visibility_owner_id is None:
+                insert_statement = insert_statement.values(
+                    latest_normal_filter_match_at=func.clock_timestamp()
                 )
-                .returning(
-                    contents_table.c.id,
+            statement = insert_statement.on_conflict_do_nothing(
+                index_elements=[
                     contents_table.c.platform,
                     contents_table.c.external_content_id,
-                )
+                ]
+            ).returning(
+                contents_table.c.id,
+                contents_table.c.platform,
+                contents_table.c.external_content_id,
             )
             created_rows = self._session.execute(
                 statement,
@@ -546,6 +551,8 @@ class PostgresContentRepository:
                 "replay_visibility_owner_id": replay_visibility_owner_id,
                 **current_updates,
             }
+            if replay_visibility_owner_id is None:
+                values.update(rule_filter_visible=True)
             merged.update(values)
             update_values.append(values)
             if business_changed:
@@ -620,7 +627,10 @@ class PostgresContentRepository:
                 )
             )
 
-        self._execute_grouped_content_updates(update_values)
+        self._execute_grouped_content_updates(
+            update_values,
+            normal_filter_match=replay_visibility_owner_id is None,
+        )
         for version_chunk in batched(version_values, _MULTI_VALUES_INSERT_ROWS, strict=False):
             self._session.execute(insert(content_versions_table).values(list(version_chunk)))
         for metric_chunk in batched(metric_values, _MULTI_VALUES_INSERT_ROWS, strict=False):
@@ -922,29 +932,45 @@ class PostgresContentRepository:
             author_ids[index] = component_accounts[find(primary_tokens[index])]
         return tuple(author_ids)
 
-    def _execute_grouped_content_updates(self, rows: list[dict[str, Any]]) -> None:
-        """按列集合分组 executemany，保持不同 observed_fields 的更新语义。"""
+    def _execute_grouped_content_updates(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        normal_filter_match: bool = False,
+    ) -> None:
+        """按列集合分组集合更新，避免大批次对每条 Content 发送一条 UPDATE。"""
 
         grouped: dict[frozenset[str], list[dict[str, Any]]] = {}
         for row in rows:
             columns = frozenset(row).difference({"record_id"})
             grouped.setdefault(columns, []).append(row)
         for columns, values in grouped.items():
-            statement = (
-                update(contents_table)
-                .where(contents_table.c.id == bindparam("_batch_content_id"))
-                .values({column: bindparam(column) for column in columns})
-            )
-            self._session.execute(
-                statement,
-                [
-                    {
-                        "_batch_content_id": value["record_id"],
-                        **{column: value[column] for column in columns},
-                    }
-                    for value in values
-                ],
-            )
+            selected_columns = tuple(sorted(columns))
+            for chunk in batched(values, _MULTI_VALUES_INSERT_ROWS, strict=False):
+                batch_values = sql_values(
+                    sql_column("target_content_id", contents_table.c.id.type),
+                    *(sql_column(name, contents_table.c[name].type) for name in selected_columns),
+                    name="content_updates",
+                ).data(
+                    tuple(
+                        (row["record_id"], *(row[name] for name in selected_columns))
+                        for row in chunk
+                    )
+                )
+                updates: dict[str, Any] = {
+                    name: sql_cast(batch_values.c[name], contents_table.c[name].type)
+                    for name in selected_columns
+                }
+                if normal_filter_match:
+                    updates["latest_normal_filter_match_at"] = func.clock_timestamp()
+                self._session.execute(
+                    update(contents_table)
+                    .where(
+                        contents_table.c.id
+                        == sql_cast(batch_values.c.target_content_id, contents_table.c.id.type)
+                    )
+                    .values(updates)
+                )
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> PostgresIngestionResult:
         attempt_id, raw_id = _source_ids(observation)

@@ -4,6 +4,7 @@ import type {
   ContentListItemResponse,
 } from '../../../../../generated/api/client'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
+import AimaPlatformMark from '../../../../../shared/ui/AimaPlatformMark.vue'
 import {
   contentSummary,
   formatDateTime,
@@ -128,10 +129,6 @@ function sortLabel(field: 'published_at' | 'follower_count'): 'none' | 'ascendin
   return props.sortDirection === 'asc' ? 'ascending' : 'descending'
 }
 
-/** 用既有平台名称展示原稿的单字平台标识。 */
-function platformMark(platform: ContentListItemResponse['platform']): string {
-  return ({ xiaohongshu: '书', douyin: '抖', weibo: '微', bilibili: 'B', kuaishou: '快' })[platform]
-}
 
 function brandRoleLabel(role: 'owned' | 'competitor' | 'other'): string {
   return role === 'owned' ? '自有' : role === 'competitor' ? '竞品' : '其他'
@@ -265,11 +262,7 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
       ></label>
       <div class="content-copy">
         <div class="title-line">
-          <span
-            class="platform-mark"
-            :class="`platform-mark--${item.platform}`"
-            :title="platformLabel(item.platform)"
-          >{{ platformMark(item.platform) }}</span>
+          <AimaPlatformMark :platform="item.platform" />
           <button
             type="button"
             class="content-title"
@@ -369,10 +362,6 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
 .content-copy, .analysis-cell, .fans-cell, .vehicle-cell, time { min-width: 0; }
 .content-copy { display: grid; gap: 6px; }
 .title-line { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.platform-mark { display: grid; min-width: 22px; height: 22px; flex: none; place-items: center; padding-inline: 4px; border-radius: 2px; color: #fff; background: var(--aima-primary); font-size: 12px; font-weight: 700; }
-.platform-mark--douyin, .platform-mark--weibo { background: var(--aima-info); }
-.platform-mark--kuaishou { background: #f97316; }
-.platform-mark--bilibili { background: #00a1d6; }
 .content-title { min-width: 0; padding: 0; overflow: hidden; border: 0; color: var(--aima-text); background: transparent; font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .content-copy p { margin: 0; overflow: hidden; color: var(--aima-text-muted); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .analysis-cell { display: grid; gap: 4px; }

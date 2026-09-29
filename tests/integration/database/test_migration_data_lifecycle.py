@@ -1907,81 +1907,67 @@ def test_0058_adds_all_replay_parent_without_breaking_existing_runs(
         engine.dispose()
 
 
-def test_0061_batches_voice_plaza_projection_triggers_per_statement(
+def test_0067_defers_bulk_projection_and_preserves_default_triggers(
     migration_database: str,
 ) -> None:
-    """声音广场同步触发器按 SQL 语句合批，并可回滚到逐行兼容实现。"""
+    """批量事务可延迟刷新；普通事务仍由触发器同步维护。"""
 
-    row_trigger_names = {
-        "trg_contents_voice_plaza_projection",
-        "trg_content_versions_voice_plaza_projection",
-        "trg_content_contributions_voice_plaza_projection",
-        "trg_voice_plaza_filter_catalog_entry_delta",
-    }
-    _upgrade(migration_database, "20260923_0060")
+    _upgrade(migration_database, "20260925_0065")
+    _upgrade(migration_database, "20260926_0067")
     engine = _engine(migration_database)
     try:
         with engine.connect() as connection:
-            before = {
-                row.tgname: row.tgtype
+            definitions = {
+                row.tgname: row.definition
                 for row in connection.execute(
                     text(
-                        "SELECT tgname, tgtype FROM pg_trigger "
-                        "WHERE NOT tgisinternal AND tgname = ANY(:trigger_names)"
-                    ),
-                    {"trigger_names": list(row_trigger_names)},
-                )
-            }
-        assert set(before) == row_trigger_names
-        assert all(tgtype & 1 for tgtype in before.values())
-    finally:
-        engine.dispose()
-
-    _upgrade(migration_database, "20260924_0061")
-    engine = _engine(migration_database)
-    try:
-        with engine.connect() as connection:
-            triggers = tuple(
-                connection.execute(
-                    text(
-                        "SELECT tgname, tgtype, pg_get_triggerdef(oid) AS definition "
+                        "SELECT tgname, pg_get_triggerdef(oid) AS definition "
                         "FROM pg_trigger WHERE NOT tgisinternal "
-                        "AND (tgname LIKE '%voice_plaza%' OR tgname LIKE 'trg_vp_%') "
-                        "ORDER BY tgname"
+                        "AND tgname IN ("
+                        "'trg_contents_voice_plaza_projection_insert_statement', "
+                        "'trg_vp_content_contributions_ins')"
                     )
-                ).mappings()
+                )
+            }
+            assert len(definitions) == 2
+            assert all("aima.defer_voice_plaza" in value for value in definitions.values())
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_indexes WHERE indexname = "
+                        "'ix_canonical_replay_content_changes_reverted_visibility'"
+                    )
+                )
+                == 1
             )
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "20260924_0061"
+            assert "canonical_replay_content_changes" in connection.scalar(
+                text(
+                    "SELECT pg_get_functiondef('voice_plaza_has_active_source(uuid)'::regprocedure)"
+                )
             )
-        assert triggers
-        assert all(not (int(row["tgtype"]) & 1) for row in triggers)
-        assert all("FOR EACH STATEMENT" in str(row["definition"]) for row in triggers)
-        assert any(
-            row["tgname"] == "trg_contents_voice_plaza_projection_insert_statement"
-            and "REFERENCING NEW TABLE AS new_rows" in str(row["definition"])
-            for row in triggers
-        )
-        assert any(row["tgname"] == "trg_vp_content_contributions_ins" for row in triggers)
     finally:
         engine.dispose()
 
-    _downgrade(migration_database, "20260923_0060")
+    _downgrade(migration_database, "20260925_0065")
     engine = _engine(migration_database)
     try:
         with engine.connect() as connection:
-            restored = {
-                row.tgname: row.tgtype
-                for row in connection.execute(
-                    text(
-                        "SELECT tgname, tgtype FROM pg_trigger "
-                        "WHERE NOT tgisinternal AND tgname = ANY(:trigger_names)"
-                    ),
-                    {"trigger_names": list(row_trigger_names)},
+            definition = connection.scalar(
+                text(
+                    "SELECT pg_get_triggerdef(oid) FROM pg_trigger "
+                    "WHERE tgname = 'trg_vp_content_contributions_ins'"
                 )
-            }
-        assert set(restored) == row_trigger_names
-        assert all(tgtype & 1 for tgtype in restored.values())
+            )
+            assert "aima.defer_voice_plaza" not in definition
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_indexes WHERE indexname = "
+                        "'ix_canonical_replay_content_changes_reverted_visibility'"
+                    )
+                )
+                == 0
+            )
     finally:
         engine.dispose()
 
@@ -2055,15 +2041,15 @@ def _seed_voice_plaza_legacy_filters(database: str) -> None:
         engine.dispose()
 
 
-def test_0062_rewrites_single_value_filters_to_multi_value(
+def test_0075_rewrites_single_value_filters_to_multi_value(
     migration_database: str,
 ) -> None:
-    """0062 把历史单值 voice_type/sentiment 改写成多值并支持 downgrade 回退。"""
+    """0075 把历史单值 voice_type/sentiment 改写成多值并支持 downgrade 回退。"""
 
-    _upgrade(migration_database, "20260924_0061")
+    _upgrade(migration_database, "20260928_0074")
     _seed_voice_plaza_legacy_filters(migration_database)
 
-    _upgrade(migration_database, "20260924_0062")
+    _upgrade(migration_database, "20260928_0075")
     engine = _engine(migration_database)
     try:
         with engine.connect() as connection:
@@ -2087,7 +2073,7 @@ def test_0062_rewrites_single_value_filters_to_multi_value(
     finally:
         engine.dispose()
 
-    _downgrade(migration_database, "20260924_0061")
+    _downgrade(migration_database, "20260928_0074")
     engine = _engine(migration_database)
     try:
         with engine.connect() as connection:

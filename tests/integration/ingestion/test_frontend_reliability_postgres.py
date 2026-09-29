@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+from aima_ugc.adapters.persistence.postgres.collection_runtime_queries import (
+    PostgresCollectionRuntimeQueryRepository,
+)
 from aima_ugc.adapters.persistence.postgres.historical_import import (
     PostgresHistoricalImportRepository,
 )
@@ -15,6 +18,7 @@ from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.historical_import_http import PostgresHistoricalImportHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.worker import create_worker_runtime
+from aima_ugc.modules.collection.runtime_query import CollectionRuntimeReadQuery
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
     historical_import_campaigns_table,
@@ -27,7 +31,7 @@ from aima_ugc.modules.system.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, select, update
 
 
 def _runtime(tmp_path):
@@ -186,20 +190,22 @@ def test_historical_campaign_failed_chunk_count_ignores_bounded_detail_shape(tmp
                 )
             )
             connection.execute(
+                insert(historical_import_campaign_items_table).values(
+                    id=source_id,
+                    campaign_id=campaign_id,
+                    item_kind="source_file",
+                    relative_path="history.xlsx",
+                    manifest_identity="a" * 64,
+                    row_count=0,
+                    status="failed",
+                    attempt_count=1,
+                    stats={},
+                    created_at=created_at,
+                )
+            )
+            connection.execute(
                 insert(historical_import_campaign_items_table),
                 [
-                    {
-                        "id": source_id,
-                        "campaign_id": campaign_id,
-                        "item_kind": "source_file",
-                        "relative_path": "history.xlsx",
-                        "manifest_identity": "a" * 64,
-                        "row_count": 0,
-                        "status": "failed",
-                        "attempt_count": 1,
-                        "stats": {},
-                        "created_at": created_at,
-                    },
                     {
                         "id": failed_chunk_id,
                         "campaign_id": campaign_id,
@@ -231,6 +237,7 @@ def test_historical_campaign_failed_chunk_count_ignores_bounded_detail_shape(tmp
                         "status": "succeeded",
                         "attempt_count": 1,
                         "stats": {},
+                        "error_code": None,
                         "created_at": created_at,
                     },
                 ],
@@ -245,6 +252,130 @@ def test_historical_campaign_failed_chunk_count_ignores_bounded_detail_shape(tmp
 
         response = PostgresHistoricalImportHttpService(runtime).get_campaign(campaign_id)
         assert response.failed_chunk_count == 1
+    finally:
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                delete(historical_import_campaigns_table).where(
+                    historical_import_campaigns_table.c.id == campaign_id
+                )
+            )
+        runtime.close()
+
+
+def test_historical_progress_tracks_chunk_terminal_changes_and_runtime_view(tmp_path) -> None:
+    """新增、失败重试、批量取消和删除都按 Source 净变化反映进度。"""
+
+    runtime = _runtime(tmp_path)
+    campaign_id, source_id = uuid4(), uuid4()
+    succeeded_id, failed_id, ready_id = uuid4(), uuid4(), uuid4()
+    created_at = datetime(2026, 9, 26, tzinfo=UTC)
+    try:
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                insert(historical_import_campaigns_table).values(
+                    id=campaign_id,
+                    client_idempotency_key=f"progress-{campaign_id}",
+                    root_relative_path="progress.xlsx",
+                    profile_snapshot={},
+                    status="running",
+                    discovered_file_count=1,
+                    ready_item_count=1,
+                    total_rows=60,
+                    created_at=created_at,
+                )
+            )
+            connection.execute(
+                insert(historical_import_campaign_items_table).values(
+                    id=source_id,
+                    campaign_id=campaign_id,
+                    item_kind="source_file",
+                    relative_path="progress.xlsx",
+                    manifest_identity="a" * 64,
+                    row_count=60,
+                    status="running",
+                    created_at=created_at,
+                )
+            )
+            connection.execute(
+                insert(historical_import_campaign_items_table),
+                [
+                    {
+                        "id": chunk_id,
+                        "campaign_id": campaign_id,
+                        "parent_item_id": source_id,
+                        "item_kind": "chunk",
+                        "relative_path": "progress.xlsx",
+                        "manifest_identity": "a" * 64,
+                        "ordinal": ordinal,
+                        "row_start": ordinal * 20 + 1,
+                        "row_end": (ordinal + 1) * 20,
+                        "row_count": 20,
+                        "status": status,
+                        "created_at": created_at,
+                    }
+                    for ordinal, (chunk_id, status) in enumerate(
+                        ((succeeded_id, "succeeded"), (failed_id, "failed"), (ready_id, "ready"))
+                    )
+                ],
+            )
+
+        def progress() -> tuple[int, int, int]:
+            with runtime.database.new_session() as session, session.begin():
+                source = session.execute(
+                    select(
+                        historical_import_campaign_items_table.c.completed_row_count,
+                        historical_import_campaign_items_table.c.failed_chunk_count,
+                    ).where(historical_import_campaign_items_table.c.id == source_id)
+                ).one()
+                campaign = PostgresHistoricalImportRepository(session).campaign_progresses(
+                    (campaign_id,)
+                )[campaign_id]
+                runtime_rows = PostgresCollectionRuntimeQueryRepository(session).list_runs(
+                    CollectionRuntimeReadQuery(
+                        search=str(campaign_id),
+                        record_types=("data_import_campaign",),
+                        status=None,
+                        stage=None,
+                        created_from=None,
+                        created_to=None,
+                        position=None,
+                        limit=10,
+                    )
+                )
+                assert len(runtime_rows) == 1
+                assert campaign.migration_completed_row_count == int(source[0])
+                assert campaign.failed_chunk_count == int(source[1])
+                return int(source[0]), int(source[1]), runtime_rows[0].progress
+
+        assert progress() == (40, 1, 67)
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(historical_import_campaign_items_table)
+                .where(historical_import_campaign_items_table.c.id == failed_id)
+                .values(status="ready")
+            )
+        assert progress() == (20, 0, 33)
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(historical_import_campaign_items_table)
+                .where(historical_import_campaign_items_table.c.id.in_((failed_id, ready_id)))
+                .values(status="cancelled")
+            )
+        assert progress() == (60, 0, 100)
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(historical_import_campaign_items_table)
+                .where(historical_import_campaign_items_table.c.id == failed_id)
+                .values(status="failed")
+            )
+        assert progress() == (60, 1, 100)
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                delete(historical_import_campaign_items_table).where(
+                    historical_import_campaign_items_table.c.id == failed_id
+                )
+            )
+        assert progress() == (40, 0, 67)
     finally:
         with runtime.database.engine.begin() as connection:
             connection.execute(

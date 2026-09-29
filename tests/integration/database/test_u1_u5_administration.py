@@ -406,3 +406,53 @@ def test_unreferenced_vehicle_can_be_physically_deleted(runtime) -> None:  # typ
 
     with pytest.raises(AdministrationResourceNotFound):
         service.get_vehicle_model(created.id)
+
+
+def test_vehicle_create_slow_log_records_stages_without_business_text(
+    runtime, monkeypatch, caplog
+) -> None:  # type: ignore[no-untyped-def]
+    """车型新增慢请求与编辑一样提供安全阶段耗时。"""
+
+    principal = Principal(
+        principal_id="vehicle-create-timing-admin",
+        display_name="管理员",
+        role="administrator",
+        source="development",
+    )
+    brand = _create_owned_brand(runtime, principal, code="CREATE-TIMING")
+    service = PostgresAdministrationHttpService(runtime)
+    runtime.logger.addHandler(caplog.handler)
+    try:
+        monkeypatch.setattr(administration_http, "SLOW_VEHICLE_CREATE_MS", 0)
+        created = service.create_vehicle_model(
+            VehicleModelCreateRequest(
+                display_name="敏感新增车型",
+                brand_id=brand.id,
+                aliases=("敏感新增别名",),
+            ),
+            principal=principal,
+            request_id="vehicle-create-timing-slow",
+        )
+    finally:
+        runtime.logger.removeHandler(caplog.handler)
+
+    record = next(
+        item
+        for item in caplog.records
+        if getattr(item, "event", None) == "administration.vehicle_model_create_slow"
+    )
+    assert record.request_id == "vehicle-create-timing-slow"
+    assert record.vehicle_model_id == str(created.id)
+    assert record.outcome == "success"
+    assert set(record.stage_ms) == {
+        "session_create",
+        "db_checkout",
+        "brand_check",
+        "catalog_version",
+        "model_insert",
+        "alias_replace",
+        "audit",
+        "response_projection",
+        "commit",
+    }
+    assert "敏感" not in caplog.text
