@@ -791,7 +791,11 @@ class PostgresContentHttpService:
                         cast(UUID, first_shard["request_id"]) if first_shard else None,
                         cast(UUID, first_shard["job_id"]) if first_shard else None,
                     )
-                if not freeze_in_http:
+                if (
+                    not freeze_in_http
+                    and isinstance(targets, AnalysisRunTargetSelection)
+                    and targets.scope in {"query", "all"}
+                ):
                     current_target_count = self._analysis_target_count(
                         session,
                         targets,
