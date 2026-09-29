@@ -51,7 +51,7 @@ jobs:
       changed_count: ${{ steps.classify.outputs.changed_count }}
       evidence_reused: ${{ steps.reuse.outputs.reusable }}
     steps:
-e: Checkout
+      - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
@@ -65,7 +65,8 @@ e: Checkout
           set -euo pipefail
           python3 -m py_compile \
             scripts/quality/resolve_main_evidence.py \
-            scripts/quality/classify_ci_scope.py
+            scripts/quality/classify_ci_scope.py \
+            scripts/dev/validate_changed.py
 
       - name: Resolve reusable PR evidence on main
         id: reuse
@@ -113,9 +114,6 @@ e: Checkout
               echo "backend_targets="
               echo "frontend_unit_targets="
               echo "frontend_e2e_specs="
-              echo "backend_targets="
-              echo "frontend_unit_targets="
-              echo "frontend_e2e_specs="
               echo "postgres_targets="
               echo "postgres_suites="
               echo "fullstack_required=false"
@@ -139,6 +137,9 @@ e: Checkout
               echo "frontend_required=false"
               echo "contract_required=false"
               echo "postgres_required=false"
+              echo "backend_targets="
+              echo "frontend_unit_targets="
+              echo "frontend_e2e_specs="
               echo "postgres_targets="
               echo "postgres_suites="
               echo "fullstack_required=false"

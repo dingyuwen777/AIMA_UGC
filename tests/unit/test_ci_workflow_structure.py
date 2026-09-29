@@ -160,7 +160,7 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     assert "github.ref == 'refs/heads/main'" in hygiene
     assert "needs: ci-gate" in hygiene
     assert runtime.count("runs-on: ubuntu-24.04") == 1
-    assert "needs: quality-core" in ci
+    assert "  quality-core:\n    name: Requirement Traceability and Completion Audit\n    if: always()\n    needs: ci-plan\n" in ci
     assert "Block Draft required evidence" in ci
     assert "Block Draft required evidence" in runtime
     assert "github.event.pull_request.draft == false" not in ci
