@@ -236,8 +236,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", help="Git 基线；默认 origin/main，其次 main")
     parser.add_argument("--head", default="HEAD", help="Git 目标 revision，默认 HEAD")
-    parser.add_argument("--committed-only", action="store_true", help="仅比较 base..head，不包含 working tree/untracked")
-    parser.add_argument("--fix", action="store_true", help="先收敛 changed Python 格式和 generated artifacts")
+    parser.add_argument(
+        "--committed-only",
+        action="store_true",
+        help="仅比较 base..head，不包含 working tree/untracked",
+    )
+    parser.add_argument(
+        "--fix", action="store_true", help="先收敛 changed Python 格式和 generated artifacts"
+    )
     parser.add_argument("--execute", action="store_true", help="执行本地稳定验证层")
     parser.add_argument("--json", action="store_true", help="输出 classifier JSON")
     args = parser.parse_args()

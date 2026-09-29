@@ -211,9 +211,7 @@ def _is_report_font_path(path: str) -> bool:
 
 def _backend_targets_for_path(path: str) -> tuple[tuple[str, ...], bool]:
     """把已知后端 Owner 映射到直接单测；未知共享边界由调用方回退 all。"""
-    if path.startswith(("tests/unit/", "tests/api/", "tests/contracts/")) and path.endswith(
-        ".py"
-    ):
+    if path.startswith(("tests/unit/", "tests/api/", "tests/contracts/")) and path.endswith(".py"):
         if Path(path).name == "conftest.py":
             return (), False
         return (path,), True
@@ -275,10 +273,7 @@ def _frontend_targets_for_path(path: str) -> tuple[tuple[str, ...], tuple[str, .
     if path.startswith("frontend/e2e/") and path.endswith(".spec.ts"):
         return (), (path,), True
 
-    mappings: tuple[
-        tuple[str, tuple[str, ...], tuple[str, ...]],
-        ...
-    ] = (
+    mappings: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
         (
             "frontend/src/features/voice-plaza/",
             (
@@ -743,12 +738,8 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         frontend_e2e_specs.update(FRONTEND_ALL)
 
     selected_backend_targets = _ordered_targets(backend_targets, all_value=BACKEND_ALL)
-    selected_frontend_unit_targets = _ordered_targets(
-        frontend_unit_targets, all_value=FRONTEND_ALL
-    )
-    selected_frontend_e2e_specs = _ordered_targets(
-        frontend_e2e_specs, all_value=FRONTEND_ALL
-    )
+    selected_frontend_unit_targets = _ordered_targets(frontend_unit_targets, all_value=FRONTEND_ALL)
+    selected_frontend_e2e_specs = _ordered_targets(frontend_e2e_specs, all_value=FRONTEND_ALL)
     selected_postgres_targets = _ordered_postgres_targets(postgres_targets)
     selected_postgres_suites = _ordered_postgres_suites(postgres_suites)
     if postgres_required and not selected_postgres_targets and not selected_postgres_suites:

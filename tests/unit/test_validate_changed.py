@@ -30,8 +30,13 @@ def test_validate_changed_reuses_classifier_and_builds_targeted_commands() -> No
 
     rendered = [" ".join(command) for command in commands]
     assert any("pytest tests/unit/analysis -q" in command for command in rendered)
-    assert any("vitest" in command and "tests/voice-plaza.spec.ts" in command for command in rendered)
-    assert any("playwright test" in command and "e2e/voice-plaza.spec.ts" in command for command in rendered)
+    assert any(
+        "vitest" in command and "tests/voice-plaza.spec.ts" in command for command in rendered
+    )
+    assert any(
+        "playwright test" in command and "e2e/voice-plaza.spec.ts" in command
+        for command in rendered
+    )
 
 
 def test_validate_changed_keeps_expensive_external_layers_as_explicit_ci_deferred_items() -> None:
@@ -121,6 +126,4 @@ def test_validate_changed_committed_only_keeps_explicit_base_head_diff(monkeypat
     paths = script["changed_paths"]("main", "feature-head", include_worktree=False)
 
     assert paths == ("backend/src/aima_ugc/modules/content/service.py",)
-    assert calls == [
-        ("git", "diff", "--no-renames", "--name-only", "-z", "main", "feature-head")
-    ]
+    assert calls == [("git", "diff", "--no-renames", "--name-only", "-z", "main", "feature-head")]

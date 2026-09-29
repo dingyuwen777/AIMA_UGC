@@ -160,7 +160,10 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     assert "github.ref == 'refs/heads/main'" in hygiene
     assert "needs: ci-gate" in hygiene
     assert runtime.count("runs-on: ubuntu-24.04") == 1
-    assert "  quality-core:\n    name: Requirement Traceability and Completion Audit\n    if: always()\n    needs: ci-plan\n" in ci
+    assert (
+        "  quality-core:\n    name: Requirement Traceability and Completion Audit\n    if: always()\n    needs: ci-plan\n"
+        in ci
+    )
     assert "Block Draft required evidence" in ci
     assert "Block Draft required evidence" in runtime
     core = _section(ci, "  quality-core:\n", "  postgres-integration:\n")
@@ -385,9 +388,9 @@ def test_targeted_backend_does_not_pay_global_api_suite() -> None:
     all_branch = step.split('if [[ " ${BACKEND_TARGETS} " == *" all "* ]]; then', 1)[1].split(
         'elif [[ -n "${BACKEND_TARGETS}" ]]; then', 1
     )[0]
-    targeted_branch = step.split('elif [[ -n "${BACKEND_TARGETS}" ]]; then', 1)[1].split(
-        "else", 1
-    )[0]
+    targeted_branch = step.split('elif [[ -n "${BACKEND_TARGETS}" ]]; then', 1)[1].split("else", 1)[
+        0
+    ]
     assert "uv run pytest tests/api -q" in all_branch
     assert "uv run pytest tests/api -q" not in targeted_branch
     assert 'uv run pytest "${targets[@]}" -q' in targeted_branch
