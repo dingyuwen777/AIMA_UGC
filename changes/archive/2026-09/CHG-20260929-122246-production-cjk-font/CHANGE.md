@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-122246-production-cjk-font
 title: 修复生产容器中文报告字体缺失并补齐失败诊断
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/production-cjk-font
 created: 2026-09-29
