@@ -79,12 +79,12 @@ Final CI 继续支付人为串行等待，复杂 PR 继续把可在 push 前闭�
 
 ## 成功标准
 
-- [ ] #671 AC1：CI Plan 使 Core/PostgreSQL/Full-stack 可并行。
-- [ ] #671 AC2：Backend/Frontend targeted selector + fail-closed fallback。
-- [ ] #671 AC3：统一 `validate_changed` 复用 classifier。
-- [ ] #671 AC4：Commit Hygiene 项目规则生效。
-- [ ] #671 AC5：Draft 不追无关 main、Final 前统一同步；normal merge 不依赖 bypass。
-- [ ] #671 AC6：Review/CI/merge/main-fresh/archive/closure 完成。
+- [ ] #671 / AC1：CI Plan 使 Core/PostgreSQL/Full-stack 可并行。
+- [ ] #671 / AC2：Backend/Frontend targeted selector + fail-closed fallback。
+- [ ] #671 / AC3：统一 `validate_changed` 复用 classifier。
+- [ ] #671 / AC4：Commit Hygiene 项目规则生效。
+- [ ] #671 / AC5：Draft 不追无关 main、Final 前统一同步；normal merge 不依赖 bypass。
+- [ ] #671 / AC6：Review/CI/merge/main-fresh/archive/closure 完成。
 
 ## 范围
 
@@ -146,14 +146,14 @@ Final CI 继续支付人为串行等待，复杂 PR 继续把可在 push 前闭�
 
 # 需求追溯
 
-| 编号 | 要求 | 来源 | 状态 | Evidence |
+| 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | CI Plan 并行 | #671 AC1 | satisfied | `ci-plan` 只产 scope/reuse；Core/PostgreSQL/Full-stack 都消费 Plan，PG/Full-stack 不再依赖 Core；CI Gate 显式校验 PLAN_RESULT。 |
-| R2 | Backend/Frontend targeted | #671 AC2 | satisfied | classifier 新增 backend/frontend targets；高置信 Owner 精准映射直接 Unit/API/Browser Mock，共享/未知/CI-self 回退 all；代表性 selected targets 已 live readback 存在并由永久回归锁定。 |
-| R3 | validate_changed 同源 | #671 AC3 | satisfied | `validate_changed.py` 直接调用 classifier；默认覆盖 base→working tree tracked/staged/unstaged/untracked，`--committed-only` 可复现 revision。 |
-| R4 | Commit Hygiene | #671 AC4 | satisfied | AGENTS/测试指南/Blueprint 已明确临时 CI/debug/formatter/generated/Red 过程态默认不形成正式 commit，并保留有价值 checkpoint 例外。 |
-| R5 | Final base/merge freshness | #671 AC5 | satisfied | 项目规则明确 Draft 不追无关 main；Final 前统一 current base；normal merge 不依赖 bypass，绑定 current head/base/required checks。 |
-| R6 | 端到端交付 | #671 AC6 | explicitly_deferred | current-head Final CI、guarded merge、main-fresh、Archive/Closure 只能在 Ready/merge 生命周期取得。 |
+| R1 | CI Plan 并行 | #671 / AC1 | satisfied | `ci-plan` 只产 scope/reuse；Core/PostgreSQL/Full-stack 都消费 Plan，PG/Full-stack 不再依赖 Core；CI Gate 显式校验 PLAN_RESULT。 |
+| R2 | Backend/Frontend targeted | #671 / AC2 | satisfied | classifier 新增 backend/frontend targets；高置信 Owner 精准映射直接 Unit/API/Browser Mock，共享/未知/CI-self 回退 all；代表性 selected targets 已 live readback 存在并由永久回归锁定。 |
+| R3 | validate_changed 同源 | #671 / AC3 | satisfied | `validate_changed.py` 直接调用 classifier；默认覆盖 base→working tree tracked/staged/unstaged/untracked，`--committed-only` 可复现 revision。 |
+| R4 | Commit Hygiene | #671 / AC4 | satisfied | AGENTS/测试指南/Blueprint 已明确临时 CI/debug/formatter/generated/Red 过程态默认不形成正式 commit，并保留有价值 checkpoint 例外。 |
+| R5 | Final base/merge freshness | #671 / AC5 | satisfied | 项目规则明确 Draft 不追无关 main；Final 前统一 current base；normal merge 不依赖 bypass，绑定 current head/base/required checks。 |
+| R6 | 端到端交付 | #671 / AC6 | explicitly_deferred | current-head Final CI、guarded merge、main-fresh、Archive/Closure 只能在 Ready/merge 生命周期取得。 |
 
 # 计划改动
 
