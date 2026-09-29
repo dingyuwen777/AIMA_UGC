@@ -112,7 +112,12 @@ def _response(sentiment: str) -> str:
     )
 
 
-def _analysis_registry(runtime, *, sentiment: str) -> JobRegistry:  # type: ignore[no-untyped-def]
+def _analysis_registry(
+    runtime,
+    *,
+    sentiment: str,
+    freeze_batch_size: int = 10_000,
+) -> JobRegistry:  # type: ignore[no-untyped-def]
     session = runtime.database.new_session()
     try:
         with session.begin():
@@ -137,17 +142,30 @@ def _analysis_registry(runtime, *, sentiment: str) -> JobRegistry:  # type: igno
         ),
         terminal_callback=callback,
         planner_handler=ContentAnalysisPlanJobHandler(
-            HighThroughputContentAnalysisPlanJobExecutor(runtime)
+            HighThroughputContentAnalysisPlanJobExecutor(
+                runtime,
+                freeze_batch_size=freeze_batch_size,
+            )
         ),
         planner_terminal_callback=callback,
     )
     return registry
 
 
-def _drain_analysis(runtime, *, sentiment: str, worker_id: str) -> int:  # type: ignore[no-untyped-def]
+def _drain_analysis(
+    runtime,
+    *,
+    sentiment: str,
+    worker_id: str,
+    freeze_batch_size: int = 10_000,
+) -> int:  # type: ignore[no-untyped-def]
     worker = create_job_worker(
         runtime=runtime,
-        registry=_analysis_registry(runtime, sentiment=sentiment),
+        registry=_analysis_registry(
+            runtime,
+            sentiment=sentiment,
+            freeze_batch_size=freeze_batch_size,
+        ),
         worker_id=worker_id,
         lease_seconds=120,
         retry_delay_seconds=0,
@@ -456,6 +474,117 @@ def test_analysis_all_scope_reuses_query_storage_and_freezes_all_current_content
                 )
                 == 3
             )
+    finally:
+        runtime.close()
+
+
+def test_analysis_query_scope_freezes_filtered_targets_in_bounded_batches(
+    tmp_path: Path,
+) -> None:
+    """Query Run 不搬运 ID，并可用极小冻结批次证明 PostgreSQL 分批路径。"""
+
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "llm_base_url": "https://fake.example/v1",
+            "llm_provider_name": "fake",
+            "llm_model": "fake-content-labeler-v1",
+            "analysis_run_max_in_flight_jobs": 2,
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, audit_events "
+            "RESTART IDENTITY CASCADE"
+        )
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                content_service=PostgresContentHttpService(
+                    runtime,
+                    cursor_signing_secret=b"stage12-analysis-cursor-key-32-bytes",
+                ),
+            )
+        )
+        _seed_contents(client, runtime)
+        import_worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage12-analysis-query-import",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert import_worker.run_once() is True
+
+        targets = {
+            "scope": "query",
+            "filters": {"platforms": ["xiaohongshu"]},
+        }
+        preview = client.post(
+            "/api/v1/analysis/content-runs/preview",
+            json={"targets": targets},
+        )
+        assert preview.status_code == 200
+        assert preview.json()["target_count"] == 3
+        created = client.post(
+            "/api/v1/analysis/content-runs",
+            json={
+                "client_idempotency_key": "stage12-analysis-query",
+                "targets": targets,
+                "expected_target_count": 3,
+                "expected_configuration_hash": preview.json()["configuration_hash"],
+                "run_intent": "manual_reanalysis",
+            },
+        )
+        assert created.status_code == 202
+        run_id = UUID(created.json()["run_id"])
+        with runtime.database.engine.begin() as connection:
+            stored = connection.execute(
+                select(
+                    analysis_content_runs_table.c.scope,
+                    analysis_content_runs_table.c.filter_snapshot,
+                ).where(analysis_content_runs_table.c.id == run_id)
+            ).one()
+            assert stored.scope == "query"
+            assert not is_analysis_all_scope_filter_snapshot(stored.filter_snapshot)
+            assert stored.filter_snapshot["platforms"] == ["xiaohongshu"]
+            assert (
+                connection.scalar(
+                    select(func.count()).select_from(analysis_content_run_targets_table)
+                )
+                == 0
+            )
+
+        assert (
+            _drain_analysis(
+                runtime,
+                sentiment="中性",
+                worker_id="stage12-analysis-query",
+                freeze_batch_size=1,
+            )
+            == 2
+        )
+        run = client.get(f"/api/v1/analysis/content-runs/{run_id}")
+        assert run.status_code == 200
+        assert run.json()["scope"] == "query"
+        assert run.json()["status"] == "succeeded"
+        assert run.json()["stats"]["succeeded"] == 3
+        with runtime.database.engine.begin() as connection:
+            frozen = tuple(
+                connection.execute(
+                    select(
+                        analysis_content_run_targets_table.c.target_ordinal,
+                        analysis_content_run_targets_table.c.content_version,
+                    )
+                    .where(analysis_content_run_targets_table.c.run_id == run_id)
+                    .order_by(analysis_content_run_targets_table.c.target_ordinal)
+                ).all()
+            )
+            assert [row.target_ordinal for row in frozen] == [0, 1, 2]
+            assert all(row.content_version >= 1 for row in frozen)
     finally:
         runtime.close()
 
