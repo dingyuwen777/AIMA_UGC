@@ -36,6 +36,7 @@ const schemes = ref<AnalysisSchemeResponse[]>([])
 const archivedSchemes = ref<ResourceLifecycleResponse[]>([])
 const selectedSchemeVersionId = ref('')
 const archivedSchemeLoading = ref(false)
+const archivedSchemesLoaded = ref(false)
 const schemeLabelsValid = ref(true)
 const schemeCopyName = ref('')
 const schemeCopyEditing = ref(false)
@@ -126,6 +127,7 @@ async function loadArchivedSchemes(): Promise<void> {
   error.value = null
   try {
     archivedSchemes.value = (await fetchArchivedSchemes()).items
+    archivedSchemesLoaded.value = true
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -304,7 +306,7 @@ async function restoreArchivedAnalysisScheme(item: ResourceLifecycleResponse): P
   }
 }
 
-/** 永久删除前先读取后端资格，历史规则不能被页面强行删除。 */
+/** 删除已归档规则；服务端决定物理删除还是保留历史分析所需快照。 */
 async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Promise<void> {
   saving.value = true
   error.value = null
@@ -312,13 +314,13 @@ async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Pr
   try {
     const eligibility = await fetchSchemeDeleteEligibility(item.id)
     if (!eligibility.eligible) {
-      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析规则已有发布或运行历史，只能保留归档记录。'
+      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析规则当前不能删除。'
       return
     }
-    if (!window.confirm(`确认永久删除已归档 AI 分析规则“${item.name}”吗？只有从未发布、从未被分析任务使用的纯草稿规则才允许删除。`)) return
+    if (!window.confirm(`确认删除已归档 AI 分析规则“${item.name}”吗？删除后将从配置管理中移除且无法恢复；若存在历史分析，系统会保留必要的版本快照。`)) return
     await deleteArchivedScheme(item.id)
     await loadArchivedSchemes()
-    showNotice('未发布且未使用的归档 AI 分析规则已永久删除。')
+    showNotice('AI 分析规则已从配置管理中删除；历史分析所需版本快照不会被破坏。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -396,22 +398,34 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
       class="scheme-layout"
     >
       <section class="card scheme-history">
-        <h2>版本历史</h2>
-        <template
+        <h2>规则与版本</h2>
+        <details
           v-for="scheme in schemes"
           :key="scheme.id"
+          class="scheme-group"
+          :open="scheme.id === selectedSchemeVersion?.scheme.id"
         >
-          <button
-            v-for="version in scheme.versions"
-            :key="version.id"
-            type="button"
-            :class="{ active: selectedSchemeVersionId === version.id }"
-            @click="selectSchemeVersion(version.id)"
-          >
-            <strong>版本 {{ version.version }} · {{ schemeVersionStateLabel(scheme, version) }}</strong>
-            <span>{{ formatDateTime(version.created_at) }}</span>
-          </button>
-        </template>
+          <summary>
+            <span>
+              <strong>{{ scheme.name }}</strong>
+              <small>{{ scheme.versions.length }} 个版本</small>
+            </span>
+            <small v-if="scheme.is_active">当前方案</small>
+          </summary>
+          <div class="scheme-version-list">
+            <button
+              v-for="version in scheme.versions"
+              :key="version.id"
+              type="button"
+              class="scheme-version-button"
+              :class="{ active: selectedSchemeVersionId === version.id }"
+              @click="selectSchemeVersion(version.id)"
+            >
+              <strong>版本 {{ version.version }} · {{ schemeVersionStateLabel(scheme, version) }}</strong>
+              <span>{{ formatDateTime(version.created_at) }}</span>
+            </button>
+          </div>
+        </details>
 
         <div class="publish-policy">
           <strong>发布策略</strong>
@@ -424,7 +438,13 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
           class="archived-schemes"
           @toggle="onArchivedSchemesToggle"
         >
-          <summary>已归档规则</summary>
+          <summary>
+            <span>已归档规则</span>
+            <small v-if="archivedSchemesLoaded">{{ archivedSchemes.length }} 项</small>
+          </summary>
+          <p class="archived-scheme-help">
+            归档规则不会参与新任务；不再需要时可删除。历史分析所需的不可变版本快照会由服务端继续保留。
+          </p>
           <div
             v-if="archivedSchemeLoading"
             class="archived-scheme-state"
@@ -461,7 +481,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
               :disabled="saving"
               @click="deleteArchivedAnalysisScheme(item)"
             >
-              永久删除
+              删除
             </AimaButton>
           </div>
         </details>
@@ -628,14 +648,24 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
 .scheme-history { display: grid; align-content: start; gap: 10px; }
 h2, p { margin: 0; }
 h2 { color: var(--aima-text); font-size: 16px; font-weight: 500; line-height: 24px; }
-.scheme-history > button { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid var(--aima-border); border-radius: 6px; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; text-align: left; }
-.scheme-history > button.active { border-color: var(--aima-primary); color: var(--aima-primary); background: var(--aima-primary-soft); }
-.scheme-history > button strong { font-size: 12px; }
-.scheme-history > button span { color: var(--aima-text-disabled); font-size: 9px; }
+.scheme-group { overflow: hidden; border: 1px solid var(--aima-border); border-radius: 7px; background: var(--aima-surface); }
+.scheme-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; cursor: pointer; color: var(--aima-text-secondary); font-size: 10px; list-style-position: inside; }
+.scheme-group > summary span { min-width: 0; }
+.scheme-group > summary strong,
+.scheme-group > summary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scheme-group > summary strong { color: var(--aima-text); font-size: 11px; }
+.scheme-group > summary small { color: var(--aima-text-disabled); font-size: 9px; }
+.scheme-version-list { display: grid; gap: 6px; padding: 0 8px 8px; }
+.scheme-version-button { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--aima-border); border-radius: 6px; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; text-align: left; }
+.scheme-version-button.active { border-color: var(--aima-primary); color: var(--aima-primary); background: var(--aima-primary-soft); }
+.scheme-version-button strong { font-size: 11px; }
+.scheme-version-button span { color: var(--aima-text-disabled); font-size: 9px; }
 .publish-policy { display: grid; gap: 4px; margin-top: 8px; color: var(--aima-text-disabled); font-size: 10px; line-height: 16px; }
 .publish-policy strong { margin-bottom: 4px; color: var(--aima-text); font-size: 12px; }
 .archived-schemes { margin-top: 8px; border-top: 1px solid var(--aima-border); padding-top: 10px; }
-.archived-schemes summary { cursor: pointer; color: var(--aima-text-secondary); font-size: 11px; font-weight: 600; }
+.archived-schemes > summary { display: flex; justify-content: space-between; gap: 8px; cursor: pointer; color: var(--aima-text-secondary); font-size: 11px; font-weight: 600; }
+.archived-schemes > summary small { color: var(--aima-text-disabled); font-size: 9px; font-weight: 400; }
+.archived-scheme-help { margin-top: 8px; color: var(--aima-text-muted); font-size: 9px; line-height: 14px; }
 .archived-scheme-state { padding: 10px 0; color: var(--aima-text-muted); font-size: 10px; }
 .archived-scheme-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; padding: 8px 0; border-top: 1px solid var(--aima-border); }
 .archived-scheme-row strong,
