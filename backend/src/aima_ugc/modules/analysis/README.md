@@ -67,12 +67,13 @@ voice_type == "真实用户发声"
 ## 2. Analysis Scheme 与 Git bootstrap
 
 - [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_bootstrap.txt`](prompts/content_labeling_bootstrap.txt)：新空库 bootstrap 的显式版本中立指针，当前选择 V4.6。
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.6.md`](prompts/content_labeling_v4.6.md)：当前首次正式打标 bootstrap/灾备资产。\n- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：旧 V4 Scheme 兼容资产。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.6.md`](prompts/content_labeling_v4.6.md)：当前首次正式打标 bootstrap/灾备资产。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：旧 V4 Scheme 兼容资产。
 - [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](prompts/content_labeling_v3.md)：既有 active Scheme 输出协议兼容基线，不再作为默认文件。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-数据库第一次读取 Analysis 配置时，会解析受限指针，把其明确选择的版本化 Git Prompt 转成一个已发布 Scheme Version并记录系统审计。指针只允许引用同目录 `content_labeling_vN.md`，不会因目录里新增实验文件而自动切换。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run 且没有人工/额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
+数据库第一次读取 Analysis 配置时，会解析受限指针，把其明确选择的版本化 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。指针只允许引用同目录 `content_labeling_vN.md`，不会因目录里新增实验文件而自动切换。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run 且没有人工/额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
 
 一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；编译后再计算 `prompt_sha256 / taxonomy_sha256`。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
 
