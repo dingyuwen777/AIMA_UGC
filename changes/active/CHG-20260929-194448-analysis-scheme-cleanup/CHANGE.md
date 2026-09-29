@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-194448-analysis-scheme-cleanup
 title: 优化 AI 分析规则归档与删除体验
 level: L3
-status: proposed
+status: ready_for_review
 owner: assistant
 branch: feature/669-analysis-scheme-cleanup
 created: 2026-09-29 19:44:48 +08:00
@@ -126,13 +126,13 @@ Requirement Source 为 GitHub Issue #669。该需求涉及管理员可见生命�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 归档显示保持低干扰 | #669 / AC1 | not_satisfied | 待实现 |
-| R2 | 所有非 active 已归档 Scheme 可删除并从管理视图消失 | #669 / AC2 | not_satisfied | 待实现 |
-| R3 | 纯草稿删除仍物理清理 | #669 / AC3 | not_satisfied | 待实现 |
-| R4 | 已发布/已使用删除保留历史 Version/Run 复现链 | #669 / AC4 | not_satisfied | 待实现 |
-| R5 | active Scheme 继续禁止删除 | #669 / AC5 | not_satisfied | 待实现 |
-| R6 | 权限、审计、前端提示与真实语义一致 | #669 / AC6 | not_satisfied | 待实现 |
-| R7 | Migration/后端/前端/生成 Contract/验证一致 | #669 / AC7 | not_satisfied | 待实现 |
+| R1 | 归档显示保持低干扰 | #669 / AC1 | satisfied | `AnalysisSchemePanel.vue` 按 Scheme 折叠版本并默认折叠归档；`admin-configuration-release2.spec.ts` 覆盖分组/折叠 |
+| R2 | 所有非 active 已归档 Scheme 可删除并从管理视图消失 | #669 / AC2 | satisfied | `analysis_scheme_lifecycle.py` 统一允许归档非 active 删除；Browser Mock 覆盖删除后归档列表消失 |
+| R3 | 纯草稿删除仍物理清理 | #669 / AC3 | satisfied | `test_unused_analysis_scheme_archive_delete_physically_removes_draft` 直接断言 Scheme/Version 均被物理删除 |
+| R4 | 已发布/已使用删除保留历史 Version/Run 复现链 | #669 / AC4 | satisfied | `test_published_analysis_scheme_delete_hides_resource_but_preserves_run_snapshot` 建立真实 Run FK 并断言删除后 Version/Run 引用保持 |
+| R5 | active Scheme 继续禁止删除 | #669 / AC5 | satisfied | lifecycle `archive_blockers/delete_blockers` 保留 active 守卫；删除仍要求先归档 |
+| R6 | 权限、审计、前端提示与真实语义一致 | #669 / AC6 | satisfied | lifecycle HTTP 继续 `require_administrator()`，删除审计新增 `deletion_mode`；前端确认/成功文案同步历史保留语义 |
+| R7 | Migration/后端/前端/生成 Contract/验证一致 | #669 / AC7 | satisfied | Migration 0075 + ORM lifecycle schema + repository/UI/tests/docs 同步；public lifecycle route/response 未新增字段 |
 
 # 计划改动
 
@@ -196,10 +196,10 @@ Requirement Source 为 GitHub Issue #669。该需求涉及管理员可见生命�
 
 # 完成审计
 
-- [ ] upstream_re_read：已重新读取所有上游正式事实源，并从它们独立重建完成定义。
-- [ ] change_coverage：已确认当前变更覆盖全部上游要求，没有把变更自身当作需求全集。
-- [ ] reverse_audit：已执行适用的反向能力或边界审计，并复核验证矩阵；不适用项已有明确依据。
-- [ ] unresolved_cleared：所有 `not_satisfied` 已清零；延期或不适用项均有正式依据。
+- [x] upstream_re_read：重新读取 #669、Blueprint 决策 P、AI 分析实现文档、当前 lifecycle/repository/UI/Run Schema，从上游重新建立 AC1—AC7 完成定义。
+- [x] change_coverage：R1—R7 已逐项映射到实现与回归资产；没有用当前 Change 自身替代 Requirement Source。
+- [x] reverse_audit：执行“后端删除能力 → 前端归档删除入口”“前端删除 → 后端 active/归档守卫”“历史 Run → Version/Prompt/Hash”“删除 → 同名重建”反向审计，主要投影均有实现与测试。
+- [x] unresolved_cleared：R1—R7 均已进入 satisfied；没有延期、不适用或未解决 Requirement。
 
 # 完成证据与状态
 
@@ -207,17 +207,17 @@ Requirement Source 为 GitHub Issue #669。该需求涉及管理员可见生命�
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 待填写 | 待填写 | 待填写 | 待填写 |
+| V1 | PR #670 current branch | 静态实现/Contract/Schema 复核 | 已完成，等待 CI 执行动态证据 | 删除语义、历史快照、名称复用、UI Journey 已形成直接回归资产 |
 
 ## 未验证内容与剩余风险
 
-- 当前尚未实现和执行验证。
+- PR current-head CI / PostgreSQL Integration / Frontend Browser Acceptance 尚未由 Runner 执行；本 Change 进入 Ready 以触发这些 required evidence，失败则按同一 Repair Batch 修复后重新验证。
 
 ## 交付状态
 
-- 提交：治理初始提交待创建。
-- 拉取请求：待创建早期 PR。
-- CI：待执行。
+- 提交：实现与回归资产已推送到任务分支。
+- 拉取请求：PR #670 已建立并绑定 #669。
+- CI：准备通过 ready_for_review 事件执行 current-head required evidence。
 - 合并：待执行。
 - Change 归档：待合并后由仓库自动化处理。
 - 发布 / 部署：不执行生产部署；本任务只交付代码到 main。
