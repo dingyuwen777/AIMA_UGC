@@ -206,9 +206,7 @@ def test_v46_model_payload_and_input_hash_include_platform() -> None:
     payload = fake.calls[0].model_payload()[0]
     assert payload["platform"] == "xiaohongshu"
     assert set(payload) == {"item_no", "platform", "title", "text", "author"}
-    douyin = xhs.model_copy(
-        update={"platform": "douyin", "external_content_id": "v46-douyin"}
-    )
+    douyin = xhs.model_copy(update={"platform": "douyin", "external_content_id": "v46-douyin"})
     assert content_labeling_input_hash(xhs) != content_labeling_input_hash(douyin)
 
 
