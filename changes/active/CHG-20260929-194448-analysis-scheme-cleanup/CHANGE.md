@@ -10,10 +10,22 @@ created: 2026-09-29 19:44:48 +08:00
 updated: 2026-09-29 19:44:48 +08:00
 completion_gate: required
 depends_on: []
-affected_areas: [analysis, administration, frontend, persistence]
-affected_paths: [backend/src/aima_ugc/modules/analysis, backend/src/aima_ugc/adapters/persistence/postgres, backend/src/aima_ugc/bootstrap, frontend/src/features/admin-configuration, migrations/versions, tests]
-contracts: [analysis scheme lifecycle API behavior]
-data_changes: [analysis_schemes lifecycle tombstone]
+affected_areas:
+  - analysis
+  - administration
+  - frontend
+  - persistence
+affected_paths:
+  - backend/src/aima_ugc/modules/analysis
+  - backend/src/aima_ugc/adapters/persistence/postgres
+  - backend/src/aima_ugc/bootstrap
+  - frontend/src/features/admin-configuration
+  - migrations/versions
+  - tests
+contracts:
+  - analysis scheme lifecycle API behavior
+data_changes:
+  - analysis_schemes lifecycle tombstone
 ---
 
 # 变更摘要
