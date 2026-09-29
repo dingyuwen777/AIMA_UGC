@@ -78,14 +78,14 @@ function selectScope(next: AnalysisScope): void {
         <legend>当前范围：{{ scope === 'selected' ? `已选内容（${selectedCount} 条）` : scope === 'query' ? '当前筛选结果' : '全部系统内容' }}</legend>
         <label
           class="scope-option"
-          :class="{ 'scope-option--disabled': selectedCount === 0 || selectedCount > 1000 }"
+          :class="{ 'scope-option--disabled': submitting || selectedCount === 0 || selectedCount > 1000 }"
         >
           <input
             type="radio"
             name="analysis-scope"
             value="selected"
             :checked="scope === 'selected'"
-            :disabled="selectedCount === 0 || selectedCount > 1000"
+            :disabled="submitting || selectedCount === 0 || selectedCount > 1000"
             @change="selectScope('selected')"
           >
           <span>
@@ -93,24 +93,32 @@ function selectScope(next: AnalysisScope): void {
             <small v-if="selectedCount > 1000">单次最多选择 1000 条</small>
           </span>
         </label>
-        <label class="scope-option">
+        <label
+          class="scope-option"
+          :class="{ 'scope-option--disabled': submitting }"
+        >
           <input
             type="radio"
             name="analysis-scope"
             value="query"
             :checked="scope === 'query'"
+            :disabled="submitting"
             @change="selectScope('query')"
           >
           <span>
             <strong>当前筛选结果</strong>
           </span>
         </label>
-        <label class="scope-option">
+        <label
+          class="scope-option"
+          :class="{ 'scope-option--disabled': submitting }"
+        >
           <input
             type="radio"
             name="analysis-scope"
             value="all"
             :checked="scope === 'all'"
+            :disabled="submitting"
             @change="selectScope('all')"
           >
           <span>
