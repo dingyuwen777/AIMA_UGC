@@ -46,9 +46,7 @@ def active_analysis_configuration(
     repository = PostgresAnalysisSchemeRepository(session)
     bootstrap_changed = False
     if refresh_unused_git_bootstrap:
-        scheme, bootstrap_changed = repository.bootstrap_default(
-            actor_ref="system:git-bootstrap"
-        )
+        scheme, bootstrap_changed = repository.bootstrap_default(actor_ref="system:git-bootstrap")
     else:
         scheme = repository.get_active_version()
         if scheme is None:
