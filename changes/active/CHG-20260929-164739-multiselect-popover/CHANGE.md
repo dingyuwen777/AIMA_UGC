@@ -205,7 +205,7 @@ data_changes: []
 
 # 完成审计
 
-- [x] upstream_re_read：Ready 前重新读取 Issue #665、关联会话确认方案、`docs/blueprint/04_后端任务API与前端.md`、`docs/blueprint/06_开发约束与分阶段实施.md` 和最新 `origin/main`；AC1–AC5、非目标及新到达的声音广场 AI 分析能力均无冲突。
+- [x] upstream_re_read：Ready 前重新读取 Issue #665、关联会话确认方案、`docs/blueprint/04_后端任务API与前端.md`、`docs/blueprint/06_开发约束与分阶段实施.md` 和最新 `origin/main`；AC1–AC5、非目标、新到达的声音广场 AI 分析能力及 Draft → Ready 最终 CI 规则均无冲突。
 - [x] change_coverage：独立从 #665 重建 AC1–AC5，对照 R1–R5、共享组件、两个消费者、Vitest、Playwright 与构建证据；AC1 的查询/重置位置要求已用直接坐标断言补齐。
 - [x] reverse_audit：从共享组件的原生/fallback、摘要、批量操作、禁用态和选择能力反查工作台与声音广场消费者；从声音广场一级/二级动作反查 Feature handler、级联清理和请求参数；无孤立能力、平行业务规则或伪支持。
 - [x] unresolved_cleared：R1–R5 均为 `satisfied`；Contract、持久化、跨组件真实后端链路、外部 Provider 和长期文档不适用依据已记录；PR checks、合并后 main-fresh、归档和 Issue Closure 保留为交付门禁，不伪造完成。
@@ -221,8 +221,9 @@ data_changes: []
 | V3 | Green / 合入最新 main 后 / Windows / Node 24.19 | `npm --prefix frontend run lint`；`npm --prefix frontend run test -- --run`；`npm --prefix frontend run build` | ESLint exit 0；Vitest 34 files / 269 tests 通过；TS7、Vue typecheck 与 Vite production build 通过 | 静态质量、组件/页面单元回归、类型与正式产物成立；构建只有既有大 chunk 非阻塞警告 |
 | V4 | Green / 合入最新 main 后 / Chromium | `npm --prefix frontend run test:e2e -- voice-plaza.spec.ts workbench.spec.ts` | 42/42 通过 | 声音广场和工作台完整相关用户流程、查询语义、原生 Popover、fallback、滚动与共享迁移无回归 |
 | V5 | Green / 当前工作树 / Chromium | `npm --prefix frontend run test:e2e -- voice-plaza.spec.ts --grep "标签多选使用不改变布局"` | 1/1 通过 | 直接证明筛选区高度、查询/重置坐标、面板最大高度/内部滚动、连续选择、三种关闭、焦点恢复和互斥展开 |
-| V6 | Base sync / Git | 合并 `origin/main`；`git diff --name-status origin/main...HEAD`；`git diff --check` | 最新 main `88d979b9` 已合入；diff 仅为本 Change、共享组件、两个消费者和两份 E2E；无空白错误 | 任务期间新到达的声音广场 AI 分析能力未被回退，交付范围收敛 |
+| V6 | Base sync / Git | 两次合并 `origin/main`；`git diff --name-status origin/main...HEAD`；`git diff --check` | 声音广场 AI 分析更新 `88d979b9` 与最终 CI 门禁更新 `521a2fc7` 均已合入；后一次只涉及 workflow/治理测试/文档且无前端重叠；最终 diff 仅为本 Change、共享组件、两个消费者和两份 E2E | 任务期间新到达的产品与 CI 能力均未被回退，交付范围收敛 |
 | V7 | A1/A2 Review / Issue #665 → 当前工作树 | 重读上游、需求覆盖表、最终 diff、过时符号扫描和反向消费者审计 | `NO_FINDINGS_WITHIN_SCOPE`；审计中发现 AC1 需要直接按钮位置证据，已增加断言并复跑通过 | 上游要求无漏项，实现有对应证据，范围/Contract/数据/依赖边界未漂移 |
+| V8 | GitHub PR #666 / head `439473d3` | required checks 重跑 | `Requirement Traceability and Completion Audit`、`CI Gate`、`Compose Golden Path` 通过；随后 main 前进且任务 head 再次同步 | 旧 head 已有完整 GitHub Evidence，但不能替代新 head；按最新规则重新进入 Draft → Ready 生成 current-head Evidence |
 
 ## 未验证内容与剩余风险
 
@@ -233,9 +234,9 @@ data_changes: []
 
 - Requirement Source：Issue #665，已创建并通过 live readback Contract 校验。
 - 分支：`fix/665-multiselect-popover`；已首次 push 并建立远程跟踪，最新 `origin/main` 已合入本地分支。
-- 提交：早期治理/Red `cb913710`；实现 `84827dc9`；主分支同步 `eae8fffd`；本次 Ready 证据提交待创建。
-- PR：#666，已建立 `Requirement-Source: #665` 并通过 live readback Contract 校验；当前待推送实现与 Ready 提交。
-- CI / 合并 / main-fresh：待 current-head required checks 通过后执行受保护合并，再审计 merge SHA。
+- 提交：早期治理/Red `cb913710`；实现 `84827dc9`；第一次主分支同步 `eae8fffd`；Ready 证据 `439473d3`；第二次主分支同步 `49152e0a`；本次基线刷新提交待创建。
+- PR：#666，已建立 `Requirement-Source: #665` 并通过 live readback Contract 校验；旧 head required checks 已绿，但 main 随后前进，当前按新规则准备 Draft → push → Ready。
+- CI / 合并 / main-fresh：待新 head 的 required checks 通过后执行受保护合并，再审计 merge SHA。
 - Change 归档：待合并后由仓库自动化处理。
 - Release / 部署：不在本次授权范围。
 
