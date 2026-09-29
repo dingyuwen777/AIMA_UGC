@@ -213,13 +213,14 @@ def _backend_targets_for_path(path: str) -> tuple[tuple[str, ...], bool]:
             return (path,), True
         return BACKEND_ALL, True
 
+    public_boundary = ("tests/contracts", "tests/api")
     mappings: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
-        (("/modules/analysis/", "/adapters/llm/"), ("tests/unit/analysis",)),
-        (("/modules/content/",), ("tests/unit/content",)),
-        (("/modules/collection/",), ("tests/unit/collection",)),
-        (("/modules/vehicles/",), ("tests/unit/vehicles",)),
-        (("/modules/ingestion/",), ("tests/unit/ingestion",)),
-        (("/jobs/",), ("tests/unit/jobs",)),
+        (("/modules/analysis/", "/adapters/llm/"), ("tests/unit/analysis", *public_boundary)),
+        (("/modules/content/",), ("tests/unit/content", *public_boundary)),
+        (("/modules/collection/",), ("tests/unit/collection", *public_boundary)),
+        (("/modules/vehicles/",), ("tests/unit/vehicles", *public_boundary)),
+        (("/modules/ingestion/",), ("tests/unit/ingestion", *public_boundary)),
+        (("/jobs/",), ("tests/unit/jobs", *public_boundary)),
     )
     for markers, targets in mappings:
         if any(marker in path for marker in markers):

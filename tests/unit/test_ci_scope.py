@@ -74,9 +74,11 @@ def test_known_backend_domain_selects_targeted_tests_while_unknown_backend_falls
     analysis = _requirements("backend/src/aima_ugc/modules/analysis/content_analysis_job.py")
     shared = _requirements("backend/src/aima_ugc/platform/time.py")
 
-    assert analysis.backend_targets
-    assert "all" not in analysis.backend_targets
-    assert "tests/unit/analysis" in analysis.backend_targets
+    assert analysis.backend_targets == (
+        "tests/api",
+        "tests/contracts",
+        "tests/unit/analysis",
+    )
     assert shared.backend_targets == ("all",)
 
 
