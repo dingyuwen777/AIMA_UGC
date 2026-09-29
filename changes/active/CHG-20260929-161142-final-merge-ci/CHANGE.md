@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-161142-final-merge-ci
 title: PR最终合并CI门禁与重复执行优化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: tech/663-final-merge-ci
 created: 2026-09-29
@@ -41,7 +41,7 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 
 ## 当前现状
 
-- 当前分支四个重 Workflow 的 PR trigger 已移除 `synchronize`，并保留 Final 生命周期事件；首次 Ready 实跑同时暴露出 Draft required jobs 仍使用 job-level skip 的安全缺口。
+- 当前分支四个重 Workflow 的 PR trigger 已移除 `synchronize`，并保留 Final 生命周期事件；E6 暴露的 Draft required-job skipped 空窗已改为 checkout/setup 前的轻量 fail-closed guard。
 - `main-quality-gate` Ruleset active 且 `strict_required_status_checks_policy=true`，要求 `CI Gate`、`Requirement Traceability and Completion Audit`、`Compose Golden Path`。
 - Draft 重测试仍应避免执行，但 required contexts 必须由轻量 fail-closed guard 明确失败，不能用 job-level skipped 结果充当 required evidence；`ready_for_review` 再进入完整验证。
 - CI/Runtime/Tooling 已通过 `resolve_main_evidence.py` 支持 merge 后同 tree Evidence 复用。
@@ -78,7 +78,7 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 ## 成功标准
 
 - [x] 四个重 PR Workflow 不再监听 `pull_request.synchronize`。
-- [ ] `opened`、`reopened`、`ready_for_review` 保持；Draft 不跑重测试，但三个 required contexts 使用轻量 fail-closed guard，不再以 skipped 状态满足门禁；实际 current-head Actions 由 Ready 后 merge gate 验证。
+- [x] `opened`、`reopened`、`ready_for_review` 保持；Draft 不跑重测试，但三个 required contexts 使用轻量 fail-closed guard，不再以 skipped 状态满足门禁；实际 current-head Actions 由 Ready 后 merge gate 验证。
 - [x] 三个 required context 名称与 strict Ruleset 不变。
 - [x] Final CI 后新 push 不可使用旧 Head checks 直接 merge；需重新 Draft → Ready。
 - [x] main same-tree evidence reuse、daily/weekly safety net 保持。
@@ -145,12 +145,12 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 四个重 PR Workflow 移除 `synchronize` | #663 / AC1 | satisfied | 当前 Head `00f10a714fc09801a1c5ec233fa76d4d33c93d6a` 四个 trigger readback 均无 `synchronize`；结构回归已同步。 |
-| R2 | 保留 opened/reopened/ready_for_review；Draft 重测试不执行且 required contexts fail closed；Ready 运行完整 Final | #663 / AC2 | not_satisfied | 首次 Ready 实跑发现旧 Draft job-level skip 可形成可满足 required check 的状态；本 Repair Batch 正在改为轻量失败 guard。 |
+| R1 | 四个重 PR Workflow 移除 `synchronize` | #663 / AC1 | satisfied | 当前 Repair Head `a1c89350e1e3d2713623e28e9de90627e4d30720` 四个 trigger readback 均无 `synchronize`；该 push 的 Actions run 数为 0，证明普通 push 不再触发重 Workflow。 |
+| R2 | 保留 opened/reopened/ready_for_review；Draft 重测试不执行且 required contexts fail closed；Ready 运行完整 Final | #663 / AC2 | explicitly_deferred | Repair Head 已移除 required job-level draft skip：Core/Runtime 在 checkout 前轻量失败，CI Gate `always()` 聚合 Core failure；真实 `ready_for_review` 完整 Actions 按 AC2/AC6 作为 merge gate 取得。 |
 | R3 | required contexts / strict Ruleset 不变 | #663 / AC3 | satisfied | `main-quality-gate` 当前仍为 active + strict，required contexts 仍为 `CI Gate`、`Requirement Traceability and Completion Audit`、`Compose Golden Path`；对应 job 名称未改。 |
 | R4 | Final 后新 commit 不能复用旧 Head | #663 / AC4 | satisfied | GitHub required-status 语义要求最新 commit SHA 成功；当前 Ruleset strict。新 Head 无 `synchronize` 生成的 required checks 时保持 blocked，必须重新 Draft → Ready。 |
 | R5 | main reuse 与 scheduled safety net 保持 | #663 / AC5 | satisfied | 本 diff 未修改 `resolve_main_evidence.py`、main push 或 cron；CI daily、Runtime/Tooling weekly trigger readback 均保留。 |
-| R6 | 回归、Ready、Review、CI、merge、main-fresh 完成 | #663 / AC6 | explicitly_deferred | 独立 pre-Ready Review 为 `NO_FINDINGS_WITHIN_SCOPE`；current-head Actions、merge、main-fresh、Archive/Closure 按 AC6 属于 Ready/merge 后交付门禁。 |
+| R6 | 回归、Ready、Review、CI、merge、main-fresh 完成 | #663 / AC6 | explicitly_deferred | E6 Repair delta re-review 为 `NO_FINDINGS_WITHIN_SCOPE`；current-head Actions、merge、main-fresh、Archive/Closure 按 AC6 属于 Ready/merge 后交付门禁。 |
 
 # 计划改动
 
@@ -166,8 +166,8 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 - [x] 先建立结构 Red 回归。
 - [x] 完成最小实现。
 - [x] 同步长期文档。
-- [ ] 完成 Draft required-context fail-closed Repair，并重新进入 Ready 取得 current-head Actions Evidence。
-- [ ] 修复首次 Review/真实 Actions 暴露的 blocking Finding 后执行 delta re-review。
+- [x] 完成 Draft required-context fail-closed Repair；重新进入 Ready 后取得 current-head Actions Evidence。
+- [x] 已修复 E6 blocking Finding并执行 delta re-review；`a1c89350…` Repair diff 未发现新增 blocking Finding。
 
 # 验证矩阵
 
@@ -211,9 +211,9 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 # 完成审计
 
 - [x] upstream_re_read：已重读 #663、active `main-quality-gate`、四 Workflow、CI 文档与 PR 当前 diff。
-- [ ] change_coverage：#663 已因 E6 更新 AC2；Repair 后重新映射 AC1–AC6。
-- [ ] reverse_audit：首次反查漏掉 GitHub `skipped` required-job 语义；Repair 后必须重新审 required-context Draft/Ready 生命周期。
-- [ ] unresolved_cleared：R2 因 blocking Finding 重新回到 `not_satisfied`，Repair/Ready 验证前不得清零。
+- [x] change_coverage：已重读更新后的 #663；AC1–AC5 的实现责任覆盖完整，AC2 实际 Ready run 与 AC6 merge/main-fresh 按正式生命周期延期。
+- [x] reverse_audit：已重新审 Draft→Ready 生命周期：required Core/Runtime 先失败、CI Gate 聚合失败；Tooling/Release 非 required 仍可 Draft skip；Ready 时所有 guard 条件为 false 并恢复原完整路径。
+- [x] unresolved_cleared：`not_satisfied` 已清零；只保留 #663 明确属于 Ready/merge 后阶段的 `explicitly_deferred`。
 
 # 完成证据与状态
 
@@ -224,18 +224,19 @@ Issue #663 / AC1–AC6 来自用户对 PR 重复 CI 成本的直接要求，并�
 | V1 | `00f10a714fc09801a1c5ec233fa76d4d33c93d6a` / GitHub branch readback | 读取四个 Workflow trigger | PASS：均无 `synchronize`；`opened/reopened/ready_for_review` 保留 | AC1 与 Final 事件图 |
 | V2 | 同一 Head / GitHub Ruleset | 读取 `main-quality-gate` | PASS：active、strict；三个 required context 未变 | AC3 与新 Head fail-closed |
 | V3 | `37b0bf13db5c437c5a98930736ae85d1645ea3c3` / GitHub Actions + Review correction | Draft/Ready check-runs 与 required-check 语义复核 | BLOCKING Finding：Draft required jobs 的 job-level skip 可产生可满足门禁的 skipped check | 触发 E6 Repair Batch |
-| V4 | 当前 PR Head / GitHub Actions | targeted/full current-head CI | explicitly_deferred 到 `ready_for_review` merge gate | Workflow 解析、结构回归及真实 required Evidence |
-| V5 | merge 后 main | Actions + Ruleset + Change Archive | explicitly_deferred 到 #663 / AC6 | main-fresh / evidence reuse / archive / closure |
+| V4 | `a1c89350e1e3d2713623e28e9de90627e4d30720` / GitHub branch + Actions | Repair diff delta review；查询该 Head Actions runs | PASS：run count=0；required Core/Runtime 改为 pre-checkout fail guard；CI Gate `always()`；`NO_FINDINGS_WITHIN_SCOPE` | E6 closure + ordinary push no-CI evidence |
+| V5 | 当前 PR Final Head / GitHub Actions | targeted/full current-head CI | explicitly_deferred 到 `ready_for_review` merge gate | Workflow 解析、结构回归及真实 required Evidence |
+| V6 | merge 后 main | Actions + Ruleset + Change Archive | explicitly_deferred 到 #663 / AC6 | main-fresh / evidence reuse / archive / closure |
 
 ## 未验证内容与剩余风险
 
-- 首次 Ready 实跑暴露 Draft required-context fail-closed 缺口，PR 已重新转为 Draft；当前 Repair 未完成，禁止合并。修复后仍需重新 Ready 取得 current-head Actions，post-merge main Evidence 继续作为 Issue Closure blocker。
+- E6 Repair 与 delta re-review 已完成；尚未取得 Repair 后 `ready_for_review` current-head Actions 与 post-merge main Evidence。前者是 merge blocker，后者是 Issue Closure blocker。
 
 ## 交付状态
 
-- 提交：`989e8a66dec96ddebc4681b38230f3f516b4277f`（Change/Red）+ `00f10a714fc09801a1c5ec233fa76d4d33c93d6a`（实现/文档）。
-- 拉取请求：#664，因 E6 blocking Finding 已从 Ready 退回 Draft，进入 Repair Batch。
-- CI：未提前执行；切换 Ready 后仅运行一次 Final current-head CI。
+- 提交：`989e8a66dec96ddebc4681b38230f3f516b4277f`（Change/Red）+ `00f10a714fc09801a1c5ec233fa76d4d33c93d6a`（事件优化）+ `a1c89350e1e3d2713623e28e9de90627e4d30720`（E6 Draft fail-closed Repair）。
+- 拉取请求：#664，E6 Repair 已闭环；当前保持 Draft，待本提交后再次切换 Ready。
+- CI：Repair push 未触发 Actions（run count=0）；再次切换 Ready 后运行一次 Final current-head CI。
 - 合并：待 Review PASS + required checks。
 - Change 归档：待 merge 后 repository-native workflow。
 - 发布 / 部署：不适用。
