@@ -18,6 +18,7 @@ def test_fullstack_fake_llm_emits_valid_v4_label_item() -> None:
 
     payload = {
         "item_no": 1,
+        "platform": "xiaohongshu",
         "title": "爱玛 并发验收 1",
         "text": "骑行很舒服",
         "author": {
@@ -29,6 +30,7 @@ def test_fullstack_fake_llm_emits_valid_v4_label_item() -> None:
     raw_item = fake_openai_llm._build_v4_label_item(payload, sentiment="正面")
     model_item = ContentLabelingModelItem(
         item_no=1,
+        platform=payload["platform"],
         title=payload["title"],
         text=payload["text"],
         author_display_name=payload["author"]["display_name"],

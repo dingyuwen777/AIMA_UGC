@@ -165,6 +165,7 @@ class RepresentativeAdviceService:
         request_items = tuple(
             ContentLabelingModelItem(
                 item_no=item.item_no,
+                platform=item.platform,
                 title="待改写为中文的行动建议",
                 text=f"原行动建议：{original[item.item_no]}",
                 author_display_name="",

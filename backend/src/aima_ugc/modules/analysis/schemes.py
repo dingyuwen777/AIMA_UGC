@@ -130,6 +130,14 @@ def compile_analysis_scheme(
 
     if _V46_VERSION_DECLARATION in definition.prompt_template:
         prompt_text = _render_v46_prompt(definition)
+        taxonomy = PromptTaxonomyLoader.load_text(prompt_text)
+        if (
+            taxonomy.sentiments != definition.sentiments
+            or taxonomy.voice_types != definition.voice_types
+            or dict(taxonomy.labels) != dict(definition.labels)
+        ):
+            raise ValueError("Analysis Scheme 编译后的 Prompt Taxonomy 与结构化定义不一致")
+        taxonomy_sha256 = taxonomy.taxonomy_sha256
     else:
         taxonomy_payload = {
             "schema_version": "aima-content-taxonomy.v2",
@@ -139,22 +147,21 @@ def compile_analysis_scheme(
             "labels": {key: list(definition.labels[key]) for key in sorted(definition.labels)},
         }
         readable_json = json.dumps(taxonomy_payload, ensure_ascii=False, indent=2)
+        normalized_json = json.dumps(
+            taxonomy_payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
         block = f"{_TAXONOMY_START}\n```json\n{readable_json}\n```\n{_TAXONOMY_END}"
         prompt_text = definition.prompt_template.replace(TAXONOMY_PLACEHOLDER, block)
-
-    taxonomy = PromptTaxonomyLoader.load_text(prompt_text)
-    if (
-        taxonomy.sentiments != definition.sentiments
-        or taxonomy.voice_types != definition.voice_types
-        or dict(taxonomy.labels) != dict(definition.labels)
-    ):
-        raise ValueError("Analysis Scheme 编译后的 Prompt Taxonomy 与结构化定义不一致")
+        taxonomy_sha256 = hashlib.sha256(normalized_json).hexdigest()
 
     return CompiledAnalysisScheme(
         definition=definition,
         prompt_text=prompt_text,
         prompt_sha256=hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),
-        taxonomy_sha256=taxonomy.taxonomy_sha256,
+        taxonomy_sha256=taxonomy_sha256,
     )
 
 
