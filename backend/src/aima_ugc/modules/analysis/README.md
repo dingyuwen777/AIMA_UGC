@@ -108,9 +108,10 @@ V4.6 的 Taxonomy 与内部语义闭集必须同时合法；最终 `voice_type` 
 
 ## 3. 模型实际看到什么
 
-`ContentLabelingService` 只把允许字段投影给模型：
+`ContentLabelingService` 只把官号判断和语义分析所需字段投影给模型：
 
 ```text
+platform
 title
 text
 author.display_name
@@ -118,10 +119,11 @@ author.bio
 author.verification_label
 ```
 
+`platform` 只提供官号白名单上下文；普通 evidence 仍只能来自五个文本字段。
+
 不会发送：
 
 - Content UUID；
-- platform；
 - Provider 私有字段；
 - URL；
 - 点赞/评论数；
@@ -130,7 +132,7 @@ author.verification_label
 - 源 Excel 情感；
 - 其他未批准元数据。
 
-五个字段全部作为不可信待分析数据处理；其中出现的提示、命令、URL 或“忽略规则”文字不得改变系统 Prompt 或输出协议。
+`platform` 和五个文本字段全部作为不可信待分析数据处理；其中出现的提示、命令、URL 或“忽略规则”文字不得改变系统 Prompt 或输出协议。
 
 这样可以降低 token、减少无关信息干扰，并让 `input_hash` 和隐私边界可审计。
 
@@ -371,7 +373,7 @@ HTTP 已成功
 
 管理员 Provider 的 `max_retries` 当前表示每条 Content 的 **Validation Retry** 轮数上限。
 
-V4 的 Validation Attempt 记录 `request_kind=primary/repair/judge`。Judge 不读取上一响应全文，只收到当前 unresolved item、稳定错误码和五个原始文本字段，并独立重新判断；同一轮同时出现结构错误与语义歧义时按 item 拆成 repair/judge 请求，每条 Content 仍只消耗一轮重试。没有触发语义/证据歧义的清晰内容保持单次调用。
+V4.6 的 Validation Attempt 记录 `request_kind=primary/repair/judge`。Judge 不读取上一响应全文，只收到当前 unresolved item、稳定错误码、`platform` 与五个原始文本字段，并独立重新判断；同一轮同时出现结构错误与语义歧义时按 item 拆成 repair/judge 请求，每条 Content 仍只消耗一轮重试。没有触发语义/证据歧义的清晰内容保持单次调用。
 
 ### Transport Retry
 
@@ -468,7 +470,7 @@ Dry Run 会在输入 Excel 同目录生成带时间戳的运行目录，包含�
 | --- | --- |
 | 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 管理员 Analysis Scheme 草稿 → 校验 → 发布；Git Prompt 只在要改变新环境 bootstrap 基线时同步 |
 | 改 Scheme 编译、发布或回滚 | [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) + Administration Service/Repository + Migration/API/审计/Integration tests |
-| 改 V4 内部输出协议或 Judge 路由 | Prompt + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + V3 兼容/离线回归 |
+| 改 V4.6 内部输出协议或 Judge 路由 | Prompt + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + V3 兼容/离线回归 |
 | 改持久化 `ContentLabelAnalysisV3` 结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
 | 改模型/Base URL/API Key/模型并发/RPS | 管理员 Provider 配置 + [`backend/src/aima_ugc/contracts/administration.py`](../../contracts/administration.py) + [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) + `adapters/llm` |
 | 改自动 Shard 策略 | [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) + Preview/Create + Planner tests |
