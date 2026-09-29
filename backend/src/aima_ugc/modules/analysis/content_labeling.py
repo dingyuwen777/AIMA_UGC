@@ -430,8 +430,7 @@ class RuntimeTaxonomyValidator:
         )
         empty_input = not any(source_texts)
         allow_empty_sentinel = (
-            self._taxonomy.output_protocol_version == "content-labeling.v4.6"
-            and empty_input
+            self._taxonomy.output_protocol_version == "content-labeling.v4.6" and empty_input
         )
         seen: set[str] = set()
         for fragment in evidence:
