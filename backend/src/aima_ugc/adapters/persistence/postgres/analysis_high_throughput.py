@@ -11,10 +11,6 @@ from aima_ugc.adapters.persistence.postgres.analysis import (
     AnalysisRequestNotFound,
     PostgresAnalysisRepository,
 )
-from aima_ugc.adapters.persistence.postgres.analysis_target_snapshot import (
-    target_snapshot_columns,
-    target_snapshot_fingerprint,
-)
 from aima_ugc.modules.analysis.tables import (
     analysis_content_request_items_table,
     analysis_content_requests_table,
@@ -35,28 +31,6 @@ class PostgresHighThroughputAnalysisRepository(PostgresAnalysisRepository):
             )
         )
         return 0 if last_ordinal is None else int(last_ordinal) + 1
-
-    def frozen_target_snapshot(self, run_id: UUID) -> tuple[int, str]:
-        """对已冻结 Target 计算 count + 集合指纹，不把全量 ID 读回应用层。"""
-
-        target = analysis_content_run_targets_table
-        row = self._session.execute(
-            select(
-                *target_snapshot_columns(
-                    target.c.content_id,
-                    target.c.content_version,
-                )
-            ).where(target.c.run_id == run_id)
-        ).one()
-        target_count = int(row.target_count)
-        return (
-            target_count,
-            target_snapshot_fingerprint(
-                target_count=target_count,
-                hash_sum0=int(row.target_hash_sum0),
-                hash_sum1=int(row.target_hash_sum1),
-            ),
-        )
 
     def next_unscheduled_shards(self, run_id: UUID, *, limit: int) -> tuple[int, ...]:
         """从 Run `shard_count` 和连续 Request 序号推导下一批，不扫描海量 Run Target。"""
