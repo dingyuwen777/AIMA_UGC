@@ -55,7 +55,7 @@ data_changes: []
 
 # 目标与成功标准
 
-- [ ] AC1 Prompt 文件与用户上传原文完全一致，SHA-256=`44e584274fd2bd5b5d5bf81143f29068c84d44d97c6d723af51c24a29887a1a5`。
+- [ ] AC1 Prompt 文件与用户上传原文文本完全一致；上传原文件 CRLF 字节 SHA-256=`44e584274fd2bd5b5d5bf81143f29068c84d44d97c6d723af51c24a29887a1a5`，Git LF 规范化文本 SHA-256=`9a8fa7e98680ee707871f0303d4154dfbae4e900c0be90535edd8b5793ab02cb`。
 - [ ] AC2 bootstrap pointer 指向 V4.6。
 - [ ] AC3 V4.6 Parser 正确得到 3 voice types、4 sentiments、5 source types、8 content intents、9 个一级标签及正确二级标签。
 - [ ] AC4 Scheme bootstrap/compiler 支持 V4.6，首次编译后的 Prompt 与原始 V4.6 完全一致；结构化 Taxonomy 与 Prompt 原文一致。
@@ -125,7 +125,7 @@ data_changes: []
 
 # 风险与回滚
 
-- **Prompt 一致性**：任何自动格式化/改写均禁止；以原文全文比较和 SHA-256 门禁。
+- **Prompt 一致性**：任何业务文本自动格式化/改写均禁止；以 LF 规范化后的全文与固定 SHA-256 门禁验证，CRLF/LF 仅作为换行编码差异记录。
 - **兼容性**：旧 V3/V4 Scheme 编译路径必须继续工作；无历史正式打标结果，不涉及结果迁移。
 - **部署事实**：当前生产/测试数据库是否已提前 bootstrap 旧 V4 仍需部署时读取环境确认；本 PR 不写生产数据。
 - **回滚**：源码回滚即可；无 Schema/数据迁移。
