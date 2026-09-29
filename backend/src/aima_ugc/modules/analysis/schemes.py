@@ -99,9 +99,23 @@ def _render_v46_prompt(definition: AnalysisSchemeDefinitionRequest) -> str:
         prompt_text,
     )
 
+    label_match = _V46_LABELS_PATTERN.search(prompt_text)
+    if label_match is None:
+        raise ValueError("V4.6 Prompt 缺少唯一标签 Taxonomy 区块")
+    template_primary_order = re.findall(
+        r"(?m)^## (?P<primary>.+?)\\s*$",
+        label_match.group("labels"),
+    )
+    ordered_primaries = [
+        primary for primary in template_primary_order if primary in definition.labels
+    ]
+    ordered_primaries.extend(
+        sorted(set(definition.labels) - set(ordered_primaries))
+    )
     label_sections = "\n\n".join(
-        f"## {primary}\n\n" + "\n".join(f"- {secondary}" for secondary in secondaries)
-        for primary, secondaries in definition.labels.items()
+        f"## {primary}\n\n"
+        + "\n".join(f"- {secondary}" for secondary in definition.labels[primary])
+        for primary in ordered_primaries
     )
     prompt_text, label_substitutions = _V46_LABELS_PATTERN.subn(
         lambda match: match.group(1) + label_sections + "\n\n",
