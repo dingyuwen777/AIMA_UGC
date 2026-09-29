@@ -262,7 +262,7 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 | V2 | product head `ca8bcc0` / Runtime Acceptance 3123 | Compose Golden Path | success | Runtime 组装、启动、持久化与安全路径无回退 |
 | V3 | product head `ca8bcc0` / Developer Tooling 1540 | Linux + Windows Tooling | 两个 Tooling jobs success | 开发/Compose 工具链无回退 |
 | V4 | PR #661 branch sync commit `7e23ec2` | compare main...feature | behind 0 / clean merge | 分支已吸收当前 main，不通过规则 bypass 合并 |
-| V5 | fingerprint delta | PostgreSQL same-count membership-drift regression + unit selected/all short-transaction regression | 当前代码已补测试，最终 current-head CI 待执行完成 | 直接覆盖首轮复核发现的集合漂移投影 |
+| V5 | current head `290e7945` / CI 6190 | Requirement Audit + Ruff/mypy + Unit/Contract/API + PostgreSQL Integration + Browser Full-stack + CI Gate | required jobs 全部 success；PostgreSQL Integration success | 直接覆盖 query bounded freeze、同数量成员替换、selected/all 短事务及跨组件关键路径 |
 
 ## 未验证内容与剩余风险
 
@@ -274,8 +274,8 @@ Requirement Source 为 #660。用户确认按系统方案实施，并要求完�
 
 - 提交：产品实现已在 `feature/660-voice-plaza-query-analysis`。
 - 拉取请求：#661，ready for review。
-- CI：完整基线 `ca8bcc0` 的 CI 6171、Runtime 3123、Tooling 1540 已绿色；当前 fingerprint delta 正等待 final current-head required CI。
-- 合并：待 fingerprint delta current-head required checks 全绿后按用户授权合并 main。
+- CI：current head `290e7945` 的 CI 6190、Runtime Acceptance 3142、Developer Tooling 1558 均已绿色；required contexts `Requirement Traceability and Completion Audit`、`CI Gate`、`Compose Golden Path` 均 success。
+- 合并：current head 已满足实现与验证门禁；本提交只更新最终 Evidence，待其自身 required checks 绿色后按用户授权合并 main。
 - Change 归档：merge 后按仓库自动归档流程核验。
 - 发布 / 部署：不适用；用户未要求 Release/Deploy，且无 Migration。
 
