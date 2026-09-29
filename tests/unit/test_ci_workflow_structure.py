@@ -329,3 +329,25 @@ def test_tooling_keeps_linux_and_windows_as_independent_jobs() -> None:
 
     gate = _section(tooling, "  main-evidence:\n", "  linux-tooling:\n")
     assert gate.count("      - name: Checkout\n") == 1
+
+
+def test_ci_plan_allows_core_postgres_and_fullstack_to_run_in_parallel() -> None:
+    """轻量 CI Plan 只提供 scope，三个重 Evidence Owner 不再彼此串行等待。"""
+    text = CI.read_text(encoding="utf-8")
+    plan = _section(text, "  ci-plan:\n", "  quality-core:\n")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    postgres = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
+    fullstack = _section(text, "  real-fullstack:\n", "  ci-gate:\n")
+    gate = _section(text, "  ci-gate:\n", "  actions-hygiene:\n")
+
+    assert "name: CI Plan" in plan
+    assert "Classify changed scope" in plan
+    assert "needs: ci-plan" in core
+    assert "needs: ci-plan" in postgres
+    assert "needs: quality-core" not in postgres
+    assert "needs: ci-plan" in fullstack
+    assert "needs: quality-core" not in fullstack
+    assert "      - ci-plan\n" in gate
+    assert "      - quality-core\n" in gate
+    assert "      - postgres-integration\n" in gate
+    assert "      - real-fullstack\n" in gate

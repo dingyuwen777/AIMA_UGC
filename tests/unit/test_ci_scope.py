@@ -434,3 +434,47 @@ def test_github_output_exposes_each_required_layer_and_selected_suites(tmp_path:
     assert values["report_font_required"] == "false"
     assert values["fullstack_specs"] == "excel-import.spec.ts stage12-historical-analysis.spec.ts"
     assert values["changed_count"] == "1"
+
+
+def test_known_backend_and_frontend_paths_select_targeted_development_evidence() -> None:
+    """高频功能路径优先选择直接测试目标，共享/未知边界继续 fail closed。"""
+    analysis = _requirements("backend/src/aima_ugc/modules/analysis/content_analysis_job.py")
+    voice = _requirements("frontend/src/features/voice-plaza/store.ts")
+    workbench = _requirements("frontend/src/features/workbench/components/WorkbenchFilters.vue")
+    unknown_backend = _requirements("backend/src/aima_ugc/bootstrap/unclassified_worker.py")
+    ci_self = _requirements(".github/workflows/ci.yml")
+
+    assert analysis.backend_targets == ("tests/unit/analysis",)
+    assert voice.frontend_unit_targets == (
+        "frontend/tests/analysis-all-scope.spec.ts",
+        "frontend/tests/voice-plaza-design.spec.ts",
+        "frontend/tests/voice-plaza-media-preview.spec.ts",
+        "frontend/tests/voice-plaza.spec.ts",
+    )
+    assert voice.frontend_e2e_specs == (
+        "frontend/e2e/voice-plaza-design.spec.ts",
+        "frontend/e2e/voice-plaza-media-carousel.spec.ts",
+        "frontend/e2e/voice-plaza-review-regressions.spec.ts",
+        "frontend/e2e/voice-plaza.spec.ts",
+    )
+    assert workbench.frontend_unit_targets == ("frontend/tests/workbench.spec.ts",)
+    assert workbench.frontend_e2e_specs == ("frontend/e2e/workbench.spec.ts",)
+    assert unknown_backend.backend_targets == ("all",)
+    assert ci_self.backend_targets == ("all",)
+    assert ci_self.frontend_unit_targets == ("all",)
+    assert ci_self.frontend_e2e_specs == ("all",)
+
+
+def test_github_output_exposes_backend_and_frontend_selected_targets(tmp_path: Path) -> None:
+    """CI Plan 必须把同一 classifier 的 Backend/Frontend 选择传给后续并行 Job。"""
+    output = tmp_path / "github-output"
+    requirements = _requirements("frontend/src/features/workbench/components/WorkbenchFilters.vue")
+
+    WRITE_GITHUB_OUTPUT(output, requirements, changed_count=1)
+
+    values = dict(
+        line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines() if line
+    )
+    assert values["backend_targets"] == ""
+    assert values["frontend_unit_targets"] == "frontend/tests/workbench.spec.ts"
+    assert values["frontend_e2e_specs"] == "frontend/e2e/workbench.spec.ts"
