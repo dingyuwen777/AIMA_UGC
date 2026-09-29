@@ -243,6 +243,7 @@ data_changes:
 | V9 | 本地 | `ruff check` + `mypy`（改动文件） | exit 0 | 后端静态检查与类型检查通过 |
 | V10 | 本地 | `python scripts/quality/check_change_completion.py --root . --require-active-ready` | exit 0 | Change 结构门禁通过 |
 | V11 | CI | current-head 三套 workflow（CI / Tooling / Runtime） | 待 current-head CI | 后端单元/契约/API、PostgreSQL 集成、Full-stack、生成一致性 |
+| V12 | 本地 | Playwright chromium `test:e2e` voice-plaza 三套 spec | 39 passed | 一级/二级标签 overlay 后 Browser Mock 多选/筛选/几何回归通过 |
 
 ## 未验证内容与剩余风险
 
@@ -260,4 +261,4 @@ data_changes:
 
 ## 备注
 
-R591-F5（blocking）已修复：`ContentFilterSnapshot.voice_types/sentiments` cardinality 20→50，与 `AnalysisSchemeDefinitionRequest` 的 50 对齐；R591-F6（non-blocking）已随本轮一起做最小修复：一级/二级标签候选改挂 `.multi-select__options` 绝对定位 overlay，不再参与正常流高度计算。
+R591-F5（blocking）已修复：`ContentFilterSnapshot.voice_types/sentiments` cardinality 20→50，与 `AnalysisSchemeDefinitionRequest` 的 50 对齐；R591-F6（non-blocking）已随本轮一起做最小修复：一级/二级标签候选改挂 `.multi-select__options` 绝对定位 overlay，不再参与正常流高度计算。直接相邻回归：标签候选变为 overlay 后，e2e 在点击“查询/选择品牌”前先收起仍打开的一级/二级标签下拉，断言不变。

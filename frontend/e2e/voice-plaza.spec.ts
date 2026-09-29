@@ -648,6 +648,10 @@ test('loads backend filter options and submits voice type with dependent labels'
   await filters.getByLabel('二级标签', { exact: true }).click()
   await secondaryField.getByRole('checkbox', { name: '实际续航表现', exact: true }).check()
 
+  // 一级/二级标签候选是绝对定位 overlay，展开会盖住下方操作区，先收起再继续。
+  await filters.getByLabel('一级标签', { exact: true }).click()
+  await filters.getByLabel('二级标签', { exact: true }).click()
+
   await page.getByRole('button', { name: '选择品牌', exact: true }).click()
   const brandDialog = page.getByRole('dialog', { name: '选择品牌', exact: true })
   await brandDialog.getByLabel(/爱玛/).check()
@@ -810,6 +814,10 @@ test('一级标签多选约束二级候选，父级取消后失效二级不会�
     secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }),
   ).toHaveCount(0)
   await expect(secondarySummary).toContainText('已选 1 个二级标签')
+
+  // 收起仍打开的一级/二级标签 overlay，避免盖住查询按钮。
+  await primarySummary.click()
+  await secondarySummary.click()
 
   const requestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
