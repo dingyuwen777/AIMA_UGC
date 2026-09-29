@@ -506,3 +506,28 @@ def test_known_backend_domains_include_direct_api_evidence_without_global_api_su
         "tests/api/test_brand_vehicle_stage2_contract.py",
         "tests/unit/vehicles",
     )
+
+
+def test_selected_backend_and_frontend_targets_exist() -> None:
+    """精准 selector 只能引用仓库中真实存在的测试资产。"""
+    representative = (
+        _requirements("backend/src/aima_ugc/modules/analysis/content_analysis_job.py"),
+        _requirements("backend/src/aima_ugc/modules/collection/service.py"),
+        _requirements("backend/src/aima_ugc/modules/content/service.py"),
+        _requirements("backend/src/aima_ugc/modules/ingestion/imports.py"),
+        _requirements("backend/src/aima_ugc/modules/vehicles/service.py"),
+        _requirements("frontend/src/features/voice-plaza/store.ts"),
+        _requirements("frontend/src/features/workbench/components/WorkbenchFilters.vue"),
+        _requirements("frontend/src/features/admin-configuration/store.ts"),
+        _requirements("frontend/src/features/task-center/store.ts"),
+        _requirements("frontend/src/features/collection-strategy/store.ts"),
+        _requirements("frontend/src/features/collection-runtime/store.ts"),
+    )
+    for requirements in representative:
+        for target in (
+            *requirements.backend_targets,
+            *requirements.frontend_unit_targets,
+            *requirements.frontend_e2e_specs,
+        ):
+            if target != "all":
+                assert (ROOT / target).exists(), target
