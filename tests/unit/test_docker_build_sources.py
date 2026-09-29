@@ -85,6 +85,18 @@ def test_package_source_defaults_use_china_mirrors_but_remain_overridable() -> N
     assert "${AIMA_BUILD_NPM_REGISTRY:-https://registry.npmmirror.com}" in compose
 
 
+def test_backend_runtime_installs_report_cjk_fonts() -> None:
+    """正式 Backend 镜像必须携带报告 Renderer 所需的普通和粗体 CJK 字体。"""
+
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    backend_runtime = dockerfile.split(
+        "FROM python:3.14.7-slim-trixie AS backend\n",
+        maxsplit=1,
+    )[1].split("FROM node:24.19.0-bookworm-slim AS frontend-builder", maxsplit=1)[0]
+
+    assert "apt-get install -y --no-install-recommends libpq5 fonts-noto-cjk" in backend_runtime
+
+
 def test_release_workflow_uses_official_profile_without_changing_local_defaults() -> None:
     assert RELEASE_WORKFLOW.is_file(), "Release workflow has not been implemented yet"
     assert RELEASE_CORE.is_file(), "Shared Release bundle core has not been implemented yet"

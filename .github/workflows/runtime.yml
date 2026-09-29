@@ -188,6 +188,31 @@ jobs:
           # 首次真实运行保留正式管理员入口，构建镜像一次；后续生命周期与 Windows overlay 全部复用同一镜像。
           compose up -d --build --wait
 
+          # 报告 Renderer 的 CJK 字体必须存在于正式 Backend 镜像，而不是依赖 Runner 宿主。
+          compose exec -T worker python - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          from PIL import Image
+
+          from aima_ugc.platform.reporting.visuals.wordcloud import (
+              render_wordcloud_png,
+              resolve_cjk_bold_font,
+              resolve_cjk_font,
+          )
+
+          regular = resolve_cjk_font()
+          bold = resolve_cjk_bold_font(regular)
+          assert regular.is_file(), regular
+          assert bold.is_file(), bold
+          with TemporaryDirectory() as directory:
+              output = Path(directory) / "cjk-smoke.png"
+              render_wordcloud_png({"爱玛": 10, "续航": 6}, output)
+              assert output.stat().st_size > 0
+              with Image.open(output) as image:
+                  image.verify()
+          PY
+
           BOOTSTRAP_CONTAINER="$(compose ps -a -q bootstrap)"
           MIGRATE_CONTAINER="$(compose ps -a -q migrate)"
           CONFIGURE_CONTAINER="$(compose ps -a -q configure)"
