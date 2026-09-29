@@ -989,6 +989,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       analysisPreview.value = null
       return created.target_count
     } catch (reason) {
+      if (analysisDraft !== draft) return null
       const message = errorMessage(reason)
       if (reason instanceof VoicePlazaApiError && reason.status === 409) {
         const refreshed = await previewAnalysis(draft.scope)
