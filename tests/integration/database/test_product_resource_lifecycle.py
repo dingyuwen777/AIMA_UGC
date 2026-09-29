@@ -307,7 +307,6 @@ def test_published_analysis_scheme_delete_hides_resource_but_preserves_run_snaps
     session = runtime.new_session()
     scheme_id: UUID | None = None
     replacement_scheme_id: UUID | None = None
-    version_id: UUID | None = None
     run_id = uuid4()
     planner_job_id = uuid4()
     scheme_name = f"历史发布方案-{uuid4()}"
@@ -321,7 +320,6 @@ def test_published_analysis_scheme_delete_hides_resource_but_preserves_run_snaps
                 actor_ref="integration-test",
             )
             scheme_id = version.scheme_id
-            version_id = version.id
             now = beijing_now()
             # 建立已发布历史，但不切换全局 active，避免污染其他套件。
             session.execute(
