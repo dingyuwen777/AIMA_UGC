@@ -34,6 +34,8 @@ from aima_ugc.modules.analysis import (
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
     ContentAnalysisPlanJobHandler,
+    analysis_query_filters_from_snapshot,
+    analysis_query_target_fingerprint_from_snapshot,
     is_analysis_all_scope_filter_snapshot,
     register_content_analysis_job,
 )
@@ -550,7 +552,12 @@ def test_analysis_query_scope_freezes_filtered_targets_in_bounded_batches(
             ).one()
             assert stored.scope == "query"
             assert not is_analysis_all_scope_filter_snapshot(stored.filter_snapshot)
-            assert stored.filter_snapshot["platforms"] == ["xiaohongshu"]
+            assert analysis_query_filters_from_snapshot(stored.filter_snapshot)["platforms"] == [
+                "xiaohongshu"
+            ]
+            assert (
+                analysis_query_target_fingerprint_from_snapshot(stored.filter_snapshot) is not None
+            )
             assert (
                 connection.scalar(
                     select(func.count()).select_from(analysis_content_run_targets_table)
@@ -585,6 +592,114 @@ def test_analysis_query_scope_freezes_filtered_targets_in_bounded_batches(
             )
             assert [row.target_ordinal for row in frozen] == [0, 1, 2]
             assert all(row.content_version >= 1 for row in frozen)
+    finally:
+        runtime.close()
+
+
+def test_analysis_query_scope_rejects_same_count_membership_drift(
+    tmp_path: Path,
+) -> None:
+    """确认后即使筛选数量不变，只要成员集合替换也必须 fail closed。"""
+
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "llm_base_url": "https://fake.example/v1",
+            "llm_provider_name": "fake",
+            "llm_model": "fake-content-labeler-v1",
+            "analysis_run_max_in_flight_jobs": 2,
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, audit_events "
+            "RESTART IDENTITY CASCADE"
+        )
+    try:
+        client = TestClient(
+            create_app(
+                import_service=PostgresImportHttpService(runtime),
+                content_service=PostgresContentHttpService(
+                    runtime,
+                    cursor_signing_secret=b"stage12-analysis-cursor-key-32-bytes",
+                ),
+            )
+        )
+        _seed_contents(client, runtime)
+        import_worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage12-analysis-query-drift-import",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert import_worker.run_once() is True
+
+        targets = {
+            "scope": "query",
+            "filters": {"search": "Stage12 Run 0"},
+        }
+        preview = client.post(
+            "/api/v1/analysis/content-runs/preview",
+            json={"targets": targets},
+        )
+        assert preview.status_code == 200
+        assert preview.json()["target_count"] == 1
+        created = client.post(
+            "/api/v1/analysis/content-runs",
+            json={
+                "client_idempotency_key": "stage12-analysis-query-drift",
+                "targets": targets,
+                "expected_target_count": 1,
+                "expected_configuration_hash": preview.json()["configuration_hash"],
+                "run_intent": "manual_reanalysis",
+            },
+        )
+        assert created.status_code == 202
+        run_id = UUID(created.json()["run_id"])
+
+        with runtime.database.engine.begin() as connection:
+            rows = tuple(
+                connection.execute(
+                    select(contents_table.c.id, contents_table.c.title)
+                    .where(contents_table.c.title.like("爱玛 Stage12 Run %"))
+                    .order_by(contents_table.c.title)
+                ).all()
+            )
+            assert len(rows) == 3
+            original, replacement = rows[0], rows[1]
+            connection.execute(
+                update(contents_table)
+                .where(contents_table.c.id == original.id)
+                .values(title="爱玛 已移出筛选")
+            )
+            connection.execute(
+                update(contents_table)
+                .where(contents_table.c.id == replacement.id)
+                .values(title="爱玛 Stage12 Run 0 replacement")
+            )
+
+        assert (
+            _drain_analysis(
+                runtime,
+                sentiment="中性",
+                worker_id="stage12-analysis-query-drift",
+                freeze_batch_size=1,
+            )
+            == 1
+        )
+        run = client.get(f"/api/v1/analysis/content-runs/{run_id}").json()
+        assert run["status"] == "failed"
+        assert run["error_code"] == "content_analysis_target_changed"
+        with runtime.database.engine.begin() as connection:
+            assert (
+                connection.scalar(
+                    select(func.count()).select_from(analysis_content_requests_table)
+                )
+                == 0
+            )
     finally:
         runtime.close()
 
