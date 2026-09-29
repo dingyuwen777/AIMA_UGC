@@ -52,7 +52,11 @@ def _content(
     )
 
 
-def _inquiry_item(taxonomy: PromptTaxonomy, *, voice_evidence: list[str] | None = None) -> dict[str, object]:
+def _inquiry_item(
+    taxonomy: PromptTaxonomy,
+    *,
+    voice_evidence: list[str] | None = None,
+) -> dict[str, object]:
     """生成 V4.6 普通咨询的合法营销兜底响应。"""
 
     primary = "智能化与电子功能"
