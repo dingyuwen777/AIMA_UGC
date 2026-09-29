@@ -4,7 +4,7 @@ import type { AnalysisContentRunPreviewResponse } from '../../../../../generated
 import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
-type AnalysisScope = 'selected' | 'all'
+type AnalysisScope = 'selected' | 'query' | 'all'
 
 const props = defineProps<{
   modelValue: boolean
@@ -25,7 +25,7 @@ const scope = ref<AnalysisScope>('all')
 /** 打开弹窗时优先使用有效显式选择，否则默认选择全部数据并立即预检。 */
 watch(() => props.modelValue, (open) => {
   if (!open) return
-  scope.value = props.selectedCount > 0 && props.selectedCount <= 1000 ? 'selected' : 'all'
+  scope.value = props.selectedCount > 0 && props.selectedCount <= 1000 ? 'selected' : 'query'
   emit('preview', scope.value)
 })
 
@@ -72,10 +72,10 @@ function selectScope(next: AnalysisScope): void {
         role="alert"
         class="request-error"
       >
-        AI 分析请求未完成，请稍后重试。
+        {{ error }}
       </p>
       <fieldset class="scope-picker">
-        <legend>当前范围：{{ scope === 'selected' ? `已选内容（${selectedCount} 条）` : '全部系统内容' }}</legend>
+        <legend>当前范围：{{ scope === 'selected' ? `已选内容（${selectedCount} 条）` : scope === 'query' ? '当前筛选结果' : '全部系统内容' }}</legend>
         <label
           class="scope-option"
           :class="{ 'scope-option--disabled': selectedCount === 0 || selectedCount > 1000 }"
@@ -97,18 +97,31 @@ function selectScope(next: AnalysisScope): void {
           <input
             type="radio"
             name="analysis-scope"
+            value="query"
+            :checked="scope === 'query'"
+            @change="selectScope('query')"
+          >
+          <span>
+            <strong>当前筛选结果</strong>
+          </span>
+        </label>
+        <label class="scope-option">
+          <input
+            type="radio"
+            name="analysis-scope"
             value="all"
             :checked="scope === 'all'"
             @change="selectScope('all')"
           >
           <span>
             <strong>全部系统内容</strong>
-
           </span>
         </label>
       </fieldset>
       <p class="scope-note">
-        全部范围包含系统中的全部当前内容，不受列表筛选和分页限制。
+        <template v-if="scope === 'selected'">仅分析当前显式勾选的内容。</template>
+        <template v-else-if="scope === 'query'">当前筛选结果包含已应用筛选条件命中的全部内容，不受列表分页和当前已加载数量限制。</template>
+        <template v-else>全部范围包含系统中的全部当前内容，不受列表筛选和分页限制。</template>
       </p>
       <div
         v-if="previewing"
@@ -168,7 +181,7 @@ footer :deep(.aima-button) { height: 38px; }
 }
 .request-error { color: var(--aima-danger); font-size: 12px; line-height: 18px; }
 .body { min-height: 360px; gap: 12px; }
-.scope-picker { grid-template-columns: 1fr 1fr; gap: 12px; }
+.scope-picker { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .scope-picker legend { margin-bottom: 12px; color: var(--aima-text-muted); font-size: 13px; font-weight: 400; }
 .scope-option { position: relative; display: flex; justify-content: center; min-height: 38px; padding: 8px 10px; border-radius: 6px; }
 .scope-option input { position: absolute; opacity: 0; }
