@@ -11,6 +11,8 @@ _DETAIL_PATH = "/api/v1/weibo/app/fetch_status_detail"
 _COMMENTS_PATH = "/api/v1/weibo/app/fetch_status_comments"
 _WEB_COMMENTS_CANDIDATE_PATH = "/api/v1/weibo/web_v2/fetch_post_comments"
 _SUB_COMMENTS_PATH = "/api/v1/weibo/web_v2/fetch_post_sub_comments"
+_USER_SEARCH_PATH = "/api/v1/weibo/web_v2/fetch_user_search"
+_USER_POSTS_PATH = "/api/v1/weibo/web_v2/fetch_user_posts"
 _SEARCH_TYPES = {"general": 1, "latest": 61, "hot": 60, "video": 64, "image": 63, "article": 21}
 _TIME_SCOPES = {"all", "hour", "day", "week", "month"}
 _COMMENT_SORT_TYPES = {"hot": 0, "latest": 1}
@@ -77,6 +79,31 @@ class WeiboSubCommentPagination:
         return cls(normalized, True)
 
 
+@dataclass(frozen=True, slots=True)
+class WeiboUserPostsPagination:
+    """微博用户作品接口按响应中的 ``since_id`` 推进。"""
+
+    next_since_id: str
+    should_continue: bool
+    stop_reason: str | None = None
+
+    @classmethod
+    def from_response(
+        cls, *, previous_since_id: str, body: dict[str, Any]
+    ) -> WeiboUserPostsPagination:
+        container, items = _find_user_posts_container(body)
+        if container is None:
+            return cls(previous_since_id, False, "response_data_unavailable")
+        if not items:
+            return cls("", False, "empty_page")
+        returned = _string(container.get("since_id"))
+        if not returned:
+            return cls("", False, "provider_exhausted")
+        if returned == previous_since_id:
+            return cls(returned, False, "pagination_not_advanced")
+        return cls(returned, True)
+
+
 def build_search_request(
     *, keyword: str, page: int = 1, search_mode: str = "latest", time_scope: str = "all"
 ) -> WeiboRequest:
@@ -118,6 +145,40 @@ def build_app_search_candidate_request(
             "search_type": _choice(_SEARCH_TYPES, search_mode, "search_mode"),
         },
     )
+
+
+def build_user_search_request(
+    *, query: str, page: int = 1, nickname: str | None = None
+) -> WeiboRequest:
+    """构造 Web V2 用户搜索，用于把昵称解析为稳定 UID。"""
+
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    normalized_query = _required_id(query, "query")
+    params: dict[str, object] = {"query": normalized_query, "page": page}
+    if nickname is not None:
+        params["nickname"] = _required_id(nickname, "nickname")
+    return WeiboRequest("GET", _USER_SEARCH_PATH, params)
+
+
+def build_user_posts_request(
+    *, uid: str, page: int = 1, since_id: str = "", feature: int = 3
+) -> WeiboRequest:
+    """构造 Web V2 用户历史微博请求；feature=3 保留完整卡片字段。"""
+
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    if isinstance(feature, bool) or not isinstance(feature, int) or feature not in range(4):
+        raise ValueError("feature 必须是 0 到 3 的整数")
+    params: dict[str, object] = {
+        "uid": _required_id(uid, "uid"),
+        "page": page,
+        "feature": feature,
+    }
+    normalized_since_id = since_id.strip()
+    if normalized_since_id:
+        params["since_id"] = normalized_since_id
+    return WeiboRequest("GET", _USER_POSTS_PATH, params)
 
 
 def build_status_detail_request(*, status_id: str) -> WeiboRequest:
@@ -175,6 +236,19 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     )
 
 
+def extract_user_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从 Web V2 用户搜索常见 envelope 提取含 UID 的候选。"""
+
+    return _find_user_search_items(body)
+
+
+def extract_user_post_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从 Web V2 用户历史微博 envelope 提取可映射的微博卡片。"""
+
+    _, items = _find_user_posts_container(body)
+    return items
+
+
 def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
     """从真实 App Detail 的 data.detailInfo.status 提取微博对象。"""
     data = body.get("data")
@@ -219,6 +293,77 @@ def _first_level_comment_max_id(body: dict[str, Any]) -> str:
     return _string(params.get("max_id"))
 
 
+def _find_user_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    queue: list[dict[str, Any]] = [body]
+    seen: set[int] = set()
+    for _ in range(64):
+        if not queue:
+            break
+        current = queue.pop(0)
+        marker = id(current)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        for key in ("users", "user_list", "userList", "cards", "items", "data", "list"):
+            value = current.get(key)
+            if isinstance(value, list):
+                items = tuple(
+                    item for item in value if isinstance(item, dict) and _is_user_search_item(item)
+                )
+                if items:
+                    return items
+            elif isinstance(value, dict):
+                queue.append(value)
+        queue.extend(value for value in current.values() if isinstance(value, dict))
+    return ()
+
+
+def _find_user_posts_container(
+    body: dict[str, Any],
+) -> tuple[dict[str, Any] | None, tuple[dict[str, Any], ...]]:
+    queue: list[dict[str, Any]] = [body]
+    seen: set[int] = set()
+    for _ in range(64):
+        if not queue:
+            break
+        current = queue.pop(0)
+        marker = id(current)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        for key in ("statuses", "mblogs", "cards", "items", "list", "data"):
+            value = current.get(key)
+            if not isinstance(value, list):
+                continue
+            items = tuple(
+                item for item in value if isinstance(item, dict) and _is_user_post_item(item)
+            )
+            if items or (not value and "since_id" in current):
+                return current, items
+        queue.extend(value for value in current.values() if isinstance(value, dict))
+    return None, ()
+
+
+def _is_user_search_item(item: dict[str, Any]) -> bool:
+    candidate = item.get("user")
+    if not isinstance(candidate, dict):
+        candidate = item.get("userInfo")
+    if not isinstance(candidate, dict):
+        candidate = item
+    uid = _string(candidate.get("uid") or candidate.get("user_id") or candidate.get("id"))
+    identity_keys = ("screen_name", "nickname", "nick_name", "profile_url")
+    return bool(uid and any(key in candidate for key in identity_keys))
+
+
+def _is_user_post_item(item: dict[str, Any]) -> bool:
+    candidate = item.get("mblog")
+    if not isinstance(candidate, dict):
+        candidate = item
+    return _has_stable_id(candidate) and any(
+        key in candidate for key in ("text", "text_raw", "created_at", "user")
+    )
+
+
 def _choice(mapping: dict[str, int], value: str, field_name: str) -> int:
     try:
         return mapping[value]
@@ -242,13 +387,18 @@ __all__ = [
     "WeiboRequest",
     "WeiboSearchPagination",
     "WeiboSubCommentPagination",
+    "WeiboUserPostsPagination",
     "build_app_search_candidate_request",
     "build_search_request",
     "build_status_comments_request",
     "build_status_detail_request",
     "build_status_sub_comments_request",
+    "build_user_posts_request",
+    "build_user_search_request",
     "build_web_status_comments_candidate_request",
     "extract_comment_items",
     "extract_detail_item",
     "extract_search_items",
+    "extract_user_post_items",
+    "extract_user_search_items",
 ]

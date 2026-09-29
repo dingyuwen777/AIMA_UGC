@@ -6,8 +6,10 @@ import pytest
 from aima_ugc.adapters.providers.tikhub.operations.bilibili import (
     BilibiliCursorPagination,
     BilibiliSearchPagination,
+    BilibiliUserPostsPagination,
     build_reply_detail_request,
     build_search_request,
+    build_user_posts_v2_request,
     build_video_comments_request,
     build_video_detail_request,
 )
@@ -157,6 +159,29 @@ def test_returned_comment_offset_state_does_not_guess_response_path() -> None:
     assert regressed.stop_reason == "pagination_not_advanced"
 
 
+def test_runtime_uses_integer_cursor_next_when_app_token_is_opaque() -> None:
+    opaque_cursor = "CAESEDE4MzE2NzkyMzM5MDI0MTkaADIDCNwE"
+    from aima_ugc.adapters.providers.tikhub.runtime import advance_comments
+
+    advance = advance_comments(
+        platform="bilibili",
+        state=None,
+        body={
+            "data": {
+                "data": {
+                    "cursor": {
+                        "is_end": False,
+                        "next": 604,
+                        "pagination_reply": {"next_offset": opaque_cursor},
+                    }
+                }
+            }
+        },
+    )
+    assert advance.should_continue is True
+    assert advance.next_state == {"next_offset": 604}
+
+
 def test_invalid_search_and_offset_inputs_fail_closed() -> None:
     with pytest.raises(ValueError, match="sort_mode"):
         build_search_request(keyword="爱玛", sort_mode="provider_private_value")
@@ -180,3 +205,26 @@ def test_runtime_bilibili_first_comment_page_explicitly_sends_zero_offset() -> N
 
     assert call.params["mode"] == 2
     assert call.params["next_offset"] == 0
+
+
+def test_account_posts_v2_has_no_historical_pagination_cap_and_stops_on_empty_archives() -> None:
+    first = build_user_posts_v2_request(uid="178360345")
+    assert first.path == "/api/v1/bilibili/web/fetch_user_post_videos_v2"
+    assert first.params == {"uid": "178360345", "pn": 1, "ps": 100}
+
+    next_page = build_user_posts_v2_request(uid="178360345", page=101, page_size=30)
+    assert next_page.params == {"uid": "178360345", "pn": 101, "ps": 30}
+
+    advanced = BilibiliUserPostsPagination.from_response(
+        current_page=1,
+        body={"data": {"data": {"archives": [{"aid": 170001}]}}},
+    )
+    assert advanced.should_continue is True
+    assert advanced.next_page == 2
+
+    exhausted = BilibiliUserPostsPagination.from_response(
+        current_page=2,
+        body={"data": {"data": {"archives": []}}},
+    )
+    assert exhausted.should_continue is False
+    assert exhausted.stop_reason == "empty_page"

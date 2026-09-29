@@ -4,7 +4,12 @@ from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID
 
-from .runner import TikHubTestRunResult, run_platform
+from .runner import (
+    TikHubTestRunResult,
+    WeiboAccountTarget,
+    run_platform,
+    run_weibo_accounts,
+)
 
 
 def run_weibo(
@@ -53,4 +58,4 @@ def run_weibo(
     )
 
 
-__all__ = ["run_weibo"]
+__all__ = ["WeiboAccountTarget", "run_weibo", "run_weibo_accounts"]

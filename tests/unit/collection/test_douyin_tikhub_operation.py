@@ -228,6 +228,13 @@ def test_comment_cursor_pagination_uses_only_documented_cursor_and_has_more_fact
     assert stalled.stop_reason == "pagination_not_advanced"
 
 
+def test_extract_douyin_comment_total() -> None:
+    from aima_ugc.adapters.providers.tikhub.operations.douyin import extract_comment_counts
+
+    assert extract_comment_counts({"data": {"total": 37}}) == (37, None)
+    assert extract_comment_counts({"data": {"total": "36"}}) == (36, None)
+
+
 def test_search_extractor_ignores_non_video_business_cards_without_aweme_id() -> None:
     body = {
         "data": {

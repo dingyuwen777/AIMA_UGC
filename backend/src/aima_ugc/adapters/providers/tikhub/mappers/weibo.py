@@ -32,7 +32,7 @@ def map_content(
 ) -> CanonicalContentV1:
     """把真实 Web Search mblog 或 App Detail status 映射为内容 Observation。"""
     item = first_dict(raw, "mblog")
-    if not item and "id" in raw and "user" in raw:
+    if not item and "user" in raw and any(key in raw for key in ("idstr", "id", "mid")):
         item = raw
     if not item:
         raise ValueError("微博内容缺少 mblog/status")
@@ -51,6 +51,12 @@ def map_content(
     text = optional_string(item, "text", "text_raw")
     if text is not None:
         observed_fields.append("text")
+    # 微博 ``title`` 经常是可见范围元数据对象（例如 {"text": "公开", ...}），
+    # 并非帖子标题。只接受真实的标量标题；否则使用正文作为评论的关联标题。
+    raw_title = item.get("title")
+    title = raw_title.strip() if isinstance(raw_title, str) and raw_title.strip() else text
+    if title is not None:
+        observed_fields.append("title")
 
     author, author_fields = _map_author(first_dict(item, "user"))
     observed_fields.extend(f"author.{field}" for field in author_fields)
@@ -74,6 +80,7 @@ def map_content(
         external_content_id=external_id,
         alternate_ids=alternate_ids,
         content_type=_content_type(item),
+        title=title,
         text=text,
         author=author,
         published_at=published_at,

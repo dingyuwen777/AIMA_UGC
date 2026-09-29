@@ -1,8 +1,8 @@
 schema_version = "tikhub-pricing.v1"
 provider = "tikhub"
 currency = "USD"
-pricing_version = "2026-08-16.1"
-verified_at = "2026-08-16"
+pricing_version = "2026-09-03.1"
+verified_at = "2026-09-03"
 official_pricing_url = "https://docs.tikhub.io/4592751m0"
 official_endpoint_info_path = "/api/v1/tikhub/user/get_endpoint_info"
 
@@ -49,6 +49,8 @@ discount_percent = "50"
 # HTTP 429，因此 endpoint_cost 是逐 endpoint 基价事实源。
 # 2026-08-16 快手 Web/App 同样本评论 A/B 前再次通过 get_endpoint_info 核验 App 一级/二级评论，
 # 两者 endpoint_cost 均为 0.001 USD；本版本据此把已批准的 App 主评论链纳入正式 Pricing。
+# 2026-09-03 为抖音全量评论补采再次核验 Web 一级/二级评论接口，两者 endpoint_cost
+# 均为 0.001 USD；Web 请求只在 App V3 未对齐时由显式补采策略触发。
 
 [[endpoints]]
 path = "/api/v1/xiaohongshu/app_v2/search_notes"
@@ -118,6 +120,27 @@ path = "/api/v1/douyin/app/v3/fetch_video_comment_replies"
 verification_status = "verified"
 base_price = "0.001000"
 verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/douyin/douplus/fetch_user_posts"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-09-03"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/douyin/web/fetch_video_comments"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-09-03"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/douyin/web/fetch_video_comment_replies"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-09-03"
 verified_via = "get_endpoint_info"
 
 [[endpoints]]

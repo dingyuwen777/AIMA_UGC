@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID
 
-from .runner import TikHubTestRunResult, run_platform
+from .runner import BilibiliAccountTarget, TikHubTestRunResult, run_bilibili_accounts, run_platform
 
 
 def run_bilibili(
@@ -50,4 +50,4 @@ def run_bilibili(
     )
 
 
-__all__ = ["run_bilibili"]
+__all__ = ["BilibiliAccountTarget", "run_bilibili", "run_bilibili_accounts"]

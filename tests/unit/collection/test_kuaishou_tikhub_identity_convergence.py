@@ -77,6 +77,25 @@ def test_kuaishou_search_without_share_identity_keeps_numeric_provider_id_compat
     assert "provider_photo_id" not in mapped.alternate_ids
 
 
+def test_kuaishou_account_post_accepts_camel_case_id_and_builds_title_and_link() -> None:
+    mapped = map_content(
+        {
+            "photoId": "3xaccountpost",
+            "caption": "账号作品标题",
+            "createTime": "1788255147000",
+            "userId": "123456789",
+            "userName": "快手官号",
+            "duration": 12000,
+        },
+        _context(),
+        item_locator="data.feeds[0]",
+    )
+
+    assert mapped.external_content_id == "3xaccountpost"
+    assert mapped.title == "账号作品标题"
+    assert str(mapped.share_url) == "https://www.kuaishou.com/short-video/3xaccountpost"
+
+
 def test_kuaishou_comment_prefers_content_context_over_provider_photo_id() -> None:
     mapped = map_comment(
         {

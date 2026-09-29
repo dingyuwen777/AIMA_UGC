@@ -7,11 +7,16 @@ from aima_ugc.adapters.providers.tikhub.operations.weibo import (
     WeiboCommentPagination,
     WeiboSearchPagination,
     WeiboSubCommentPagination,
+    WeiboUserPostsPagination,
     build_search_request,
     build_status_comments_request,
     build_status_detail_request,
     build_status_sub_comments_request,
+    build_user_posts_request,
+    build_user_search_request,
     extract_search_items,
+    extract_user_post_items,
+    extract_user_search_items,
 )
 
 
@@ -77,6 +82,68 @@ def test_search_page_state_only_advances_from_observed_nonempty_page() -> None:
     assert empty.should_continue is False
     assert empty.next_page == 2
     assert empty.stop_reason == "empty_page"
+
+
+def test_account_user_search_and_post_builders_use_documented_web_v2_contracts() -> None:
+    search = build_user_search_request(query="爱玛电动车", nickname="爱玛电动车", page=2)
+    assert search.path == "/api/v1/weibo/web_v2/fetch_user_search"
+    assert search.params == {
+        "query": "爱玛电动车",
+        "nickname": "爱玛电动车",
+        "page": 2,
+    }
+
+    first = build_user_posts_request(uid="1234567890")
+    assert first.path == "/api/v1/weibo/web_v2/fetch_user_posts"
+    assert first.params == {"uid": "1234567890", "page": 1, "feature": 3}
+
+    next_page = build_user_posts_request(
+        uid="1234567890",
+        page=2,
+        since_id="next-since-id",
+    )
+    assert next_page.params == {
+        "uid": "1234567890",
+        "page": 2,
+        "since_id": "next-since-id",
+        "feature": 3,
+    }
+
+
+def test_account_extractors_and_since_id_pagination_handle_nested_response() -> None:
+    search_body = {
+        "data": {
+            "data": {
+                "users": [{"uid": "1234567890", "screen_name": "爱玛电动车"}]
+            }
+        }
+    }
+    assert extract_user_search_items(search_body) == (
+        {"uid": "1234567890", "screen_name": "爱玛电动车"},
+    )
+
+    post = {
+        "idstr": "status-1",
+        "text": "历史微博",
+        "created_at": "2026-08-10T12:00:00+08:00",
+        "user": {"id": "1234567890", "screen_name": "爱玛电动车"},
+    }
+    posts_body = {"data": {"data": {"statuses": [post], "since_id": "cursor-2"}}}
+    assert extract_user_post_items(posts_body) == (post,)
+
+    next_page = WeiboUserPostsPagination.from_response(
+        previous_since_id="",
+        body=posts_body,
+    )
+    assert next_page.should_continue is True
+    assert next_page.next_since_id == "cursor-2"
+
+    exhausted = WeiboUserPostsPagination.from_response(
+        previous_since_id="cursor-2",
+        body={"data": {"data": {"statuses": [post], "since_id": ""}}},
+    )
+    assert exhausted.should_continue is False
+    assert exhausted.stop_reason == "provider_exhausted"
 
 
 def test_detail_and_first_level_comments_use_current_status_id_parameter() -> None:

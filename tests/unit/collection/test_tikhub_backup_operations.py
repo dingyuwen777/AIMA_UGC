@@ -3,6 +3,7 @@
 import pytest
 from aima_ugc.adapters.providers.tikhub.operations.backup import (
     build_bilibili_web_detail_backup_request,
+    build_douyin_douplus_user_posts_backup_request,
     build_douyin_web_comments_backup_request,
     build_douyin_web_replies_backup_request,
     build_douyin_web_v2_detail_backup_request,
@@ -23,15 +24,28 @@ def test_douyin_web_backup_requests_keep_same_business_identity() -> None:
     assert detail.path == "/api/v1/douyin/web/fetch_one_video_v2"
     assert detail.params == {"aweme_id": "aweme-1"}
     assert comments.path == "/api/v1/douyin/web/fetch_video_comments"
-    assert comments.params == {"aweme_id": "aweme-1", "cursor": 0}
-    assert "count" not in comments.params
+    assert comments.params == {"aweme_id": "aweme-1", "cursor": 0, "count": 50}
     assert replies.path == "/api/v1/douyin/web/fetch_video_comment_replies"
     assert replies.params == {
         "item_id": "aweme-1",
         "comment_id": "comment-1",
         "cursor": 0,
+        "count": 100,
     }
-    assert "count" not in replies.params
+
+    posts = build_douyin_douplus_user_posts_backup_request(
+        sec_uid="MS4wLjABAAAAfixture",
+        cursor="123",
+        count=10,
+    )
+    assert posts.method == "POST"
+    assert posts.path == "/api/v1/douyin/douplus/fetch_user_posts"
+    assert posts.params == {}
+    assert posts.body == {
+        "sec_uid": "MS4wLjABAAAAfixture",
+        "cursor": "123",
+        "count": 10,
+    }
 
 
 def test_weibo_web_v2_detail_and_web_reply_backups_keep_business_identity() -> None:
@@ -59,8 +73,14 @@ def test_backup_operations_fail_closed_on_empty_ids_or_negative_cursor() -> None
         build_douyin_web_v2_detail_backup_request(aweme_id=" ")
     with pytest.raises(ValueError, match="cursor"):
         build_douyin_web_comments_backup_request(aweme_id="1", cursor=-1)
+    with pytest.raises(ValueError, match="count"):
+        build_douyin_web_comments_backup_request(aweme_id="1", count=0)
+    with pytest.raises(ValueError, match="count"):
+        build_douyin_web_comments_backup_request(aweme_id="1", count=51)
     with pytest.raises(ValueError, match="comment_id"):
         build_douyin_web_replies_backup_request(item_id="1", comment_id=" ")
+    with pytest.raises(ValueError, match="cursor"):
+        build_douyin_douplus_user_posts_backup_request(sec_uid="sec-1", cursor="bad")
     with pytest.raises(ValueError, match="status_id"):
         build_weibo_web_v2_detail_backup_request(status_id="")
     with pytest.raises(ValueError, match="root_comment_id"):
