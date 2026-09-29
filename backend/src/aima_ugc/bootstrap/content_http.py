@@ -100,6 +100,8 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobPayload,
     ContentAnalysisPlanJobPayload,
     analysis_all_scope_filter_snapshot,
+    analysis_query_filters_from_snapshot,
+    analysis_query_scope_filter_snapshot,
     is_analysis_all_scope_filter_snapshot,
 )
 from aima_ugc.modules.analysis.sharding import calculate_analysis_shard_size
@@ -765,7 +767,8 @@ class PostgresContentHttpService:
         if configuration_hash != expected_configuration_hash:
             raise ContentAnalysisRunConflict
         shard_size = _analysis_shard_size(llm_provider)
-        filter_snapshot = _analysis_filter_snapshot(targets)
+        request_filter_snapshot = _analysis_filter_snapshot(targets)
+        stored_filter_snapshot = request_filter_snapshot
         storage_scope = _analysis_storage_scope(targets)
         session = self._runtime.database.new_session()
         try:
@@ -779,7 +782,7 @@ class PostgresContentHttpService:
                         expected_configuration_hash=expected_configuration_hash,
                         run_intent=run_intent,
                         scope=storage_scope,
-                        filter_snapshot=filter_snapshot,
+                        filter_snapshot=request_filter_snapshot,
                     )
                     existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
                     if freeze_in_http and not existing_shards:
@@ -800,13 +803,21 @@ class PostgresContentHttpService:
                     and isinstance(targets, AnalysisRunTargetSelection)
                     and targets.scope == "query"
                 ):
-                    current_target_count = self._analysis_target_count(
+                    query_repository = PostgresContentQueryRepository(
                         session,
-                        targets,
                         analysis_identity=identity,
+                    )
+                    current_target_count, target_fingerprint = (
+                        query_repository.snapshot_filtered_analysis_targets(
+                            targets.filters or ContentFilterSnapshot()
+                        )
                     )
                     if current_target_count != expected_target_count:
                         raise ContentAnalysisTargetChanged
+                    stored_filter_snapshot = analysis_query_scope_filter_snapshot(
+                        request_filter_snapshot,
+                        target_fingerprint=target_fingerprint,
+                    )
                 shard_count = ceil(expected_target_count / shard_size)
                 run_id = uuid5(_ANALYSIS_RUN_ID_NAMESPACE, client_idempotency_key)
                 planner_job = PostgresJobRepository(session).enqueue(
@@ -825,7 +836,7 @@ class PostgresContentHttpService:
                     planner_job_id=planner_job.id,
                     run_intent=run_intent,
                     scope=storage_scope,
-                    filter_snapshot=filter_snapshot,
+                    filter_snapshot=stored_filter_snapshot,
                     target_count=expected_target_count,
                     shard_count=shard_count,
                     shard_size=shard_size,
@@ -846,7 +857,7 @@ class PostgresContentHttpService:
                         expected_configuration_hash=expected_configuration_hash,
                         run_intent=run_intent,
                         scope=storage_scope,
-                        filter_snapshot=filter_snapshot,
+                        filter_snapshot=request_filter_snapshot,
                     )
                     existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
                     if freeze_in_http and not existing_shards:
@@ -1194,11 +1205,16 @@ def _assert_same_analysis_run_request(
         generation_config_hash=cast(str, row["generation_config_hash"]),
         runtime_config_snapshot=cast(dict[str, object], row["runtime_config_snapshot"]),
     )
+    stored_filter_snapshot = row["filter_snapshot"]
+    if row["scope"] == "query" and not is_analysis_all_scope_filter_snapshot(
+        stored_filter_snapshot
+    ):
+        stored_filter_snapshot = analysis_query_filters_from_snapshot(stored_filter_snapshot)
     if (
         row["target_count"] != expected_target_count
         or row["run_intent"] != run_intent
         or row["scope"] != scope
-        or row["filter_snapshot"] != filter_snapshot
+        or stored_filter_snapshot != filter_snapshot
         or actual_configuration_hash != expected_configuration_hash
     ):
         raise ContentAnalysisRunConflict
