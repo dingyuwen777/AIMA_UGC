@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-112600-content-labeling-v4-6
 title: 将首次正式 AI 打标基线升级为 Prompt V4.6
 level: L2
-status: ready_for_review
+status: done
 owner: codex
 branch: feature/656-content-labeling-v4-6
 created: 2026-09-29
