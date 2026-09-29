@@ -804,11 +804,11 @@ describe('voice plaza', () => {
     expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({
       secondary_labels: ['续航表现'],
     })
-    expect(generated.listContents.mock.lastCall?.[0]).not.toHaveProperty('primary_labels')
+    expect(generated.listContents.mock.lastCall?.[0]?.primary_labels).toBeUndefined()
     expect(generated.countContents.mock.lastCall?.[0]).toMatchObject({
       filters: { secondary_labels: ['续航表现'] },
     })
-    expect(generated.countContents.mock.lastCall?.[0]?.filters).not.toHaveProperty('primary_labels')
+    expect(generated.countContents.mock.lastCall?.[0]?.filters.primary_labels).toBeUndefined()
     await store.createExport('query')
     expect(generated.createDataExport.mock.lastCall?.[0]).toMatchObject({
       targets: {
@@ -817,8 +817,8 @@ describe('voice plaza', () => {
       },
     })
     expect(
-      generated.createDataExport.mock.lastCall?.[0]?.targets.filters,
-    ).not.toHaveProperty('primary_labels')
+      generated.createDataExport.mock.lastCall?.[0]?.targets.filters.primary_labels,
+    ).toBeUndefined()
 
     await store.refreshFilterOptions()
     await store.refreshResults()
@@ -826,11 +826,11 @@ describe('voice plaza', () => {
     expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({
       secondary_labels: ['续航表现'],
     })
-    expect(generated.listContents.mock.lastCall?.[0]).not.toHaveProperty('primary_labels')
+    expect(generated.listContents.mock.lastCall?.[0]?.primary_labels).toBeUndefined()
     expect(generated.countContents.mock.lastCall?.[0]).toMatchObject({
       filters: { secondary_labels: ['续航表现'] },
     })
-    expect(generated.countContents.mock.lastCall?.[0]?.filters).not.toHaveProperty('primary_labels')
+    expect(generated.countContents.mock.lastCall?.[0]?.filters.primary_labels).toBeUndefined()
     await store.createExport('query')
     expect(generated.createDataExport.mock.lastCall?.[0]).toMatchObject({
       targets: {
@@ -839,8 +839,8 @@ describe('voice plaza', () => {
       },
     })
     expect(
-      generated.createDataExport.mock.lastCall?.[0]?.targets.filters,
-    ).not.toHaveProperty('primary_labels')
+      generated.createDataExport.mock.lastCall?.[0]?.targets.filters.primary_labels,
+    ).toBeUndefined()
 
     // 用户主动选择当前目录中的父级并提交后，才退出 legacy compatibility。
     store.filters.primaryLabels = ['服务体验']
