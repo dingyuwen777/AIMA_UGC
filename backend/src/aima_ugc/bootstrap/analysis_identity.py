@@ -39,20 +39,23 @@ def active_analysis_configuration(
     session: Session,
     settings: PlatformSettings,
 ) -> ActiveAnalysisConfiguration:
-    """读取数据库 active Scheme + 默认 LLM；仅空库进入受锁保护的 bootstrap。"""
+    """读取数据库 active Scheme + 默认 LLM；首次 Run 前允许刷新纯 Git bootstrap。"""
 
     repository = PostgresAnalysisSchemeRepository(session)
-    scheme = repository.get_active_version()
-    created = False
-    if scheme is None:
-        scheme, created = repository.bootstrap_default(actor_ref="system:git-bootstrap")
-    if created:
+    scheme, bootstrap_changed = repository.bootstrap_default(
+        actor_ref="system:git-bootstrap"
+    )
+    if bootstrap_changed:
         PostgresAuditRepository(session).append(
             AuditEvent(
                 id=uuid4(),
                 actor_kind="system",
                 actor_ref="system:git-bootstrap",
-                event_type="analysis_scheme_bootstrapped",
+                event_type=(
+                    "analysis_scheme_bootstrapped"
+                    if scheme.version == 1
+                    else "analysis_scheme_bootstrap_refreshed"
+                ),
                 object_type="analysis_scheme_version",
                 object_id=str(scheme.id),
                 request_id=None,
