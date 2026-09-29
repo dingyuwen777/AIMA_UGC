@@ -255,9 +255,7 @@ def test_legacy_v4_excel_complete_fallback_keeps_unrecoverable_item_exportable()
 
 
 def test_legacy_v4_excel_complete_fallback_also_handles_terminal_provider_error() -> None:
-    loader = PromptTaxonomyLoader(
-        CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v4.md")
-    )
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH.with_name("content_labeling_v4.md"))
     fake = FakeContentLabelingLLM(responses=[])
 
     result = ContentLabelingService(
