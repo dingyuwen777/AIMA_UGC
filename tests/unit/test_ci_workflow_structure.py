@@ -167,7 +167,10 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     assert "needs: ci-gate" in hygiene
     assert runtime.count("runs-on: ubuntu-24.04") == 1
     assert (
-        "  quality-core:\n    name: Requirement Traceability and Completion Audit\n    if: always()\n    needs: ci-plan\n"
+        "  quality-core:\n"
+        "    name: Requirement Traceability and Completion Audit\n"
+        "    if: always()\n"
+        "    needs: ci-plan\n"
         in ci
     )
     assert "Block Draft required evidence" in ci
