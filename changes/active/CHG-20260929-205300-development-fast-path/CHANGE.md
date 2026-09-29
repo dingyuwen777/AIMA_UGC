@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-205300-development-fast-path
 title: 优化开发全链路与FinalCI关键路径
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: tech/671-development-fast-path
 created: 2026-09-29
@@ -70,12 +70,12 @@ Requirement Source：#671。用户已授权修改并合并 main，并要求 pref
 
 ## 成功标准
 
-- [ ] #671 / AC1：CI Plan 分离 scope，PostgreSQL/Full-stack 不等待完整 Core。
-- [ ] #671 / AC2：Backend/Frontend 有安全 target selector，未知/共享/CI self full fallback。
-- [ ] #671 / AC3：统一 `validate_changed` 复用 classifier。
-- [ ] #671 / AC4：commit hygiene 固化。
-- [ ] #671 / AC5：Draft 不追无关 main；Final 前 sync；merge current base/head/fresh。
-- [ ] #671 / AC6：Review/CI/merge/main-fresh/archive/closure 完成。
+- [x] #671 / AC1：CI Plan 分离 scope，PostgreSQL/Full-stack 不等待完整 Core。
+- [x] #671 / AC2：Backend/Frontend 有安全 target selector，未知/共享/CI self full fallback。
+- [x] #671 / AC3：统一 `validate_changed` 复用 classifier。
+- [x] #671 / AC4：commit hygiene 固化。
+- [x] #671 / AC5：Draft 不追无关 main；Final 前 sync；merge current base/head/fresh。
+- [ ] #671 / AC6：Review/CI/merge/main-fresh/archive/closure 按正式交付生命周期完成。
 
 ## 非目标
 
@@ -104,12 +104,12 @@ Requirement Source：#671。用户已授权修改并合并 main，并要求 pref
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | CI Plan 并行 | #671 AC1 | not_satisfied | Red 结构回归 |
-| R2 | Backend/Frontend selector | #671 AC2 | not_satisfied | Red classifier 回归 |
-| R3 | validate_changed 同源入口 | #671 AC3 | not_satisfied | Red 文件/契约回归 |
-| R4 | commit hygiene | #671 AC4 | not_satisfied | 待规则 |
-| R5 | Final 前 sync / guarded merge | #671 AC5 | not_satisfied | 待规则 |
-| R6 | 完整交付 | #671 AC6 | not_satisfied | 待 CI/Review/merge |
+| R1 | CI Plan 并行 | #671 / AC1 | satisfied | `.github/workflows/ci.yml` 当前 Head：`ci-plan` 独立分类；Core/PostgreSQL/Real Full-stack 都只依赖 plan，CI Gate 聚合；required context 名称未改。 |
+| R2 | Backend/Frontend selector | #671 / AC2 | satisfied | `classify_ci_scope.py` 当前 Head：稳定 Backend domain 选择 domain Unit + 全 API/Contract，稳定 Frontend feature 选择直接 Unit/Browser；shared/unknown/CI-self → `all`；永久正反例已写入 CI scope/impact tests。 |
+| R3 | validate_changed 同源入口 | #671 / AC3 | satisfied | `scripts/dev/validate_changed.py` 直接 `runpy` 加载 `scripts/quality/classify_ci_scope.py`；默认 plan、显式 `--run`；无第二 impact mapping。 |
+| R4 | commit hygiene | #671 / AC4 | satisfied | `AGENTS.md` + Blueprint 已明确临时 Workflow/debug/formatter/generated/临时 Red 过程态默认不形成正式 commit，并保留有独立证据价值的 checkpoint 例外。 |
+| R5 | Final 前 sync / guarded merge | #671 / AC5 | satisfied | `AGENTS.md` + Blueprint 已明确 Draft 不追无关 main、Final 前统一恢复 current base 并 preflight；正常 merge 不用 bypass 替代 current head/base/fresh checks。 |
+| R6 | 完整交付 | #671 / AC6 | explicitly_deferred | AC6 自身要求 Ready 后 current-head Actions、guarded merge、main-fresh、Archive/Closure；这些是后续交付门禁，不能在 Change Ready 前伪造。 |
 
 # Validation Matrix
 
@@ -126,10 +126,10 @@ Requirement Source：#671。用户已授权修改并合并 main，并要求 pref
 
 # Completion Audit
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] unresolved_cleared
+- [x] upstream_re_read：已重读 #671、当前 main `3e8a3c6d…`、PR #673、active strict `main-quality-gate` 与最终 affected files。
+- [x] change_coverage：AC1–AC5 均映射到当前实现/规则；AC6 的 current-head CI/merge/main-fresh/archive/closure 保持正式后续门禁。
+- [x] reverse_audit：逐项反查原 Unit/API/Contract/PostgreSQL/Browser Mock/Real Full-stack Evidence Owner、required check identity、Draft fail-closed、metadata-only、main reuse/schedule；未发现被删除的独立责任。Backend targeted 在 Review 中已收紧为 domain Unit + 全 API/Contract。
+- [x] unresolved_cleared：无 `not_satisfied`；仅 R6 按 #671/AC6 固有交付生命周期 `explicitly_deferred`。
 
 # 风险、兼容性、迁移与回滚
 
@@ -140,5 +140,8 @@ Requirement Source：#671。用户已授权修改并合并 main，并要求 pref
 
 # 完成证据与状态
 
-- 首个 commit：Change + 永久 Red/结构回归。
-- 实现、Review、current-head CI、merge/main-fresh/archive/closure：待完成。
+- 实现 Head：`47c40075ddd7f41d697e227a37983e3187e7049f`。
+- First Review：发现 Backend production target 只跑 domain Unit 可能弱化公共边界回归，已在 `47c40075…` 收紧为 domain Unit + 全 API/Contract；delta re-review 后 `NO_FINDINGS_WITHIN_SCOPE`。
+- Workflow 静态反查：Core 中 `steps.classify.outputs`=0；全部 classification 只在 `ci-plan`；`CiRequirements` 3 个构造点均覆盖新增 target 字段；PostgreSQL/Full-stack 不再依赖 `quality-core`。
+- 当前 main 与 PR base 均为 `3e8a3c6d601f963dc1429c81fe252c999b645bfd`，Final 前无 base drift。
+- current-head CI / guarded merge / main-fresh / archive / closure：按 R6 在 Ready/merge 后取得。
