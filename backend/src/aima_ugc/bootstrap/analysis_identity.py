@@ -38,13 +38,23 @@ class ActiveAnalysisConfiguration:
 def active_analysis_configuration(
     session: Session,
     settings: PlatformSettings,
+    *,
+    refresh_unused_git_bootstrap: bool = False,
 ) -> ActiveAnalysisConfiguration:
-    """读取数据库 active Scheme + 默认 LLM；首次 Run 前允许刷新纯 Git bootstrap。"""
+    """读取 active Scheme；仅显式首次打标入口允许刷新未使用的 Git bootstrap。"""
 
     repository = PostgresAnalysisSchemeRepository(session)
-    scheme, bootstrap_changed = repository.bootstrap_default(
-        actor_ref="system:git-bootstrap"
-    )
+    bootstrap_changed = False
+    if refresh_unused_git_bootstrap:
+        scheme, bootstrap_changed = repository.bootstrap_default(
+            actor_ref="system:git-bootstrap"
+        )
+    else:
+        scheme = repository.get_active_version()
+        if scheme is None:
+            scheme, bootstrap_changed = repository.bootstrap_default(
+                actor_ref="system:git-bootstrap"
+            )
     if bootstrap_changed:
         PostgresAuditRepository(session).append(
             AuditEvent(
