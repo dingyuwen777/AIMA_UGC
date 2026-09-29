@@ -89,6 +89,7 @@ from aima_ugc.modules.vehicles.tables import (
     vehicle_models_table,
 )
 
+from .analysis_target_snapshot import target_snapshot_columns, target_snapshot_fingerprint
 from .content_visibility import content_has_active_source
 
 register_ingestion_schema()
@@ -381,6 +382,32 @@ class PostgresContentQueryRepository:
         statement, _ = self._effective_base_statement(filters, targets_only=True)
         targets = statement.subquery("analysis_filtered_target_count")
         return cast(int, self._session.scalar(select(func.count()).select_from(targets)) or 0)
+
+    def snapshot_filtered_analysis_targets(
+        self,
+        filters: ContentFilterSnapshot,
+    ) -> tuple[int, str]:
+        """在单个 PostgreSQL Statement Snapshot 中统计并指纹化筛选目标全集。"""
+
+        statement, _ = self._effective_base_statement(filters, targets_only=True)
+        targets = statement.subquery("analysis_filtered_target_snapshot")
+        row = self._session.execute(
+            select(
+                *target_snapshot_columns(
+                    targets.c.id,
+                    targets.c.current_version,
+                )
+            ).select_from(targets)
+        ).one()
+        target_count = int(row.target_count)
+        return (
+            target_count,
+            target_snapshot_fingerprint(
+                target_count=target_count,
+                hash_sum0=int(row.target_hash_sum0),
+                hash_sum1=int(row.target_hash_sum1),
+            ),
+        )
 
     def list_filtered_analysis_targets(
         self,
