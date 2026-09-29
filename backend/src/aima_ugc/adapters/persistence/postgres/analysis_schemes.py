@@ -152,6 +152,7 @@ class PostgresAnalysisSchemeRepository:
         if (
             active.version != 1
             or active.status != "published"
+            or active.created_by not in {"system", "system:git-bootstrap"}
             or active.description != "由 Git Prompt bootstrap 的首个生产 Scheme"
         ):
             return None
