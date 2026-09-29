@@ -5262,7 +5262,7 @@
               "minLength": 1,
               "type": "string"
             },
-            "maxItems": 20,
+            "maxItems": 50,
             "title": "Sentiments",
             "type": "array"
           },
@@ -5293,7 +5293,7 @@
             "items": {
               "$ref": "#/components/schemas/ContentVoiceType"
             },
-            "maxItems": 20,
+            "maxItems": 50,
             "title": "Voice Types",
             "type": "array"
           }
@@ -14703,7 +14703,7 @@
               "items": {
                 "$ref": "#/components/schemas/ContentVoiceType"
               },
-              "maxItems": 20,
+              "maxItems": 50,
               "title": "Voice Types",
               "type": "array"
             }
@@ -14719,7 +14719,7 @@
                 "minLength": 1,
                 "type": "string"
               },
-              "maxItems": 20,
+              "maxItems": 50,
               "title": "Sentiments",
               "type": "array"
             }

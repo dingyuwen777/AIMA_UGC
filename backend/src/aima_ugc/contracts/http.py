@@ -1163,9 +1163,9 @@ class ContentFilterSnapshot(BaseModel):
     content_types: tuple[str, ...] = Field(default=(), max_length=20)
     analysis_status: ContentAnalysisStatus | None = None
     relevance: ContentRelevance | None = None
-    voice_types: tuple[ContentVoiceType, ...] = Field(default=(), max_length=20)
+    voice_types: tuple[ContentVoiceType, ...] = Field(default=(), max_length=50)
     sentiments: tuple[Annotated[str, Field(min_length=1, max_length=128)], ...] = Field(
-        default=(), max_length=20
+        default=(), max_length=50
     )
     primary_label: str | None = Field(default=None, min_length=1, max_length=256)
     secondary_label: str | None = Field(default=None, min_length=1, max_length=256)

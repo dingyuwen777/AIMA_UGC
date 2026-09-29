@@ -323,15 +323,18 @@ function toggleSecondaryLabel(secondaryLabel: string): void {
             :aria-disabled="labelOptionsDisabled"
           >
             {{ primaryLabelSummary }}
-          </summary><label
-            v-for="item in filterOptions?.labels ?? []"
-            :key="item.primary_label"
-          ><input
-            type="checkbox"
-            :checked="primaryLabels.includes(item.primary_label)"
-            :disabled="labelOptionsDisabled"
-            @change="togglePrimaryLabel(item.primary_label)"
-          >{{ optionLabel(item.primary_label, item.source) }}</label>
+          </summary>
+          <div class="multi-select__options">
+            <label
+              v-for="item in filterOptions?.labels ?? []"
+              :key="item.primary_label"
+            ><input
+              type="checkbox"
+              :checked="primaryLabels.includes(item.primary_label)"
+              :disabled="labelOptionsDisabled"
+              @change="togglePrimaryLabel(item.primary_label)"
+            >{{ optionLabel(item.primary_label, item.source) }}</label>
+          </div>
         </details>
       </div>
       <div class="field field--label">
@@ -345,15 +348,18 @@ function toggleSecondaryLabel(secondaryLabel: string): void {
             :aria-disabled="secondaryOptionsDisabled"
           >
             {{ secondaryLabelSummary }}
-          </summary><label
-            v-for="item in secondaryLabelOptions"
-            :key="item.value"
-          ><input
-            type="checkbox"
-            :checked="secondaryLabels.includes(item.value)"
-            :disabled="secondaryOptionsDisabled"
-            @change="toggleSecondaryLabel(item.value)"
-          >{{ item.label }}</label>
+          </summary>
+          <div class="multi-select__options">
+            <label
+              v-for="item in secondaryLabelOptions"
+              :key="item.value"
+            ><input
+              type="checkbox"
+              :checked="secondaryLabels.includes(item.value)"
+              :disabled="secondaryOptionsDisabled"
+              @change="toggleSecondaryLabel(item.value)"
+            >{{ item.label }}</label>
+          </div>
         </details>
       </div>
     </div>
@@ -423,10 +429,7 @@ function toggleSecondaryLabel(secondaryLabel: string): void {
 .multi-select__options label { display: flex; width: 100%; align-items: center; gap: 7px; padding: 8px 12px; cursor: pointer; }
 .multi-select__options label:hover { background: var(--aima-color-bg-hover); }
 .multi-select__options input { width: 14px; height: 14px; margin: 0; accent-color: var(--aima-primary); }
-.multi-select label { display: flex; width: 100%; align-items: center; gap: 7px; padding: 8px 12px; border-inline: 1px solid var(--aima-border); background: #fff; }
-.multi-select label:last-child { border-bottom: 1px solid var(--aima-border); border-radius: 0 0 8px 8px; }
-.multi-select input { width: 14px; height: 14px; }
-.filter-row--tertiary .multi-select[open] { height: auto; max-height: 260px; overflow-y: auto; }
+
 .multi-select--disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); }
 .multi-select--disabled summary { cursor: not-allowed; }
 .filter-hint { display: none; margin: 0; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }

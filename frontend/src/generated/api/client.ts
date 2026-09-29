@@ -1503,7 +1503,7 @@ export interface ContentFilterSnapshot {
      */
   secondary_labels?: string[];
   /**
-     * @maxItems 20
+     * @maxItems 50
      * @items.minLength 1
      * @items.maxLength 128
      */
@@ -1511,7 +1511,7 @@ export interface ContentFilterSnapshot {
   source_identifier?: string | null;
   /** @maxItems 100 */
   vehicle_model_ids?: string[];
-  /** @maxItems 20 */
+  /** @maxItems 50 */
   voice_types?: ContentVoiceType[];
 }
 
@@ -3566,11 +3566,11 @@ content_types?: string[];
 analysis_status?: ContentAnalysisStatus | null;
 relevance?: ContentRelevance | null;
 /**
- * @maxItems 20
+ * @maxItems 50
  */
 voice_types?: ContentVoiceType[];
 /**
- * @maxItems 20
+ * @maxItems 50
  * @items.minLength 1
  * @items.maxLength 128
  */

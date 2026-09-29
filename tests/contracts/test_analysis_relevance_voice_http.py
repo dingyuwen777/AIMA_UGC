@@ -68,14 +68,35 @@ def test_content_filter_snapshot_can_explicitly_query_relevance_and_voice_type()
 
 
 def test_content_filter_snapshot_sentiments_keep_per_item_length_constraints() -> None:
-    """多值 sentiments 仍对每个字符串保持 1~128 字符约束。"""
+    """多值 sentiments 仍对每个字符串保持 1~128 字符约束，且 cardinality 上限为 50。"""
 
     filters = ContentFilterSnapshot(sentiments=("负面", "正面"))
     assert filters.sentiments == ("负面", "正面")
 
+    # 单项字符串原有长度约束保持不变。
     with pytest.raises(ValidationError):
         ContentFilterSnapshot(sentiments=("",))
     with pytest.raises(ValidationError):
         ContentFilterSnapshot(sentiments=("x" * 129,))
+
+    # cardinality 与正式 Analysis Scheme 一致：20 / 21 / 50 合法，51 拒绝。
+    for count in (20, 21, 50):
+        sentiments = tuple(f"情感{i}" for i in range(count))
+        assert ContentFilterSnapshot(sentiments=sentiments).sentiments == sentiments
     with pytest.raises(ValidationError):
-        ContentFilterSnapshot(sentiments=tuple(f"情感{i}" for i in range(21)))
+        ContentFilterSnapshot(sentiments=tuple(f"情感{i}" for i in range(51)))
+
+
+def test_content_filter_snapshot_voice_types_cardinality_and_per_item_constraints() -> None:
+    """多值 voice_types cardinality 上限为 50，且每个字符串仍保持 1~128 字符约束。"""
+
+    assert ContentFilterSnapshot(voice_types=("真实用户发声",)).voice_types == ("真实用户发声",)
+    for count in (20, 21, 50):
+        voice_types = tuple(f"发声类型{i}" for i in range(count))
+        assert ContentFilterSnapshot(voice_types=voice_types).voice_types == voice_types
+    with pytest.raises(ValidationError):
+        ContentFilterSnapshot(voice_types=tuple(f"发声类型{i}" for i in range(51)))
+    with pytest.raises(ValidationError):
+        ContentFilterSnapshot(voice_types=("",))
+    with pytest.raises(ValidationError):
+        ContentFilterSnapshot(voice_types=("x" * 129,))

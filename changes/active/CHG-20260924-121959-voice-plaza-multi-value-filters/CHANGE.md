@@ -30,6 +30,8 @@ affected_paths:
 contracts:
   - ContentFilterSnapshot.voice_type -> voice_types
   - ContentFilterSnapshot.sentiment -> sentiments
+  - ContentFilterSnapshot.voice_types cardinality 20 -> 50
+  - ContentFilterSnapshot.sentiments cardinality 20 -> 50
 data_changes:
   - migrations/versions/20260928_0075_voice_plaza_multi_value_filters.py
 ---
@@ -106,6 +108,7 @@ data_changes:
 | 决策维度 | 当前决定 | 依据 | 影响 |
 | --- | --- | --- | --- |
 | 接口与契约 | voice_type/sentiment 改为多值元组 | E1 | 破坏性，需重新生成 OpenAPI/Client |
+| 多选候选基数 | ContentFilterSnapshot.voice_types/sentiments 上限 20→50，与正式 Scheme 50 对齐 | PR #591 R591-F5 / E1 | 合法 Scheme/历史选项不再 422，不引入前端 20 项产品限制 |
 | 数据与迁移 | 单值 JSONB 回填为单元素数组 | E3/E4 | 新增 0075 Migration |
 | 兼容性 | 历史快照由 Migration 无损回填 | E3 | 已保存请求仍可解析 |
 | 部署与回滚 | Migration 提供 downgrade，多值无法无损回退时报错 | E4 | 回滚边界明确 |
@@ -135,6 +138,14 @@ data_changes:
 步骤 5：前端多选
 → VoicePlazaFilters.vue / store.ts / VoicePlazaPage.vue
 → 多选并移除冗余筛选 UI
+
+步骤 6：多选候选基数对齐 50
+→ ContentFilterSnapshot.voice_types/sentiments max_length 20→50
+→ 重新生成 OpenAPI/Client，补 20/21/50/51 边界测试
+
+步骤 7：一级/二级标签 overlay 修复
+→ VoicePlazaFilters.vue
+→ 一级/二级标签候选包进 .multi-select__options，移除废弃的直接 label 规则
 ```
 
 ## 证据到决策
@@ -153,10 +164,10 @@ data_changes:
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 情感、发声类型支持多选 | #592 / AC1 | satisfied | E1/E2 + Contract 多值 + IN 过滤 |
+| R1 | 情感、发声类型支持多选 | #592 / AC1 | satisfied | E1/E2 + Contract 多值（voice_types/sentiments ≤50）+ IN 过滤 |
 | R2 | 历史筛选快照兼容 | #592 / AC2 | satisfied | E3 + 0075 Migration |
-| R3 | 前端筛选区多选并移除冗余维度 | #592 / AC3 | satisfied | 前端 VoicePlazaFilters/store 改动 |
-| R4 | 生成物与 Contract 一致 | #592 / AC4 | satisfied | OpenAPI/Client 重新生成 |
+| R3 | 前端筛选区多选并移除冗余维度 | #592 / AC3 | satisfied | 前端 VoicePlazaFilters/store 改动 + 一级/二级标签 overlay |
+| R4 | 生成物与 Contract 一致 | #592 / AC4 | satisfied | OpenAPI/Client 重新生成（maxItems 50）|
 
 # 计划改动
 
@@ -173,7 +184,7 @@ data_changes:
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | required | 后端契约测试、前端 voice-plaza 单元测试 |
+| 行为 / 单元 / 组件 | required | 后端契约测试（20/21/50/51 cardinality 边界）、前端 voice-plaza 单元测试（含一级/二级标签 overlay 回归）|
 | 接口 / 契约 | required | OpenAPI/Client 生成一致性与兼容检查 |
 | 集成 / 持久化 / 运行依赖 | required | PostgreSQL 集成 + `alembic check` + Migration upgrade/downgrade |
 | 用户 / 工作流验收 | required | 前端 Browser Mock 多选筛选流程 |
@@ -221,26 +232,32 @@ data_changes:
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | git | `git diff origin/main...HEAD --name-only` | 19 个文件，均为声音广场/契约/迁移/生成物/测试 | 改动范围收敛 |
+| V1 | git | `git merge origin/main` 后 `git diff origin/main...HEAD --name-only` | 19 个文件，均为声音广场/契约/迁移/生成物/测试 | 已非破坏性同步最新 main，改动范围收敛 |
 | V2 | git | `git ls-tree origin/main migrations/versions/` | 远端迁移链到 0074，本 PR 迁移重排为 0075 | 迁移链正确 |
-| V3 | 本地 | `check_change_completion.py --root . --require-active-ready` | exit 0，gated=137 | Change 结构门禁通过 |
-| V4 | CI | 当前 HEAD `7b00f823` 三套 workflow | CI / Tooling / Runtime 全 success | 后端单元/契约/API、PostgreSQL 集成、Full-stack、生成一致性全绿 |
-| V5 | 容器(PostgreSQL 18) | `pytest tests/integration/content/test_stage8d_voice_plaza_runtime.py` | 10 passed | 多值发声类型过滤与标签多选集成行为正确 |
-| V6 | 本地 | `npm --prefix frontend run build` | typecheck + vite build 通过 | 前端类型与构建一致 |
+| V3 | 本地 | `pytest tests/contracts` | 114 passed | Contract 层通过，含 20/21/50/51 cardinality 边界与单项长度约束 |
+| V4 | 本地 | `python scripts/contracts/generate.py --check` + `check_compatibility.py` | exit 0 | OpenAPI/JSON Schema 生成一致性与漂移检查通过 |
+| V5 | 本地 | `node orval --config orval.config.mjs` | ContentFilterSnapshot sentiments/voice_types maxItems 20→50 | Generated TypeScript Client 与 Contract 一致 |
+| V6 | 本地 | `vitest run tests/voice-plaza.spec.ts tests/voice-plaza-design.spec.ts` | 46 passed | 前端 voice-plaza 单元测试通过，含一级/二级标签 overlay 回归 |
+| V7 | 本地 | `tsc.js --project tsconfig.native.json --noEmit` + `vue-tsc --noEmit` | exit 0 | 前端 TS/Vue 类型一致 |
+| V8 | 本地 | `vite build` | exit 0，836 modules | 前端生产构建通过 |
+| V9 | 本地 | `ruff check` + `mypy`（改动文件） | exit 0 | 后端静态检查与类型检查通过 |
+| V10 | 本地 | `python scripts/quality/check_change_completion.py --root . --require-active-ready` | exit 0 | Change 结构门禁通过 |
+| V11 | CI | current-head 三套 workflow（CI / Tooling / Runtime） | 待 current-head CI | 后端单元/契约/API、PostgreSQL 集成、Full-stack、生成一致性 |
 
 ## 未验证内容与剩余风险
 
-- 本轮已由当前 HEAD 的 CI（PostgreSQL 集成 + Full-stack + 生成一致性）与本地容器复测覆盖；无剩余阻塞风险。
+- 本地环境 Docker daemon 不可用，未在本地运行 PostgreSQL 集成 / Full-stack；该项由 current-head required CI 的 `postgres-integration` 与 `real-fullstack` 重新验证（上一 Head 已全绿，本轮 Contract 仅改 validation 上限，不改变 IN 查询/迁移语义）。
 - 生产部署、Release 与真实 Provider 验收不属本 Change 范围。
 
 ## 交付状态
 
-- 提交：已提交（HEAD `7b00f823`）。
+- 同步：已把最新 `origin/main`（`15ec55f5`）非破坏性 merge 进当前 PR 分支（merge 提交 `29a1ec78`），无冲突。
+- 提交：本轮 R591-F5 + R591-F6 返修已提交到 `feature/voice-plaza-multi-value-filters`（见 PR #591 Head）。
 - 拉取请求：#591。
-- CI：当前 HEAD 三套 workflow 全绿（success）。
-- 合并：未合并（待维护者 Review 后合并）。
+- CI：待 current-head required CI（push 后触发，未声称绿色）。
+- 合并：未合并（待 Reviewer delta re-review 后合并）。
 - Change 归档：待 merge 后自动归档。
 
 ## 备注
 
-无。
+R591-F5（blocking）已修复：`ContentFilterSnapshot.voice_types/sentiments` cardinality 20→50，与 `AnalysisSchemeDefinitionRequest` 的 50 对齐；R591-F6（non-blocking）已随本轮一起做最小修复：一级/二级标签候选改挂 `.multi-select__options` 绝对定位 overlay，不再参与正常流高度计算。

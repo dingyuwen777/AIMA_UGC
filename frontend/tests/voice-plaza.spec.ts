@@ -630,6 +630,35 @@ describe('voice plaza', () => {
     expect(html).toContain('已选 1 个二级标签')
   })
 
+  it('keeps primary and secondary label options inside the overlay container so opening them does not push layout down', async () => {
+    const html = await renderToString(
+      createSSRApp({
+        render: () => h(VoicePlazaFilters, {
+          search: '',
+          platforms: [],
+          analysisStatus: '',
+          relevance: '',
+          voiceTypes: [],
+          sentiments: [],
+          primaryLabels: ['产品体验'],
+          secondaryLabels: [],
+          publishedFrom: '',
+          publishedTo: '',
+          sourceIdentifier: '',
+          filterOptions,
+          filterOptionsLoading: false,
+        }),
+      }),
+    )
+
+    // 平台 / 情感 / 发声类型 / 一级 / 二级五个多选全部使用绝对定位 overlay
+    expect(html.match(/class="multi-select__options"/g)?.length).toBe(5)
+    // 一级 / 二级标签候选项不再作为 details 的直接 label 子元素，展开不会把筛选行撑高
+    expect(html).not.toContain('</summary><label')
+    expect(html).toContain('产品体验')
+    expect(html).toContain('续航表现')
+  })
+
   it('keeps stable filters enabled while disabling dynamic controls during catalog loading', async () => {
     const html = await renderToString(
       createSSRApp({
