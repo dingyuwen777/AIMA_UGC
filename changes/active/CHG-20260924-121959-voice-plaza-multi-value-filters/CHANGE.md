@@ -7,7 +7,7 @@ status: ready_for_review
 owner: codex
 branch: feature/voice-plaza-multi-value-filters
 created: 2026-09-24
-updated: 2026-09-24
+updated: 2026-09-29
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -17,12 +17,16 @@ affected_areas:
 affected_paths:
   - backend/src/aima_ugc/contracts/http.py
   - backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+  - backend/src/aima_ugc/bootstrap/content_http.py
   - migrations/versions/20260928_0075_voice_plaza_multi_value_filters.py
   - contracts/openapi/openapi.json
   - frontend/src/generated/api/client.ts
   - frontend/src/features/voice-plaza/
   - frontend/tests/
+  - frontend/e2e/voice-plaza.spec.ts
   - tests/contracts/test_analysis_relevance_voice_http.py
+  - tests/integration/content/test_stage8d_voice_plaza_runtime.py
+  - tests/integration/database/test_migration_data_lifecycle.py
 contracts:
   - ContentFilterSnapshot.voice_type -> voice_types
   - ContentFilterSnapshot.sentiment -> sentiments
@@ -217,20 +221,24 @@ data_changes:
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | git | `git diff main...feature` | 仅 12 个声音广场文件 | 无无关改动 |
-| V2 | git | `git ls-tree main migrations/versions/` | 远端迁移链 0001..0074 保留，本 PR 迁移重排为 0075 | 迁移链正确 |
-| V3 | 本地 | `check_change_completion.py --require-active-ready` | exit 0 | Change 结构门禁通过 |
+| V1 | git | `git diff origin/main...HEAD --name-only` | 19 个文件，均为声音广场/契约/迁移/生成物/测试 | 改动范围收敛 |
+| V2 | git | `git ls-tree origin/main migrations/versions/` | 远端迁移链到 0074，本 PR 迁移重排为 0075 | 迁移链正确 |
+| V3 | 本地 | `check_change_completion.py --root . --require-active-ready` | exit 0，gated=137 | Change 结构门禁通过 |
+| V4 | CI | 当前 HEAD `7b00f823` 三套 workflow | CI / Tooling / Runtime 全 success | 后端单元/契约/API、PostgreSQL 集成、Full-stack、生成一致性全绿 |
+| V5 | 容器(PostgreSQL 18) | `pytest tests/integration/content/test_stage8d_voice_plaza_runtime.py` | 10 passed | 多值发声类型过滤与标签多选集成行为正确 |
+| V6 | 本地 | `npm --prefix frontend run build` | typecheck + vite build 通过 | 前端类型与构建一致 |
 
 ## 未验证内容与剩余风险
 
-- 本地未跑完整测试套件，由 PR CI 验证；不阻塞提交审核。
+- 本轮已由当前 HEAD 的 CI（PostgreSQL 集成 + Full-stack + 生成一致性）与本地容器复测覆盖；无剩余阻塞风险。
+- 生产部署、Release 与真实 Provider 验收不属本 Change 范围。
 
 ## 交付状态
 
-- 提交：已提交。
+- 提交：已提交（HEAD `7b00f823`）。
 - 拉取请求：#591。
-- CI：待运行。
-- 合并：未合并。
+- CI：当前 HEAD 三套 workflow 全绿（success）。
+- 合并：未合并（待维护者 Review 后合并）。
 - Change 归档：待 merge 后自动归档。
 
 ## 备注
