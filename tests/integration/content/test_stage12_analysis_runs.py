@@ -695,9 +695,7 @@ def test_analysis_query_scope_rejects_same_count_membership_drift(
         assert run["error_code"] == "content_analysis_target_changed"
         with runtime.database.engine.begin() as connection:
             assert (
-                connection.scalar(
-                    select(func.count()).select_from(analysis_content_requests_table)
-                )
+                connection.scalar(select(func.count()).select_from(analysis_content_requests_table))
                 == 0
             )
     finally:
