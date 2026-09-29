@@ -147,29 +147,12 @@ function sameLabelSelection(
     && JSON.stringify(source.secondaryLabels) === JSON.stringify(legacy.secondaryLabels)
 }
 
-/** 当前层级模型能完整表达时才允许 legacy 状态退出兼容模式。 */
-function isHierarchicalLabelSelection(
-  source: Pick<VoicePlazaFilters, 'primaryLabels' | 'secondaryLabels'>,
-  options: ContentFilterOptionsResponse,
-): boolean {
-  const validPrimaryLabels = new Set(options.labels.map((item) => item.primary_label))
-  if (source.primaryLabels.some((value) => !validPrimaryLabels.has(value))) return false
-  if (source.secondaryLabels.length === 0) return true
-  if (source.primaryLabels.length === 0) return false
-  const selectedPrimaryLabels = new Set(source.primaryLabels)
-  const validSecondaryLabels = new Set(
-    options.labels
-      .filter((item) => selectedPrimaryLabels.has(item.primary_label))
-      .flatMap((item) => item.secondary_labels.map((label) => label.value)),
-  )
-  return source.secondaryLabels.every((value) => validSecondaryLabels.has(value))
-}
-
 /**
- * 把新交互收敛到当前父子目录，同时保留旧版无法无损层级化的查询语义。
+ * 新交互按当前父子目录收敛；legacy Route / Session 则保持原查询事实。
  *
- * legacy secondary-only 在目录完整时可无损补齐父级；cross-parent 或 catalog-missing
- * 组合则必须原样保留，直到用户主动改变标签条件，避免升级后静默删除条件并扩大查询。
+ * Filter Options 在 building 阶段可能只是目录子集，因此不能据此给 secondary-only
+ * 自动补父级，也不能因为目录后来 ready 就改写旧查询。compatibility 只在用户主动
+ * 修改标签并提交后退出，避免动态目录生命周期静默放宽或收窄历史查询。
  */
 function sanitizeLabelFilters(
   source: VoicePlazaFilters,
@@ -183,42 +166,14 @@ function sanitizeLabelFilters(
     primaryLabels: requestedPrimaryLabels,
     secondaryLabels: requestedSecondaryLabels,
   }
-  const preservingLegacy = legacyCompatibility !== null
+  if (
+    legacyCompatibility !== null
     && sameLabelSelection(compatibilityState, legacyCompatibility)
-  const validPrimaryLabels = new Set(options.labels.map((item) => item.primary_label))
-  const requestedSecondarySet = new Set(requestedSecondaryLabels)
-
-  if (preservingLegacy) {
-    const allPrimaryKnown = requestedPrimaryLabels.every((value) => validPrimaryLabels.has(value))
-    const parentsBySecondary = new Map<string, string[]>()
-    for (const group of options.labels) {
-      for (const secondary of group.secondary_labels) {
-        const parents = parentsBySecondary.get(secondary.value) ?? []
-        parents.push(group.primary_label)
-        parentsBySecondary.set(secondary.value, parents)
-      }
-    }
-    const allSecondaryKnown = requestedSecondaryLabels.every((value) => parentsBySecondary.has(value))
-    if (!allPrimaryKnown || !allSecondaryKnown) return compatibilityState
-
-    if (requestedPrimaryLabels.length === 0 && requestedSecondaryLabels.length > 0) {
-      const inferredPrimaryLabels: string[] = []
-      for (const group of options.labels) {
-        if (group.secondary_labels.some((item) => requestedSecondarySet.has(item.value))) {
-          inferredPrimaryLabels.push(group.primary_label)
-        }
-      }
-      return {
-        ...compatibilityState,
-        primaryLabels: inferredPrimaryLabels,
-      }
-    }
-
-    if (!isHierarchicalLabelSelection(compatibilityState, options)) {
-      return compatibilityState
-    }
+  ) {
+    return compatibilityState
   }
 
+  const validPrimaryLabels = new Set(options.labels.map((item) => item.primary_label))
   const primaryLabels = requestedPrimaryLabels.filter((value) => validPrimaryLabels.has(value))
   const selectedPrimaryLabels = new Set(primaryLabels)
   const validSecondaryLabels = new Set(
@@ -493,9 +448,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     await refresh()
   }
 
-  /**
-   * 恢复 Route 标签时记录 legacy 来源；只有无法无损映射的旧组合才长期保留兼容标记。
-   */
+  /** 恢复 Route 标签时记录 legacy 来源；动态目录不得自行改写该兼容查询。 */
   function restoreLabelFilters(
     primaryLabels: string[],
     secondaryLabels: string[],
@@ -520,15 +473,6 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
         filters,
         sanitizeLabelFilters(filters, filterOptions.value, legacyLabelCompatibility.value),
       )
-      if (
-        legacyLabelCompatibility.value
-        && (
-          !sameLabelSelection(filters, legacyLabelCompatibility.value)
-          || isHierarchicalLabelSelection(filters, filterOptions.value)
-        )
-      ) {
-        legacyLabelCompatibility.value = null
-      }
     }
     Object.assign(appliedFilters, copyFilters(filters))
     selectedIds.value = []
@@ -686,15 +630,6 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         appliedFilters,
         sanitizeLabelFilters(appliedFilters, loaded, legacyLabelCompatibility.value),
       )
-      if (
-        legacyLabelCompatibility.value
-        && (
-          !sameLabelSelection(appliedFilters, legacyLabelCompatibility.value)
-          || isHierarchicalLabelSelection(appliedFilters, loaded)
-        )
-      ) {
-        legacyLabelCompatibility.value = null
-      }
       const currentApplied = JSON.stringify({
         primaryLabels: appliedFilters.primaryLabels,
         secondaryLabels: appliedFilters.secondaryLabels,
