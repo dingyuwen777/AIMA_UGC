@@ -70,11 +70,11 @@ voice_type == "真实用户发声"
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。清空 Scheme 后使用新镜像启动时，会由镜像中的 `content_labeling.md` 建立首个 active Version。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run，且没有人工或额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
+数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。清空 Scheme 后使用新镜像启动时，会由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run，且没有人工或额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
 
 Python Parser、Compiler 和 Validator 只接受 `content-labeling.v3.0`。旧 V3/V4/V4.5/V4.6 Scheme 不再兼容；部署本次代码前必须按已确认的数据重置方案删除服务器上的旧 Analysis Scheme/Version 和打标结果，不能让旧 active Version 进入新运行时。
 
-一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；编译后再计算 `prompt_sha256 / taxonomy_sha256`。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
+一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；Compiler 会把结构化发声类型、情感和标签同时写回模型可读正文与机器 Taxonomy 镜像，再计算 `prompt_sha256 / taxonomy_sha256`，两处不一致时失败关闭。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
 
 相关代码：
 

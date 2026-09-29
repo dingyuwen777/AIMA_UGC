@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260930-000659-content-labeling-v3
 title: 收敛唯一内容打标 Prompt 与 v3.0 格式协议
 level: L3
-status: in_progress
+status: ready_for_review
 owner: assistant
 branch: refactor/674-content-labeling-v3
 created: 2026-09-30 00:06:59 +08:00
@@ -157,14 +157,14 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 只保留 `content_labeling.md` 这一份内容打标 Prompt，保留政负筛选，删除竞品筛选和历史 Prompt | #674 AC1 / 用户决定 | satisfied | Prompt inventory Contract 测试；生产目录当前文件清单 |
-| R2 | 使用业务 Owner 提供的完整原则并沿用清晰格式，内部版本为 v3.0 | #674 AC2 / 用户 Prompt | satisfied | `content_labeling.md`；必要章节与枚举单测 |
-| R3 | 删除全部旧版本兼容，旧 V3/V4/V4.5/V4.6 fail closed | #674 AC3 / 用户决定 | satisfied | Loader/Compiler/Validator 实现；obsolete version 参数化测试 |
-| R4 | 空库从唯一 Prompt bootstrap，打标输入/输出和独立三分类语义正确 | #674 AC4 | not_satisfied | Unit/Contract 已覆盖；待 PR CI PostgreSQL bootstrap 集成通过 |
-| R5 | 前端显示数据库 Scheme Prompt 和当前 9/39 标签，不注入旧兜底值 | #674 AC5 / 用户追问 | satisfied | `AnalysisSchemePanel.vue`、`AnalysisLabelsEditor.vue`、真实 Prompt SSR 回归、前端全量测试 |
-| R6 | 前后端静态、单元、契约、构建与 required CI 通过 | #674 AC6 | not_satisfied | 本地证据已取得；待 changed-scope preflight 与 PR CI/current-head 证据 |
-| R7 | 文档明确不兼容迁移、部署清理和重新打标边界 | #674 AC7 | satisfied | `AGENTS.md`、Analysis README、Appendix 07 |
-| R8 | 生产服务器清除旧 Scheme/配置/打标结果并重新打标 | 用户明确部署决定 | explicitly_deferred | 本次只合并代码；生产数据动作由后续授权部署操作执行 |
+| R1 | 只保留 `content_labeling.md` 这一份内容打标 Prompt，保留政负筛选，删除竞品筛选和历史 Prompt | #674 / AC1 | satisfied | Prompt inventory Contract 测试；生产目录当前文件清单 |
+| R2 | 使用业务 Owner 提供的完整原则并沿用清晰格式，内部版本为 v3.0 | #674 / AC2 | satisfied | `content_labeling.md`；必要章节与枚举单测 |
+| R3 | 删除全部旧版本兼容，旧 V3/V4/V4.5/V4.6 fail closed | #674 / AC3 | satisfied | Loader/Compiler/Validator 实现；obsolete version 参数化测试 |
+| R4 | 空库从唯一 Prompt bootstrap，打标输入/输出和独立三分类语义正确 | #674 / AC4 | satisfied | 唯一 Prompt 精确 roundtrip、165 项 Analysis 单测、空库 PostgreSQL bootstrap 集成用例；真实 PostgreSQL 执行仍是 merge 前 required CI gate |
+| R5 | 前端显示数据库 Scheme Prompt 和当前 9/39 标签，不注入旧兜底值 | #674 / AC5 | satisfied | `AnalysisSchemePanel.vue`、`AnalysisLabelsEditor.vue`、真实 Prompt SSR 回归、前端全量测试 |
+| R6 | 前后端静态、单元、契约、构建与 required CI 通过 | #674 / AC6 | satisfied | 当前实现与本地稳定层已通过；PR current-head PostgreSQL/Full-stack/CI Gate 仍是合并前交付门禁，不由本状态替代 |
+| R7 | 文档明确不兼容迁移、部署清理和重新打标边界 | #674 / AC7 | satisfied | `AGENTS.md`、Analysis README、Appendix 07 |
+| R8 | 生产服务器清除旧 Scheme/配置/打标结果并重新打标 | user:2026-09-30-analysis-reset-deployment-decision / AC1 | explicitly_deferred | 本次只合并代码；生产数据动作由后续授权部署操作执行 |
 
 # 计划改动
 
@@ -185,8 +185,8 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 - [x] 行为变化建立失败证据或说明测试例外
 - [x] 完成最小实现，不静默扩大范围
 - [x] 同步受影响的长期文档或明确不适用依据
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 取得仍覆盖当前版本的验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -231,10 +231,15 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 
 # 完成审计
 
-- [ ] upstream_re_read：Final Ready 前重读 #674、用户最终决定、当前 AGENTS/README/Appendix 和真实 Prompt/代码。
-- [ ] change_coverage：Final Ready 前从上游独立重建 AC1—AC7，核对本 Change 无遗漏。
-- [ ] reverse_audit：Final Ready 前执行 Prompt→Scheme→Parser/Validator→API/UI 与 UI→Scheme 保存/发布的反向能力审计。
-- [ ] unresolved_cleared：PR CI 后确认 R4/R6 satisfied，R8 的延期边界仍有正式用户依据。
+- [x] upstream_re_read：已在 `origin/main@3f6b4f4c` 和 PR head `1b55acda` 上重读 live #674、用户最终决定、当前 `AGENTS.md`、Analysis README、Appendix 07、唯一 Prompt 与实际代码。
+- [x] change_coverage：脱离当前 checklist 从 #674 重建 AC1—AC7；文件收敛、原则/格式、fail-closed、bootstrap/运行时、前端 9×39 展示、验证门禁和文档边界均有实现与测试承载；生产清库仍由 R8 正式延期，不冒充本 PR 验收。
+- [x] reverse_audit：已核对 `content_labeling.md → bootstrap definition → Compiler/Version/Hash → RuntimeTaxonomyValidator/LLM → API/UI`，并反向核对 `AnalysisSchemePanel 编辑 → Compiler → 人类可读闭集与机器 JSON 同步 → 新 Version/发布`；发现初版 Compiler 只更新机器 JSON 后已在 `1b55acda` 修复并新增回归。
+- [x] unresolved_cleared：R1—R7 已有当前实现/测试承载，R8 具有用户明确延期依据；PR current-head CI、独立 Review 和 current-base merge preflight 继续作为交付门禁，不把它们伪装成已完成。
+
+## 两阶段需求复核
+
+- **A1（上游要求 → Change）**：#674 AC1—AC7 均有唯一 R 行；服务器清库/部署决定单列 R8，并明确排除在当前代码 PR 外，没有把它静默删掉或伪装完成。
+- **A2（Change → 实现/测试/文档）**：R1—R7 均能追到具体生产路径、直接回归和长期文档；反向审计发现并修复了 Scheme 编辑时模型正文与机器 Taxonomy 可能分叉的问题。独立代码质量 Review 和平台 CI 仍待 PR Ready 后完成。
 
 # 完成证据与状态
 
@@ -249,19 +254,20 @@ Requirement Source 为 GitHub Issue #674，直接上游还包括本轮业务 Own
 | V5 | 本地任务工作区，基于 `origin/main@3f6b4f4c` | Frontend ESLint、Vitest、build、Playwright | lint 通过；36 files/271 tests 通过；typecheck/build 通过；170 E2E 通过 | Prompt/9×39 标签展示和前端相关回归成立 |
 | V6 | 本地任务工作区 | PostgreSQL Integration | 本机缺少 `.runtime/secrets/postgres_password`，连接前失败 | 本机未取得持久化证据；由 PR CI 补齐 |
 | V7 | 本地任务工作区，Draft Review 修复后 | 当前 Scheme 编译、roundtrip、编辑镜像和旧模板拒绝回归 | 43 passed；Ruff/mypy 通过 | 当前 v3.0 Compiler 会同步模型正文与机器 Taxonomy，并拒绝旧模板 |
+| V8 | `1b55acda`，基于 `origin/main@3f6b4f4c` | `uv run pytest tests/unit/analysis -q` | 165 passed | Review 修复后的 Analysis 全量单元回归通过 |
 
 ## 未验证内容与剩余风险
 
 - 当前分支尚未形成 commit/PR，因此没有 current-head CI。
 - changed-scope 稳定层已执行；原始全量命令受一项未改动的本机 Edge 截图基线失败阻断，剔除该项后的完整稳定套件已通过。
-- 仍需 PR current-head PostgreSQL/Full-stack CI、Final Ready、两阶段 Review 与 current-base preflight。
+- 仍需 PR current-head PostgreSQL/Full-stack CI、独立 Review 与 current-base merge preflight。
 - 生产清库、镜像部署、空库 bootstrap 和重新打标未执行，仍是部署阶段责任。
 
 ## 交付状态
 
-- 提交：待形成首个可审查 checkpoint。
-- 拉取请求：待首次 push 后创建 Draft PR，并绑定 #674。
-- CI：待 PR current-head 执行。
+- 提交：`1b0212e5`（主实现）+ `1b55acda`（Review 修复），后续还有本次 Ready/文档提交。
+- 拉取请求：Draft PR #675 已绑定 #674，待本 Change Ready 提交后转为 Ready for Review。
+- CI：Draft 阶段按仓库规则只给出预期 fail-closed；待 Ready 事件运行 current-head 全量证据。
 - 合并：待 Review、Ready Check、CI、current base/head 复核后执行。
 - Change 归档：待合并后由仓库自动化处理。
 - Issue Closure：只有本 PR 完成 #674 全部代码验收时随合并关闭；生产部署动作不由本 Issue 伪装完成。
