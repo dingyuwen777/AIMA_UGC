@@ -25,6 +25,8 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_PLAN_JOB_TYPE,
     ContentAnalysisJobPayload,
     ContentAnalysisPlanJobPayload,
+    analysis_query_filters_from_snapshot,
+    analysis_query_target_fingerprint_from_snapshot,
     is_analysis_all_scope_filter_snapshot,
 )
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
@@ -122,7 +124,9 @@ class HighThroughputContentAnalysisPlanJobExecutor:
                                 limit=self._freeze_batch_size,
                             )
                         else:
-                            filters = ContentFilterSnapshot.model_validate(run["filter_snapshot"])
+                            filters = ContentFilterSnapshot.model_validate(
+                                analysis_query_filters_from_snapshot(run["filter_snapshot"])
+                            )
                             batch = content_repository.list_filtered_analysis_targets(
                                 filters=filters,
                                 after_content_id=after_content_id,
@@ -130,16 +134,36 @@ class HighThroughputContentAnalysisPlanJobExecutor:
                             )
 
                         if not batch:
+                            target_changed = frozen_count != expected_target_count
                             if all_scope:
                                 current_count = content_repository.count_all_analysis_targets()
-                            else:
-                                current_count = content_repository.count_filtered_analysis_targets(
-                                    filters
+                                target_changed = (
+                                    target_changed or current_count != expected_target_count
                                 )
-                            if (
-                                frozen_count != expected_target_count
-                                or current_count != expected_target_count
-                            ):
+                            else:
+                                expected_fingerprint = (
+                                    analysis_query_target_fingerprint_from_snapshot(
+                                        run["filter_snapshot"]
+                                    )
+                                )
+                                if expected_fingerprint is None:
+                                    # 历史 query Run 没有确认时集合指纹，保持旧数量核对语义。
+                                    current_count = (
+                                        content_repository.count_filtered_analysis_targets(filters)
+                                    )
+                                    target_changed = (
+                                        target_changed or current_count != expected_target_count
+                                    )
+                                else:
+                                    frozen_target_count, frozen_fingerprint = (
+                                        repository.frozen_target_snapshot(payload.run_id)
+                                    )
+                                    target_changed = (
+                                        target_changed
+                                        or frozen_target_count != expected_target_count
+                                        or frozen_fingerprint != expected_fingerprint
+                                    )
+                            if target_changed:
                                 jobs.lock_current_execution(fence)
                                 return JobHandlerResult.failed("content_analysis_target_changed")
                             created = schedule_high_throughput_analysis_run_shards(
@@ -212,7 +236,9 @@ def _target_statement_from_run(session: Session, run: RowMapping) -> object:
         raise ValueError("all Scope 必须走有界 Planner Target 冻结")
     if run["scope"] == "query":
         return repository.freeze_target_statement(
-            filters=ContentFilterSnapshot.model_validate(run["filter_snapshot"])
+            filters=ContentFilterSnapshot.model_validate(
+                analysis_query_filters_from_snapshot(run["filter_snapshot"])
+            )
         )
     snapshot = cast(dict[str, object], run["filter_snapshot"])
     content_ids = tuple(UUID(str(value)) for value in cast(list[object], snapshot["content_ids"]))
