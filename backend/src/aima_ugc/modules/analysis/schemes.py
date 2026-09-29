@@ -25,9 +25,7 @@ _BLOCK_PATTERN = re.compile(
 )
 _V46_VERSION = "content-labeling.v4.6"
 _V46_VERSION_DECLARATION = f"Prompt Version：`{_V46_VERSION}`"
-_V46_VOICE_PATTERN = re.compile(
-    r"(?m)(^2\. `voice_type` 最终只允许：\n)(?:   - `[^`\n]+`\n)+"
-)
+_V46_VOICE_PATTERN = re.compile(r"(?m)(^2\. `voice_type` 最终只允许：\n)(?:   - `[^`\n]+`\n)+")
 _V46_SENTIMENT_PATTERN = re.compile(
     r"(?ms)(^# 8\. 情感判断\s*$.*?^只允许：\s*$\n\n)(?:- `[^`\n]+`\n)+"
 )
@@ -109,9 +107,7 @@ def _render_v46_prompt(definition: AnalysisSchemeDefinitionRequest) -> str:
     ordered_primaries = [
         primary for primary in template_primary_order if primary in definition.labels
     ]
-    ordered_primaries.extend(
-        sorted(set(definition.labels) - set(ordered_primaries))
-    )
+    ordered_primaries.extend(sorted(set(definition.labels) - set(ordered_primaries)))
     label_sections = "\n\n".join(
         f"## {primary}\n\n"
         + "\n".join(f"- {secondary}" for secondary in definition.labels[primary])
