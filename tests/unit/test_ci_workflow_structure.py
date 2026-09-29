@@ -50,8 +50,8 @@ def test_completion_workflow_is_removed_after_evidence_moves_into_core() -> None
     assert text.count("Requirement Traceability and Completion Audit") == 1
 
 
-def test_pr_body_edit_revalidates_metadata_without_overwriting_failed_full_evidence() -> None:
-    """edited 只做 metadata，但必须绑定同 SHA 已成功的完整 CI/Runtime 基线。"""
+def test_pr_body_edit_revalidates_metadata_without_cancelling_full_evidence() -> None:
+    """edited 使用独立 lane，并等待同 SHA full baseline，不能取消或冒充 Final CI。"""
     text = CI.read_text(encoding="utf-8")
     assert "- edited" in text
     assert "profile=metadata_only" in text
@@ -59,11 +59,17 @@ def test_pr_body_edit_revalidates_metadata_without_overwriting_failed_full_evide
     assert "repository_required=false" in text
     assert "postgres_required=false" in text
     assert "fullstack_required=false" in text
+    assert "github.event.action == 'edited' && 'metadata' || 'full'" in text
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in text
     assert "Verify metadata edit baseline evidence" in text
     assert '"CI Gate"' in text
     assert '"Compose Golden Path"' in text
     assert "check-runs?per_page=100" in text
-    assert "Metadata edit requires an already-green full evidence baseline" in text
+    assert "actions/runs?head_sha=${HEAD_SHA}&event=pull_request&per_page=100" in text
+    assert "Same-SHA full CI is still running; metadata gate waits for its baseline." in text
+    assert "raise SystemExit(75)" in text
+    assert "sleep 5" in text
+    assert "Timed out waiting for same-SHA full evidence baseline." in text
     assert "github.event.action != 'edited'" in text
 
 
