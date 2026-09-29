@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # AIMA_UGC 业务数据重置工具：保留当前 Alembic 与完整品牌/车型目录，清空其他业务数据和 Artifact 实体。
-#
 # 使用方法（建议在当前 Release 根目录执行）：
 #   1. 只检查，不修改：
 #      bash ./reset_keep_vehicle_catalog.sh --env-file /data/AIMA_UGC/env.production --dry-run
