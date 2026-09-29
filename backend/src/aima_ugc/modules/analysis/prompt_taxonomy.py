@@ -501,9 +501,9 @@ def _parse_v46_taxonomy_payload(prompt_text: str) -> dict[str, Any]:
     labels: dict[str, list[str]] = {}
     for heading in headings:
         start = heading.end()
-        following_heading = re.search(r"^#{1,3}\\s+.+?$", body[start:], flags=re.MULTILINE)
+        following_heading = re.search(r"^#{1,3}\s+.+?$", body[start:], flags=re.MULTILINE)
         end = start + following_heading.start() if following_heading is not None else len(body)
-        secondaries = re.findall(r"^- (?P<secondary>.+?)\\s*$", body[start:end], re.MULTILINE)
+        secondaries = re.findall(r"^- (?P<secondary>.+?)\s*$", body[start:end], re.MULTILINE)
         if not secondaries:
             continue
         labels[str(heading.group("primary"))] = secondaries
