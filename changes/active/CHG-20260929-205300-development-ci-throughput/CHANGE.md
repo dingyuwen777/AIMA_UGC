@@ -136,6 +136,14 @@ Final CI 继续支付人为串行等待，复杂 PR 继续把可在 push 前闭�
 5. 项目规则固化 commit/base/merge 节奏。
 6. current-head self-change full Evidence + Review → merge → main-fresh。
 
+## 备选方案与取舍
+
+- **只保留原 `quality-core` 串行结构**：证据最简单，但 PostgreSQL/Real Full-stack 必须等待 Core 完整结束，无法解决关键路径瓶颈，不采用。
+- **删除 PostgreSQL/Real Full-stack 或用较弱 Mock 代替**：会降低独立 Evidence 等级，不采用。
+- **为本地开发单独维护第二套 impact mapping**：容易与 CI selector 漂移，不采用；统一复用 `classify_ci_scope.py`。
+- **所有 Backend/Frontend 都继续全量**：安全但收益不足；仅对高置信 Owner 精准映射，共享/未知/CI-self 继续 `all` fail closed。
+- **引入 Merge Queue/新 CI 平台**：不是本次根因所需最小机制，不采用。
+
 # 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | Evidence |
@@ -177,6 +185,15 @@ Final CI 继续支付人为串行等待，复杂 PR 继续把可在 push 前闭�
 - Preflight 环境不足：明确 deferred PostgreSQL/Full-stack，不伪造本地 Evidence。
 - 数据/Schema/Migration：不适用。
 - 回滚：恢复 Core 内 classification + 原 needs；项目开发规则可独立保留。
+
+# 文档、依赖、部署与发布影响
+
+- **长期文档**：已同步 `AGENTS.md`、`docs/04_测试与调试说明.md`、`docs/blueprint/06_开发约束与分阶段实施.md`，分别承载项目 Overlay、实际测试入口和 CI 架构事实。
+- **依赖**：未新增、删除或升级 Python/Node/System 依赖，也未修改 lockfile。
+- **配置 / Secret**：不新增环境变量、Secret、端口或生产配置。
+- **部署**：不改变产品 Runtime/Compose/部署拓扑，无生产迁移步骤。
+- **发布**：本任务不执行 Release/Deploy；Release Workflow 的 Owner/证明责任不变。
+- **回滚**：Workflow 变更可通过恢复原 Core 内 classification 与 `needs: quality-core` 回滚；无数据恢复动作。
 
 # 完成审计
 
