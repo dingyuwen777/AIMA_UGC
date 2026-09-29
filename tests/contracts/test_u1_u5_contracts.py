@@ -114,24 +114,18 @@ def test_content_filter_accepts_multiple_vehicle_models() -> None:
         ContentFilterSnapshot(vehicle_model_ids=[first, first])
 
 
-def test_analysis_scheme_requires_explicit_unknown_values() -> None:
-    """Scheme 必须显式表达无法判断，不能把未知静默映射为中性。"""
+def test_analysis_scheme_accepts_prompt_defined_closed_sets() -> None:
+    """Scheme 只校验通用完整性，不硬编码旧版未知值。"""
 
     valid = AnalysisSchemeDefinitionRequest(
         prompt_template="规则\n{{AIMA_TAXONOMY_JSON}}\n结束",
-        sentiments=["正面", "中性", "负面", "无法判断"],
-        voice_types=["真实用户发声", "无法判断"],
-        labels={"产品体验": ["动力", "续航"], "无法分类": ["无法判断"]},
+        sentiments=["正面", "中性", "负面", "混合"],
+        voice_types=["品牌官方发声", "真实用户发声", "营销推广发声"],
+        labels={"产品体验": ["动力", "续航"]},
     )
-    assert valid.sentiments[-1] == "无法判断"
-
-    with pytest.raises(ValidationError):
-        AnalysisSchemeDefinitionRequest(
-            prompt_template="{{AIMA_TAXONOMY_JSON}}",
-            sentiments=["正面", "中性", "负面"],
-            voice_types=["真实用户发声", "无法判断"],
-            labels={"产品体验": ["动力"], "无法分类": ["无法判断"]},
-        )
+    assert valid.sentiments == ("正面", "中性", "负面", "混合")
+    assert "无法判断" not in valid.voice_types
+    assert "无法分类" not in valid.labels
 
 
 def test_identity_roles_are_only_administrator_and_user() -> None:

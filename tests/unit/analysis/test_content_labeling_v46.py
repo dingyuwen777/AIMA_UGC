@@ -195,10 +195,10 @@ def test_v46_model_payload_and_input_hash_include_platform() -> None:
 
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
     fake = FakeContentLabelingLLM(responses=[_response(_inquiry_item(taxonomy))])
-    xhs = _content(platform="xiaohongshu")
+    xiaohongshu_content = _content(platform="xiaohongshu")
 
     result = ContentLabelingService(prompt_loader=PromptTaxonomyLoader(), llm=fake).label_contents(
-        [xhs],
+        [xiaohongshu_content],
         max_validation_retries=0,
     )
 
@@ -206,8 +206,10 @@ def test_v46_model_payload_and_input_hash_include_platform() -> None:
     payload = fake.calls[0].model_payload()[0]
     assert payload["platform"] == "xiaohongshu"
     assert set(payload) == {"item_no", "platform", "title", "text", "author"}
-    douyin = xhs.model_copy(update={"platform": "douyin", "external_content_id": "v46-douyin"})
-    assert content_labeling_input_hash(xhs) != content_labeling_input_hash(douyin)
+    douyin = xiaohongshu_content.model_copy(
+        update={"platform": "douyin", "external_content_id": "v46-douyin"}
+    )
+    assert content_labeling_input_hash(xiaohongshu_content) != content_labeling_input_hash(douyin)
 
 
 def test_v46_marketing_voice_requires_nonempty_original_evidence() -> None:
