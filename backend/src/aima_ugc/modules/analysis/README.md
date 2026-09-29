@@ -36,7 +36,7 @@ sentiment
 labels[]
 ```
 
-默认 V4 模型协议在持久化前还要求内部 `source_type / content_intent`、各维度原文证据和 `decision_status`。这些字段只用于本地语义一致性校验与条件 Judge，不扩展 `ContentLabelAnalysisV3`、HTTP 或数据库结果结构。
+默认 V4.6 模型协议在持久化前还要求内部 `source_type / content_intent`、各维度原文证据和 `decision_status`。这些字段只用于本地语义一致性校验与条件 Judge，不扩展 `ContentLabelAnalysisV3`、HTTP 或数据库结果结构。
 
 约束：
 
@@ -66,8 +66,8 @@ voice_type == "真实用户发声"
 
 ## 2. Analysis Scheme 与 Git bootstrap
 
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_bootstrap.txt`](prompts/content_labeling_bootstrap.txt)：新空库 bootstrap 的显式版本中立指针，当前选择 V4。
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：当前新空库 bootstrap/灾备资产。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_bootstrap.txt`](prompts/content_labeling_bootstrap.txt)：新空库 bootstrap 的显式版本中立指针，当前选择 V4.6。
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.6.md`](prompts/content_labeling_v4.6.md)：当前首次正式打标 bootstrap/灾备资产。\n- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：旧 V4 Scheme 兼容资产。
 - [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](prompts/content_labeling_v3.md)：既有 active Scheme 输出协议兼容基线，不再作为默认文件。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
