@@ -392,7 +392,10 @@ def test_published_analysis_scheme_delete_hides_resource_but_preserves_run_snaps
             assert deleted_row["active_version_id"] is None
             assert scheme_id not in {item.id for item in lifecycle.list_archived()}
             assert all(scheme["id"] != scheme_id for scheme, _ in schemes.list_schemes())
+            assert lifecycle.restore(scheme_id) is False
             assert schemes.get_version(version.id) is not None
+            with pytest.raises(RuntimeError, match="不存在、父方案已归档或版本冲突"):
+                schemes.activate_version(version.id, expected_version=version.version)
             assert (
                 session.scalar(
                     select(analysis_content_runs_table.c.analysis_scheme_version_id).where(
