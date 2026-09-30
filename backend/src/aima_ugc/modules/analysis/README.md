@@ -70,7 +70,7 @@ voice_type == "真实用户发声"
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。清空 Scheme 后使用新镜像启动时，会由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run，且没有人工或额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
+数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。此后运行时唯一事实是数据库中唯一 active Scheme Version。空库仍由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version；普通 API/Worker 读取不会承担持续发布。正式部署的 `configure` 会额外执行 Git Prompt promotion：若当前 Scheme lineage 全部由系统 Git bootstrap/promotion 创建，则按 Prompt/Taxonomy 身份幂等追加并发布新 Version，即使已有历史 Analysis Run；旧 Run 仍绑定旧 Version。发现人工 Version 时 promotion 失败关闭，不覆盖管理员配置。
 
 Python Parser、Compiler 和 Validator 只接受 `content-labeling.v3.0`。旧 V3/V4/V4.5/V4.6 Scheme 不再兼容；部署本次代码前必须按已确认的数据重置方案删除服务器上的旧 Analysis Scheme/Version 和打标结果，不能让旧 active Version 进入新运行时。
 
@@ -80,7 +80,7 @@ Python Parser、Compiler 和 Validator 只接受 `content-labeling.v3.0`。旧 V
 
 - [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：只接受当前格式；sentiments / voice_types 继续从当前机器闭集恢复，一级/二级 labels 从第 9 节人类可读标签闭集恢复并自动归一化机器镜像，再计算 `taxonomy_sha256`；其他 Prompt 版本失败关闭。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)：编译受控模板并核对数据库快照 Hash。
-- [`backend/src/aima_ugc/bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version 并形成运行身份。
+- [`backend/src/aima_ugc/bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version，并承载部署期 Git Prompt promotion 的安全审计结果。
 
 Python、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonomy 列表。
 
@@ -96,7 +96,7 @@ Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但�
 → 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
 ```
 
-直接修改 Git bootstrap Prompt 也支持一级/二级标签增删改：只修改第 9 节人类可读 `### 一级标签` 与其下 `- 二级标签` 列表即可，不需要手工同步 `AIMA_TAXONOMY.labels`。Loader/Compiler 会自动生成一致机器镜像；若原有详细解释表已与新标签不一致，会从实际运行 Prompt 自动移除。Git 变更仍遵守既有 Scheme 生命周期：它能建立空库基线，并可在“仅有未使用系统 bootstrap、无 Analysis Run、无人工/额外 Version”时自动刷新；**不会静默覆盖已经被 Analysis Run 使用或人工发布的 active Scheme**。已有生产 Scheme 要采用新标签，应通过管理员发布新 Version，或按既有重置/部署流程明确切换。
+直接修改 Git Prompt 也支持一级/二级标签增删改：只修改第 9 节人类可读 `### 一级标签` 与其下 `- 二级标签` 列表即可，不需要手工同步 `AIMA_TAXONOMY.labels`。Loader/Compiler 会自动生成一致机器镜像；若原有详细解释表已与新标签不一致，会从实际运行 Prompt 自动移除。构建并部署新镜像后，`configure` 会把该 Git Prompt promotion 为后续新 Analysis Run 使用的 active Version；历史 Run 不改写。若管理员已经创建/发布人工 Scheme Version，则部署拒绝自动 promotion，必须由管理员显式处理。
 
 当前 Taxonomy 与机器语义规则必须同时合法。`source_type/content_intent` 是当前输出格式的内部辅助闭集，不是新的业务持久字段，也不负责推导 `voice_type`；最终发声类型以 Prompt 的独立三分类为准。
 
