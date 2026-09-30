@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260930-180000-adaptive-analysis-capacity
 title: LLM 自适应容量、失败恢复与声音广场筛选调整
 level: L3
-status: ready_for_review
+status: done
 owner: assistant
 branch: perf/adaptive-analysis-capacity
 created: 2026-09-30 18:00:00 +08:00
