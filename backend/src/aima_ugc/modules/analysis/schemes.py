@@ -137,8 +137,8 @@ def compile_analysis_scheme(
 ) -> CompiledAnalysisScheme:
     """把结构化 Taxonomy 编译为唯一运行时 Prompt，并核对同源 Taxonomy。"""
 
-    prompt_text = _render_current_prompt(definition)
-    taxonomy = PromptTaxonomyLoader.load_text(prompt_text)
+    rendered_prompt = _render_current_prompt(definition)
+    taxonomy = PromptTaxonomyLoader.load_text(rendered_prompt)
     if (
         taxonomy.sentiments != definition.sentiments
         or taxonomy.voice_types != definition.voice_types
@@ -146,9 +146,22 @@ def compile_analysis_scheme(
     ):
         raise ValueError("Analysis Scheme 编译后的 Prompt 闭集与结构化定义不一致")
 
+    normalized_template, substitutions = _BLOCK_PATTERN.subn(
+        TAXONOMY_PLACEHOLDER,
+        taxonomy.prompt_text,
+    )
+    if substitutions != 1:
+        raise ValueError("编译后的 Prompt 必须且只能包含一个 Taxonomy 区块")
+    normalized_definition = AnalysisSchemeDefinitionRequest(
+        prompt_template=normalized_template,
+        sentiments=taxonomy.sentiments,
+        voice_types=taxonomy.voice_types,
+        labels=dict(taxonomy.labels),
+    )
+
     return CompiledAnalysisScheme(
-        definition=definition,
-        prompt_text=prompt_text,
+        definition=normalized_definition,
+        prompt_text=taxonomy.prompt_text,
         prompt_sha256=taxonomy.prompt_sha256,
         taxonomy_sha256=taxonomy.taxonomy_sha256,
     )
@@ -171,7 +184,10 @@ def bootstrap_definition_from_prompt(prompt_text: str) -> AnalysisSchemeDefiniti
     """把 Git Prompt 转为一次性 bootstrap 模板，避免数据库与文件双写。"""
 
     taxonomy = PromptTaxonomyLoader.load_text(prompt_text)
-    template, substitutions = _BLOCK_PATTERN.subn(TAXONOMY_PLACEHOLDER, prompt_text)
+    template, substitutions = _BLOCK_PATTERN.subn(
+        TAXONOMY_PLACEHOLDER,
+        taxonomy.prompt_text,
+    )
     if substitutions != 1:
         raise ValueError("Bootstrap Prompt 必须且只能包含一个 Taxonomy 区块")
 
