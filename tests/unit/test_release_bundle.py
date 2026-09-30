@@ -179,6 +179,10 @@ def test_bundle_uses_latest_runtime_alias_and_saves_both_application_tags(
         postgres_ref="postgres@sha256:postgres",
         alembic_head="head123",
         openapi_sha256="openapi123",
+        analysis_prompt_protocol="content-labeling.v3.0",
+        analysis_prompt_sha256="prompt123",
+        analysis_taxonomy_sha256="taxonomy123",
+        analysis_prompt_source_sha256="source123",
     )
     bundle = tmp_path / "release-bundle"
     archive = tmp_path / "AIMA_UGC-v3.2.0-deploy.tar.gz"
@@ -305,6 +309,10 @@ def test_manifest_records_profile_upstreams_and_verification_state() -> None:
         postgres_ref="postgres@sha256:postgres",
         alembic_head="head123",
         openapi_sha256="openapi123",
+        analysis_prompt_protocol="content-labeling.v3.0",
+        analysis_prompt_sha256="prompt123",
+        analysis_taxonomy_sha256="taxonomy123",
+        analysis_prompt_source_sha256="source123",
     )
 
     manifest = module._release_manifest(
@@ -323,6 +331,92 @@ def test_manifest_records_profile_upstreams_and_verification_state() -> None:
     assert manifest["build_upstreams"]["pypi"] == "https://mirrors.aliyun.com/pypi/simple"
     assert manifest["verification"] == {"offline_replay": False, "strict_replay": False}
     assert manifest["publication"] == {"github_release": False, "ghcr": False}
+    assert manifest["analysis_prompt"] == {
+        "protocol": "content-labeling.v3.0",
+        "prompt_sha256": "prompt123",
+        "taxonomy_sha256": "taxonomy123",
+        "source_sha256": "source123",
+    }
+
+
+def test_backend_prompt_identity_reads_image_and_requires_source_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Release 只接受与源码唯一 Prompt 字节一致的 backend 镜像身份。"""
+
+    module = _load_module()
+    root = tmp_path / "repo"
+    prompt = (
+        root
+        / "backend"
+        / "src"
+        / "aima_ugc"
+        / "modules"
+        / "analysis"
+        / "prompts"
+        / "content_labeling.md"
+    )
+    prompt.parent.mkdir(parents=True)
+    prompt.write_text("current prompt\n", encoding="utf-8")
+    source_sha = module._sha256_file(prompt)
+
+    def fake_run(arguments, *, cwd: Path, capture: bool = False, env=None) -> str:
+        del cwd, capture, env
+        assert arguments[:4] == ["docker", "run", "--rm", "aima-ugc-backend:test"]
+        return json.dumps(
+            {
+                "protocol": "content-labeling.v3.0",
+                "prompt_sha256": "p" * 64,
+                "taxonomy_sha256": "t" * 64,
+                "source_sha256": source_sha,
+            }
+        )
+
+    monkeypatch.setattr(module, "_run", fake_run)
+
+    identity = module._backend_prompt_identity(root, "aima-ugc-backend:test")
+
+    assert identity["protocol"] == "content-labeling.v3.0"
+    assert identity["source_sha256"] == source_sha
+
+
+def test_backend_prompt_identity_rejects_image_source_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """镜像内 Prompt 与 checkout 源码不一致时 Release 必须失败关闭。"""
+
+    module = _load_module()
+    root = tmp_path / "repo"
+    prompt = (
+        root
+        / "backend"
+        / "src"
+        / "aima_ugc"
+        / "modules"
+        / "analysis"
+        / "prompts"
+        / "content_labeling.md"
+    )
+    prompt.parent.mkdir(parents=True)
+    prompt.write_text("current prompt\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        module,
+        "_run",
+        lambda *_args, **_kwargs: json.dumps(
+            {
+                "protocol": "content-labeling.v3.0",
+                "prompt_sha256": "p" * 64,
+                "taxonomy_sha256": "t" * 64,
+                "source_sha256": "0" * 64,
+            }
+        ),
+    )
+
+    with pytest.raises(module.ReleaseBundleError, match="Prompt 与源码不一致"):
+        module._backend_prompt_identity(root, "aima-ugc-backend:test")
 
 
 def test_smoke_network_avoids_existing_docker_subnet(monkeypatch: pytest.MonkeyPatch) -> None:
