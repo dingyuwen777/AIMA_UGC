@@ -12,20 +12,111 @@ export const AnalysisContentRunCreateRequestRunIntent = {
   manual_reanalysis: 'manual_reanalysis',
 } as const;
 
+export type ContentAnalysisStatus = typeof ContentAnalysisStatus[keyof typeof ContentAnalysisStatus];
+
+
+export const ContentAnalysisStatus = {
+  pending: 'pending',
+  completed: 'completed',
+  stale: 'stale',
+} as const;
+
+export type ContentFilterSnapshotCompetitionScopesItem = typeof ContentFilterSnapshotCompetitionScopesItem[keyof typeof ContentFilterSnapshotCompetitionScopesItem];
+
+
+export const ContentFilterSnapshotCompetitionScopesItem = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
+
+export type PlatformName = typeof PlatformName[keyof typeof PlatformName];
+
+
+export const PlatformName = {
+  xiaohongshu: 'xiaohongshu',
+  douyin: 'douyin',
+  weibo: 'weibo',
+  bilibili: 'bilibili',
+  kuaishou: 'kuaishou',
+} as const;
+
+export type ContentRelevance = typeof ContentRelevance[keyof typeof ContentRelevance];
+
+
+export const ContentRelevance = {
+  relevant: 'relevant',
+  irrelevant: 'irrelevant',
+} as const;
+
+/**
+ * @minLength 1
+ * @maxLength 128
+ */
+export type ContentVoiceType = string;
+
+/**
+ * 可序列化并冻结到 Analysis/Export Request 的查询条件。
+ */
+export interface ContentFilterSnapshot {
+  analysis_status?: ContentAnalysisStatus | null;
+  /** @maxItems 100 */
+  brand_ids?: string[];
+  /** @maxItems 5 */
+  competition_scopes?: ContentFilterSnapshotCompetitionScopesItem[];
+  /** @maxItems 20 */
+  content_types?: string[];
+  /** @maxItems 5 */
+  platforms?: PlatformName[];
+  primary_label?: string | null;
+  /**
+     * @maxItems 100
+     * @items.minLength 1
+     * @items.maxLength 256
+     */
+  primary_labels?: string[];
+  published_from?: string | null;
+  published_to?: string | null;
+  relevance?: ContentRelevance | null;
+  search?: string | null;
+  secondary_label?: string | null;
+  /**
+     * @maxItems 200
+     * @items.minLength 1
+     * @items.maxLength 256
+     */
+  secondary_labels?: string[];
+  /**
+     * @maxItems 50
+     * @items.minLength 1
+     * @items.maxLength 128
+     */
+  sentiments?: string[];
+  source_identifier?: string | null;
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
+  /** @maxItems 50 */
+  voice_types?: ContentVoiceType[];
+}
+
 export type AnalysisRunTargetSelectionScope = typeof AnalysisRunTargetSelectionScope[keyof typeof AnalysisRunTargetSelectionScope];
 
 
 export const AnalysisRunTargetSelectionScope = {
   selected: 'selected',
+  query: 'query',
   all: 'all',
 } as const;
 
 /**
- * Analysis Run 公开目标：显式选择或数据库当前全部 Content。
+ * Analysis Run 公开目标：显式选择、当前筛选结果或数据库当前全部 Content。
  */
 export interface AnalysisRunTargetSelection {
   /** @maxItems 1000 */
   content_ids?: string[];
+  filters?: ContentFilterSnapshot | null;
   scope?: AnalysisRunTargetSelectionScope;
 }
 
@@ -1412,29 +1503,6 @@ export interface ContentLabelPairResponse {
   secondary_label: string;
 }
 
-export type ContentRelevance = typeof ContentRelevance[keyof typeof ContentRelevance];
-
-
-export const ContentRelevance = {
-  relevant: 'relevant',
-  irrelevant: 'irrelevant',
-} as const;
-
-export type ContentAnalysisStatus = typeof ContentAnalysisStatus[keyof typeof ContentAnalysisStatus];
-
-
-export const ContentAnalysisStatus = {
-  pending: 'pending',
-  completed: 'completed',
-  stale: 'stale',
-} as const;
-
-/**
- * @minLength 1
- * @maxLength 128
- */
-export type ContentVoiceType = string;
-
 export interface ContentAnalysisResponse {
   analyzed_at?: string | null;
   labels?: ContentLabelPairResponse[];
@@ -1447,72 +1515,6 @@ export interface ContentAnalysisResponse {
   sentiment?: string | null;
   status: ContentAnalysisStatus;
   voice_type?: ContentVoiceType | null;
-}
-
-export type ContentFilterSnapshotCompetitionScopesItem = typeof ContentFilterSnapshotCompetitionScopesItem[keyof typeof ContentFilterSnapshotCompetitionScopesItem];
-
-
-export const ContentFilterSnapshotCompetitionScopesItem = {
-  owned_only: 'owned_only',
-  competitor_only: 'competitor_only',
-  mixed: 'mixed',
-  other_only: 'other_only',
-  none_detected: 'none_detected',
-} as const;
-
-export type PlatformName = typeof PlatformName[keyof typeof PlatformName];
-
-
-export const PlatformName = {
-  xiaohongshu: 'xiaohongshu',
-  douyin: 'douyin',
-  weibo: 'weibo',
-  bilibili: 'bilibili',
-  kuaishou: 'kuaishou',
-} as const;
-
-/**
- * 可序列化并冻结到 Analysis/Export Request 的查询条件。
- */
-export interface ContentFilterSnapshot {
-  analysis_status?: ContentAnalysisStatus | null;
-  /** @maxItems 100 */
-  brand_ids?: string[];
-  /** @maxItems 5 */
-  competition_scopes?: ContentFilterSnapshotCompetitionScopesItem[];
-  /** @maxItems 20 */
-  content_types?: string[];
-  /** @maxItems 5 */
-  platforms?: PlatformName[];
-  primary_label?: string | null;
-  /**
-     * @maxItems 100
-     * @items.minLength 1
-     * @items.maxLength 256
-     */
-  primary_labels?: string[];
-  published_from?: string | null;
-  published_to?: string | null;
-  relevance?: ContentRelevance | null;
-  search?: string | null;
-  secondary_label?: string | null;
-  /**
-     * @maxItems 200
-     * @items.minLength 1
-     * @items.maxLength 256
-     */
-  secondary_labels?: string[];
-  /**
-     * @maxItems 50
-     * @items.minLength 1
-     * @items.maxLength 128
-     */
-  sentiments?: string[];
-  source_identifier?: string | null;
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
-  /** @maxItems 50 */
-  voice_types?: ContentVoiceType[];
 }
 
 export type ContentTargetSelectionScope = typeof ContentTargetSelectionScope[keyof typeof ContentTargetSelectionScope];

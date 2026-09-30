@@ -9,8 +9,8 @@ import {
 } from '../../../generated/api/client'
 import { platformLabel } from '../../../shared/domain/platform'
 import AimaDateRange from '../../../shared/ui/AimaDateRange.vue'
+import AimaMultiSelect, { type AimaSelectOption } from '../../../shared/ui/AimaMultiSelect.vue'
 import type { WorkbenchFilters } from '../store'
-import WorkbenchMultiSelect, { type WorkbenchSelectOption } from './WorkbenchMultiSelect.vue'
 
 const props = defineProps<{
   modelValue: WorkbenchFilters
@@ -25,22 +25,22 @@ const emit = defineEmits<{
   reset: []
 }>()
 
-const platformOptions = computed<WorkbenchSelectOption[]>(() =>
+const platformOptions = computed<AimaSelectOption[]>(() =>
   Object.values(PlatformName).map((value) => ({ value, label: platformLabel(value) })),
 )
-const sentimentOptions = computed<WorkbenchSelectOption[]>(() =>
+const sentimentOptions = computed<AimaSelectOption[]>(() =>
   (props.taxonomy?.sentiments ?? []).map((value) => ({ value, label: value })),
 )
-const voiceTypeOptions = computed<WorkbenchSelectOption[]>(() =>
+const voiceTypeOptions = computed<AimaSelectOption[]>(() =>
   (props.taxonomy?.voice_types ?? []).map((value) => ({ value, label: value })),
 )
-const primaryLabelOptions = computed<WorkbenchSelectOption[]>(() =>
+const primaryLabelOptions = computed<AimaSelectOption[]>(() =>
   (props.taxonomy?.labels ?? []).map((item) => ({
     value: item.primary_label,
     label: item.primary_label,
   })),
 )
-const secondaryLabelOptions = computed<WorkbenchSelectOption[]>(() => {
+const secondaryLabelOptions = computed<AimaSelectOption[]>(() => {
   const selectedPrimaryLabels = new Set(props.modelValue.primaryLabels)
   return (props.taxonomy?.labels ?? [])
     .filter((item) => selectedPrimaryLabels.has(item.primary_label))
@@ -51,10 +51,10 @@ const secondaryLabelOptions = computed<WorkbenchSelectOption[]>(() => {
       })),
     )
 })
-const brandOptions = computed<WorkbenchSelectOption[]>(() =>
+const brandOptions = computed<AimaSelectOption[]>(() =>
   props.brands.map((item) => ({ value: item.id, label: item.display_name })),
 )
-const vehicleOptions = computed<WorkbenchSelectOption[]>(() => {
+const vehicleOptions = computed<AimaSelectOption[]>(() => {
   const selectedBrands = new Set(props.modelValue.brandIds)
   return props.vehicleModels
     .filter((item) => selectedBrands.size === 0 || (item.brand_id && selectedBrands.has(item.brand_id)))
@@ -81,44 +81,44 @@ function updateDateRange(value: { from: string; to: string }): void {
 
 <template>
   <div class="workbench-filters">
-    <WorkbenchMultiSelect
+    <AimaMultiSelect
       label="情感"
       :model-value="modelValue.sentiments"
       :options="sentimentOptions"
       @update:model-value="updateArray('sentiments', $event)"
     />
-    <WorkbenchMultiSelect
+    <AimaMultiSelect
       label="平台"
       all-label="全部平台"
       :model-value="modelValue.platforms"
       :options="platformOptions"
       @update:model-value="updateArray('platforms', $event)"
     />
-    <WorkbenchMultiSelect
+    <AimaMultiSelect
       label="品牌"
       :model-value="modelValue.brandIds"
       :options="brandOptions"
       @update:model-value="updateArray('brandIds', $event)"
     />
-    <WorkbenchMultiSelect
+    <AimaMultiSelect
       label="车型"
       :model-value="modelValue.vehicleModelIds"
       :options="vehicleOptions"
       @update:model-value="updateArray('vehicleModelIds', $event)"
     />
-    <WorkbenchMultiSelect
+    <AimaMultiSelect
       label="发声"
       :model-value="modelValue.voiceTypes"
       :options="voiceTypeOptions"
       @update:model-value="updateArray('voiceTypes', $event)"
     />
-    <WorkbenchMultiSelect
+    <AimaMultiSelect
       label="一级标签"
       :model-value="modelValue.primaryLabels"
       :options="primaryLabelOptions"
       @update:model-value="updateArray('primaryLabels', $event)"
     />
-    <WorkbenchMultiSelect
+    <AimaMultiSelect
       label="二级标签"
       :all-label="modelValue.primaryLabels.length ? '全部二级标签' : '请先选择一级标签'"
       :model-value="modelValue.secondaryLabels"

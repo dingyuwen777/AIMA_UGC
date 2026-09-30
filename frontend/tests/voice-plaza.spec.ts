@@ -74,7 +74,7 @@ const item = {
 }
 
 const taxonomy = {
-  prompt_version: 'content-labeling.v3',
+  prompt_version: 'content-labeling.v3.0',
   prompt_sha256: 'a'.repeat(64),
   schema_version: 'aima-content-taxonomy.v2',
   taxonomy_sha256: 'b'.repeat(64),
@@ -1136,7 +1136,7 @@ describe('voice plaza', () => {
       target_count: 1,
       shard_count: 1,
       shard_size: 1,
-      prompt_version: 'content_labeling_v3',
+      prompt_version: 'content-labeling.v3.0',
       prompt_sha256: 'a'.repeat(64),
       taxonomy_sha256: 'b'.repeat(64),
       model_provider: 'openai-compatible',
@@ -1182,6 +1182,49 @@ describe('voice plaza', () => {
       expected_configuration_hash: 'd'.repeat(64),
       run_intent: 'manual_reanalysis',
     }))
+  })
+
+  it('re-previews a changed query target and requires explicit confirmation again', async () => {
+    const preview = (targetCount: number, configurationHash: string) => ({
+      target_count: targetCount,
+      shard_count: 1,
+      shard_size: 100,
+      prompt_version: 'content-labeling.v3.0',
+      prompt_sha256: 'a'.repeat(64),
+      taxonomy_sha256: 'b'.repeat(64),
+      model_provider: 'openai-compatible',
+      model: 'fixture-model',
+      generation_config: { temperature: 0 },
+      generation_config_hash: 'c'.repeat(64),
+      configuration_hash: configurationHash,
+      cost_estimate_available: false,
+      cost_estimate_note: '不能伪造费用估算。',
+    })
+    generated.previewContentAnalysisRun
+      .mockResolvedValueOnce(preview(12, 'd'.repeat(64)))
+      .mockResolvedValueOnce(preview(14, 'e'.repeat(64)))
+    generated.createContentAnalysisRun.mockRejectedValueOnce(
+      new VoicePlazaApiError({
+        type: 'https://aima.example/problems/content_analysis_target_changed',
+        title: 'AI 分析目标已经变化',
+        status: 409,
+        detail: '预览后的内容集合已经变化，请重新预览并确认。',
+        request_id: 'request-analysis-target-changed',
+        errors: [],
+      }),
+    )
+    const store = useVoicePlazaStore()
+    await store.refreshAnalysisCapabilities()
+    store.filters.platforms = ['xiaohongshu']
+    store.applyFilters()
+
+    expect((await store.previewAnalysis('query'))?.target_count).toBe(12)
+    expect(await store.confirmAnalysis()).toBeNull()
+
+    expect(generated.createContentAnalysisRun).toHaveBeenCalledTimes(1)
+    expect(generated.previewContentAnalysisRun).toHaveBeenCalledTimes(2)
+    expect(store.analysisPreview?.target_count).toBe(14)
+    expect(store.error).toContain('已重新预览，请确认最新数量后再次提交')
   })
 
   it('keeps the latest analysis scope when an older preview resolves last', async () => {

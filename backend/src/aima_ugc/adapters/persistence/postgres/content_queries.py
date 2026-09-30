@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, cast
@@ -92,6 +93,36 @@ from aima_ugc.modules.vehicles.tables import (
 from .content_visibility import content_has_active_source
 
 register_ingestion_schema()
+
+
+def _target_snapshot_columns(
+    content_id_column: Any,
+    content_version_column: Any,
+) -> tuple[Any, Any, Any]:
+    """返回 count + 双 64-bit 哈希和；聚合不搬运全量 Target 到 Python。"""
+
+    token = func.concat(content_id_column, literal(":"), content_version_column)
+    return (
+        func.count().label("target_count"),
+        func.coalesce(func.sum(func.hashtextextended(token, literal(0))), 0).label(
+            "target_hash_sum0"
+        ),
+        func.coalesce(func.sum(func.hashtextextended(token, literal(1))), 0).label(
+            "target_hash_sum1"
+        ),
+    )
+
+
+def _target_snapshot_fingerprint(
+    *,
+    target_count: int,
+    hash_sum0: int,
+    hash_sum1: int,
+) -> str:
+    """把数据库聚合值收敛为稳定 SHA-256 文本，供 Run 内部快照比较。"""
+
+    payload = f"{target_count}:{hash_sum0}:{hash_sum1}".encode("ascii")
+    return hashlib.sha256(payload).hexdigest()
 
 
 class PostgresContentQueryRepository:
@@ -373,6 +404,86 @@ class PostgresContentQueryRepository:
                 ),
             )
             .order_by(order)
+        )
+
+    def count_filtered_analysis_targets(self, filters: ContentFilterSnapshot) -> int:
+        """统计与声音广场列表完全同语义的筛选 Analysis Target，不计算展示排序。"""
+
+        statement, _ = self._effective_base_statement(filters, targets_only=True)
+        targets = statement.subquery("analysis_filtered_target_count")
+        return cast(int, self._session.scalar(select(func.count()).select_from(targets)) or 0)
+
+    def snapshot_filtered_analysis_targets(
+        self,
+        filters: ContentFilterSnapshot,
+    ) -> tuple[int, str]:
+        """在单个 PostgreSQL Statement Snapshot 中统计并指纹化筛选目标全集。"""
+
+        statement, _ = self._effective_base_statement(filters, targets_only=True)
+        targets = statement.subquery("analysis_filtered_target_snapshot")
+        row = self._session.execute(
+            select(
+                *_target_snapshot_columns(
+                    targets.c.id,
+                    targets.c.current_version,
+                )
+            ).select_from(targets)
+        ).one()
+        target_count = int(row.target_count)
+        return (
+            target_count,
+            _target_snapshot_fingerprint(
+                target_count=target_count,
+                hash_sum0=int(row.target_hash_sum0),
+                hash_sum1=int(row.target_hash_sum1),
+            ),
+        )
+
+    def list_filtered_analysis_targets(
+        self,
+        *,
+        filters: ContentFilterSnapshot,
+        after_content_id: UUID | None,
+        limit: int,
+    ) -> tuple[ContentTarget, ...]:
+        """按 Content UUID 稳定读取筛选结果的一批 Target，供 Planner 短事务续跑。"""
+
+        if limit <= 0:
+            raise ValueError("limit 必须大于 0")
+        statement, _ = self._effective_base_statement(filters, targets_only=True)
+        selected = statement.subquery("analysis_filtered_target_batch")
+        page = select(selected.c.id, selected.c.current_version)
+        if after_content_id is not None:
+            page = page.where(selected.c.id > after_content_id)
+        rows = self._session.execute(page.order_by(selected.c.id).limit(limit)).all()
+        return tuple(
+            ContentTarget(
+                content_id=cast(UUID, row.id),
+                content_version=cast(int, row.current_version),
+            )
+            for row in rows
+        )
+
+    def snapshot_frozen_analysis_targets(self, run_id: UUID) -> tuple[int, str]:
+        """对已冻结 Run Target 计算 count + 集合指纹，不搬运全量 ID。"""
+
+        target = analysis_content_run_targets_table
+        row = self._session.execute(
+            select(
+                *_target_snapshot_columns(
+                    target.c.content_id,
+                    target.c.content_version,
+                )
+            ).where(target.c.run_id == run_id)
+        ).one()
+        target_count = int(row.target_count)
+        return (
+            target_count,
+            _target_snapshot_fingerprint(
+                target_count=target_count,
+                hash_sum0=int(row.target_hash_sum0),
+                hash_sum1=int(row.target_hash_sum1),
+            ),
         )
 
     def count_all_analysis_targets(self) -> int:

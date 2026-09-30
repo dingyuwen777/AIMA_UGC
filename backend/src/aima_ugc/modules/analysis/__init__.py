@@ -2,7 +2,6 @@
 
 from .content_labeling import (
     CONTENT_LABELING_PROMPT_PATH,
-    CONTENT_LABELING_PROMPT_POINTER_PATH,
     PROMPT_VERSION,
     ContentLabelingAttempt,
     ContentLabelingBatchResult,
@@ -19,7 +18,6 @@ from .content_labeling import (
     PromptTaxonomyLoader,
     RuntimeTaxonomyValidator,
     content_labeling_input_hash,
-    resolve_content_labeling_prompt_path,
 )
 from .offline_concurrent_labeling import label_unified_content_jsonl
 from .offline_content import (
@@ -60,7 +58,6 @@ from .representative_selection import (
 )
 
 __all__ = [
-    "CONTENT_LABELING_PROMPT_POINTER_PATH",
     "CONTENT_LABELING_PROMPT_PATH",
     "DEFAULT_OFFLINE_LLM_CONCURRENCY",
     "PROMPT_VERSION",
@@ -93,7 +90,6 @@ __all__ = [
     "label_unified_content_jsonl",
     "normalize_keyword_match_text",
     "normalize_keyword_storage_text",
-    "resolve_content_labeling_prompt_path",
     "CandidatePool",
     "CandidatePoolSummary",
     "GroupSelectionAudit",

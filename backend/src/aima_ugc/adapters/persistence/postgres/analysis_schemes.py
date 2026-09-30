@@ -85,7 +85,11 @@ class PostgresAnalysisSchemeRepository:
             )
             return (refreshed, True) if refreshed is not None else (active, False)
 
-        existing = self._session.scalar(select(func.count()).select_from(analysis_schemes_table))
+        existing = self._session.scalar(
+            select(func.count())
+            .select_from(analysis_schemes_table)
+            .where(analysis_schemes_table.c.deleted_at.is_(None))
+        )
         if int(existing or 0) > 0:
             raise RuntimeError("Analysis Scheme 存在但没有 active version")
 
@@ -98,6 +102,7 @@ class PostgresAnalysisSchemeRepository:
                 active_version_id=None,
                 is_active=False,
                 archived_at=None,
+                deleted_at=None,
                 created_at=now,
                 updated_at=now,
             )
@@ -221,7 +226,10 @@ class PostgresAnalysisSchemeRepository:
         scheme = (
             self._session.execute(
                 select(analysis_schemes_table)
-                .where(analysis_schemes_table.c.name == name)
+                .where(
+                    analysis_schemes_table.c.name == name,
+                    analysis_schemes_table.c.deleted_at.is_(None),
+                )
                 .with_for_update()
             )
             .mappings()
@@ -237,6 +245,7 @@ class PostgresAnalysisSchemeRepository:
                     active_version_id=None,
                     is_active=False,
                     archived_at=None,
+                    deleted_at=None,
                     created_at=now,
                     updated_at=now,
                 )
@@ -300,6 +309,7 @@ class PostgresAnalysisSchemeRepository:
                     analysis_scheme_versions_table.c.version == expected_version,
                     analysis_scheme_versions_table.c.status == "draft",
                     analysis_schemes_table.c.archived_at.is_(None),
+                    analysis_schemes_table.c.deleted_at.is_(None),
                 )
                 .with_for_update()
             )
@@ -375,6 +385,7 @@ class PostgresAnalysisSchemeRepository:
                     analysis_scheme_versions_table.c.id == version_id,
                     analysis_scheme_versions_table.c.version == expected_version,
                     analysis_schemes_table.c.archived_at.is_(None),
+                    analysis_schemes_table.c.deleted_at.is_(None),
                 )
                 .with_for_update()
             )
@@ -436,6 +447,7 @@ class PostgresAnalysisSchemeRepository:
                 .where(
                     analysis_schemes_table.c.is_active.is_(True),
                     analysis_schemes_table.c.archived_at.is_(None),
+                    analysis_schemes_table.c.deleted_at.is_(None),
                 )
             )
             .mappings()
@@ -451,7 +463,10 @@ class PostgresAnalysisSchemeRepository:
         schemes = tuple(
             self._session.execute(
                 select(analysis_schemes_table)
-                .where(analysis_schemes_table.c.archived_at.is_(None))
+                .where(
+                    analysis_schemes_table.c.archived_at.is_(None),
+                    analysis_schemes_table.c.deleted_at.is_(None),
+                )
                 .order_by(
                     analysis_schemes_table.c.is_active.desc(),
                     analysis_schemes_table.c.name,

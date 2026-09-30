@@ -510,7 +510,7 @@
       },
       "AnalysisRunTargetSelection": {
         "additionalProperties": false,
-        "description": "Analysis Run 公开目标：显式选择或数据库当前全部 Content。",
+        "description": "Analysis Run 公开目标：显式选择、当前筛选结果或数据库当前全部 Content。",
         "properties": {
           "content_ids": {
             "default": [],
@@ -522,10 +522,21 @@
             "title": "Content Ids",
             "type": "array"
           },
+          "filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentFilterSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "scope": {
             "default": "selected",
             "enum": [
               "selected",
+              "query",
               "all"
             ],
             "title": "Scope",

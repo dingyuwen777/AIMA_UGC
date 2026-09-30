@@ -9,12 +9,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 import pytest
-from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
 from aima_ugc.contracts.http import ContentFilterSnapshot
-from aima_ugc.modules.analysis.schemes import compile_analysis_scheme
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.security import read_secret_file
 from alembic import command
@@ -27,17 +26,21 @@ _ROOT = Path(__file__).resolve().parents[3]
 _NOW = datetime(2026, 8, 17, 8, 30, tzinfo=UTC)
 
 
-def _legacy_analysis_snapshot(definition: dict[str, object]) -> tuple[str, str, str]:
-    """复现 0038 之前依赖 labels 插入顺序的编译行为。"""
+def _analysis_snapshot(
+    definition: dict[str, object], *, stable_label_order: bool
+) -> tuple[str, str, str]:
+    """复现 0038 冻结的旧版编译算法，避免依赖当前业务 Compiler。"""
+
+    labels = cast(dict[str, list[str]], definition["labels"])
+    sentiments = cast(list[str], definition["sentiments"])
+    voice_types = cast(list[str], definition["voice_types"])
+    label_keys = sorted(labels) if stable_label_order else labels
 
     taxonomy_payload = {
         "schema_version": "aima-content-taxonomy.v2",
-        "sentiments": list(definition["sentiments"]),  # type: ignore[arg-type]
-        "voice_types": list(definition["voice_types"]),  # type: ignore[arg-type]
-        "labels": {
-            key: list(values)
-            for key, values in definition["labels"].items()  # type: ignore[union-attr]
-        },
+        "sentiments": list(sentiments),
+        "voice_types": list(voice_types),
+        "labels": {key: list(labels[key]) for key in label_keys},
     }
     readable_json = json.dumps(taxonomy_payload, ensure_ascii=False, indent=2)
     normalized_json = json.dumps(
@@ -1107,7 +1110,9 @@ def test_0038_recompiles_existing_analysis_scheme_snapshots(
             "产品体验": ["续航表现"],
         },
     }
-    legacy_prompt, legacy_prompt_sha, legacy_taxonomy_sha = _legacy_analysis_snapshot(definition)
+    legacy_prompt, legacy_prompt_sha, legacy_taxonomy_sha = _analysis_snapshot(
+        definition, stable_label_order=False
+    )
     engine = _engine(migration_database)
     try:
         with engine.begin() as connection:
@@ -1164,12 +1169,10 @@ def test_0038_recompiles_existing_analysis_scheme_snapshots(
                 .mappings()
                 .one()
             )
-        compiled = compile_analysis_scheme(
-            AnalysisSchemeDefinitionRequest.model_validate(row["definition"])
-        )
-        assert row["compiled_prompt"] == compiled.prompt_text
-        assert row["prompt_sha256"] == compiled.prompt_sha256
-        assert row["taxonomy_sha256"] == compiled.taxonomy_sha256
+        stable = _analysis_snapshot(row["definition"], stable_label_order=True)
+        assert row["compiled_prompt"] == stable[0]
+        assert row["prompt_sha256"] == stable[1]
+        assert row["taxonomy_sha256"] == stable[2]
     finally:
         engine.dispose()
 
@@ -1188,7 +1191,7 @@ def test_0038_recompiles_existing_analysis_scheme_snapshots(
                 .mappings()
                 .one()
             )
-        legacy = _legacy_analysis_snapshot(row["definition"])
+        legacy = _analysis_snapshot(row["definition"], stable_label_order=False)
         assert row["compiled_prompt"] == legacy[0]
         assert row["prompt_sha256"] == legacy[1]
         assert row["taxonomy_sha256"] == legacy[2]

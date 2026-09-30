@@ -1,32 +1,39 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
-export interface WorkbenchSelectOption {
+export interface AimaSelectOption {
   value: string
   label: string
 }
 
 const props = withDefaults(defineProps<{
   label: string
-  options: WorkbenchSelectOption[]
+  options: AimaSelectOption[]
   modelValue: string[]
   allLabel?: string
+  summary?: string
   disabled?: boolean
+  appearance?: 'compact' | 'field'
+  showBulkAction?: boolean
 }>(), {
   allLabel: '全部',
+  summary: undefined,
   disabled: false,
+  appearance: 'compact',
+  showBulkAction: true,
 })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
 const trigger = ref<HTMLButtonElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
 const open = ref(false)
-const position = ref({ left: '12px', top: '12px', maxHeight: '270px' })
-let positionedTrigger: { left: number; top: number } | null = null
+const position = ref({ left: '12px', top: '12px', maxHeight: '270px', width: '220px' })
+let positionedTrigger: { left: number, top: number } | null = null
 const nativePopoverSupported = typeof HTMLElement !== 'undefined'
   && typeof HTMLElement.prototype.showPopover === 'function'
 
 const selectedText = computed(() => {
+  if (props.summary !== undefined) return props.summary
   if (props.modelValue.length === 0) return props.allLabel
   if (props.modelValue.length === 1) {
     return props.options.find((item) => item.value === props.modelValue[0])?.label ?? '已选 1 项'
@@ -54,7 +61,9 @@ function updatePosition(): void {
   if (!box || !menu) return
   const viewportGap = 12
   const anchorGap = 5
-  const panelWidth = menu.offsetWidth || 232
+  const panelWidth = props.appearance === 'field'
+    ? Math.max(220, Math.min(box.width, window.innerWidth - viewportGap * 2))
+    : 220
   const desiredHeight = Math.min(menu.scrollHeight || 270, 270, window.innerHeight - viewportGap * 2)
   const below = window.innerHeight - box.bottom - viewportGap - anchorGap
   const above = box.top - viewportGap - anchorGap
@@ -72,12 +81,14 @@ function updatePosition(): void {
     left: `${Math.round(left)}px`,
     top: `${Math.round(top)}px`,
     maxHeight: `${Math.round(actualHeight)}px`,
+    width: `${Math.round(panelWidth)}px`,
   }
   positionedTrigger = { left: box.left, top: box.top }
 }
 
 /** 显式打开面板；原生 Popover 只增强顶层和 light-dismiss，不拥有显示事实。 */
 async function showPanel(): Promise<void> {
+  if (props.disabled) return
   open.value = true
   await nextTick()
   if (nativePopoverSupported && panel.value && !panel.value.matches(':popover-open')) {
@@ -115,9 +126,7 @@ function dismissOnScroll(event: Event): void {
     && triggerElement
     && scrollTarget.contains(triggerElement)
     && triggerMoved
-  if (scrollTarget === window || movedByAncestorScroll) {
-    hidePanel()
-  }
+  if (scrollTarget === window || movedByAncestorScroll) hidePanel()
 }
 
 /** fallback 模式补齐原生 Popover 的点击外部关闭。 */
@@ -156,31 +165,40 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="workbench-select">
+  <div
+    class="aima-multi-select"
+    :class="`aima-multi-select--${appearance}`"
+  >
+    <span
+      v-if="appearance === 'field'"
+      class="aima-multi-select__label"
+    >{{ label }}</span>
     <button
       ref="trigger"
-      class="workbench-select__trigger"
+      class="aima-multi-select__trigger"
       type="button"
       :aria-label="label"
       aria-haspopup="dialog"
       :aria-expanded="open"
+      :aria-disabled="disabled"
       :disabled="disabled"
       @click="togglePanel"
     >
-      <span>{{ label }}：</span><strong>{{ selectedText }}</strong><i>▾</i>
+      <span v-if="appearance === 'compact'">{{ label }}：</span><strong>{{ selectedText }}</strong><i>▾</i>
     </button>
     <div
       ref="panel"
       :popover="nativePopoverSupported ? 'auto' : undefined"
-      class="workbench-select__panel"
-      :class="{ 'workbench-select__panel--open': open }"
+      class="aima-multi-select__panel"
+      :class="{ 'aima-multi-select__panel--open': open }"
       :style="position"
       role="dialog"
       :aria-label="`选择${label}`"
       @toggle="syncNativeToggle"
     >
       <button
-        class="workbench-select__all"
+        v-if="showBulkAction"
+        class="aima-multi-select__all"
         type="button"
         :disabled="disabled || options.length === 0"
         @click="toggleAll"
@@ -207,9 +225,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.workbench-select__trigger {
+.aima-multi-select { min-width: 0; }
+.aima-multi-select--field { display: grid; gap: 6px; color: var(--aima-text-muted); font-size: 12px; font-weight: 700; }
+.aima-multi-select__trigger {
   display: flex;
   height: 30px;
+  min-width: 0;
   align-items: center;
   gap: 3px;
   padding: 0 9px;
@@ -221,13 +242,17 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   font-size: 11px;
 }
-.workbench-select__trigger strong { max-width: 118px; overflow: hidden; color: var(--aima-text); font-weight: 600; text-overflow: ellipsis; }
-.workbench-select__trigger i { margin-left: 2px; color: var(--aima-text-disabled); font-style: normal; }
-.workbench-select__trigger[aria-expanded="true"] { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-color-focus-ring); }
-.workbench-select__panel {
+.aima-multi-select__trigger strong { max-width: 118px; overflow: hidden; color: var(--aima-text); font-weight: 600; text-overflow: ellipsis; }
+.aima-multi-select__trigger i { margin-left: 2px; color: var(--aima-text-disabled); font-style: normal; }
+.aima-multi-select__trigger[aria-expanded="true"] { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-color-focus-ring); }
+.aima-multi-select__trigger:disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); cursor: not-allowed; }
+.aima-multi-select--field .aima-multi-select__trigger { width: 100%; height: 40px; justify-content: space-between; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 400; }
+.aima-multi-select--field .aima-multi-select__trigger strong { max-width: calc(100% - 22px); color: var(--aima-text-muted); font-weight: 400; }
+.aima-multi-select__panel {
   position: fixed;
+  z-index: 1000;
   inset: auto;
-  width: 220px;
+  display: none;
   gap: 1px;
   overflow: auto;
   margin: 0;
@@ -237,11 +262,11 @@ onBeforeUnmount(() => {
   background: var(--aima-surface);
   box-shadow: var(--aima-shadow-floating);
 }
-.workbench-select__panel:not(.workbench-select__panel--open) { display: none; }
-.workbench-select__panel--open { display: grid; }
-.workbench-select__panel label { display: flex; min-height: 30px; align-items: center; gap: 7px; padding: 4px 7px; border-radius: 5px; color: var(--aima-text); cursor: pointer; font-size: 11px; }
-.workbench-select__panel label:hover { background: var(--aima-color-bg-hover); }
-.workbench-select__panel input { accent-color: var(--aima-primary); }
-.workbench-select__panel p { margin: 10px; color: var(--aima-text-disabled); text-align: center; font-size: 11px; }
-.workbench-select__all { min-height: 28px; border: 0; border-bottom: 1px solid var(--aima-border); color: var(--aima-primary); background: transparent; cursor: pointer; text-align: left; font-size: 11px; }
+.aima-multi-select__panel--open { display: grid; }
+.aima-multi-select__panel label { display: flex; min-height: 30px; align-items: center; gap: 7px; padding: 4px 7px; border-radius: 5px; color: var(--aima-text); cursor: pointer; font-size: 11px; font-weight: 400; }
+.aima-multi-select--field .aima-multi-select__panel label { min-height: 34px; font-size: 13px; }
+.aima-multi-select__panel label:hover { background: var(--aima-color-bg-hover); }
+.aima-multi-select__panel input { width: 14px; height: 14px; accent-color: var(--aima-primary); }
+.aima-multi-select__panel p { margin: 10px; color: var(--aima-text-disabled); text-align: center; font-size: 11px; }
+.aima-multi-select__all { min-height: 28px; border: 0; border-bottom: 1px solid var(--aima-border); color: var(--aima-primary); background: transparent; cursor: pointer; text-align: left; font-size: 11px; }
 </style>

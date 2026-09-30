@@ -24,7 +24,7 @@ const analysisRun = {
   target_count: 20,
   shard_count: 2,
   shard_size: 6,
-  prompt_version: 'content_labeling_v3',
+  prompt_version: 'content-labeling.v3.0',
   prompt_sha256: 'a'.repeat(64),
   taxonomy_sha256: 'b'.repeat(64),
   model_provider: 'openai-compatible',
@@ -249,7 +249,7 @@ test.beforeEach(async ({ page }) => {
         target_count: 1,
         shard_count: 1,
         shard_size: 1,
-        prompt_version: 'content_labeling_v3',
+        prompt_version: 'content-labeling.v3.0',
         prompt_sha256: 'a'.repeat(64),
         taxonomy_sha256: 'b'.repeat(64),
         model_provider: 'openai-compatible',
@@ -301,7 +301,7 @@ test.beforeEach(async ({ page }) => {
         target_count: 1,
         shard_count: 1,
         shard_size: 1,
-        prompt_version: 'content_labeling_v3',
+        prompt_version: 'content-labeling.v3.0',
         prompt_sha256: 'a'.repeat(64),
         taxonomy_sha256: 'b'.repeat(64),
         model_provider: 'openai-compatible',
@@ -783,6 +783,61 @@ test('keeps stable filters and content usable when dynamic filter options are un
   await expect(page.getByText(item.title)).toBeVisible()
 })
 
+test('标签多选使用不改变布局且可按常见方式关闭的互斥浮层', async ({ page }) => {
+  await page.goto('/voice-plaza')
+  const filters = page.locator('section.filters')
+  const primaryTrigger = filters.getByRole('button', { name: /^一级标签/ })
+  const secondaryTrigger = filters.getByRole('button', { name: /^二级标签/ })
+  const primaryDialog = page.getByRole('dialog', { name: '选择一级标签', exact: true })
+  const secondaryDialog = page.getByRole('dialog', { name: '选择二级标签', exact: true })
+  const initialHeight = await filters.evaluate((element) => element.getBoundingClientRect().height)
+  const actionButtons = [
+    page.getByRole('button', { name: '条件重置', exact: true }),
+    page.getByRole('button', { name: '查询', exact: true }),
+  ]
+  const initialActionPositions = await Promise.all(
+    actionButtons.map((button) => button.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return { x: box.x, y: box.y }
+    })),
+  )
+
+  await primaryTrigger.click()
+  await expect(primaryDialog).toBeVisible()
+  await expect.poll(
+    () => filters.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBe(initialHeight)
+  await expect.poll(() => Promise.all(
+    actionButtons.map((button) => button.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return { x: box.x, y: box.y }
+    })),
+  )).toEqual(initialActionPositions)
+  const panelMetrics = await primaryDialog.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    overflowY: getComputedStyle(element).overflowY,
+  }))
+  expect(panelMetrics.height).toBeLessThanOrEqual(270)
+  expect(panelMetrics.overflowY).toBe('auto')
+  await primaryDialog.getByRole('checkbox', { name: '产品体验', exact: true }).check()
+  await expect(primaryDialog).toBeVisible()
+
+  await secondaryTrigger.click()
+  await expect(primaryDialog).toBeHidden()
+  await expect(secondaryDialog).toBeVisible()
+  await secondaryTrigger.click()
+  await expect(secondaryDialog).toBeHidden()
+
+  await secondaryTrigger.click()
+  await page.getByRole('heading', { name: '声音广场', exact: true }).click()
+  await expect(secondaryDialog).toBeHidden()
+
+  await primaryTrigger.click()
+  await page.keyboard.press('Escape')
+  await expect(primaryDialog).toBeHidden()
+  await expect(primaryTrigger).toBeFocused()
+})
+
 test('一级标签多选约束二级候选，父级取消后失效二级不会进入查询', async ({ page }) => {
   await page.goto('/voice-plaza')
   const filters = page.locator('section.filters')
@@ -796,19 +851,18 @@ test('一级标签多选约束二级候选，父级取消后失效二级不会�
 
   await primarySummary.click()
   await primaryField.getByRole('checkbox', { name: '产品体验' }).check()
+  await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
   await expect(secondarySummary).toHaveAttribute('aria-disabled', 'false')
 
   await secondarySummary.click()
-  await expect(secondaryField.getByRole('checkbox', { name: '续航表现' })).toBeVisible()
-  await expect(secondaryField.getByRole('checkbox', { name: '通勤体验' })).toBeVisible()
-  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toHaveCount(0)
-
-  await primaryField.getByRole('checkbox', { name: '电池、续航与充电' }).check()
-  await expect(secondaryField.getByRole('checkbox', { name: '实际续航表现' })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '产品体验 / 通勤体验', exact: true })).toBeVisible()
+  await expect(secondaryField.getByRole('checkbox', { name: '电池、续航与充电 / 实际续航表现', exact: true })).toBeVisible()
   await secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }).check()
-  await secondaryField.getByRole('checkbox', { name: '实际续航表现' }).check()
+  await secondaryField.getByRole('checkbox', { name: '电池、续航与充电 / 实际续航表现', exact: true }).check()
   await expect(secondarySummary).toContainText('已选 2 个二级标签')
 
+  await primarySummary.click()
   await primaryField.getByRole('checkbox', { name: '产品体验' }).uncheck()
   await expect(
     secondaryField.getByRole('checkbox', { name: '产品体验 / 续航表现', exact: true }),
@@ -1022,6 +1076,49 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
 })
 
 
+test('creates a query analysis run from the full applied filter snapshot', async ({ page }) => {
+  let previewRequest: Record<string, any> | undefined
+  await page.unroute('**/api/v1/analysis/content-runs/preview')
+  await page.route('**/api/v1/analysis/content-runs/preview', async (route) => {
+    previewRequest = route.request().postDataJSON() as Record<string, any>
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        target_count: 27,
+        shard_count: 1,
+        shard_size: 100,
+        prompt_version: 'content-labeling.v3.0',
+        prompt_sha256: 'a'.repeat(64),
+        taxonomy_sha256: 'b'.repeat(64),
+        model_provider: 'openai-compatible',
+        model: 'fixture-model',
+        generation_config: { temperature: 0 },
+        generation_config_hash: 'c'.repeat(64),
+        configuration_hash: 'd'.repeat(64),
+        cost_estimate_available: false,
+        cost_estimate_note: '运行后以实际 token/cost 审计为准。',
+      }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+  const voicePlaza = page.getByRole('main', { name: '声音广场' })
+  await voicePlaza.getByLabel('平台', { exact: true }).selectOption('xiaohongshu')
+  await page.getByRole('button', { name: '查询' }).click()
+  await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
+  await expect(dialog.getByRole('radio', { name: /当前筛选结果/ })).toBeChecked()
+  await expect(dialog.getByText('预计分析 27 条内容')).toBeVisible()
+  expect(previewRequest?.targets).toMatchObject({
+    scope: 'query',
+    filters: { platforms: ['xiaohongshu'] },
+  })
+  expect(previewRequest?.targets).not.toHaveProperty('content_ids')
+  expect(previewRequest?.targets?.filters).not.toHaveProperty('sort_by')
+  expect(previewRequest?.targets?.filters).not.toHaveProperty('cursor')
+})
+
 test('creates an all-data analysis run without browser-side content ids', async ({ page }) => {
   let previewRequest: Record<string, unknown> | undefined
   let createRequest: Record<string, unknown> | undefined
@@ -1033,7 +1130,7 @@ test('creates an all-data analysis run without browser-side content ids', async 
         target_count: 4200,
         shard_count: 42,
         shard_size: 100,
-        prompt_version: 'content_labeling_v3',
+        prompt_version: 'content-labeling.v3.0',
         prompt_sha256: 'a'.repeat(64),
         taxonomy_sha256: 'b'.repeat(64),
         model_provider: 'openai-compatible',
@@ -1067,6 +1164,8 @@ test('creates an all-data analysis run without browser-side content ids', async 
   await expect(analysisButton).toBeEnabled()
   await analysisButton.click()
   const dialog = page.getByRole('dialog', { name: '开始 AI 分析' })
+  await expect(dialog.getByRole('radio', { name: /当前筛选结果/ })).toBeChecked()
+  await dialog.getByRole('radio', { name: /全部系统内容/ }).check()
   await expect(dialog.getByRole('radio', { name: /全部系统内容/ })).toBeChecked()
   await expect(dialog.getByText('预计分析 4200 条内容')).toBeVisible()
   await expect(dialog.getByText(/分析可能产生服务费用/)).toBeVisible()

@@ -64,6 +64,31 @@ describe('AI Analysis Run all scope', () => {
     })
   })
 
+  it('submits the current applied query snapshot without page or sort state', async () => {
+    const store = useVoicePlazaStore()
+    await store.refreshAnalysisCapabilities()
+    store.filters.platforms = ['xiaohongshu']
+    store.filters.sentiments = ['负面']
+    store.applyFilters()
+
+    const preview = await store.previewAnalysis('query')
+
+    expect(preview?.target_count).toBe(4200)
+    expect(api.previewAnalysisRun).toHaveBeenCalledWith(expect.objectContaining({
+      targets: expect.objectContaining({
+        scope: 'query',
+        filters: expect.objectContaining({
+          platforms: ['xiaohongshu'],
+          sentiments: ['负面'],
+        }),
+      }),
+    }))
+    const request = api.previewAnalysisRun.mock.calls.at(-1)?.[0]
+    expect(request?.targets).not.toHaveProperty('content_ids')
+    expect(request?.targets.filters).not.toHaveProperty('sort_by')
+    expect(request?.targets.filters).not.toHaveProperty('cursor')
+  })
+
   it('keeps selected mode validation independent from all mode', async () => {
     const store = useVoicePlazaStore()
     await store.refreshAnalysisCapabilities()
