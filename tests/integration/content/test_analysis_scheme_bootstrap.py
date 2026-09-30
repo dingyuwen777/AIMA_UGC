@@ -66,13 +66,14 @@ def test_empty_database_bootstraps_the_unique_current_prompt(tmp_path: Path) -> 
     finally:
         runtime.close()
 
-def _changed_git_prompt(tmp_path: Path) -> Path:
+
+def _changed_git_prompt(tmp_path: Path, *, label: str = "Git自动刷新测试") -> Path:
     """只修改人类可读标签区，模拟后续直接提交 Git Markdown。"""
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     changed = prompt.replace(
         "### 品牌评价\n\n- 口碑与信任\n",
-        "### 品牌评价\n\n- Git自动刷新测试\n",
+        f"### 品牌评价\n\n- {label}\n",
         1,
     )
     assert changed != prompt
@@ -281,3 +282,61 @@ def test_git_refresh_is_blocked_by_another_live_scheme(
     finally:
         runtime.close()
 
+
+
+def test_git_refresh_respects_manual_rollback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """管理员回滚到旧 Git Version 后，自动刷新不得覆盖该显式选择。"""
+
+    settings = load_settings().model_copy(
+        update={"data_dir": tmp_path / "data", "log_dir": tmp_path / "logs"}
+    )
+    runtime = create_worker_runtime(settings=settings)
+    try:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE analysis_schemes, analysis_scheme_versions, jobs "
+                "RESTART IDENTITY CASCADE"
+            )
+
+        with runtime.database.new_session() as session, session.begin():
+            repository = PostgresAnalysisSchemeRepository(session)
+            original, created = repository.bootstrap_default(actor_ref="system:git-bootstrap")
+            assert created is True
+
+        changed_path = _changed_git_prompt(tmp_path, label="Git自动刷新版本2")
+        monkeypatch.setattr(
+            analysis_schemes_module,
+            "CONTENT_LABELING_PROMPT_PATH",
+            changed_path,
+        )
+        with runtime.database.new_session() as session, session.begin():
+            repository = PostgresAnalysisSchemeRepository(session)
+            version2, changed = repository.bootstrap_default(actor_ref="system:git-bootstrap")
+            assert changed is True
+            assert version2.version == 2
+            rolled_back = repository.activate_version(original.id, expected_version=1)
+            assert rolled_back.id == original.id
+            assert rolled_back.status == "published"
+
+        changed_path = _changed_git_prompt(tmp_path, label="Git自动刷新版本3")
+        monkeypatch.setattr(
+            analysis_schemes_module,
+            "CONTENT_LABELING_PROMPT_PATH",
+            changed_path,
+        )
+        with runtime.database.new_session() as session, session.begin():
+            repository = PostgresAnalysisSchemeRepository(session)
+            active, changed = repository.bootstrap_default(actor_ref="system:git-bootstrap")
+
+            assert changed is False
+            assert active.id == original.id
+            assert active.version == 1
+            assert (
+                session.scalar(select(func.count()).select_from(analysis_scheme_versions_table))
+                == 2
+            )
+    finally:
+        runtime.close()
