@@ -41,7 +41,7 @@ def active_analysis_configuration(
     *,
     refresh_unused_git_bootstrap: bool = False,
 ) -> ActiveAnalysisConfiguration:
-    """读取 active Scheme；仅显式首次打标入口允许刷新未使用的 Git bootstrap。"""
+    """读取 active Scheme；分析冻结入口可显式检查纯 Git-managed Scheme 是否需要刷新。"""
 
     repository = PostgresAnalysisSchemeRepository(session)
     bootstrap_changed = False
