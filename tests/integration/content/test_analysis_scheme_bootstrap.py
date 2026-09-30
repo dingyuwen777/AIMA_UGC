@@ -302,9 +302,9 @@ def test_deployment_promotion_serializes_concurrent_git_refresh(
         seed_session = runtime.database.new_session()
         try:
             with seed_session.begin():
-                first, created = PostgresAnalysisSchemeRepository(
-                    seed_session
-                ).bootstrap_default(actor_ref="system:git-bootstrap")
+                first, created = PostgresAnalysisSchemeRepository(seed_session).bootstrap_default(
+                    actor_ref="system:git-bootstrap"
+                )
                 assert created is True
                 assert first.version == 1
         finally:
@@ -312,8 +312,7 @@ def test_deployment_promotion_serializes_concurrent_git_refresh(
 
         edited_prompt = _edited_prompt(tmp_path)
         monkeypatch.setattr(
-            "aima_ugc.adapters.persistence.postgres.analysis_schemes."
-            "CONTENT_LABELING_PROMPT_PATH",
+            "aima_ugc.adapters.persistence.postgres.analysis_schemes.CONTENT_LABELING_PROMPT_PATH",
             edited_prompt,
         )
         barrier = Barrier(2)
@@ -325,9 +324,7 @@ def test_deployment_promotion_serializes_concurrent_git_refresh(
             try:
                 barrier.wait(timeout=10)
                 with session.begin():
-                    version, action = PostgresAnalysisSchemeRepository(
-                        session
-                    ).promote_git_prompt()
+                    version, action = PostgresAnalysisSchemeRepository(session).promote_git_prompt()
                     return action, version.id, version.version
             finally:
                 session.close()
