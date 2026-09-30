@@ -58,7 +58,7 @@ PyPI            → pypi.org
 npm             → registry.npmjs.org
 ```
 
-`release-manifest.json` 会记录实际 `build_source_profile` 和完整 `build_upstreams`，并记录从实际 backend 镜像读取的 `analysis_prompt.protocol / prompt_sha256 / taxonomy_sha256 / source_sha256`。构建器会把镜像内 Prompt 原始文件 Hash 与当前 checkout 的唯一 `content_labeling.md` 比较，不一致时直接失败。两种 Profile 共用锁文件、Dockerfile、Bundle Contract、镜像 Tag、Schema/manifest 和服务器部署语义，但**不承诺两个网络源构建出的镜像 bit-for-bit 完全一致**。
+`release-manifest.json` 会记录实际 `build_source_profile` 和完整 `build_upstreams`，并记录从实际 backend 镜像读取的 `analysis_prompt.protocol / prompt_sha256 / taxonomy_sha256 / source_sha256`。构建器会把镜像内 Prompt 原始文件 Hash 与当前 checkout 的唯一 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](../../backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md) 比较，不一致时直接失败。两种 Profile 共用锁文件、Dockerfile、Bundle Contract、镜像 Tag、Schema/manifest 和服务器部署语义，但**不承诺两个网络源构建出的镜像 bit-for-bit 完全一致**。
 
 ## 3. Windows 前置条件
 
