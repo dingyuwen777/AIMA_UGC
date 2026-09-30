@@ -92,6 +92,10 @@ class ImageFacts:
     postgres_ref: str
     alembic_head: str
     openapi_sha256: str
+    analysis_prompt_protocol: str
+    analysis_prompt_sha256: str
+    analysis_taxonomy_sha256: str
+    analysis_prompt_source_sha256: str
 
 
 def _format_command(arguments: Sequence[str]) -> str:
@@ -344,6 +348,61 @@ def build_images(root: Path, version: str, profile_name: str) -> None:
     _run(["docker", "pull", "--platform", PLATFORM, POSTGRES_IMAGE], cwd=root)
 
 
+def _backend_prompt_identity(root: Path, backend: str) -> dict[str, str]:
+    """从实际 backend 镜像读取唯一 Prompt 协议与 Hash，并核对源码文件字节身份。"""
+
+    script = (
+        "import hashlib,json;"
+        "from aima_ugc.modules.analysis.prompt_taxonomy import "
+        "CONTENT_LABELING_PROMPT_PATH,PromptTaxonomyLoader;"
+        "taxonomy=PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load();"
+        "print(json.dumps({"
+        "'protocol':taxonomy.output_protocol_version,"
+        "'prompt_sha256':taxonomy.prompt_sha256,"
+        "'taxonomy_sha256':taxonomy.taxonomy_sha256,"
+        "'source_sha256':hashlib.sha256(CONTENT_LABELING_PROMPT_PATH.read_bytes()).hexdigest()"
+        "},sort_keys=True))"
+    )
+    raw = _run(
+        ["docker", "run", "--rm", backend, "python", "-c", script],
+        cwd=root,
+        capture=True,
+    ).strip()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ReleaseBundleError("无法解析 backend 镜像 Prompt 身份。") from exc
+    if not isinstance(payload, dict):
+        raise ReleaseBundleError("backend 镜像 Prompt 身份根节点必须是对象。")
+    required = ("protocol", "prompt_sha256", "taxonomy_sha256", "source_sha256")
+    result: dict[str, str] = {}
+    for key in required:
+        value = payload.get(key)
+        if not isinstance(value, str) or not value:
+            raise ReleaseBundleError(f"backend 镜像 Prompt 身份缺少字段：{key}")
+        result[key] = value
+
+    source_path = (
+        root
+        / "backend"
+        / "src"
+        / "aima_ugc"
+        / "modules"
+        / "analysis"
+        / "prompts"
+        / "content_labeling.md"
+    )
+    if not source_path.is_file():
+        raise ReleaseBundleError(f"缺少源码 Prompt：{source_path}")
+    source_sha256 = _sha256_file(source_path)
+    if result["source_sha256"] != source_sha256:
+        raise ReleaseBundleError(
+            "backend 镜像 Prompt 与源码不一致："
+            f"source={source_sha256} image={result['source_sha256']}"
+        )
+    return result
+
+
 def collect_image_facts(root: Path, version: str) -> ImageFacts:
     """冻结应用镜像、PostgreSQL digest、Alembic head 与 OpenAPI hash。"""
     backend, _, frontend, _ = _application_image_refs(version)
@@ -381,12 +440,17 @@ def collect_image_facts(root: Path, version: str) -> ImageFacts:
     openapi_path = root / "contracts" / "openapi" / "openapi.json"
     if not openapi_path.is_file():
         raise ReleaseBundleError(f"缺少 OpenAPI 机器事实：{openapi_path}")
+    prompt_identity = _backend_prompt_identity(root, backend)
     return ImageFacts(
         backend_id=backend_id,
         frontend_id=frontend_id,
         postgres_ref=postgres_ref,
         alembic_head=heads[0],
         openapi_sha256=_sha256_file(openapi_path),
+        analysis_prompt_protocol=prompt_identity["protocol"],
+        analysis_prompt_sha256=prompt_identity["prompt_sha256"],
+        analysis_taxonomy_sha256=prompt_identity["taxonomy_sha256"],
+        analysis_prompt_source_sha256=prompt_identity["source_sha256"],
     )
 
 
@@ -445,6 +509,12 @@ def _release_manifest(
         "schema": {
             "alembic_head": facts.alembic_head,
             "openapi_sha256": facts.openapi_sha256,
+        },
+        "analysis_prompt": {
+            "protocol": facts.analysis_prompt_protocol,
+            "prompt_sha256": facts.analysis_prompt_sha256,
+            "taxonomy_sha256": facts.analysis_taxonomy_sha256,
+            "source_sha256": facts.analysis_prompt_source_sha256,
         },
         "verification": {
             "offline_replay": offline_replay,
