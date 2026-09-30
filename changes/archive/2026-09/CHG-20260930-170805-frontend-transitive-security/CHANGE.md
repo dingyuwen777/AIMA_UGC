@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260930-170805-frontend-transitive-security
 title: 更新前端传递依赖安全补丁版本
 level: L2
-status: ready_for_review
+status: done
 owner: assistant
 branch: fix/frontend-transitive-security
 created: 2026-09-30 17:08:05 +08:00
