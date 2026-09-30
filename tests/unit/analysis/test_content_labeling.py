@@ -59,6 +59,21 @@ def _prompt_with_taxonomy_mutation(
     return path
 
 
+def _prompt_with_human_labels_mutation(
+    tmp_path: Path,
+    mutate: Callable[[str], str],
+) -> Path:
+    """只修改人类可读标签区，模拟直接编辑 Git Markdown 而不手工同步机器 JSON。"""
+
+    prompt = CURRENT_PROMPT_PATH.read_text(encoding="utf-8")
+    before_rules, marker, after_rules = prompt.partition("### 标签规则")
+    assert marker
+    mutated = mutate(before_rules) + marker + after_rules
+    path = tmp_path / "mutated_human_labels.md"
+    path.write_text(mutated, encoding="utf-8")
+    return path
+
+
 def _valid_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
     primary = taxonomy.primary_labels[0]
     secondary = taxonomy.labels[primary][0]
@@ -214,14 +229,36 @@ def test_prompt_contains_required_human_judgment_sections() -> None:
 def test_prompt_taxonomy_changes_are_runtime_driven_without_python_changes(tmp_path: Path) -> None:
     original = PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
 
-    def add_label(payload: dict[str, Any]) -> None:
-        payload["labels"]["临时测试一级"] = ["临时测试二级"]
+    def add_label(human_section: str) -> str:
+        return human_section + "### 临时测试一级\n\n- 临时测试二级\n\n"
 
-    changed = PromptTaxonomyLoader(_prompt_with_taxonomy_mutation(tmp_path, add_label)).load()
+    changed = PromptTaxonomyLoader(
+        _prompt_with_human_labels_mutation(tmp_path, add_label)
+    ).load()
 
     assert changed.primary_labels == (*original.primary_labels, "临时测试一级")
     assert changed.labels["临时测试一级"] == ("临时测试二级",)
+    assert '"临时测试一级"' in changed.prompt_text
+    assert "AIMA_LABEL_GUIDE_START" not in changed.prompt_text
     assert changed.taxonomy_sha256 != original.taxonomy_sha256
+
+
+def test_machine_label_mirror_does_not_override_git_markdown_label_source(tmp_path: Path) -> None:
+    """只改机器 JSON 的 labels 不得形成第二套标签事实。"""
+
+    original = PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
+
+    def add_machine_only_label(payload: dict[str, Any]) -> None:
+        payload["labels"]["机器镜像假标签"] = ["不会生效"]
+
+    changed = PromptTaxonomyLoader(
+        _prompt_with_taxonomy_mutation(tmp_path, add_machine_only_label)
+    ).load()
+
+    assert dict(changed.labels) == dict(original.labels)
+    assert "机器镜像假标签" not in changed.prompt_text
+    assert changed.taxonomy_sha256 == original.taxonomy_sha256
+    assert changed.prompt_sha256 == original.prompt_sha256
 
 
 def test_removed_prompt_label_is_immediately_rejected_by_runtime_validator(tmp_path: Path) -> None:
@@ -229,10 +266,14 @@ def test_removed_prompt_label_is_immediately_rejected_by_runtime_validator(tmp_p
     primary = original.primary_labels[0]
     removed_secondary = original.labels[primary][0]
 
-    def remove_label(payload: dict[str, Any]) -> None:
-        payload["labels"][primary].remove(removed_secondary)
+    def remove_label(human_section: str) -> str:
+        target = f"- {removed_secondary}\n"
+        assert target in human_section
+        return human_section.replace(target, "", 1)
 
-    changed = PromptTaxonomyLoader(_prompt_with_taxonomy_mutation(tmp_path, remove_label)).load()
+    changed = PromptTaxonomyLoader(
+        _prompt_with_human_labels_mutation(tmp_path, remove_label)
+    ).load()
     validator = RuntimeTaxonomyValidator(changed)
 
     with pytest.raises(ContentLabelingValidationError) as exc_info:
@@ -267,19 +308,33 @@ def test_invalid_prompt_taxonomy_fails_before_llm_call(
     tmp_path: Path,
     failure_kind: str,
 ) -> None:
-    PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
+    current = PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
 
-    def mutate(payload: dict[str, Any]) -> None:
-        if failure_kind == "duplicate_sentiment":
+    if failure_kind == "duplicate_sentiment":
+        def mutate_machine(payload: dict[str, Any]) -> None:
             payload["sentiments"].append(payload["sentiments"][0])
-        elif failure_kind == "duplicate_secondary":
-            first_primary, second_primary = list(payload["labels"])[:2]
-            payload["labels"][second_primary].append(payload["labels"][first_primary][0])
-        else:
-            first_primary = next(iter(payload["labels"]))
-            payload["labels"][first_primary][0] = ""
 
-    loader = PromptTaxonomyLoader(_prompt_with_taxonomy_mutation(tmp_path, mutate))
+        path = _prompt_with_taxonomy_mutation(tmp_path, mutate_machine)
+    else:
+        first_primary, second_primary = current.primary_labels[:2]
+        first_secondary = current.labels[first_primary][0]
+
+        def mutate_human(human_section: str) -> str:
+            if failure_kind == "duplicate_secondary":
+                anchor = f"### {second_primary}\n\n"
+                assert anchor in human_section
+                return human_section.replace(
+                    anchor,
+                    anchor + f"- {first_secondary}\n",
+                    1,
+                )
+            target = f"- {first_secondary}\n"
+            assert target in human_section
+            return human_section.replace(target, "- \n", 1)
+
+        path = _prompt_with_human_labels_mutation(tmp_path, mutate_human)
+
+    loader = PromptTaxonomyLoader(path)
     fake = FakeContentLabelingLLM(responses=["{}"])
     service = ContentLabelingService(prompt_loader=loader, llm=fake)
 
@@ -359,11 +414,11 @@ def test_prompt_and_taxonomy_hashes_change_at_the_correct_boundary(tmp_path: Pat
     )
     text_only = PromptTaxonomyLoader(text_only_path).load()
 
-    def add_label(payload: dict[str, Any]) -> None:
-        payload["labels"]["临时Hash一级"] = ["临时Hash二级"]
+    def add_label(human_section: str) -> str:
+        return human_section + "### 临时Hash一级\n\n- 临时Hash二级\n\n"
 
     taxonomy_changed = PromptTaxonomyLoader(
-        _prompt_with_taxonomy_mutation(tmp_path, add_label)
+        _prompt_with_human_labels_mutation(tmp_path, add_label)
     ).load()
 
     assert text_only.prompt_sha256 != original.prompt_sha256
