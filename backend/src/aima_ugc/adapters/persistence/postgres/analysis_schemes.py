@@ -211,6 +211,97 @@ class PostgresAnalysisSchemeRepository:
         )
         return refreshed
 
+    def promote_git_prompt(
+        self,
+        *,
+        actor_ref: str = "system:git-promotion",
+    ) -> tuple[AnalysisSchemeVersionRecord, str]:
+        """部署期把唯一 Git Prompt 幂等提升为 active Version，人工 lineage 时失败关闭。"""
+
+        active = self.get_active_version()
+        if active is None:
+            version, created = self.bootstrap_default(actor_ref="system:git-bootstrap")
+            return version, "bootstrapped" if created else "unchanged"
+
+        _lock_scheme_registry(self._session)
+        active = self.get_active_version()
+        if active is None:
+            version, created = self.bootstrap_default(actor_ref="system:git-bootstrap")
+            return version, "bootstrapped" if created else "unchanged"
+
+        prompt_text = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+        definition = bootstrap_definition_from_prompt(prompt_text)
+        compiled = compile_analysis_scheme(definition)
+        if (
+            active.prompt_sha256 == compiled.prompt_sha256
+            and active.taxonomy_sha256 == compiled.taxonomy_sha256
+            and active.compiled_prompt == compiled.prompt_text
+        ):
+            return active, "unchanged"
+
+        version_actors = tuple(
+            self._session.scalars(
+                select(analysis_scheme_versions_table.c.created_by).where(
+                    analysis_scheme_versions_table.c.scheme_id == active.scheme_id
+                )
+            )
+        )
+        git_managed_actors = {
+            "system",
+            "system:git-bootstrap",
+            "system:git-promotion",
+        }
+        if not version_actors or any(
+            actor not in git_managed_actors for actor in version_actors
+        ):
+            raise RuntimeError(
+                "当前 active Analysis Scheme 含人工 Version，拒绝由 Git Prompt 自动覆盖"
+            )
+
+        latest_version = int(
+            self._session.scalar(
+                select(func.max(analysis_scheme_versions_table.c.version)).where(
+                    analysis_scheme_versions_table.c.scheme_id == active.scheme_id
+                )
+            )
+            or 0
+        )
+        now = beijing_now()
+        self._session.execute(
+            update(analysis_scheme_versions_table)
+            .where(analysis_scheme_versions_table.c.id == active.id)
+            .values(status="retired")
+        )
+        row = (
+            self._session.execute(
+                insert(analysis_scheme_versions_table)
+                .values(
+                    id=uuid4(),
+                    scheme_id=active.scheme_id,
+                    version=latest_version + 1,
+                    status="published",
+                    description="部署时由 Git Prompt 自动发布的生产 Scheme",
+                    definition=compiled.definition.model_dump(mode="json"),
+                    compiled_prompt=compiled.prompt_text,
+                    prompt_sha256=compiled.prompt_sha256,
+                    taxonomy_sha256=compiled.taxonomy_sha256,
+                    created_by=actor_ref,
+                    created_at=now,
+                    published_at=now,
+                )
+                .returning(analysis_scheme_versions_table)
+            )
+            .mappings()
+            .one()
+        )
+        promoted = _version_from_row(row)
+        self._session.execute(
+            update(analysis_schemes_table)
+            .where(analysis_schemes_table.c.id == active.scheme_id)
+            .values(active_version_id=promoted.id, is_active=True, updated_at=now)
+        )
+        return promoted, "promoted"
+
     def create_draft(
         self,
         *,
