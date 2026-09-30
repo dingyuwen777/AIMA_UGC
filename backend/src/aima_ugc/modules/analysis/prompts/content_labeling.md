@@ -800,6 +800,9 @@ relevance = relevant
 "labels": []
 ```
 
+- 直接修改 Git Prompt 的一级/二级标签时，只编辑上方 `### 一级标签` 与其下 `- 二级标签` 列表；机器 `AIMA_TAXONOMY.labels` 由 Loader 自动归一化，不要求手工双写。
+- 下方详细解释指南只服务当前标签树；如果未来标签树变化但指南未同步，Loader 会自动从实际运行 Prompt 移除旧指南，标签本身仍按新父子关系生效。
+
 <!-- AIMA_LABEL_GUIDE_START -->
 ### 标签含义与判断边界（当前 bootstrap 指南）
 
