@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260930-100500-git-prompt-auto-refresh
 title: Git Prompt 标签变更自动刷新运行 Scheme
 level: L2
-status: in_progress
+status: ready_for_review
 owner: assistant
 branch: fix/676-git-prompt-auto-refresh
 created: 2026-09-30 10:05:00 +08:00
@@ -18,6 +18,7 @@ affected_areas:
 affected_paths:
   - backend/src/aima_ugc/adapters/persistence/postgres/analysis_schemes.py
   - backend/src/aima_ugc/bootstrap/analysis_identity.py
+  - backend/src/aima_ugc/bootstrap/content_http.py
   - tests/integration/content/test_analysis_scheme_bootstrap.py
   - backend/src/aima_ugc/modules/analysis/README.md
   - docs/appendix/07_AI舆情打标与分析实现.md
@@ -129,10 +130,9 @@ Requirement Source 为重新打开的 #676 / AC7。AC1—AC6 已由 PR #677 完�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 直接 Git 修改标签后续打标自动应用 | #676 / AC7 | not_satisfied | 待实现/集成测试 |
-| R2 | 历史 Run 保留旧 Version | #676 / AC7 | not_satisfied | 待集成测试 |
-| R3 | 人工 Scheme/Version 不被 Git 覆盖 | #676 / AC7 | not_satisfied | 待集成测试 |
-| R4 | 交付门禁完整 | #676 / AC7 | not_satisfied | 待 CI/Review/main-fresh |
+| R1 | 直接 Git 修改标签后续打标自动应用 | #676 / AC7 | satisfied | analysis_schemes.py::_refresh_git_managed_bootstrap：纯 Git-managed lineage 变化时追加 published/active Version |
+| R2 | 历史 Run 保留旧 Version | #676 / AC7 | satisfied | 刷新只退役旧 active/切换 Scheme 指针，不更新 analysis_content_runs.analysis_scheme_version_id；新增 PostgreSQL 回归固定该行为 |
+| R3 | 人工 Scheme/Version/回滚不被 Git 覆盖 | #676 / AC7 | satisfied | live Scheme count、Version actor、active 必须为 lineage 最新 Version 三重门禁；新增人工 Version/第二 Scheme/人工回滚回归 |
 
 # 计划改动
 
@@ -144,10 +144,11 @@ Requirement Source 为重新打开的 #676 / AC7。AC1—AC6 已由 PR #677 完�
 
 - [x] 调查当前实现和事实源
 - [x] 建立任务路由与验证矩阵
-- [ ] 建立失败回归
-- [ ] 实现最小修复
-- [ ] targeted/PostgreSQL 验证
-- [ ] Completion/Review/CI/merge 收尾
+- [x] 建立失败边界回归
+- [x] 实现最小修复
+- [x] 同步受影响长期文档和运行时说明
+- [x] 完成实现侧 Completion Audit；PostgreSQL 实际执行由 current-head CI 作为 merge gate
+- [ ] Review/CI/merge/main-fresh/归档/Issue Closure 交付收尾
 
 # 验证矩阵
 
@@ -180,10 +181,10 @@ Requirement Source 为重新打开的 #676 / AC7。AC1—AC6 已由 PR #677 完�
 
 # 完成审计
 
-- [ ] upstream_re_read
-- [ ] change_coverage
-- [ ] reverse_audit
-- [ ] unresolved_cleared
+- [x] upstream_re_read：已重新读取 #676 AC7、analysis_schemes.py、analysis_identity.py、content_http.py、Analysis Run Version 外键与现有 bootstrap 回归。
+- [x] change_coverage：AC7 被拆成 R1—R3；自动应用、历史 Run 冻结、人工配置/人工回滚保护均有生产实现和 PostgreSQL 回归承载。
+- [x] reverse_audit：已从 Git Prompt → analysis preview/create Run → active_analysis_configuration(refresh...) → bootstrap_default → 新 Version → 后续 Run 正向核对，并反查人工 Version / 第二 Scheme / 人工回滚 → Git refresh 必须停止。
+- [x] unresolved_cleared：实现范围无未满足 Requirement；测试执行、独立 Review 与 main-fresh 属于交付阶段外部门禁，未在本 Change 中伪造为已通过。
 
 # 完成证据与状态
 
@@ -191,17 +192,19 @@ Requirement Source 为重新打开的 #676 / AC7。AC1—AC6 已由 PR #677 完�
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 待填写 | PostgreSQL targeted integration | 待执行 | AC7 |
+| V1 | 当前任务分支 | main 与 fix/676-git-prompt-auto-refresh 的 diff / 调用链审计 | 刷新条件从 run-count 一次性门禁改为 Git lineage 门禁；无 Prompt/HTTP/Schema 业务变化 | 根因修复范围与 AC7 一致 |
+| V2 | 当前任务分支 | tests/integration/content/test_analysis_scheme_bootstrap.py 回归设计审计 | 覆盖历史 Run 后刷新、人工 Version 阻断、第二 Scheme 阻断、人工回滚阻断 | PostgreSQL CI 可直接验证主要 lifecycle projection |
+| V3 | PR current head | GitHub Actions PostgreSQL/quality/CI Gate | PR 创建后由平台执行；未成功前禁止 merge | 自动化执行证据的正式来源 |
 
 ## 未验证内容与剩余风险
 
-当前尚未实现。
+实现与回归已落地；当前宿主不直接运行仓库 PostgreSQL 环境，因此 PostgreSQL 测试、Ruff/mypy 与项目质量门禁必须由 PR current-head GitHub Actions 提供新鲜执行证据。
 
 ## 交付状态
 
-- 提交：待建立。
-- PR：待创建。
-- CI：待执行。
-- 合并：待执行。
-- Change archive：待 merge 后自动化。
+- 提交：实现提交已推送到任务分支；最终 Head 以 PR 创建后的 live 值为准。
+- PR：下一步创建并进入 current-head CI。
+- CI：未执行前不声明通过；required checks 为 merge gate。
+- 合并：仅在 Review PASS + current-head/current-base 门禁通过后执行。
+- Change archive：merge 后由仓库自动化负责。
 - Release/Deploy：不适用。
