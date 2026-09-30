@@ -70,15 +70,15 @@ voice_type == "真实用户发声"
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。清空 Scheme 后使用新镜像启动时，会由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run，且没有人工或额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
+数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。运行时唯一事实始终是数据库中唯一 active Scheme Version；Git Prompt 不与数据库双写，而是通过版本化 bootstrap/refresh 进入数据库。清空 Scheme 后使用新镜像启动时，会由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version。以后直接修改 Git Prompt 时，下一次分析预览/创建 Run 会检查当前 lineage：如果只存在默认 Scheme，且该 Scheme 的所有 Version 都由系统 Git actor 创建，则追加并激活新的 Git Version；已有历史 Analysis Run 不阻塞刷新，旧 Run 继续引用旧 Version。只要存在其他未删除 Scheme，或默认 Scheme 出现任何人工 Version，Git 自动刷新立即停止，不能覆盖管理员配置。
 
 Python Parser、Compiler 和 Validator 只接受 `content-labeling.v3.0`。旧 V3/V4/V4.5/V4.6 Scheme 不再兼容；部署本次代码前必须按已确认的数据重置方案删除服务器上的旧 Analysis Scheme/Version 和打标结果，不能让旧 active Version 进入新运行时。
 
-一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；Compiler 会把结构化发声类型、情感和标签同时写回模型可读正文与机器 Taxonomy 镜像，再计算 `prompt_sha256 / taxonomy_sha256`，两处不一致时失败关闭。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
+一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符。管理员路径由 Compiler 把结构化发声类型、情感和标签写回模型可读闭集与机器 Taxonomy；Git 路径则把 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 第 9 节的人类可读 `### 一级标签` + `- 二级标签` 闭集作为标签编辑源，Loader 自动按它重建 `AIMA_TAXONOMY.labels` 机器镜像。两条路径最终都生成同一种冻结 Prompt/Taxonomy，再计算 `prompt_sha256 / taxonomy_sha256`。静态标签解释指南若与当前父子树不一致会自动从运行时 Prompt 移除，避免旧说明成为第二套标签事实。
 
 相关代码：
 
-- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：只从当前格式的唯一 Git Prompt 或数据库冻结 Prompt 解析并校验 sentiments / voice_types / labels，并计算 `taxonomy_sha256`；其他 Prompt 版本失败关闭。
+- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：只接受当前格式；sentiments / voice_types 继续从当前机器闭集恢复，一级/二级 labels 从第 9 节人类可读标签闭集恢复并自动归一化机器镜像，再计算 `taxonomy_sha256`；其他 Prompt 版本失败关闭。
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)：编译受控模板并核对数据库快照 Hash。
 - [`backend/src/aima_ugc/bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version 并形成运行身份。
 
@@ -86,7 +86,7 @@ Python、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonom
 
 Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但不改变既有 Version 状态机：当前 active Scheme 不能归档；恢复后仍保持非 active；曾发布或进入 Analysis Run 历史的 Scheme 只允许归档；只有从未发布、从未使用的纯草稿 Scheme 才能在归档后永久删除。管理员页面以结构化发声类型、情感和标签编辑为主路径，Prompt 只在高级设置维护。
 
-修改情感、发声类型、一级/二级标签、判断边界或学习示例时：
+修改运行中的情感、发声类型、一级/二级标签、判断边界或学习示例时，管理员配置中心仍是主路径：
 
 ```text
 管理员配置中心创建/保存完整 Scheme 草稿
@@ -95,6 +95,8 @@ Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但�
 → 只影响之后新建的 Analysis Run
 → 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
 ```
+
+直接修改 Git bootstrap Prompt 也支持一级/二级标签增删改：只修改第 9 节人类可读 `### 一级标签` 与其下 `- 二级标签` 列表即可，不需要手工同步 `AIMA_TAXONOMY.labels`。Loader/Compiler 会自动生成一致机器镜像；若原有详细解释表已与新标签不一致，会从实际运行 Prompt 自动移除。若当前仍是纯 Git-managed 默认 Scheme，下一次分析预览/创建 Run 会自动追加并激活新的 Git Version，即使已有历史 Analysis Run 也会让**后续新 Run**使用新标签；历史 Run 继续冻结旧 Version。若出现人工 Scheme 或人工 Version，则必须由管理员显式发布/回滚，Git 不再自动覆盖。
 
 当前 Taxonomy 与机器语义规则必须同时合法。`source_type/content_intent` 是当前输出格式的内部辅助闭集，不是新的业务持久字段，也不负责推导 `voice_type`；最终发声类型以 Prompt 的独立三分类为准。
 

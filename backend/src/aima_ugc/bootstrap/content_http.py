@@ -1047,7 +1047,7 @@ class PostgresContentHttpService:
         *,
         refresh_unused_git_bootstrap: bool = False,
     ) -> ActiveAnalysisConfiguration:
-        """短事务读取 Scheme；只有打标冻结入口显式允许刷新未使用 Git 基线。"""
+        """短事务读取 Scheme；只有打标冻结入口显式检查纯 Git-managed Scheme 刷新。"""
 
         session = self._runtime.database.new_session()
         try:
