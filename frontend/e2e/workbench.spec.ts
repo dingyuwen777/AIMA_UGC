@@ -12,7 +12,7 @@ const temporaryError = {
   request_id: 'req-workbench-temporary',
 }
 const taxonomy = {
-  prompt_version: 'content-labeling.v4',
+  prompt_version: 'content-labeling.v3.0',
   prompt_sha256: 'b'.repeat(64),
   schema_version: 'aima-content-taxonomy.v2',
   taxonomy_sha256: taxonomyHash,
