@@ -132,7 +132,7 @@ Requirement Source 为 GitHub Issue #676。业务 Owner 明确要求：不恢复
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 当前 v3.0 业务规则、输出结构和既有分类语义保持不变 | #676 / AC1 | satisfied | Prompt 仍为 `content-labeling.v3.0`；现有三类发声、相关性、零空白和固定 JSON 规则未改 |
-| R2 | 恢复表格释义、边界和综合示例 | #676 / AC2 | satisfied | `content_labeling.md` 新增相关性/主体/意图表格、39 项标签解释、高混淆规则和综合示例 |
+| R2 | 恢复表格释义、边界和综合示例 | #676 / AC2 | satisfied | `content_labeling.md` 新增发声类型、相关性、主体、意图、情感表格，以及 39 项标签解释、高混淆规则和综合示例 |
 | R3 | Git Markdown 标签可直接编辑并自动归一化机器 Taxonomy，Scheme Compiler 继续可用 | #676 / AC3 | satisfied | `prompt_taxonomy.py` 从人类标签区恢复 labels；`schemes.py`/Repository 持久化归一化定义；旧指南不匹配时自动移除 |
 | R4 | Loader/bootstrap/compile/Validator 有直接回归承载 | #676 / AC4 | satisfied | `test_content_labeling.py` 与 `test_analysis_scheme_compilation.py` 新增 Git 直改、机器镜像不覆盖、删除标签拒绝、指南失效回归；实际执行由 current-head CI 完成 |
 | R5 | 不恢复旧 Prompt/协议，不改 HTTP/DB/前端 public Contract | #676 / AC5 | satisfied | 当前 diff 仅 Prompt、Analysis loader/compiler/persistence、单元回归及实现文档；无 Contract/Schema/Migration/前端文件 |
@@ -208,8 +208,8 @@ Requirement Source 为 GitHub Issue #676。业务 Owner 明确要求：不恢复
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | PR #677 head `be7dc2aa` | 直接解析 `content_labeling.md` 人类标签区、`AIMA_LABEL_GUIDE` 和 `AIMA_TAXONOMY.labels` | 9 个一级、39 个二级；guide/machine 与 human 顺序完全一致 | 默认 Prompt 三层标签表达当前无漂移 |
-| V2 | PR #677 head `be7dc2aa` | 代码级静态审计：Git Markdown→Loader normalize→bootstrap/compile→Repository persisted definition→Validator | 链路闭合；直接 Git 标签编辑不再依赖手工同步 machine labels | 两种编辑入口汇合到同一运行时 Taxonomy |
+| V1 | PR #677 implementation head `e6a7d428` | 直接解析 `content_labeling.md` 人类标签区、`AIMA_LABEL_GUIDE` 和 `AIMA_TAXONOMY.labels` | 9 个一级、39 个二级；guide/machine 与 human 顺序完全一致 | 默认 Prompt 三层标签表达当前无漂移 |
+| V2 | PR #677 implementation head `e6a7d428` | 代码级静态审计：Git Markdown→Loader normalize→bootstrap/compile→Repository persisted definition→Validator | 链路闭合；直接 Git 标签编辑不再依赖手工同步 machine labels | 两种编辑入口汇合到同一运行时 Taxonomy |
 | V3 | PR #677 current head | GitHub Actions current-head CI | 待 PR 转 Ready 后由平台执行；当前未声称通过 | 合并前 required 自动化证据 |
 
 ## 未验证内容与剩余风险
@@ -218,7 +218,7 @@ Requirement Source 为 GitHub Issue #676。业务 Owner 明确要求：不恢复
 
 ## 交付状态
 
-- 提交：当前实现 head 为 `be7dc2aa0fad3946910e9494d38e3e382f85bce7`，后续若仅治理状态提交则以最新 PR head 为准。
+- 提交：当前实现代码已推进至 `e6a7d428023a523356bb1b9f3ef70e7a8741ec01`；本 Change 状态更新会形成新的治理提交，CI 必须绑定最终 PR head。
 - 拉取请求：#677，当前准备从 Draft 进入 Ready。
 - CI：current-head CI 待 Ready 事件触发，未执行前不声明通过。
 - 合并：CI/Review 未闭环前不合并。
