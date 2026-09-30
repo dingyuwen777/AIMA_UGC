@@ -25,8 +25,8 @@ _OUTPUT_PROTOCOL_PATTERN = re.compile(
     r"<!-- AIMA_OUTPUT_PROTOCOL: (?P<version>content-labeling\.v\d+(?:\.\d+)?) -->"
 )
 _HUMAN_LABELS_PATTERN = re.compile(
-    r"(?ms)(^## 9\\. 标签 Taxonomy[^\\n]*\\n\\n相关内容至少返回一个标签对。\\n\\n)"
-    r"(?P<labels>.*?)(?=^### 标签规则[^\\n]*$)"
+    r"(?ms)(^## 9\. 标签 Taxonomy[^\n]*\n\n相关内容至少返回一个标签对。\n\n)"
+    r"(?P<labels>.*?)(?=^### 标签规则[^\n]*$)"
 )
 _LABEL_GUIDE_START = "<!-- AIMA_LABEL_GUIDE_START -->"
 _LABEL_GUIDE_END = "<!-- AIMA_LABEL_GUIDE_END -->"
