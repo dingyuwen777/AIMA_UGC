@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
+from aima_ugc.bootstrap.analysis_identity import promote_git_analysis_scheme
 from aima_ugc.bootstrap.internal_v1 import (
     bootstrap_internal_v1_external_secrets,
     internal_v1_tikhub_provider_config_id,
@@ -15,7 +16,7 @@ from aima_ugc.platform.database import DatabaseRuntime
 
 
 def main() -> int:
-    """只在首次部署使用 env/注入 Secret；数据库存在后不再让启动配置覆盖运行时。"""
+    """配置 Provider，并在业务进程启动前幂等发布镜像内唯一 Git Analysis Prompt。"""
 
     settings = load_settings()
     provider = load_internal_v1_provider_settings()
@@ -31,6 +32,7 @@ def main() -> int:
                 llm_configs = repository.list_all(provider_kind="llm")
                 llm_managed_by_database = bool(llm_configs)
                 active_llm_exists = repository.get_default("llm") is not None
+                analysis_promotion = promote_git_analysis_scheme(session)
         finally:
             session.close()
 
@@ -62,6 +64,14 @@ def main() -> int:
     tikhub_enabled = persisted_tikhub is not None and persisted_tikhub.enabled
     print(f"TikHub Internal V1: {'ENABLED' if tikhub_enabled else 'DISABLED'}")
     print(f"LLM Runtime: {'CONFIGURED' if llm_configured else 'DISABLED'}")
+    print(
+        "Analysis Git Prompt: "
+        f"{analysis_promotion.action.upper()} "
+        f"version={analysis_promotion.scheme.version} "
+        f"protocol={analysis_promotion.taxonomy.output_protocol_version} "
+        f"prompt_sha256={analysis_promotion.scheme.prompt_sha256} "
+        f"taxonomy_sha256={analysis_promotion.scheme.taxonomy_sha256}"
+    )
     return 0
 
 
