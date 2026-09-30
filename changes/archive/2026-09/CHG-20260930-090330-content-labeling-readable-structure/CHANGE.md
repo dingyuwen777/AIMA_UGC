@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260930-090330-content-labeling-readable-structure
 title: 恢复内容打标 Prompt 表格释义与示例结构
 level: L2
-status: ready_for_review
+status: done
 owner: assistant
 branch: refactor/676-content-labeling-readable-structure
 created: 2026-09-30 09:03:30 +08:00
