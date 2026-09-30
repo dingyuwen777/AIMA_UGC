@@ -74,7 +74,7 @@ voice_type == "真实用户发声"
 
 Python Parser、Compiler 和 Validator 只接受 `content-labeling.v3.0`。旧 V3/V4/V4.5/V4.6 Scheme 不再兼容；部署本次代码前必须按已确认的数据重置方案删除服务器上的旧 Analysis Scheme/Version 和打标结果，不能让旧 active Version 进入新运行时。
 
-一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符。管理员路径由 Compiler 把结构化发声类型、情感和标签写回模型可读闭集与机器 Taxonomy；Git 路径则把 `content_labeling.md` 第 9 节的人类可读 `### 一级标签` + `- 二级标签` 闭集作为标签编辑源，Loader 自动按它重建 `AIMA_TAXONOMY.labels` 机器镜像。两条路径最终都生成同一种冻结 Prompt/Taxonomy，再计算 `prompt_sha256 / taxonomy_sha256`。静态标签解释指南若与当前父子树不一致会自动从运行时 Prompt 移除，避免旧说明成为第二套标签事实。
+一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符。管理员路径由 Compiler 把结构化发声类型、情感和标签写回模型可读闭集与机器 Taxonomy；Git 路径则把 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 第 9 节的人类可读 `### 一级标签` + `- 二级标签` 闭集作为标签编辑源，Loader 自动按它重建 `AIMA_TAXONOMY.labels` 机器镜像。两条路径最终都生成同一种冻结 Prompt/Taxonomy，再计算 `prompt_sha256 / taxonomy_sha256`。静态标签解释指南若与当前父子树不一致会自动从运行时 Prompt 移除，避免旧说明成为第二套标签事实。
 
 相关代码：
 
