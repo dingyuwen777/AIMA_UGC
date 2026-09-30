@@ -39,7 +39,7 @@ def test_analysis_run_accepts_query_scope_with_filter_snapshot() -> None:
         scope="query",
         filters=ContentFilterSnapshot(
             platforms=("xiaohongshu",),
-            sentiment="负面",
+            sentiments=("负面",),
         ),
     )
     preview = AnalysisContentRunPreviewRequest(targets=query_targets)

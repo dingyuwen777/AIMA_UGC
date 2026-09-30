@@ -3315,7 +3315,7 @@ export const WorkbenchModuleId = {
 
 export interface WorkbenchLayoutModule {
   /**
-     * @minimum 4
+     * @minimum 5
      * @maximum 12
      */
   column_span: number;

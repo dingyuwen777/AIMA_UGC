@@ -60,8 +60,7 @@ def downgrade() -> None:
     ).scalar_one_or_none()
     if duplicate_name is not None:
         raise RuntimeError(
-            "analysis_schemes 存在删除后重新创建的同名资源，"
-            "无法安全恢复旧版全局名称唯一约束"
+            "analysis_schemes 存在删除后重新创建的同名资源，无法安全恢复旧版全局名称唯一约束"
         )
 
     op.drop_index("uq_analysis_schemes_live_name", table_name="analysis_schemes")
