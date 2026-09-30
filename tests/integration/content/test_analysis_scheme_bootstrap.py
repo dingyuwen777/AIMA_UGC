@@ -283,7 +283,6 @@ def test_git_refresh_is_blocked_by_another_live_scheme(
         runtime.close()
 
 
-
 def test_git_refresh_respects_manual_rollback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
