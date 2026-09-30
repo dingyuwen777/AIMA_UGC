@@ -14,13 +14,14 @@ from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
 from aima_ugc.bootstrap.analysis_identity import promote_git_analysis_scheme
 from aima_ugc.bootstrap.worker import create_worker_runtime
 from aima_ugc.modules.analysis import CONTENT_LABELING_PROMPT_PATH, PROMPT_VERSION
+from sqlalchemy import insert, select
+
 from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.modules.analysis.tables import analysis_content_runs_table
-from aima_ugc.platform.config import load_settings
 from aima_ugc.modules.system.tables import audit_events_table
+from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.time import beijing_now
-from sqlalchemy import insert, select
 
 
 def test_empty_database_bootstraps_the_unique_current_prompt(tmp_path: Path) -> None:
