@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -484,7 +485,7 @@ def _relevant_response(*, sentiment: str = "负面", voice_type: str = "真实�
     return (
         '{"items":[{"item_no":1,"relevance":"relevant",'
         '"relevance_evidence":["爱玛"],"source_type":"ordinary_consumer",'
-        '"content_intent":"organic_experience","voice_type":"'
+        '"content_intent":"organic_experience","real_user_qualified":true,"voice_type":"'
         + voice_type
         + '","voice_evidence":["爱玛"],"sentiment":"'
         + sentiment
@@ -499,8 +500,8 @@ def _relevant_response(*, sentiment: str = "负面", voice_type: str = "真实�
 def _irrelevant_response(*, voice_type: str = "营销推广发声") -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"irrelevant",'
-        '"relevance_evidence":["爱玛"],"source_type":"media_org",'
-        '"content_intent":"news_information","voice_type":"'
+        '"relevance_evidence":["爱玛"],"source_type":"ordinary_consumer",'
+        '"content_intent":"commercial_sales","real_user_qualified":false,"voice_type":"'
         + voice_type
         + '","voice_evidence":["爱玛"],"sentiment":null,'
         '"sentiment_evidence":[],"labels":[],"decision_status":"clear"}]}'
@@ -753,14 +754,30 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
                 assert active is not None
                 original_scheme_version_id = active.id
                 original_scheme_version = active.version
+                # 新格式只编辑 Markdown，派生列表不能再作为独立分类来源。
+                next_prompt = re.sub(
+                    r"(<!-- AIMA_TABLE: sentiments -->).*?(<!-- /AIMA_TABLE -->)",
+                    r"\1\n| 情感 | 核心定义 | 判断说明 |\n"
+                    "| --- | --- | --- |\n"
+                    "| 新情感 | 新分类 | 按新规则判断 |\n"
+                    "| 正面 | 肯定评价 | 按原文判断 |\n\\2",
+                    active.definition.prompt_template,
+                    flags=re.DOTALL,
+                )
+                next_prompt = (
+                    re.sub(
+                        r"(<!-- AIMA_TABLE: labels -->).*?(<!-- /AIMA_TABLE -->)",
+                        r"\1\n| 一级标签 | 二级标签 | 覆盖内容与判断标准 | 典型表达仅作辅助 |\n"
+                        "| --- | --- | --- | --- |\n"
+                        "| 新分类 | 新标签 | 体验评价 | 骑着舒服 |\n\\2",
+                        next_prompt,
+                        flags=re.DOTALL,
+                    )
+                    .replace('"primary_label": "骑行性能"', '"primary_label": "新分类"')
+                    .replace('"secondary_label": "舒适性"', '"secondary_label": "新标签"')
+                )
                 next_definition = active.definition.model_copy(
-                    update={
-                        "sentiments": ("新情感", "正面", "无法判断"),
-                        "labels": {
-                            "新分类": ("新标签",),
-                            "无法分类": ("无法判断",),
-                        },
-                    }
+                    update={"prompt_template": next_prompt}
                 )
                 draft = repository.create_draft(
                     name="Stage8D 筛选历史值测试方案",
@@ -777,7 +794,6 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         assert [(item.value, item.source) for item in options.sentiments] == [
             ("新情感", "active"),
             ("正面", "active"),
-            ("无法判断", "active"),
             ("负面", "historical"),
         ]
         labels = {item.primary_label: item for item in options.labels}
@@ -1021,7 +1037,7 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
                 responses=[
                     '{"items":[{"item_no":1,"relevance":"relevant",'
                     '"relevance_evidence":["爱玛"],"source_type":"ordinary_consumer",'
-                    '"content_intent":"organic_experience","voice_type":"真实用户发声",'
+                    '"content_intent":"organic_experience","real_user_qualified":true,"voice_type":"真实用户发声",'
                     '"voice_evidence":["爱玛"],"sentiment":"中性",'
                     '"sentiment_evidence":["爱玛"],"labels":['
                     '{"primary_label":"电池、续航与充电",'

@@ -31,7 +31,10 @@ from aima_ugc.modules.analysis.schemes import (
 )
 
 OBSERVED_AT = datetime(2026, 8, 18, 10, 0, tzinfo=UTC)
-CURRENT_PROMPT_PATH = CONTENT_LABELING_PROMPT_PATH
+# 旧 JSON 镜像规则必须仍能恢复历史版本；新表格编译另有独立验收。
+CURRENT_PROMPT_PATH = (
+    Path(__file__).resolve().parents[2] / "fixtures/analysis/content_labeling_legacy_v3.md"
+)
 
 
 def _analysis_docs() -> str:
@@ -84,6 +87,7 @@ def _valid_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
         "relevance_evidence": ["爱玛体验"],
         "source_type": "ordinary_consumer",
         "content_intent": "organic_inquiry",
+        "real_user_qualified": False,
         "voice_type": (
             taxonomy.semantic_rules.ordinary_consumer_organic_voice_type_when_not_qualified
         ),
@@ -164,8 +168,8 @@ def test_prompt_taxonomy_has_expected_baseline_and_documented_bootstrap_source()
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
     docs = _analysis_docs()
 
-    assert taxonomy.prompt_version == "content-labeling.v3.0"
-    assert taxonomy.output_protocol_version == "content-labeling.v3.0"
+    assert taxonomy.prompt_version == "content-labeling.v4.0"
+    assert taxonomy.output_protocol_version == "content-labeling.tables.v1"
     assert taxonomy.voice_types == ("品牌官方发声", "真实用户发声", "营销推广发声")
     assert taxonomy.sentiments == ("正面", "中性", "负面", "混合")
     assert len(taxonomy.primary_labels) == 9
@@ -181,7 +185,7 @@ def test_current_scheme_compiles_back_to_the_exact_git_prompt() -> None:
     compiled = compile_analysis_scheme(definition)
 
     assert compiled.prompt_text == prompt
-    assert compiled.to_prompt_taxonomy().output_protocol_version == "content-labeling.v3.0"
+    assert compiled.to_prompt_taxonomy().output_protocol_version == "content-labeling.tables.v1"
 
 
 @pytest.mark.parametrize(
@@ -194,7 +198,7 @@ def test_current_scheme_compiles_back_to_the_exact_git_prompt() -> None:
     ],
 )
 def test_obsolete_prompt_versions_fail_closed(obsolete_version: str) -> None:
-    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    prompt = CURRENT_PROMPT_PATH.read_text(encoding="utf-8")
     obsolete = prompt.replace("content-labeling.v3.0", obsolete_version)
 
     with pytest.raises(PromptTaxonomyError, match="不受支持"):
@@ -219,19 +223,17 @@ def test_production_python_does_not_copy_concrete_taxonomy_labels() -> None:
 def test_prompt_contains_required_human_judgment_sections() -> None:
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
 
-    assert "## 8. 情感判断" in prompt
-    assert "## 9. 标签 Taxonomy" in prompt
-    assert "## 3. 发声类型：独立三分类闭环【最高优先级】" in prompt
-    assert "## 13. 输出前最终硬校验" in prompt
-    assert "零空白硬约束" in prompt
-    assert "### 3.0 三类发声含义总览" in prompt
-    assert "| `voice_type` | 核心含义 | 判定边界 |" in prompt
-    assert "### 相关性示例" in prompt
-    assert "### 情感含义总览" in prompt
-    assert "| `sentiment` | 核心含义 | 判断边界 |" in prompt
+    assert "## 情感判断标准" in prompt
+    assert "## 一级/二级标签判断标准" in prompt
+    assert "## 发声类型判断标准" in prompt
+    assert "## 返回前自检" in prompt
+    assert "### 信息不足时的完备归类" in prompt
+    assert "| 发声类型 | 核心定义 | 判断边界 |" in prompt
+    assert "### 语义相关性示例" in prompt
+    assert "| 情感 | 核心定义 | 判断说明 |" in prompt
     assert "### 情感判断示例" in prompt
-    assert "### 标签含义与判断边界（当前 bootstrap 指南）" in prompt
-    assert "#### 标签综合示例" in prompt
+    assert "### 一级/二级标签高混淆场景" in prompt
+    assert "### 一级/二级标签示例" in prompt
 
 
 def test_prompt_taxonomy_changes_are_runtime_driven_without_python_changes(tmp_path: Path) -> None:

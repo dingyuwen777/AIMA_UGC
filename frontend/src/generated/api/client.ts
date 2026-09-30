@@ -291,28 +291,25 @@ export interface AnalysisSchemeCopyRequest {
   name: string;
 }
 
+export type AnalysisSchemeDefinitionRequestCompiledSnapshot = { [key: string]: unknown } | null;
+
 export type AnalysisSchemeDefinitionRequestLabels = {[key: string]: string[]};
 
 /**
  * 一个原子 Analysis Scheme 的结构化定义。
  */
 export interface AnalysisSchemeDefinitionRequest {
-  labels: AnalysisSchemeDefinitionRequestLabels;
+  compiled_snapshot?: AnalysisSchemeDefinitionRequestCompiledSnapshot;
+  labels?: AnalysisSchemeDefinitionRequestLabels;
   /**
      * @minLength 1
      * @maxLength 100000
      */
   prompt_template: string;
-  /**
-     * @minItems 1
-     * @maxItems 50
-     */
-  sentiments: string[];
-  /**
-     * @minItems 1
-     * @maxItems 50
-     */
-  voice_types: string[];
+  /** @maxItems 50 */
+  sentiments?: string[];
+  /** @maxItems 50 */
+  voice_types?: string[];
 }
 
 /**

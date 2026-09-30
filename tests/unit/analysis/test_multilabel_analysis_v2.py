@@ -94,6 +94,7 @@ def _model_item(
         "relevance_evidence": ["爱玛"],
         "source_type": "ordinary_consumer",
         "content_intent": "organic_experience",
+        "real_user_qualified": False,
         "voice_type": (
             taxonomy.semantic_rules.ordinary_consumer_organic_voice_type_when_not_qualified
         ),

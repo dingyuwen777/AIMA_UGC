@@ -542,6 +542,9 @@ def frontend_dependencies_stale(paths: RuntimePaths, frontend_dir: Path) -> bool
     lock_file = frontend_dir / "package-lock.json"
     if not node_modules.is_dir() or not lock_file.is_file():
         return True
+    executable_name = "vite.cmd" if os.name == "nt" else "vite"
+    if not (node_modules / ".bin" / executable_name).is_file():
+        return True
     current = sha256_file(lock_file)
     try:
         recorded = paths.frontend_lock_fingerprint_file.read_text(encoding="utf-8").strip()

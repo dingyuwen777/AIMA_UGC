@@ -45,6 +45,7 @@ def _label_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
         "relevance_evidence": ["爱玛体验"],
         "source_type": source_type,
         "content_intent": content_intent,
+        "real_user_qualified": False,
         "voice_type": rules.ordinary_consumer_organic_voice_type_when_not_qualified,
         "voice_evidence": ["正文"],
         "sentiment": taxonomy.sentiments[0],
@@ -223,6 +224,7 @@ def test_all_empty_input_accepts_only_the_protocol_sentinel() -> None:
         "relevance_evidence": ["[EMPTY_INPUT]"],
         "source_type": "ordinary_consumer",
         "content_intent": "organic_experience",
+        "real_user_qualified": False,
         "voice_type": "营销推广发声",
         "voice_evidence": ["[EMPTY_INPUT]"],
         "sentiment": None,
@@ -258,8 +260,8 @@ def test_current_prompt_asset_builds_taxonomy_without_python_voice_literals() ->
     taxonomy = PromptTaxonomyLoader(prompt_path).load()
     rules = taxonomy.semantic_rules
 
-    assert taxonomy.output_protocol_version == "content-labeling.v3.0"
-    assert len(taxonomy.voice_types) == 3
+    assert taxonomy.output_protocol_version == "content-labeling.tables.v1"
+    assert taxonomy.voice_types == ("品牌官方发声", "真实用户发声", "营销推广发声")
     assert {
         rules.ordinary_consumer_organic_voice_type_when_real_user_qualified,
         rules.ordinary_consumer_organic_voice_type_when_not_qualified,

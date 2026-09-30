@@ -75,6 +75,7 @@ class _TaxonomyBenchmarkLLM:
                     "relevance_evidence": ["爱玛"],
                     "source_type": self._source_type,
                     "content_intent": self._content_intent,
+                    "real_user_qualified": False,
                     "voice_type": self._voice_type,
                     "voice_evidence": ["爱玛"],
                     "sentiment": self._sentiment,

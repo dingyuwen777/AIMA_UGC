@@ -1,4 +1,4 @@
-"""Prompt Markdown 中机器可读 Taxonomy 的唯一运行时加载器。"""
+"""从当前 Markdown 定义表或已支持的旧快照恢复运行时 Taxonomy。"""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ PROMPT_VERSION = _load_bootstrap_prompt_version(CONTENT_LABELING_PROMPT_PATH)
 
 @dataclass(frozen=True, slots=True)
 class PromptSemanticRules:
-    """当前协议内部主体、意图与独立发声三分类的不可变闭集。"""
+    """当前协议内部主体、意图与发声判断规则的不可变闭集。"""
 
     source_types: tuple[str, ...]
     content_intents: tuple[str, ...]
@@ -78,6 +78,7 @@ class PromptSemanticRules:
     real_user_gate: str
     official_whitelist_priority: bool
     irrelevant_nonofficial_voice_type: str
+    voice_rules: tuple[tuple[str, str, str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,10 +95,11 @@ class PromptTaxonomy:
     semantic_rules: PromptSemanticRules
     taxonomy_sha256: str
     prompt_sha256: str
+    source_format: str = "legacy.v3.0"
 
     @property
     def primary_labels(self) -> tuple[str, ...]:
-        """按 Prompt JSON 原始顺序返回一级标签。"""
+        """按当前版本冻结的展示顺序返回一级标签。"""
 
         return tuple(self.labels)
 
@@ -272,6 +274,10 @@ class PromptTaxonomyLoader:
     ) -> PromptTaxonomy:
         """从已给定的完整 Prompt 文本恢复运行时协议与 Taxonomy。"""
 
+        if "<!-- AIMA_TABLE: voice_types -->" in prompt_text:
+            from .markdown_prompt import compile_markdown_prompt
+
+            return compile_markdown_prompt(prompt_text, prompt_version=prompt_version)
         declared_prompt_version = _prompt_version_from_text(prompt_text)
         resolved_prompt_version = prompt_version or declared_prompt_version
         taxonomy_json = _extract_marked_json(

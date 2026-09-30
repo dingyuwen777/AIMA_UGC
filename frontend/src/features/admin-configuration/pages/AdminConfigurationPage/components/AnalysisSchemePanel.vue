@@ -53,6 +53,29 @@ const schemeDraft = reactive({
   sentiments: '',
   labelsJson: '{}',
 })
+const markdownEditorMode = ref(false)
+const markdownEditing = computed(() => markdownEditorMode.value)
+
+/** 导入文档只改编辑区，仍需保存草稿并通过后端编译后才能发布。 */
+async function importMarkdown(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    if (!file.name.toLowerCase().endsWith('.md')) throw new Error('请选择 Markdown 文件。')
+    if (file.size > 200_000) throw new Error('提示词文件不能超过 200 KB。')
+    const text = await file.text()
+    if (!text.includes('<!-- AIMA_TABLE: voice_types -->')) throw new Error('文档缺少发声类型定义表，请使用当前 Markdown 格式。')
+    markdownEditorMode.value = true
+    schemeDraft.promptTemplate = text
+    error.value = null
+    showNotice('文档已载入编辑区。保存草稿后可查看编译出的分类和标签，发布后新任务生效。')
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : apiErrorMessage(reason)
+  } finally {
+    input.value = ''
+  }
+}
 
 const selectedSchemeVersion = computed(() => {
   for (const scheme of schemes.value) {
@@ -68,10 +91,15 @@ const navigationDirty = computed(() => {
   if (!selected) return false
   const defaultCopyName = `${selected.scheme.name} 副本`
   if (schemeCopyEditing.value && schemeCopyName.value.trim() !== defaultCopyName) return true
-  if (!schemeLabelsValid.value) return true
+  if (!markdownEditing.value && !schemeLabelsValid.value) return true
   try {
     const definition = schemeDefinition()
     const saved = selected.version.definition
+    if (markdownEditing.value) {
+      return schemeDraft.schemeName !== selected.scheme.name
+        || schemeDraft.description !== selected.version.description
+        || schemeDraft.promptTemplate !== saved.prompt_template
+    }
     return schemeDraft.schemeName !== selected.scheme.name
       || schemeDraft.description !== selected.version.description
       || definition.prompt_template !== saved.prompt_template
@@ -171,18 +199,20 @@ function syncSchemeDraft(
   scheme: AnalysisSchemeResponse,
   version: AnalysisSchemeResponse['versions'][number],
 ): void {
+  markdownEditorMode.value = version.definition.prompt_template.includes('<!-- AIMA_TABLE: voice_types -->')
   Object.assign(schemeDraft, {
     schemeName: scheme.name,
     description: version.description,
     promptTemplate: version.definition.prompt_template,
-    voiceTypes: version.definition.voice_types.join('\n'),
-    sentiments: version.definition.sentiments.join('\n'),
+    voiceTypes: (version.definition.voice_types ?? []).join('\n'),
+    sentiments: (version.definition.sentiments ?? []).join('\n'),
     labelsJson: JSON.stringify(version.definition.labels, null, 2),
   })
 }
 
 /** 结构化页面输入转换成正式 Scheme Definition。 */
 function schemeDefinition(): AnalysisSchemeDefinitionRequest {
+  if (markdownEditing.value) return { prompt_template: schemeDraft.promptTemplate }
   return {
     prompt_template: schemeDraft.promptTemplate,
     voice_types: splitLines(schemeDraft.voiceTypes),
@@ -193,11 +223,12 @@ function schemeDefinition(): AnalysisSchemeDefinitionRequest {
 
 /** 前端只执行与后端一致的最小发布资格预检。 */
 function validateSchemeDefinition(definition: AnalysisSchemeDefinitionRequest): void {
+  if (markdownEditing.value) return
   if (!schemeLabelsValid.value) throw new Error('请先修正结构化标签规则。')
   if (!definition.prompt_template.includes('{{AIMA_TAXONOMY_JSON}}')) {
     throw new Error('提示词模板必须包含标签规则占位符 {{AIMA_TAXONOMY_JSON}}。')
   }
-  if (!definition.voice_types.length || !definition.sentiments.length || !Object.keys(definition.labels).length) {
+  if (!definition.voice_types?.length || !definition.sentiments?.length || !Object.keys(definition.labels ?? {}).length) {
     throw new Error('发声类型、情感和标签都不能为空。')
   }
 }
@@ -496,7 +527,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
                 · {{ schemeVersionStateLabel(selectedSchemeVersion.scheme, selectedSchemeVersion.version) }}
               </template>
             </h2>
-            <p>按业务含义维护发声类型、情感和标签；修改后先生成草稿。</p>
+            <p>在 Markdown 文档中维护判断标准和分类表；保存草稿后查看编译结果，再发布生效。</p>
           </div>
           <div
             v-if="selectedSchemeVersion"
@@ -561,14 +592,33 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
           说明
           <input v-model="schemeDraft.description">
         </label>
-        <label>
+        <label class="markdown-import">
+          导入提示词文档
+          <input
+            type="file"
+            accept=".md,text/markdown"
+            @change="importMarkdown"
+          >
+          <small>导入不会立即生效；分类、组合规则和标签在同一文档中维护。</small>
+        </label>
+        <label v-if="markdownEditing">
+          提示词 Markdown
+          <textarea
+            v-model="schemeDraft.promptTemplate"
+            rows="24"
+            spellcheck="false"
+            class="markdown-source"
+          />
+          <small>保存时由后端校验表格、重复分类、标签父子关系和组合覆盖；错误会定位到文档行。</small>
+        </label>
+        <label v-if="!markdownEditing">
           发声类型
           <textarea
             v-model="schemeDraft.voiceTypes"
             rows="4"
           />
         </label>
-        <label>
+        <label v-if="!markdownEditing">
           情感
           <textarea
             v-model="schemeDraft.sentiments"
@@ -577,11 +627,27 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         </label>
 
         <AnalysisLabelsEditor
+          v-if="!markdownEditing"
           v-model="schemeDraft.labelsJson"
           @validity="schemeLabelsValid = $event"
         />
 
-        <details class="advanced-editor">
+        <details
+          v-if="markdownEditing"
+          class="advanced-editor"
+        >
+          <summary>已保存草稿的编译结果（只读）</summary>
+          <p>当前编辑尚未保存时，下方仍显示原版本结果；保存成功后刷新。</p>
+          <div class="technical-note taxonomy-preview">
+            <strong>发声类型</strong><pre>{{ schemeDraft.voiceTypes }}</pre>
+            <strong>情感</strong><pre>{{ schemeDraft.sentiments }}</pre>
+            <strong>标签</strong><pre>{{ schemeDraft.labelsJson }}</pre>
+          </div>
+        </details>
+        <details
+          v-else
+          class="advanced-editor"
+        >
           <summary>高级规则编辑</summary>
           <p>这里只维护提示词与查看机器结构；业务标签请在上方结构化编辑器修改。</p>
           <div class="advanced-editor__fields">
@@ -612,7 +678,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
 
         <div class="actions">
           <AimaButton
-            :disabled="saving || !schemeLabelsValid"
+            :disabled="saving || (!markdownEditing && !schemeLabelsValid)"
             @click="saveSchemeDraft"
           >
             {{ selectedSchemeVersion?.version.status === 'draft' ? '保存草稿' : '基于此版本新建草稿' }}
@@ -683,6 +749,7 @@ h2 { color: var(--aima-text); font-size: 16px; font-weight: 500; line-height: 24
 input, textarea { width: 100%; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--aima-border-strong); border-radius: 8px; outline: none; color: var(--aima-text); background: var(--aima-surface); font: inherit; font-size: 13px; line-height: 20px; }
 input { height: 40px; }
 textarea { min-height: 88px; resize: vertical; }
+.markdown-source { min-height: 400px; font-family: monospace; white-space: pre; overflow-x: auto; }
 input:focus, textarea:focus { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-primary-soft); }
 input:read-only { color: var(--aima-text-disabled); background: var(--aima-color-bg-disabled, #f2f5f7); }
 .scheme-copy-editor { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--aima-border); border-radius: 8px; background: #fbfcfe; }

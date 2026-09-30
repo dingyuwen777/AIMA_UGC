@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -91,13 +90,7 @@ def _required_command(name: str) -> str:
 
 
 def _npm_command(npm: str, *arguments: str) -> list[str]:
-    """Windows 的 npm 是 `.cmd`；显式经 cmd.exe 执行，Linux/macOS 直接执行。"""
-
-    if os.name == "nt" and npm.lower().endswith((".cmd", ".bat")):
-        command_shell = os.environ.get("COMSPEC") or shutil.which("cmd.exe")
-        if command_shell is None:
-            raise LocalDevError("Windows 找不到 cmd.exe，无法执行 npm.cmd。")
-        return [command_shell, "/d", "/s", "/c", npm, *arguments]
+    """直接执行 npm；Windows 的 npm.cmd 也直接交给 subprocess。"""
     return [npm, *arguments]
 
 

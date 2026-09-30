@@ -1,8 +1,9 @@
 """Analysis Scheme 当前 Prompt 编译与镜像一致性回归。"""
 
+from pathlib import Path
+
 import pytest
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
-from aima_ugc.modules.analysis import CONTENT_LABELING_PROMPT_PATH
 from aima_ugc.modules.analysis.prompt_taxonomy import PromptTaxonomyLoader
 from aima_ugc.modules.analysis.schemes import (
     bootstrap_definition_from_prompt,
@@ -11,8 +12,13 @@ from aima_ugc.modules.analysis.schemes import (
 
 
 def _current_definition() -> AnalysisSchemeDefinitionRequest:
-    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    prompt = _legacy_prompt().read_text(encoding="utf-8")
     return bootstrap_definition_from_prompt(prompt)
+
+
+def _legacy_prompt() -> Path:
+    """冻结旧编译格式的回归基线，不读取可编辑的最新文档。"""
+    return Path(__file__).resolve().parents[2] / "fixtures/analysis/content_labeling_legacy_v3.md"
 
 
 def test_compile_analysis_scheme_is_stable_across_jsonb_object_key_order() -> None:
@@ -65,7 +71,7 @@ def test_compile_analysis_scheme_updates_human_and_machine_taxonomy_together() -
 def test_git_markdown_label_edit_auto_normalizes_machine_taxonomy() -> None:
     """直接修改 Git Markdown 标签区时自动生成一致的运行时机器 Taxonomy。"""
 
-    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    prompt = _legacy_prompt().read_text(encoding="utf-8")
     edited_prompt = prompt.replace(
         "### 品牌评价\n\n- 口碑与信任\n",
         "### 品牌评价\n\n- Git直改标签\n",
@@ -91,7 +97,7 @@ def test_git_markdown_label_edit_auto_normalizes_machine_taxonomy() -> None:
 def test_current_bootstrap_label_guide_matches_all_current_label_pairs() -> None:
     """默认 Git Prompt 的详细标签指南必须与当前人类可读闭集完全一致。"""
 
-    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    taxonomy = PromptTaxonomyLoader(_legacy_prompt()).load()
 
     assert len(taxonomy.primary_labels) == 9
     assert len(taxonomy.all_secondary_labels) == 39
