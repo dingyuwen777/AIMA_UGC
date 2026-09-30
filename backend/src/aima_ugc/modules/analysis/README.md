@@ -70,7 +70,7 @@ voice_type == "真实用户发声"
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。清空 Scheme 后使用新镜像启动时，会由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run，且没有人工或额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
+数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。此后运行时唯一事实是数据库中唯一 active Scheme Version。清空 Scheme 后使用新镜像启动时，会由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version。之后只要数据库仍只有一个非删除 Scheme，且该 Scheme 的全部 Version 都由 `system` / `system:git-bootstrap` 创建，Git Prompt 内容变化就会自动追加并发布新的 active Version；历史 Analysis Run 继续引用旧 Version，不被改写。一旦出现人工 Scheme 或人工 Version，Git 自动刷新停止，后续通过管理员 Scheme 发布或回滚。
 
 Python Parser、Compiler 和 Validator 只接受 `content-labeling.v3.0`。旧 V3/V4/V4.5/V4.6 Scheme 不再兼容；部署本次代码前必须按已确认的数据重置方案删除服务器上的旧 Analysis Scheme/Version 和打标结果，不能让旧 active Version 进入新运行时。
 
