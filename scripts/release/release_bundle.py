@@ -690,6 +690,17 @@ def verify_manifest_identity(
             raise ReleaseBundleError(
                 f"Release manifest {key} 不匹配：expected={value}, actual={manifest.get(key)}"
             )
+    analysis_prompt = manifest.get("analysis_prompt")
+    if not isinstance(analysis_prompt, dict):
+        raise ReleaseBundleError("Release manifest 缺少 analysis_prompt 身份。")
+    protocol = analysis_prompt.get("protocol")
+    if not isinstance(protocol, str) or not protocol:
+        raise ReleaseBundleError("Release manifest 缺少 Analysis Prompt protocol。")
+    for key in ("prompt_sha256", "taxonomy_sha256", "source_sha256"):
+        value = analysis_prompt.get(key)
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise ReleaseBundleError(f"Release manifest Analysis Prompt {key} 不是 SHA256。")
+
     verification = manifest.get("verification")
     if require_offline_replay:
         if not isinstance(verification, dict) or verification.get("offline_replay") is not True:
