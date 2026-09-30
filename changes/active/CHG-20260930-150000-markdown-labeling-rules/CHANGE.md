@@ -25,6 +25,7 @@ affected_paths:
   - tests
   - docs/appendix/07_AI舆情打标与分析实现.md
   - scripts/dev/frontend.py
+  - scripts/dev/local_runtime.py
 contracts:
   - Markdown 表格编译格式
   - Analysis Scheme Definition
@@ -56,6 +57,7 @@ data_changes:
 - [x] 输入含 platform；完整 Prompt + 单条内容组成请求。
 - [x] 严格真实用户与普通个人表达可区分，证据和组合规则校验一致。
 - [x] 历史版本、运行中任务、管理员发布和回滚保持可追溯。
+- [x] 前端依赖目录不完整时自动重装，不再误报“依赖已是最新”后找不到 Vite。
 
 非目标：付费模型调用、生产数据迁移、Release、部署和生产环境写入。
 
@@ -88,6 +90,7 @@ data_changes:
 | R4 | 版本发布、历史冻结和回滚保持闭环，不维护分类含义映射 | #679#AC4 | satisfied | Markdown 编译快照/双 Hash/legacy 恢复测试；管理页保存发布回滚；残留扫描无统计用途或角色映射 |
 | R5 | 前端启动器保留当前本地 npm 直接执行行为 | #679#AC6 | satisfied | `_npm_command` 直接返回 npm 命令及参数；Ruff 和本机锁定 Node/npm 版本探测通过后进入 Ready |
 | R6 | 全部本地修改按受保护 PR 流程合并远程主分支 | #679#AC7 | explicitly_deferred | 本地实现与验证完成；commit 后的 PR current-head required checks、精确 head guarded merge、main-fresh、仓库原生 Change 归档与 Issue Closure 只能按交付时序取得，不作为 Ready 前的伪造证据，也不豁免任何门禁 |
+| R7 | `node_modules` 不完整时自动重装并恢复 Vite 启动 | #679#AC8 | satisfied | 依赖状态额外验证当前平台的 `.bin/vite` 或 `.bin/vite.cmd`，缺失时进入 `npm ci`；平台运行时单元测试 12 passed / 1 skipped；同一启动命令已实际执行 Vite，当前 5173 页面返回 200 |
 
 # 计划改动
 
@@ -97,7 +100,7 @@ data_changes:
 | `prompt_taxonomy.py` / `schemes.py` / `content_labeling.py` | 编译并冻结快照，恢复历史 Version，校验准入与发声组合 | 让实际打标、保存与查询使用同一 Scheme | R2-R4 |
 | Administration Contract / OpenAPI / generated client / Scheme Panel | 支持 Markdown 导入、编辑、预览、保存、发布和回滚 | 给管理员提供同一编辑入口 | R2/R4 |
 | Analysis 测试、PostgreSQL Integration、Fake LLM、Playwright / Full-stack | 覆盖编译、动态改名、历史冻结、单条请求与 UI 工作流 | 直接验证跨组件闭环 | R1-R4 |
-| `scripts/dev/frontend.py` | Windows 直接执行解析出的 `npm.CMD` | 纳入用户要求交付的现有本地修改 | R5 |
+| `scripts/dev/frontend.py` / `scripts/dev/local_runtime.py` / 平台运行时单元测试 | Windows 直接执行解析出的 `npm.CMD`；识别缺少 `.bin/vite` 的不完整依赖安装并自动运行 `npm ci` | 纳入用户要求交付的现有本地修改，并修复“依赖已是最新”误判后找不到 Vite | R5/R7 |
 | Analysis README、Appendix、Blueprint、项目规则与 Change | 同步当前事实、维护边界和交付证据 | 防止文档恢复第二套事实 | R1-R6 |
 
 # 验证矩阵
@@ -110,7 +113,7 @@ data_changes:
 | 用户 / 工作流验收 | required | Playwright 171 passed；Markdown 导入、编译失败保留编辑状态、只读编译预览、保存和发布路径通过 |
 | 跨组件关键路径 | required | 真实 Full-stack 动态改名核心用例 1 passed；旧 Run 身份不变，发布后保存/查询并回滚 |
 | 外部依赖 / 供应方探测 | not_applicable | 不改变 Provider 传输，无须付费探测；模型语义质量另需样本评估 |
-| 构建 / 打包 / 运行 | required | Ruff format/check、mypy 414 files、前端 lint/typecheck/production build 通过；`frontend.py --prepare-only` 实际探测 Node 24.19.0 / npm 11.17.0；wheel 包含 Prompt 和编译器 |
+| 构建 / 打包 / 运行 | required | Ruff format/check、mypy 414 files、前端 lint/typecheck/production build 通过；`frontend.py --prepare-only` 实际探测 Node 24.19.0 / npm 11.17.0；平台运行时单元测试 12 passed / 1 skipped；同一用户命令已进入 Vite，现有 5173 服务返回 200 且页面包含 Vite client；wheel 包含 Prompt 和编译器 |
 | 文档 / 治理 / 其他 | required | docs/facts/architecture/table-owner/secret scan 通过；独立完整工作树 Review 的唯一 P2 已通过校准 #679 AC2 和本记录边界修复，限定 re-review 结论为 `NO_FINDINGS_WITHIN_SCOPE`；等待最终 Change checker |
 
 # 风险、兼容性、迁移与回滚
@@ -134,6 +137,8 @@ data_changes:
 
 # 完成证据与状态
 
-内容打标本地实现、最新三分类 Prompt 与前端启动器验证已完成。独立完整工作树 Review 仅发现 #679 AC2 曾把全文旧名称语义扫描写成自动门禁；已按用户保持当前编译器的决定，把自动失败关闭限定为定义表、组合引用和固定 JSON 示例，并明确自然语言正文/普通示例由维护者按联动要求同步。限定 re-review 已确认 finding 关闭，结论为 `NO_FINDINGS_WITHIN_SCOPE`。远程 current-head required checks、合并与 main-fresh 继续按交付时序收口。
+内容打标本地实现、最新三分类 Prompt 与前端启动器验证已完成。前端启动失败的根因是 `node_modules` 目录存在但 `.bin/vite` 和 npm 安装元数据缺失，旧检查只比较目录与锁文件哈希而误判为依赖完整；当前检查会把该状态判为 stale 并自动执行 `npm ci`。独立完整工作树 Review 仅发现 #679 AC2 曾把全文旧名称语义扫描写成自动门禁；已按用户保持当前编译器的决定，把自动失败关闭限定为定义表、组合引用和固定 JSON 示例，并明确自然语言正文/普通示例由维护者按联动要求同步。限定 re-review 已确认 finding 关闭，结论为 `NO_FINDINGS_WITHIN_SCOPE`。远程 current-head required checks、合并与 main-fresh 继续按交付时序收口。
 
 最新 Prompt 生产编译结果：`content-labeling.v4.0`、协议 `content-labeling.tables.v1`、发声/情感/一级/二级数量 `3/4/9/39`、Prompt 逻辑 Hash `245d83f440f6e213a563df032b65dc5ff0c1aa0e77d6443e37bc18a86631dca8`、Taxonomy Hash `07fbdbf61ba0158ae50fc48cc1e31751543c3cb4ba51e0d3a1191408c442f95c`。本轮新鲜结果：Ruff format/check、mypy 414 files、changed-scope 后端 Unit/Contract/API 1694 passed / 16 skipped、OpenAPI generate/compat、前端 lint、36 files / 271 tests、production build、Playwright 171 passed、Secret scan 和 `frontend.py --prepare-only` 均通过；隔离 PostgreSQL 内容集成 87 passed。独立 Review 另以生产编译器恢复冻结快照，枚举 `5 × 8 × 2 = 80` 个主体、意图、准入组合并验证唯一覆盖，以 7 个代表性输出检查 Validator。真实 Full-stack 动态改名核心用例、wheel 打包、文档事实、架构与表 Owner 检查也已完成。首次本机全套测试因自动读取真实 Edge profile 启动 Playwright 并污染同进程事件循环；将测试进程的 `AIMA_EDGE_USER_DATA_DIR` 指向不存在的隔离路径后，同一 changed-scope 后端命令全部通过。Windows 下 `validate_changed.py` 直接启动裸 `npm` 因 `CreateProcess` 找不到扩展名而停止，已使用等价 `npm.cmd` 命令逐项取得完整前端结果；正式 Linux CI 仍会按仓库原命令重验。
+
+启动器故障修复后的新鲜证据：平台运行时单元测试 12 passed / 1 skipped；用户的同一 `uv run python scripts/dev/frontend.py` 命令已成功调用 `vite`，随后只因 5173 已有服务而退出；现有页面实测 HTTP 200 且包含 `/@vite/client`。
