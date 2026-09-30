@@ -381,6 +381,9 @@ def _backend_prompt_identity(root: Path, backend: str) -> dict[str, str]:
         if not isinstance(value, str) or not value:
             raise ReleaseBundleError(f"backend 镜像 Prompt 身份缺少字段：{key}")
         result[key] = value
+    for key in ("prompt_sha256", "taxonomy_sha256", "source_sha256"):
+        if not re.fullmatch(r"[0-9a-f]{64}", result[key]):
+            raise ReleaseBundleError(f"backend 镜像 Prompt {key} 不是 SHA256。")
 
     source_path = (
         root
