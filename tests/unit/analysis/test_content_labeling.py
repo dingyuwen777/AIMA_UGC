@@ -224,6 +224,14 @@ def test_prompt_contains_required_human_judgment_sections() -> None:
     assert "## 3. 发声类型：独立三分类闭环【最高优先级】" in prompt
     assert "## 13. 输出前最终硬校验" in prompt
     assert "零空白硬约束" in prompt
+    assert "### 3.0 三类发声含义总览" in prompt
+    assert "| `voice_type` | 核心含义 | 判定边界 |" in prompt
+    assert "### 相关性示例" in prompt
+    assert "### 情感含义总览" in prompt
+    assert "| `sentiment` | 核心含义 | 判断边界 |" in prompt
+    assert "### 情感判断示例" in prompt
+    assert "### 标签含义与判断边界（当前 bootstrap 指南）" in prompt
+    assert "#### 标签综合示例" in prompt
 
 
 def test_prompt_taxonomy_changes_are_runtime_driven_without_python_changes(tmp_path: Path) -> None:
