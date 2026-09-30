@@ -1,4 +1,4 @@
-"""Analysis Scheme PostgreSQL Repository 与 Git Prompt 一次性 bootstrap。"""
+"""Analysis Scheme PostgreSQL Repository 与 Git Prompt 版本化 bootstrap。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ from aima_ugc.modules.analysis.schemes import (
     bootstrap_definition_from_prompt,
     compile_analysis_scheme,
 )
-from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.platform.time import beijing_now
 
 register_analysis_lifecycle_schema()
@@ -66,7 +65,7 @@ class PostgresAnalysisSchemeRepository:
     def bootstrap_default(
         self, *, actor_ref: str = "system"
     ) -> tuple[AnalysisSchemeVersionRecord, bool]:
-        """建立 Git bootstrap；首次 Analysis Run 前可安全刷新纯系统旧基线。"""
+        """建立或刷新纯 Git-managed 默认 Scheme；人工配置存在时不自动覆盖。"""
 
         _lock_scheme_registry(self._session)
         prompt_text = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
@@ -75,7 +74,7 @@ class PostgresAnalysisSchemeRepository:
 
         active = self.get_active_version()
         if active is not None:
-            refreshed = self._refresh_unused_git_bootstrap(
+            refreshed = self._refresh_git_managed_bootstrap(
                 active,
                 definition=compiled.definition,
                 compiled_prompt=compiled.prompt_text,
@@ -136,7 +135,7 @@ class PostgresAnalysisSchemeRepository:
         )
         return _version_from_row(row), True
 
-    def _refresh_unused_git_bootstrap(
+    def _refresh_git_managed_bootstrap(
         self,
         active: AnalysisSchemeVersionRecord,
         *,
@@ -146,7 +145,7 @@ class PostgresAnalysisSchemeRepository:
         taxonomy_sha256: str,
         actor_ref: str,
     ) -> AnalysisSchemeVersionRecord | None:
-        """仅在没有 Run/人工版本时把旧 Git bootstrap 追加刷新为当前基线。"""
+        """纯 Git-managed lineage 变化时追加发布新 Version，并保留历史 Run 绑定。"""
 
         if (
             active.prompt_sha256 == prompt_sha256
@@ -154,27 +153,55 @@ class PostgresAnalysisSchemeRepository:
             and active.compiled_prompt == compiled_prompt
         ):
             return None
+        if active.status != "published":
+            return None
+
+        scheme_row = (
+            self._session.execute(
+                select(
+                    analysis_schemes_table.c.name,
+                    analysis_schemes_table.c.archived_at,
+                    analysis_schemes_table.c.deleted_at,
+                ).where(analysis_schemes_table.c.id == active.scheme_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
         if (
-            active.version != 1
-            or active.status != "published"
-            or active.created_by not in {"system", "system:git-bootstrap"}
-            or active.description != "由 Git Prompt bootstrap 的首个生产 Scheme"
+            scheme_row is None
+            or scheme_row["name"] != "默认内容舆情分析方案"
+            or scheme_row["archived_at"] is not None
+            or scheme_row["deleted_at"] is not None
         ):
             return None
 
-        scheme_count = int(
-            self._session.scalar(select(func.count()).select_from(analysis_schemes_table)) or 0
-        )
-        version_count = int(
-            self._session.scalar(select(func.count()).select_from(analysis_scheme_versions_table))
+        live_scheme_count = int(
+            self._session.scalar(
+                select(func.count())
+                .select_from(analysis_schemes_table)
+                .where(analysis_schemes_table.c.deleted_at.is_(None))
+            )
             or 0
         )
-        run_count = int(
-            self._session.scalar(select(func.count()).select_from(analysis_content_runs_table)) or 0
-        )
-        if scheme_count != 1 or version_count != 1 or run_count != 0:
+        if live_scheme_count != 1:
             return None
 
+        version_rows = tuple(
+            self._session.execute(
+                select(
+                    analysis_scheme_versions_table.c.version,
+                    analysis_scheme_versions_table.c.created_by,
+                ).where(analysis_scheme_versions_table.c.scheme_id == active.scheme_id)
+            ).mappings()
+        )
+        git_actors = {"system", "system:git-bootstrap"}
+        if not version_rows or any(row["created_by"] not in git_actors for row in version_rows):
+            return None
+
+        latest_version = max(int(row["version"]) for row in version_rows)
+        if active.version != latest_version:
+            return None
+        next_version = latest_version + 1
         now = beijing_now()
         self._session.execute(
             update(analysis_scheme_versions_table)
@@ -187,9 +214,9 @@ class PostgresAnalysisSchemeRepository:
                 .values(
                     id=uuid4(),
                     scheme_id=active.scheme_id,
-                    version=2,
+                    version=next_version,
                     status="published",
-                    description="首次正式打标前由 Git Prompt 刷新 bootstrap Scheme",
+                    description="由 Git Prompt 自动刷新生产 Scheme",
                     definition=definition.model_dump(mode="json"),
                     compiled_prompt=compiled_prompt,
                     prompt_sha256=prompt_sha256,

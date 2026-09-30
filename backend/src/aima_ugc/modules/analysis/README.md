@@ -70,7 +70,7 @@ voice_type == "真实用户发声"
 - [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
 - [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。清空 Scheme 后使用新镜像启动时，会由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version。普通升级不会覆盖已经被 Analysis Run 或人工 Scheme 变更使用的 active Version；仅当数据库仍只有系统 Git bootstrap 首个 Version、从未创建 Analysis Run，且没有人工或额外 Scheme Version 时，允许在第一次正式打标前追加刷新为当前 Git bootstrap。
+数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。运行时唯一事实始终是数据库中唯一 active Scheme Version；Git Prompt 不与数据库双写，而是通过版本化 bootstrap/refresh 进入数据库。清空 Scheme 后使用新镜像启动时，会由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version。以后直接修改 Git Prompt 时，下一次分析预览/创建 Run 会检查当前 lineage：如果只存在默认 Scheme，且该 Scheme 的所有 Version 都由系统 Git actor 创建，则追加并激活新的 Git Version；已有历史 Analysis Run 不阻塞刷新，旧 Run 继续引用旧 Version。只要存在其他未删除 Scheme，或默认 Scheme 出现任何人工 Version，Git 自动刷新立即停止，不能覆盖管理员配置。
 
 Python Parser、Compiler 和 Validator 只接受 `content-labeling.v3.0`。旧 V3/V4/V4.5/V4.6 Scheme 不再兼容；部署本次代码前必须按已确认的数据重置方案删除服务器上的旧 Analysis Scheme/Version 和打标结果，不能让旧 active Version 进入新运行时。
 
@@ -96,7 +96,7 @@ Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但�
 → 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
 ```
 
-直接修改 Git bootstrap Prompt 也支持一级/二级标签增删改：只修改第 9 节人类可读 `### 一级标签` 与其下 `- 二级标签` 列表即可，不需要手工同步 `AIMA_TAXONOMY.labels`。Loader/Compiler 会自动生成一致机器镜像；若原有详细解释表已与新标签不一致，会从实际运行 Prompt 自动移除。Git 变更仍遵守既有 Scheme 生命周期：它能建立空库基线，并可在“仅有未使用系统 bootstrap、无 Analysis Run、无人工/额外 Version”时自动刷新；**不会静默覆盖已经被 Analysis Run 使用或人工发布的 active Scheme**。已有生产 Scheme 要采用新标签，应通过管理员发布新 Version，或按既有重置/部署流程明确切换。
+直接修改 Git bootstrap Prompt 也支持一级/二级标签增删改：只修改第 9 节人类可读 `### 一级标签` 与其下 `- 二级标签` 列表即可，不需要手工同步 `AIMA_TAXONOMY.labels`。Loader/Compiler 会自动生成一致机器镜像；若原有详细解释表已与新标签不一致，会从实际运行 Prompt 自动移除。若当前仍是纯 Git-managed 默认 Scheme，下一次分析预览/创建 Run 会自动追加并激活新的 Git Version，即使已有历史 Analysis Run 也会让**后续新 Run**使用新标签；历史 Run 继续冻结旧 Version。若出现人工 Scheme 或人工 Version，则必须由管理员显式发布/回滚，Git 不再自动覆盖。
 
 当前 Taxonomy 与机器语义规则必须同时合法。`source_type/content_intent` 是当前输出格式的内部辅助闭集，不是新的业务持久字段，也不负责推导 `voice_type`；最终发声类型以 Prompt 的独立三分类为准。
 
