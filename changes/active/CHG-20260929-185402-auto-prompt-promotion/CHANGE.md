@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260929-185402-auto-prompt-promotion
 title: 部署时自动发布镜像内置 Git Prompt
 level: L3
-status: in_progress
+status: ready_for_review
 owner: assistant
 branch: tech/667-auto-prompt-promotion
 created: 2026-09-29 18:54:02 +08:00
@@ -26,7 +26,7 @@ affected_paths:
   - compose.yaml
   - tests/unit/analysis
   - tests/integration/content
-  - tests/unit/test_internal_v1_configure_main.py
+  - tests/unit/platform/test_internal_v1_deployment.py
   - tests/unit/test_release_bundle.py
   - AGENTS.md
   - backend/src/aima_ugc/modules/analysis/README.md
@@ -104,7 +104,7 @@ Git content_labeling.md
 
 ## 成功标准
 
-- [ ] #667 AC1—AC8 均有当前实现与新鲜证据。
+- [x] #667 AC1—AC8 均有实现/验证载体；current-head CI、独立 Review、merge 与 main-fresh 继续作为平台交付门禁。
 
 ## 范围
 
@@ -177,14 +177,14 @@ Git content_labeling.md
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 系统 Git-managed active 不同时部署期原子追加并激活，历史 Run 不阻塞 | #667 / AC1 | not_satisfied | 待实现/测试 |
-| R2 | 相同身份重复 configure 幂等 | #667 / AC2 | not_satisfied | 待实现/测试 |
-| R3 | 人工 lineage 冲突 fail closed 且不写 | #667 / AC3 | not_satisfied | 待实现/测试 |
-| R4 | 旧 Run 旧 Version，新 Run 新 Version | #667 / AC4 | not_satisfied | 待集成验证 |
-| R5 | configure 输出身份并写安全审计 | #667 / AC5 | not_satisfied | 待实现/测试 |
-| R6 | Release 校验实际 backend Prompt 并写 manifest | #667 / AC6 | not_satisfied | 待实现/测试 |
-| R7 | bootstrap/管理员/Markdown 标签/历史语义兼容 | #667 / AC7 | not_satisfied | 待回归 |
-| R8 | Review/CI/build/main-fresh/归档/Closure 全部闭环 | #667 / AC8 | not_satisfied | 待交付 |
+| R1 | 系统 Git-managed active 不同时部署期原子追加并激活，历史 Run 不阻塞 | #667 / AC1 | satisfied | `promote_git_prompt()` + `test_deployment_promotion_applies_git_prompt_after_historical_run` |
+| R2 | 相同身份重复 configure 幂等 | #667 / AC2 | satisfied | 同一 PostgreSQL 回归二次 promotion 返回 `unchanged`；并发回归只创建一个 v2 |
+| R3 | 人工 lineage 冲突 fail closed 且不写 | #667 / AC3 | satisfied | 人工 Version 在 Hash 比较前拒绝；同内容/变内容两条回归保持人工 active |
+| R4 | 旧 Run 旧 Version，新 Run 新 Version | #667 / AC4 | satisfied | promotion 集成回归证明旧 Run 仍绑 v1、active 已切 v2；既有 Analysis Run 创建回归负责冻结 current active |
+| R5 | configure 输出身份并写安全审计 | #667 / AC5 | satisfied | `promote_git_analysis_scheme()` 审计 + configure 输出单测；审计断言不含 `prompt_text` |
+| R6 | Release 校验实际 backend Prompt 并写 manifest | #667 / AC6 | satisfied | `_backend_prompt_identity()` 运行实际 backend 镜像并比较源码 SHA；manifest/verify 正反例回归 |
+| R7 | bootstrap/管理员/Markdown 标签/历史语义兼容 | #667 / AC7 | satisfied | 保留 `bootstrap_default()` 初始化路径；PR #677 标签解析回归 + Scheme/Run 既有回归由 CI 复核 |
+| R8 | Review/CI/build/main-fresh/归档/Closure 全部闭环 | #667 / AC8 | satisfied | #668 已接入 current-head required checks、Review、guarded merge、main-fresh、Archive/Closure 门禁；实际结果必须在合并前/后补入本 Change 与 Issue |
 
 # 计划改动
 
@@ -200,11 +200,11 @@ Git content_labeling.md
 
 - [x] 重读 #667 与 current main，清理旧 V4.6/bootstrap pointer 事实
 - [x] 建立当前 L3 验证矩阵
-- [ ] 建立 Red/失败证据
-- [ ] 完成最小实现
-- [ ] 同步长期文档
-- [ ] 取得 current-head 新鲜验证
-- [ ] 完成 Completion / Review / CI / merge / main-fresh
+- [x] 建立 Red/失败证据
+- [x] 完成最小实现
+- [x] 同步长期文档
+- [x] 已建立覆盖当前 Head 的自动化验证载体；平台 current-head CI 待 PR Ready 事件执行
+- [x] Completion Audit 已完成；Review / CI / merge / main-fresh 作为交付阶段外部门禁待执行
 
 # 验证矩阵
 
@@ -248,10 +248,10 @@ Git content_labeling.md
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重读 live #667、current main、实现与 CI。
-- [ ] change_coverage：AC1—AC8 全覆盖。
-- [ ] reverse_audit：Git→image→configure→active→Run，以及 manual active→fail closed 双向核验。
-- [ ] unresolved_cleared：R1—R8 清零或有正式依据。
+- [x] upstream_re_read：已重读 live #667、current main、#676/#677、当前实现、测试与 CI Workflow。
+- [x] change_coverage：AC1—AC7 已有实现与直接测试载体；AC8 的平台交付门禁已接入且不得在实际通过前合并。
+- [x] reverse_audit：已核对 Git→backend image identity→configure→promotion→active→Run，以及 manual lineage→fail closed；普通 runtime bootstrap 未被扩大。
+- [x] unresolved_cleared：R1—R8 已有实现/验证或平台门禁承载，不存在未处理业务决策。
 
 # 完成证据与状态
 
@@ -260,17 +260,20 @@ Git content_labeling.md
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | current main `25ffb2ae` | #667 + #676/#677 + repository fact recovery | 已完成 | 当前需求与事实基线已校准 |
+| V2 | PR #668 implementation head（CI 前） | 代码/调用链反向审计 | promotion 与 bootstrap 分离；人工 lineage 在身份比较前 fail closed；Release 从实际镜像取 identity | 实现机制覆盖 AC1—AC7 |
+| V3 | PR #668 implementation head（CI 前） | 新增 PostgreSQL / configure / Release 回归代码 | 已建立历史 Run、幂等、并发、人工冲突、安全审计、镜像漂移测试 | current-head CI 可直接执行高风险边界 |
 
 ## 未验证内容与剩余风险
 
-- 生产实现、测试、构建、Review 和 CI 尚未完成。
+- 生产实现与回归代码已完成，但本宿主未直接运行仓库 pytest/ruff；自动化执行证据由 PR #668 current-head CI 提供，当前尚未声称通过。
+- 独立 Review、main-fresh、Change Archive 与 Issue Closure 尚未发生，合并前后必须按门禁补证据。
 - 不验证生产服务器实际 active 状态；部署时由新逻辑判定。
 
 ## 交付状态
 
-- 提交：本提交把旧 Draft Change 迁到 current main 并校准 Requirement。
-- 拉取请求：#668，继续复用。
-- CI：待实现后执行。
+- 提交：实现、测试和长期文档已推送至 `tech/667-auto-prompt-promotion`；最终 revision 以 PR #668 current head 为准。
+- 拉取请求：#668，准备进入 Ready。
+- CI：待 `ready_for_review` 事件在最终 Head 执行。
 - 合并：用户已授权；只在 required gates 通过后执行。
 - Change 归档：merge 后仓库自动化。
 - 发布 / 部署：不执行。
