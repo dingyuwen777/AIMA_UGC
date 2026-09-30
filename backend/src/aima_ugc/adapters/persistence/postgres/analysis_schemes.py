@@ -241,9 +241,7 @@ class PostgresAnalysisSchemeRepository:
             "system:git-bootstrap",
             "system:git-promotion",
         }
-        if not version_actors or any(
-            actor not in git_managed_actors for actor in version_actors
-        ):
+        if not version_actors or any(actor not in git_managed_actors for actor in version_actors):
             raise RuntimeError(
                 "当前 active Analysis Scheme 含人工 Version，拒绝由 Git Prompt 自动覆盖"
             )
