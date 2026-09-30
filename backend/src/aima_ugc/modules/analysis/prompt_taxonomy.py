@@ -182,11 +182,7 @@ def _render_taxonomy_block(
         "labels": {primary: list(secondaries) for primary, secondaries in labels.items()},
     }
     readable_json = json.dumps(payload, ensure_ascii=False, indent=2)
-    return (
-        f"{_TAXONOMY_START}\n"
-        f"```json\n{readable_json}\n```\n"
-        f"{_TAXONOMY_END}"
-    )
+    return f"{_TAXONOMY_START}\n```json\n{readable_json}\n```\n{_TAXONOMY_END}"
 
 
 def _replace_taxonomy_block(prompt_text: str, block: str) -> str:
@@ -235,9 +231,7 @@ def _normalize_label_guide(
             guide_pairs.append((primary, secondary))
 
     expected_pairs = [
-        (primary, secondary)
-        for primary, secondaries in labels.items()
-        for secondary in secondaries
+        (primary, secondary) for primary, secondaries in labels.items() for secondary in secondaries
     ]
     if guide_pairs == expected_pairs:
         return prompt_text
