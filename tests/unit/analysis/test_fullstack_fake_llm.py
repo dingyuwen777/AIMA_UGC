@@ -27,7 +27,9 @@ def test_fullstack_fake_llm_emits_valid_v4_label_item() -> None:
             "verification_label": "",
         },
     }
-    raw_item = fake_openai_llm._build_v4_label_item(payload, sentiment="正面")
+    raw_item = fake_openai_llm._build_v4_label_item(
+        payload, sentiment="正面", taxonomy=PromptTaxonomyLoader().load()
+    )
     model_item = ContentLabelingModelItem(
         item_no=1,
         platform=payload["platform"],

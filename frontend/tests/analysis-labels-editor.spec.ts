@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { renderToString } from '@vue/server-renderer'
@@ -16,12 +16,14 @@ function currentPromptLabels(): Record<string, string[]> {
     '../../backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md',
     import.meta.url,
   ))
-  const prompt = readFileSync(path, 'utf8')
-  const match = prompt.match(
-    /<!-- AIMA_TAXONOMY_START -->\s*```json\s*([\s\S]*?)\s*```\s*<!-- AIMA_TAXONOMY_END -->/,
-  )
-  if (!match?.[1]) throw new Error('当前 content_labeling.md 缺少可解析的 Taxonomy 区块')
-  return (JSON.parse(match[1]) as PromptTaxonomyPayload).labels
+  const executable = fileURLToPath(new URL(
+    process.platform === 'win32' ? '../../.venv/Scripts/python.exe' : '../../.venv/bin/python', import.meta.url,
+  ))
+  const compiled = execFileSync(executable, ['-c',
+    'import json,sys; from aima_ugc.modules.analysis.prompt_taxonomy import PromptTaxonomyLoader; t=PromptTaxonomyLoader.load_text(open(sys.argv[1],encoding="utf-8").read()); print(json.dumps({"labels":dict(t.labels)},ensure_ascii=False))',
+    path,
+  ], { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' } })
+  return (JSON.parse(compiled) as PromptTaxonomyPayload).labels
 }
 
 describe('AnalysisLabelsEditor', () => {

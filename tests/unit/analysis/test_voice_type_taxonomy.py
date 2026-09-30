@@ -57,18 +57,20 @@ def _mutated_current_prompt(
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     match = re.search(
-        r"(<!-- AIMA_TAXONOMY_START -->\s*```json\s*)(.*?)(\s*```\s*<!-- AIMA_TAXONOMY_END -->)",
-        prompt,
-        flags=re.DOTALL,
+        r"<!-- AIMA_TABLE: voice_types -->\n(.*?)<!-- /AIMA_TABLE -->", prompt, re.DOTALL
     )
     assert match is not None
-    payload = json.loads(match.group(2))
-    mutate_voice_types(payload["voice_types"])
-    mutated = (
-        prompt[: match.start(2)]
-        + json.dumps(payload, ensure_ascii=False, indent=2)
-        + prompt[match.end(2) :]
-    )
+    values = list(CURRENT_VOICE_TYPES)
+    mutate_voice_types(values)
+    table = match[1].rstrip() + "\n"
+    for value in values[len(CURRENT_VOICE_TYPES) :]:
+        table += f"| {value} | 新增类别定义 | 独立边界说明 |\n"
+    mutated = prompt[: match.start(1)] + table + prompt[match.end(1) :]
+    if values[-1] not in CURRENT_VOICE_TYPES:
+        mutated = mutated.replace(
+            "| media_org | 任意 | 任意 | 营销推广发声 |",
+            f"| media_org | 任意 | 任意 | {values[-1]} |",
+        )
     path = tmp_path / "mutated_content_labeling.md"
     path.write_text(mutated, encoding="utf-8")
     return path
@@ -92,6 +94,7 @@ def _response(
                     "relevance_evidence": ["爱玛"],
                     "source_type": "ordinary_consumer",
                     "content_intent": "organic_inquiry",
+                    "real_user_qualified": True,
                     "voice_type": voice_type,
                     "voice_evidence": ["骑了一年"],
                     "sentiment": sentiment,
@@ -125,11 +128,11 @@ def test_prompt_retains_independent_voice_boundaries_and_strict_real_user_gate()
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
 
-    assert "voice_type` 不再依赖 `source_type + content_intent" in prompt
+    assert "### 主体、意图与准入组合表" in prompt
     assert "personal_transaction" in prompt
-    assert "其他 voice_type = 营销推广发声" in prompt
-    assert "A-F全部通过" in prompt
-    assert "官号白名单命中 = 品牌官方发声" in prompt
+    assert "| ordinary_consumer | commercial_sales | 任意 | 营销推广发声 |" in prompt
+    assert "A-F 同时通过" in prompt
+    assert "爱玛官方旗舰店" in prompt
 
 
 def test_prompt_voice_type_addition_is_runtime_driven_without_python_contract_change(
@@ -206,11 +209,11 @@ def test_duplicate_voice_type_in_current_prompt_fails_closed_before_llm(
 
 
 def test_current_voice_taxonomy_is_loadable() -> None:
-    """唯一 Git Prompt 可恢复 V3.0 的三类发声 Taxonomy。"""
+    """唯一 Git Prompt 可恢复当前三类发声 Taxonomy。"""
 
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
 
-    assert taxonomy.output_protocol_version == "content-labeling.v3.0"
+    assert taxonomy.output_protocol_version == "content-labeling.tables.v1"
     assert taxonomy.voice_types == CURRENT_VOICE_TYPES
 
 

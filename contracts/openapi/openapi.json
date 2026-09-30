@@ -594,6 +594,18 @@
         "additionalProperties": false,
         "description": "一个原子 Analysis Scheme 的结构化定义。",
         "properties": {
+          "compiled_snapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compiled Snapshot"
+          },
           "labels": {
             "additionalProperties": {
               "items": {
@@ -602,7 +614,6 @@
               "type": "array"
             },
             "maxProperties": 100,
-            "minProperties": 1,
             "title": "Labels",
             "type": "object"
           },
@@ -613,29 +624,26 @@
             "type": "string"
           },
           "sentiments": {
+            "default": [],
             "items": {
               "type": "string"
             },
             "maxItems": 50,
-            "minItems": 1,
             "title": "Sentiments",
             "type": "array"
           },
           "voice_types": {
+            "default": [],
             "items": {
               "type": "string"
             },
             "maxItems": 50,
-            "minItems": 1,
             "title": "Voice Types",
             "type": "array"
           }
         },
         "required": [
-          "prompt_template",
-          "sentiments",
-          "voice_types",
-          "labels"
+          "prompt_template"
         ],
         "title": "AnalysisSchemeDefinitionRequest",
         "type": "object"

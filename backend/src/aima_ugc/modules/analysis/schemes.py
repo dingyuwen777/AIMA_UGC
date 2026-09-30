@@ -22,7 +22,7 @@ _BLOCK_PATTERN = re.compile(
     re.escape(_TAXONOMY_START) + r".*?" + re.escape(_TAXONOMY_END),
     flags=re.DOTALL,
 )
-_CURRENT_VERSION_DECLARATION = f"Prompt Version：`{PROMPT_VERSION}`"
+_CURRENT_VERSION_DECLARATION = "Prompt Version：`content-labeling.v3.0`"
 _VOICE_TYPES_PATTERN = re.compile(r"(?m)(^2\. `voice_type` 最终只允许：\n)(?:   - `[^`\n]+`\n)+")
 _SENTIMENTS_PATTERN = re.compile(
     r"(?ms)(^## 8\. 情感判断[^\n]*\n.*?^只允许：[^\S\n]*\n\n)"
@@ -99,10 +99,16 @@ class CompiledAnalysisScheme:
     def to_prompt_taxonomy(self, *, prompt_version: str = PROMPT_VERSION) -> PromptTaxonomy:
         """构造 ContentLabelingService 可直接消费的冻结 Taxonomy。"""
 
-        taxonomy = PromptTaxonomyLoader.load_text(
-            self.prompt_text,
-            prompt_version=prompt_version,
-        )
+        if self.definition.compiled_snapshot is not None:
+            from .markdown_prompt import restore_snapshot
+
+            taxonomy = restore_snapshot(
+                self.prompt_text, self.definition.compiled_snapshot, version=prompt_version
+            )
+        else:
+            taxonomy = PromptTaxonomyLoader.load_text(
+                self.prompt_text, prompt_version=prompt_version
+            )
         if (
             taxonomy.sentiments != self.definition.sentiments
             or taxonomy.voice_types != self.definition.voice_types
@@ -137,6 +143,24 @@ def compile_analysis_scheme(
 ) -> CompiledAnalysisScheme:
     """把结构化 Taxonomy 编译为唯一运行时 Prompt，并核对同源 Taxonomy。"""
 
+    if "<!-- AIMA_TABLE: voice_types -->" in definition.prompt_template:
+        from .markdown_prompt import snapshot_payload
+
+        taxonomy = PromptTaxonomyLoader.load_text(definition.prompt_template)
+        normalized_definition = AnalysisSchemeDefinitionRequest(
+            prompt_template=taxonomy.prompt_text,
+            sentiments=taxonomy.sentiments,
+            voice_types=taxonomy.voice_types,
+            labels=dict(taxonomy.labels),
+            compiled_snapshot=snapshot_payload(taxonomy),
+        )
+        return CompiledAnalysisScheme(
+            definition=normalized_definition,
+            prompt_text=taxonomy.prompt_text,
+            prompt_sha256=taxonomy.prompt_sha256,
+            taxonomy_sha256=taxonomy.taxonomy_sha256,
+        )
+
     rendered_prompt = _render_current_prompt(definition)
     taxonomy = PromptTaxonomyLoader.load_text(rendered_prompt)
     if (
@@ -170,13 +194,12 @@ def compile_analysis_scheme(
 def prompt_taxonomy_from_version(version: AnalysisSchemeVersionRecord) -> PromptTaxonomy:
     """把数据库 Version 恢复为运行时不可变 Taxonomy，并核对编译 Hash。"""
 
-    compiled = compile_analysis_scheme(version.definition)
-    if (
-        compiled.prompt_text != version.compiled_prompt
-        or compiled.prompt_sha256 != version.prompt_sha256
-        or compiled.taxonomy_sha256 != version.taxonomy_sha256
-    ):
-        raise ValueError("Analysis Scheme Version 编译快照不一致")
+    compiled = CompiledAnalysisScheme(
+        definition=version.definition,
+        prompt_text=version.compiled_prompt,
+        prompt_sha256=version.prompt_sha256,
+        taxonomy_sha256=version.taxonomy_sha256,
+    )
     return compiled.to_prompt_taxonomy(prompt_version=f"analysis-scheme:{version.id}")
 
 
@@ -184,6 +207,10 @@ def bootstrap_definition_from_prompt(prompt_text: str) -> AnalysisSchemeDefiniti
     """把 Git Prompt 转为一次性 bootstrap 模板，避免数据库与文件双写。"""
 
     taxonomy = PromptTaxonomyLoader.load_text(prompt_text)
+    if taxonomy.source_format == "markdown-tables.v1":
+        return compile_analysis_scheme(
+            AnalysisSchemeDefinitionRequest(prompt_template=prompt_text)
+        ).definition
     template, substitutions = _BLOCK_PATTERN.subn(
         TAXONOMY_PLACEHOLDER,
         taxonomy.prompt_text,

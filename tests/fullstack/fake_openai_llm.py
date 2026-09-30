@@ -7,8 +7,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Lock
 from typing import Any
 
+from aima_ugc.modules.analysis.prompt_taxonomy import PromptTaxonomy, PromptTaxonomyLoader
 
-def _build_v4_label_item(item: dict[str, Any], *, sentiment: str) -> dict[str, object]:
+
+def _build_v4_label_item(
+    item: dict[str, Any], *, sentiment: str, taxonomy: PromptTaxonomy
+) -> dict[str, object]:
     """按当前 V4 协议生成可由正式 Validator 核验的确定性结果。"""
 
     author = item.get("author")
@@ -29,20 +33,32 @@ def _build_v4_label_item(item: dict[str, Any], *, sentiment: str) -> dict[str, o
     )
     if evidence is None:
         raise ValueError("Full-stack Fake LLM 需要至少一个非空业务文本字段")
+    qualified = next(rule for rule in taxonomy.semantic_rules.voice_rules if rule[2] == "通过")
+    primary, secondary = (
+        next(
+            (primary, child)
+            for primary, children in taxonomy.labels.items()
+            for child in children
+            if child == "舒适性"
+        )
+        if "舒适性" in taxonomy.all_secondary_labels
+        else (taxonomy.primary_labels[0], taxonomy.labels[taxonomy.primary_labels[0]][0])
+    )
     return {
         "item_no": item["item_no"],
         "relevance": "relevant",
         "relevance_evidence": [evidence],
-        "source_type": "ordinary_consumer",
-        "content_intent": "organic_experience",
-        "voice_type": "真实用户发声",
+        "source_type": qualified[0],
+        "content_intent": qualified[1],
+        "real_user_qualified": True,
+        "voice_type": qualified[3],
         "voice_evidence": [evidence],
         "sentiment": sentiment,
         "sentiment_evidence": [evidence],
         "labels": [
             {
-                "primary_label": "骑行性能",
-                "secondary_label": "舒适性",
+                "primary_label": primary,
+                "secondary_label": secondary,
                 "evidence": [evidence],
             }
         ],
@@ -82,8 +98,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_error(500, "concurrent requests did not arrive")
                 return
         type(self).request_no += 1
-        sentiment = "正面" if type(self).request_no % 2 else "负面"
-        items = [_build_v4_label_item(item, sentiment=sentiment) for item in user_payload["items"]]
+        taxonomy = PromptTaxonomyLoader.load_text(request["messages"][0]["content"])
+        sentiment = taxonomy.sentiments[0]
+        if len(user_payload["items"]) != 1 or "platform" not in user_payload["items"][0]:
+            self.send_error(400, "formal request must contain one platform-aware item")
+            return
+        items = [
+            _build_v4_label_item(item, sentiment=sentiment, taxonomy=taxonomy)
+            for item in user_payload["items"]
+        ]
         self._send_json(
             {
                 "choices": [

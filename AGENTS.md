@@ -354,7 +354,7 @@ PostgreSQL
 
 生成目录禁止手工修改。Contract 删除字段、改名、改类型、改语义、可选变必填、改默认排序或错误都按破坏性变化处理。
 
-AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；运行时唯一业务事实源是数据库中唯一 active Analysis Scheme Version，[`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md) 是当前唯一内容打标 Prompt 文件，也是空库首次打标 bootstrap/灾备基线。文件内部 `content-labeling.v3.0` 只用于当前格式和一致性校验；Python Parser、Compiler 和 Validator 不兼容 V3/V4/V4.5/V4.6 等其他 Prompt 版本。部署本次不兼容变更前必须按业务 Owner 已确认方案清除服务器旧 Analysis Scheme/Version 和打标结果，再由最新镜像中的唯一 Prompt 建立首个 active Version 并重新打标。Prompt 模板、电动车行业 `relevance` 规则、内部 `source_type/content_intent`、情感、独立三分类 `voice_type`、证据规则、标签和 Validator 所需 Taxonomy/语义闭集必须作为同一 Scheme Version 原子发布或回滚；升级代码不得覆盖已被 Analysis Run 或人工 Scheme 变更使用的 active Version。唯一自动刷新例外是：数据库仍只有系统 Git bootstrap 的首个 Version、从未创建 Analysis Run、也没有任何人工/额外 Scheme Version 时，可以在第一次正式打标前追加并激活当前 Git bootstrap Version，同时保留旧 Version 审计历史。
+AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；运行时唯一业务事实源是数据库中唯一 active Analysis Scheme Version。[`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md) 是唯一内容打标 Markdown 编辑源及空库 bootstrap/灾备基线。分类、主体、意图、发声组合规则和标签由标记表格确定，机器快照由生产 Compiler 自动生成，禁止手工维护第二份 JSON 或分类映射。文档修订号只在开头声明，与 Markdown 格式、模型输出协议独立；普通规则修改不升级输出 Contract。完整 Prompt、Taxonomy、语义规则及双 Hash 作为同一 Scheme Version 原子发布或回滚。新格式按准入布尔字段和表格组合校验发声类型；AI 结果、筛选及分类统计直接使用该版本输出的发声类型、情感和标签实际值。历史已支持的 legacy v3.0 快照按旧协议恢复，不用当前编译器重解释，也不因本次变更要求删除历史数据。纯 Git lineage 默认 Scheme 允许后续预览/创建 Run 时追加并激活新 Git Version，已有历史 Run 不阻塞；旧 Run 保持冻结。出现其他未删除 Scheme、任何人工 Version 或显式历史回滚后停止自动刷新，不覆盖管理员配置。
 
 ## 9. Job、Scheduler 与 Provider 恢复
 

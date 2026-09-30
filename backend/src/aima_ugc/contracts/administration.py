@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -245,18 +245,23 @@ class AnalysisSchemeDefinitionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt_template: str = Field(min_length=1, max_length=100_000)
-    sentiments: tuple[str, ...] = Field(min_length=1, max_length=50)
-    voice_types: tuple[str, ...] = Field(min_length=1, max_length=50)
-    labels: dict[str, tuple[str, ...]] = Field(min_length=1, max_length=100)
+    sentiments: tuple[str, ...] = Field(default=(), max_length=50)
+    voice_types: tuple[str, ...] = Field(default=(), max_length=50)
+    labels: dict[str, tuple[str, ...]] = Field(default_factory=dict, max_length=100)
+    compiled_snapshot: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def validate_definition(self) -> AnalysisSchemeDefinitionRequest:
         """校验受控模板与结构化 Taxonomy 的通用完整性。"""
 
+        if "<!-- AIMA_TABLE: voice_types -->" in self.prompt_template:
+            return self
         if self.prompt_template.count(_TAXONOMY_PLACEHOLDER) != 1:
             raise ValueError("prompt_template 必须且只能包含一个 Taxonomy 占位符")
         if "正面" not in self.sentiments:
             raise ValueError("情感必须显式包含“正面”，用于工作台正向率统一口径")
+        if not self.voice_types or not self.labels:
+            raise ValueError("旧模板的发声类型和标签不能为空")
         if len(self.sentiments) != len(set(self.sentiments)):
             raise ValueError("sentiments 不能重复")
         if len(self.voice_types) != len(set(self.voice_types)):

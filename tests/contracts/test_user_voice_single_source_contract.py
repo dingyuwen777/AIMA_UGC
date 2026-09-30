@@ -80,20 +80,19 @@ def test_excel_analysis_uses_voice_type_as_the_only_user_voice_fact() -> None:
 
 def test_bootstrap_prompt_separates_source_intent_and_evidence_without_parallel_flag() -> None:
     taxonomy = PromptTaxonomyLoader().load()
-    assert PROMPT_VERSION == "content-labeling.v3.0"
+    assert PROMPT_VERSION == "content-labeling.v4.0"
     assert taxonomy.prompt_version == PROMPT_VERSION
-    assert taxonomy.output_protocol_version == PROMPT_VERSION
+    assert taxonomy.output_protocol_version == "content-labeling.tables.v1"
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     assert "is_user_voice" not in prompt
     assert "source_type" in prompt
     assert "content_intent" in prompt
     assert "voice_evidence" in prompt
-    assert "品牌官方发声" in prompt
-    assert "真实用户发声" in prompt
-    assert "营销推广发声" in prompt
-    assert "个人交易发声" not in taxonomy.voice_types
+    assert taxonomy.voice_types == ("品牌官方发声", "真实用户发声", "营销推广发声")
+    assert "real_user_qualified" in prompt
     for input_field in (
+        "platform",
         "title",
         "text",
         "author.display_name",

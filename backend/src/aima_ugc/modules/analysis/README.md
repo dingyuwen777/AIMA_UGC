@@ -36,7 +36,7 @@ sentiment
 labels[]
 ```
 
-当前唯一 `content-labeling.v3.0` 格式在持久化前还要求内部 `source_type / content_intent`、各维度原文证据和 `decision_status`。这些字段只用于本地闭集、证据与条件 Judge 校验，不扩展 `ContentLabelAnalysisV3`、HTTP 或数据库结果结构。
+当前表格格式在持久化前要求内部 `source_type / content_intent / real_user_qualified`、各维度原文证据和 `decision_status`。它们供闭集、真实用户准入、表格组合及证据校验；对外结果仍是 V3。内部准入布尔字段不写入业务结果。
 
 约束：
 
@@ -52,55 +52,26 @@ relevance = irrelevant
 
 历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容，不再作为新写入格式。
 
-当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，运行时唯一机器事实来自 Analysis Run 冻结的 Scheme Version；当前结果继续以字符串 `voice_type` 保存，由 `RuntimeTaxonomyValidator` 对冻结 Taxonomy 严格校验 membership。`voice_type` 按 Prompt 的官号白名单、真实用户 A-F 准入和营销推广兜底独立判断，不能由辅助字段 `source_type / content_intent` 反向覆盖。
-
-真实用户发声唯一业务判断：
-
-```text
-voice_type == "真实用户发声"
-```
-
-不要再增加 `is_user_voice`/`is_real_user_voice` 平行字段。
+当前发声类型、情感、标签和判断标准直接维护在唯一 Markdown 中。程序直接校验、保存和查询文档中的实际分类值，不维护分类名称到另一套含义的映射。新增或改名发声类型时同时维护引用它的组合规则、正文及示例；新增或改名情感、标签时同步正文及示例。编译器拒绝重复名称、缺失引用、未覆盖组合和过期 JSON 示例，不会丢弃用户的判断说明。
 
 ---
 
 ## 2. Analysis Scheme 与 Git bootstrap
 
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md)：唯一内容打标 Prompt 文件；内部 `content-labeling.v3.0` 只作为当前格式一致性标识，是空库首次发布和灾备恢复的 Git 基线。
-- [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
-- [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
+唯一编辑源是 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md)。[`backend/src/aima_ugc/modules/analysis/markdown_prompt.py`](markdown_prompt.py) 从六张定义表生成分类、父子关系和组合规则；自然语言指南与表格原样组成完整模型 Prompt。机器快照保存在 Scheme Definition 中，由 [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) 管理双 Hash 和版本恢复。编译格式、输出协议与文档开头的内容修订号独立，改规则不要求每次升级程序。
 
-数据库第一次读取 Analysis 配置时，会直接把唯一 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计；不再存在版本指针或同目录候选文件。运行时唯一事实始终是数据库中唯一 active Scheme Version；Git Prompt 不与数据库双写，而是通过版本化 bootstrap/refresh 进入数据库。清空 Scheme 后使用新镜像启动时，会由镜像中的 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 建立首个 active Version。以后直接修改 Git Prompt 时，下一次分析预览/创建 Run 会检查当前 lineage：如果只存在默认 Scheme，且该 Scheme 的所有 Version 都由系统 Git actor 创建，则追加并激活新的 Git Version；已有历史 Analysis Run 不阻塞刷新，旧 Run 继续引用旧 Version。只要存在其他未删除 Scheme，或默认 Scheme 出现任何人工 Version，Git 自动刷新立即停止，不能覆盖管理员配置。
+维护操作：
 
-Python Parser、Compiler 和 Validator 只接受 `content-labeling.v3.0`。旧 V3/V4/V4.5/V4.6 Scheme 不再兼容；部署本次代码前必须按已确认的数据重置方案删除服务器上的旧 Analysis Scheme/Version 和打标结果，不能让旧 active Version 进入新运行时。
+1. 在 Markdown 中修改说明、发声类型、情感、两级标签或组合规则，同步正文与示例中的分类名称。保留六张定义表的标记和表头，说明单元格里的竖线写成 `\|`。
+2. 在仓库根执行 `uv run python scripts/dev/compile_content_labeling.py`；可加 `--input <文件>` 和 `--output <生成 JSON>`。脚本复用生产编译器，不连接数据库或模型。生成 JSON 是校验产物，不是另一个编辑源。
+3. 管理员配置中心导入 `.md` 或直接编辑完整 Markdown，保存草稿。服务端编译成功后回显只读分类和标签；错误保留当前生效版本。
+4. 显式发布草稿后，仅后续新建 Run 使用新版本。运行中和历史 Run 使用创建时冻结的文本、编译快照及 Hash；回滚恢复完整历史版本。
 
-一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符。管理员路径由 Compiler 把结构化发声类型、情感和标签写回模型可读闭集与机器 Taxonomy；Git 路径则把 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) 第 9 节的人类可读 `### 一级标签` + `- 二级标签` 闭集作为标签编辑源，Loader 自动按它重建 `AIMA_TAXONOMY.labels` 机器镜像。两条路径最终都生成同一种冻结 Prompt/Taxonomy，再计算 `prompt_sha256 / taxonomy_sha256`。静态标签解释指南若与当前父子树不一致会自动从运行时 Prompt 移除，避免旧说明成为第二套标签事实。
+Git 基线由首次配置读取建立 published/active Version。后续预览/创建 Run 仅对纯系统 Git lineage 的默认 Scheme 自动追加并激活新 Git Version；历史 Run 不阻塞刷新。出现其他未删除 Scheme、任何人工 Version 或显式回滚后，管理员发布成为生效路径，Git 文件修改不覆盖人工配置。
 
-相关代码：
+新格式无需 Taxonomy 占位符或手工机器 JSON。已经保存的 legacy v3.0 Version 保留旧编译及校验协议，按版本快照恢复；不把任意旧 Prompt 版本视为兼容。新格式恢复只读取已保存快照，禁止用最新 Markdown 或最新编译器重解释历史。`prompt_sha256` 标识完整文本，`taxonomy_sha256` 标识分类、组合和展示顺序；只调整自然语言解释可以只改变 Prompt Hash。
 
-- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：只接受当前格式；sentiments / voice_types 继续从当前机器闭集恢复，一级/二级 labels 从第 9 节人类可读标签闭集恢复并自动归一化机器镜像，再计算 `taxonomy_sha256`；其他 Prompt 版本失败关闭。
-- [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)：编译受控模板并核对数据库快照 Hash。
-- [`backend/src/aima_ugc/bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version 并形成运行身份。
-
-Python、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonomy 列表。
-
-Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但不改变既有 Version 状态机：当前 active Scheme 不能归档；恢复后仍保持非 active；曾发布或进入 Analysis Run 历史的 Scheme 只允许归档；只有从未发布、从未使用的纯草稿 Scheme 才能在归档后永久删除。管理员页面以结构化发声类型、情感和标签编辑为主路径，Prompt 只在高级设置维护。
-
-修改运行中的情感、发声类型、一级/二级标签、判断边界或学习示例时，管理员配置中心仍是主路径：
-
-```text
-管理员配置中心创建/保存完整 Scheme 草稿
-→ 编译/Validator tests
-→ 原子发布并写 audit_events
-→ 只影响之后新建的 Analysis Run
-→ 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
-```
-
-直接修改 Git bootstrap Prompt 也支持一级/二级标签增删改：只修改第 9 节人类可读 `### 一级标签` 与其下 `- 二级标签` 列表即可，不需要手工同步 `AIMA_TAXONOMY.labels`。Loader/Compiler 会自动生成一致机器镜像；若原有详细解释表已与新标签不一致，会从实际运行 Prompt 自动移除。若当前仍是纯 Git-managed 默认 Scheme，下一次分析预览/创建 Run 会自动追加并激活新的 Git Version，即使已有历史 Analysis Run 也会让**后续新 Run**使用新标签；历史 Run 继续冻结旧 Version。若出现人工 Scheme 或人工 Version，则必须由管理员显式发布/回滚，Git 不再自动覆盖。
-
-当前 Taxonomy 与机器语义规则必须同时合法。`source_type/content_intent` 是当前输出格式的内部辅助闭集，不是新的业务持久字段，也不负责推导 `voice_type`；最终发声类型以 Prompt 的独立三分类为准。
-
-`prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。
+Scheme 复制、归档、恢复、条件删除继续复用既有生命周期；删除管理目录中的历史 Scheme 不删除已被 Run 引用的 Version。格式或结构输出协议变更属于代码变更，普通分类修改则通过相同发布链路生效。
 
 声音广场人工纠正通过 `GET /api/v1/content-analysis-taxonomy` 读取 active Scheme 的安全只读投影；筛选下拉通过 `GET /api/v1/content-filter-options` 读取 active 分类与当前可见历史值的合并目录。历史值只用于检索，不进入 active Taxonomy。生产装配在 [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)，Response 机器事实在 [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)。接口不返回 Prompt 正文、自然语言规则、模型配置或 Secret；加载失败时返回统一 `503`，前端不会退回平行业务枚举。
 
@@ -121,7 +92,7 @@ author.bio
 author.verification_label
 ```
 
-`item_no` 只用于批次配对。`platform` 用于平台加作者名的官号白名单精确匹配，也参与内容输入 Hash；普通 evidence 仍只能来自其余五个文本字段，不能把平台名当证据。
+正式高并发路径为一条内容一个请求。`item_no` 只用于请求内输入输出配对，通常为 1；每个请求的 system 消息携带整个冻结 Prompt，user 消息携带 `{"items":[单条输入]}`。多个请求并发运行，不把多条帖子合成一个分析请求。`platform` 用于平台加作者名的官号白名单精确匹配，也参与内容输入 Hash；普通 evidence 仍只能来自其余五个文本字段，不能把平台名当证据。
 
 不会发送：
 
@@ -472,7 +443,7 @@ Dry Run 会在输入 Excel 同目录生成带时间戳的运行目录，包含�
 | --- | --- |
 | 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 管理员 Analysis Scheme 草稿 → 校验 → 发布；Git Prompt 只在要改变新环境 bootstrap 基线时同步 |
 | 改 Scheme 编译、发布或回滚 | [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) + Administration Service/Repository + Migration/API/审计/Integration tests |
-| 改当前 V3.0 内部输出格式或 Judge 路由 | [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + 当前格式/离线回归 |
+| 改当前表格输出协议或 Judge 路由 | [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + 当前格式/离线回归 |
 | 改持久化 `ContentLabelAnalysisV3` 结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
 | 改模型/Base URL/API Key/模型并发/RPS | 管理员 Provider 配置 + [`backend/src/aima_ugc/contracts/administration.py`](../../contracts/administration.py) + [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) + `adapters/llm` |
 | 改自动 Shard 策略 | [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) + Preview/Create + Planner tests |

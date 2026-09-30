@@ -39,6 +39,8 @@ _JUDGE_ERROR_CODES = frozenset(
         "decision_needs_judge",
         "fabricated_evidence",
         "missing_evidence",
+        "inconsistent_voice_type",
+        "invalid_real_user_qualification",
     }
 )
 
@@ -210,6 +212,7 @@ class _ModelLabelItem(BaseModel):
     relevance_evidence: list[str] = Field(min_length=1)
     source_type: str = Field(min_length=1)
     content_intent: str = Field(min_length=1)
+    real_user_qualified: bool | None = None
     voice_type: ContentVoiceType
     voice_evidence: list[str] = Field(default_factory=list)
     sentiment: str | None = None
@@ -224,6 +227,7 @@ class _ParsedModelLabel:
     relevance_evidence: tuple[str, ...]
     source_type: str
     content_intent: str
+    real_user_qualified: bool | None
     voice_type: ContentVoiceType
     voice_evidence: tuple[str, ...]
     sentiment: str | None
@@ -240,6 +244,7 @@ def _parse_model_label_item(value: dict[str, Any]) -> _ParsedModelLabel:
         relevance_evidence=tuple(parsed.relevance_evidence),
         source_type=parsed.source_type,
         content_intent=parsed.content_intent,
+        real_user_qualified=parsed.real_user_qualified,
         voice_type=parsed.voice_type,
         voice_evidence=tuple(parsed.voice_evidence),
         sentiment=parsed.sentiment,
@@ -346,7 +351,7 @@ class RuntimeTaxonomyValidator:
             item.author_bio,
             item.author_verification_label,
         )
-        empty_input = not any(source_texts)
+        empty_input = not any(text.strip() for text in source_texts)
         allow_empty_sentinel = empty_input
         seen: set[str] = set()
         for fragment in evidence:
@@ -378,6 +383,23 @@ class RuntimeTaxonomyValidator:
             errors.append("unknown_source_type")
         if parsed.content_intent not in rules.content_intents:
             errors.append("unknown_content_intent")
+
+        if rules.voice_rules:
+            from .markdown_prompt import matching_voice_types
+
+            if parsed.real_user_qualified is None:
+                errors.append("missing_real_user_qualification")
+            else:
+                expected = matching_voice_types(
+                    rules.voice_rules,
+                    parsed.source_type,
+                    parsed.content_intent,
+                    parsed.real_user_qualified,
+                )
+                if expected != [parsed.voice_type]:
+                    errors.append("inconsistent_voice_type")
+                if parsed.real_user_qualified and parsed.relevance != "relevant":
+                    errors.append("invalid_real_user_qualification")
 
         errors.extend(
             self._evidence_errors(
