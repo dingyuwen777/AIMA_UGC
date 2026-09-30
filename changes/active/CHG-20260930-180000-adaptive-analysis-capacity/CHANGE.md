@@ -37,6 +37,38 @@ data_changes:
 
 用户追加《内容类型为空原因》最后一轮方案：声音广场移除内容类型筛选并清理隐藏旧状态；可恢复 Validation/Transport 失败持续重试，退避与五分钟无进展停止连接已有容量控制。本次作为同一实现单元收口。仅使用专用隔离 PostgreSQL 和临时测试服务，不复用、迁移或重启用户服务及其数据库。
 
+# 背景、现状与问题
+
+基线 Worker 按人工固定并发/限速和次数上限执行。Provider 容量与当前机器资源变化后，固定值无法反馈实际成功入库吞吐；失败 Item 在恢复前可能被终结。声音广场内容类型控件及旧状态可能施加空值隐藏条件。维持原行为会继续留下上述容量利用和失败恢复缺口。
+
+# 事实与证据
+
+基线 `3e3752c51a5270100fb511b7920be2cf14b039f4` 的 `analysis_concurrent_worker.py`、`concurrent_labeling.py`、管理 Contract 与声音广场 Store 是原调用链事实源；正式 Run/Request Item/Job 已持久化，足以承载恢复，不需要第二套任务系统。启动脚本 `scripts/deploy/start_compose.py` 已生成 Worker 配额并投影给 API；真实资源探测由 `platform/capacity.py` 维护。当前运行和复发路径的直接证据见后文测试清单。
+
+真实付费 Provider 吞吐尚未验证，明确延期；当前机器外的生产服务、Secret、数据与部署状态不作推断。
+
+# 目标、成功标准与非目标
+
+成功标准为 Blueprint 第 35/36 节 AC1–AC17：容量以实际入库反馈调整；可恢复失败只处理未成功 Item；连续五分钟无进展或系统错误停止整个 Run；前端筛选和收尾表达与后端事实一致。现有历史协议、Job Fence/Deadline/取消、业务语义和成功去重保持。
+
+范围为 Analysis/LLM Adapter/管理与内容 API、声音广场与任务中心、生成 Contract、两项 Migration、分层测试和正式文档。不执行生产迁移、Deploy/Release、付费 Probe、依赖升级或无关重构。
+
+# 约束与意图决策
+
+用户最终授权提交、推送并使用管理员权限合并，早期本地限制不再适用；CI/Review/归档门禁仍执行。机器资源复用现有生成预算及 cgroup，不修改在用服务。后端内容形态事实保持，LLM 四个人工参数显式拒绝，Collection 保持原行为。新 Run 冻结恢复协议；历史 Snapshot 不补写新 marker。0076/0077 部署先升级；回滚必须排空父 Run 及关联 Planner/Shard。
+
+# 修改方案与决策依据
+
+控制器与失败测试 → 单表/Migration/共享观察窗 → Executor/RPS/Worker → Run 冻结与动态投放 → 管理 Contract/UI/生成物 → 集成、模拟、回归与独立 Review → 同步正式文档。
+
+追加实施：前端旧筛选回归 → Item/Run 持久重试与健康窗口 → 同一有界 Executor 轮询可发送项 → Worker 短事务反馈、系统停止和同批成功保留 → 隔离 PostgreSQL/HTTP、浏览器与静态/构建回归 → 两份上游完成审计及独立 Review。
+
+选择已有 Item/Run 扩展稳定列，既避免内存重试循环在接管时丢失五分钟窗口，也不引入第二套 Job/恢复表。旧 Snapshot 不补写新 marker；新 Run 冻结 recovery.v1 协议，历史失败数据不自动重新提交。迁移与回滚在隔离库验证，用户数据库本轮不执行任何迁移。
+
+## 备选方案与取舍
+
+纯内存重试无法保存跨重启/Lease 接管的五分钟窗口，不能满足已批准恢复要求。新增恢复 Job/账本会复制已有 Owner/状态机，没有必要。全局硬发送许可账本能进一步抑制瞬时超目标，但与本轮单 Profile、允许短窗反馈的决定不符，因此采用持久 Profile + 活跃分片份额，并明确瞬时误差边界。
+
 # 需求追溯
 
 上游：[引用方案](chatgpt-conversation://6abce1b4-4288-83e8-b746-e8a5d9d970d9) 最后一轮方案、追加引用方案及本轮最新授权；团队可访问的正式需求 Owner 为 `docs/blueprint/07_技术决策与实施门禁.md` 第 35/36 节、`docs/product/02_当前产品能力与用户流程.md` 和 `docs/appendix/07_AI舆情打标与分析实现.md`。当前 Change 仅为施工契约，不作为需求全集。
@@ -61,13 +93,12 @@ data_changes:
 | R16 | 本地验证不影响其他正在运行代码及数据库 | docs/blueprint/07_技术决策与实施门禁.md#AC16 | satisfied | 所有 PG 验证仅专用容器标签 codex.task=adaptive-analysis-capacity、127.0.0.1:55476 和任务库；浏览器/API/Worker/Fake LLM 使用私有端口/上下文，未重启用户服务或迁移用户库；任务资源清理在验证完成后执行 |
 | R17 | 复用机器资源文件和有效配额，综合实时内存、CPU 与数据库预算 | docs/blueprint/07_技术决策与实施门禁.md#AC17 | satisfied | compose.auto.yaml→cgroup/API Worker 预算链 21 项资源回归；生产 Planner 低 CPU、小内存、压力/恢复回归 |
 
-# 修改计划
+# 计划改动
 
-控制器与失败测试 → 单表/Migration/共享观察窗 → Executor/RPS/Worker → Run 冻结与动态投放 → 管理 Contract/UI/生成物 → 集成、模拟、回归与独立 Review → 同步正式文档。
-
-追加实施：前端旧筛选回归 → Item/Run 持久重试与健康窗口 → 同一有界 Executor 轮询可发送项 → Worker 短事务反馈、系统停止和同批成功保留 → 隔离 PostgreSQL/HTTP、浏览器与静态/构建回归 → 两份上游完成审计及独立 Review。
-
-选择已有 Item/Run 扩展稳定列，既避免内存重试循环在接管时丢失五分钟窗口，也不引入第二套 Job/恢复表。旧 Snapshot 不补写新 marker；新 Run 冻结 recovery.v1 协议，历史失败数据不自动重新提交。迁移与回滚在隔离库验证，用户数据库本轮不执行任何迁移。
+- `modules/analysis`、LLM Adapter 与 `bootstrap/analysis_*`：控制算法、动态发送和恢复协议，覆盖 R1–R8/R12–R15。
+- `postgres/analysis_*`、Job Owner、Migration 0076/0077：共享状态、时窗、统计、锁序与安全回滚，覆盖 R2–R6/R12–R15。
+- 管理/内容 Contract、OpenAPI/Client、前端管理/声音广场/任务中心：拒绝人工参数、移除隐藏筛选、实际收尾，覆盖 R7/R11/R14。
+- `tests`、前端组件/浏览器测试、Blueprint/Product/Appendix/README：分层验证与正式事实同步；机器资源文件链回归覆盖 R17，隔离约束覆盖 R16。
 
 # 验证矩阵
 
@@ -78,13 +109,17 @@ data_changes:
 | 集成 / 持久化 / 运行依赖 | required | 隔离 PostgreSQL、跨 Run、同窗推进、Fence、动态投放 |
 | 用户 / 工作流验收 | required | LLM 只读状态与 Collection 保存回归 |
 | 跨组件关键路径 | required | 正式 Worker/本地 Fake LLM/成功结果持久化 |
-| 外部依赖 / 供应方探测 | explicitly_deferred | 真实付费吞吐收益需要独立有界 Probe |
+| 外部依赖 / 供应方探测 | not_applicable | 本轮不验证付费性能收益；R9 有明确延期，模拟与 Fake LLM 不冒充 Provider 实测 |
 | 构建 / 打包 / 运行 | required | Python/前端静态检查、测试与构建 |
 | 文档 / 治理 / 其他 | required | 机器事实与正式文档同步、Completion/独立 Review |
 
 # 风险、兼容性、迁移与回滚
 
 新 Run 使用 adaptive.v1，历史冻结 Snapshot 继续按旧固定参数恢复。学习值不改变模型、Prompt、Taxonomy、generation config 或 Job timeout。Schema 新增派生容量表及既有 Run/Item 恢复字段、bounded failure spans 和查询索引；0076/0077 升级先于代码启用，回滚前停止新建并排空新协议 Run 及其关联 Planner/Shard Job，父 Run 失败但子 Job 未终态仍拒绝 downgrade。短控制窗内允许瞬时超目标，不承诺强全局发送信号量。无依赖升级或生产操作。
+
+# 文档、依赖、部署与发布影响
+
+同步 Analysis README、Blueprint 05/07、产品能力和 AI 实现专题，生成 OpenAPI/Client。未新增或升级依赖/Runtime；不更改用户配置或 Secret，不触发付费 Provider。新 Schema 需要部署时先升级，回滚条件见上节；本轮只合并代码，Release/Deploy 不适用，用户没有要求执行。LLM 管理调用方须停止传四个人工参数；前端已同步，Collection 不受影响。
 
 # 完成审计
 
@@ -93,7 +128,7 @@ data_changes:
 - [x] reverse_audit：管理字段→后端拒绝/只读投影；容量→Worker/跨 Run 分片；入库→反馈；恢复→统计/任务中心；旧筛选→全部提交入口；资源文件→cgroup/API→Planner。
 - [x] unresolved_cleared：当前代码范围无 not_satisfied 或 blocking Findings；真实付费收益未实测，远程 CI、merge/main-fresh/归档仍由平台后续证据闭合，不能由本 Change checkbox 冒充。
 
-# 当前证据
+# 完成证据与状态
 
 基线 `3e3752c51a5270100fb511b7920be2cf14b039f4`。所有数据库命令仅在任务容器/库执行；未修改用户数据库、启动配置或在用服务。没有依赖升级。
 
