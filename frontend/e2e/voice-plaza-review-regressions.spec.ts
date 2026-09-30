@@ -123,7 +123,12 @@ test('车型目录响应缺少 items 时显示错误且不中断页面渲染', a
   expect(pageErrors).toEqual([])
 })
 
-test('Failed Analysis Run 在全局任务中心只展示产品化失败状态', async ({ page }) => {
+for (const [errorCode, message] of [
+  ['analysis_shard_failed', '任务遇到问题，请稍后重试；如持续失败，请联系管理员。'],
+  ['llm_transport_unavailable', 'AI 模型服务连续五分钟不可用，已停止打标。请检查服务后重新发起。'],
+  ['llm_validation_unhealthy', 'AI 返回结果连续五分钟未通过校验，已停止打标。请检查模型和分析方案后重新发起。'],
+]) {
+test(`Failed Analysis Run 在全局任务中心解释 ${errorCode}`, async ({ page }) => {
   await stubStableAuxiliaryRoutes(page)
   await page.route('**/api/v1/contents**', async (route) => {
     await route.fulfill({
@@ -156,7 +161,7 @@ test('Failed Analysis Run 在全局任务中心只展示产品化失败状态', 
           generation_config_hash: 'c'.repeat(64),
           stats: { pending: 0, succeeded: 0, failed: 1, cancelled: 0, stale: 0 },
           shards: [],
-          error_code: 'analysis_shard_failed',
+          error_code: errorCode,
           created_at: '2026-08-29T02:00:00Z',
           started_at: '2026-08-29T02:00:01Z',
           finished_at: '2026-08-29T02:00:03Z',
@@ -172,7 +177,8 @@ test('Failed Analysis Run 在全局任务中心只展示产品化失败状态', 
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
   await expect(taskCenter).toContainText('AI 分析任务 13')
-  await expect(taskCenter).toContainText('任务遇到问题，请稍后重试；如持续失败，请联系管理员。')
+  await expect(taskCenter).toContainText(message!)
   await expect(taskCenter.getByText('技术详情', { exact: true })).toHaveCount(0)
-  await expect(taskCenter).not.toContainText('analysis_shard_failed')
+  await expect(taskCenter).not.toContainText(errorCode!)
 })
+}

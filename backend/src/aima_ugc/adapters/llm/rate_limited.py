@@ -21,16 +21,21 @@ class RateLimitedContentLabelingLLM:
         self,
         *,
         inner: ContentLabelingLLMPort,
-        max_rps: int,
+        max_rps: int | None = None,
+        current_rps: Callable[[], float | None] | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         """创建一个无 burst 的线程安全 RPS 限流器。"""
 
-        if isinstance(max_rps, bool) or not isinstance(max_rps, int) or max_rps <= 0:
+        if current_rps is None and (
+            isinstance(max_rps, bool) or not isinstance(max_rps, int) or max_rps <= 0
+        ):
             raise ValueError("LLM max_rps 必须是大于 0 的整数")
         self._inner = inner
-        self._interval_seconds = 1.0 / max_rps
+        self._interval_seconds = 1.0 / max_rps if max_rps is not None else 0.0
+        self._current_rps = current_rps
+        self._last_sent: float | None = None
         self._clock = clock
         self._sleep = sleep
         self._lock = Lock()
@@ -66,6 +71,9 @@ class RateLimitedContentLabelingLLM:
     def _wait_for_slot(self, stop_event: Event | None) -> None:
         """原子预约下一个请求起始时刻，并在锁外等待以允许其他线程继续预约。"""
 
+        if self._current_rps is not None:
+            self._wait_dynamic_slot(stop_event)
+            return
         with self._lock:
             now = self._clock()
             slot = max(now, self._next_slot)
@@ -77,6 +85,32 @@ class RateLimitedContentLabelingLLM:
                 self._sleep(delay)
             else:
                 stop_event.wait(delay)
+            with self._lock:
+                self._wait_seconds += self._clock() - before
+
+    def _wait_dynamic_slot(self, stop_event: Event | None) -> None:
+        """动态速率只在真正发送时占位；短等待后重读，不保留旧速率的远期预约。"""
+
+        assert self._current_rps is not None
+        while True:
+            ensure_labeling_running(stop_event)
+            with self._lock:
+                rate = self._current_rps()
+                now = self._clock()
+                if rate is None:
+                    self._last_sent = now
+                    return
+                if rate < 0:
+                    raise ValueError("动态 RPS 不能为负数")
+                delay = 0.1 if rate == 0 else max(0.0, (self._last_sent or 0.0) + 1.0 / rate - now)
+                if rate > 0 and (self._last_sent is None or delay == 0):
+                    self._last_sent = now
+                    return
+            before = self._clock()
+            if stop_event is None:
+                self._sleep(min(delay, 0.1))
+            else:
+                stop_event.wait(min(delay, 0.1))
             with self._lock:
                 self._wait_seconds += self._clock() - before
 

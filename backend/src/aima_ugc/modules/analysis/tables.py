@@ -19,6 +19,26 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from aima_ugc.platform.database.metadata import metadata
 
+analysis_llm_capacity_profiles_table = Table(
+    "analysis_llm_capacity_profiles",
+    metadata,
+    # 环境配置也有稳定 UUID，因此不引用只包含管理员配置的目录表。
+    Column("provider_config_id", Uuid(), primary_key=True),
+    Column("model", Text(), primary_key=True),
+    Column("revision", Integer(), nullable=False),
+    Column("prompt_sha256", Text(), nullable=False),
+    Column("state", JSONB(), nullable=False),
+    Column("window", JSONB(), nullable=False),
+    Column("window_started_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("last_adjusted_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("revision > 0", name="revision_positive"),
+    CheckConstraint("jsonb_typeof(state) = 'object'", name="state_object"),
+    CheckConstraint("jsonb_typeof(\"window\") = 'object'", name="window_object"),
+    CheckConstraint("(state->>'current')::integer between 1 and 5000", name="current_bounded"),
+    info={"owner": "analysis"},
+)
+
 analysis_content_runs_table = Table(
     "analysis_content_runs",
     metadata,
@@ -48,6 +68,16 @@ analysis_content_runs_table = Table(
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
     Column("cancel_requested_at", DateTime(timezone=True)),
+    Column("transport_failure_started_at", DateTime(timezone=True)),
+    Column("last_transport_success_at", DateTime(timezone=True)),
+    Column("transport_failure_spans", JSONB(), nullable=False, server_default=text("'[]'::jsonb")),
+    Column("probe_job_id", Uuid(), ForeignKey("jobs.id", ondelete="SET NULL")),
+    Column("probe_not_before", DateTime(timezone=True)),
+    CheckConstraint(
+        "jsonb_typeof(transport_failure_spans) = 'array' "
+        "and jsonb_array_length(transport_failure_spans) <= 4096",
+        name="transport_failure_spans_bounded",
+    ),
     CheckConstraint(
         "run_intent in ('initial_analysis','manual_reanalysis')",
         name="run_intent_allowed",
@@ -208,6 +238,17 @@ analysis_content_request_items_table = Table(
     Column("status", Text(), nullable=False, server_default=text("'pending'")),
     Column("error_code", Text()),
     UniqueConstraint("request_id", "ordinal", name="uq_analysis_content_request_items_ordinal"),
+    Column("retry_kind", Text()),
+    Column("retry_count", Integer(), nullable=False, server_default=text("0")),
+    Column("retry_not_before", DateTime(timezone=True)),
+    Column("last_retry_at", DateTime(timezone=True)),
+    Column("validation_failure_started_at", DateTime(timezone=True)),
+    Column("validation_error_codes", JSONB(), nullable=False, server_default=text("'[]'::jsonb")),
+    CheckConstraint("retry_count >= 0", name="retry_count_nonnegative"),
+    CheckConstraint(
+        "retry_kind is null or retry_kind in ('validation','transport')", name="retry_kind_allowed"
+    ),
+    CheckConstraint("jsonb_typeof(validation_error_codes) = 'array'", name="retry_errors_array"),
     CheckConstraint("content_version >= 1", name="content_version_positive"),
     CheckConstraint("ordinal >= 0", name="ordinal_nonnegative"),
     CheckConstraint(
@@ -222,6 +263,22 @@ analysis_content_request_items_table = Table(
         name="status_fields_consistent",
     ),
     info={"owner": "analysis"},
+)
+
+Index(
+    "ix_analysis_items_retry_ready",
+    analysis_content_request_items_table.c.request_id,
+    analysis_content_request_items_table.c.retry_not_before,
+    analysis_content_request_items_table.c.ordinal,
+    postgresql_where=analysis_content_request_items_table.c.status == "pending",
+)
+
+Index(
+    "ix_analysis_items_validation_window",
+    analysis_content_request_items_table.c.request_id,
+    analysis_content_request_items_table.c.validation_failure_started_at,
+    postgresql_where=(analysis_content_request_items_table.c.status == "pending")
+    & analysis_content_request_items_table.c.validation_failure_started_at.is_not(None),
 )
 
 analysis_content_label_pairs_table = Table(

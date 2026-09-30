@@ -628,6 +628,7 @@ class ContentLabelingService:
         *,
         max_validation_retries: int,
         stop_event: Event | None = None,
+        previous_validation_error_codes: tuple[str, ...] = (),
     ) -> ContentLabelingBatchResult:
         """分析一个批次；Validation Retry 只重新请求当前尚未成功的 item。"""
 
@@ -655,7 +656,11 @@ class ContentLabelingService:
             (item.item_no, item) for item in model_items
         )
         successful: dict[int, ContentLabelAnalysis] = {}
-        latest_errors: dict[int, tuple[str, ...]] = {}
+        latest_errors: dict[int, tuple[str, ...]] = (
+            {item.item_no: previous_validation_error_codes for item in model_items}
+            if previous_validation_error_codes
+            else {}
+        )
         attempts: list[ContentLabelingAttempt] = []
         total_rounds = max_validation_retries + 1
         for retry_round in range(total_rounds):
@@ -664,7 +669,7 @@ class ContentLabelingService:
             request_groups: tuple[
                 tuple[ContentLabelingRequestKind, tuple[ContentLabelingModelItem, ...]], ...
             ]
-            if retry_round == 0:
+            if retry_round == 0 and not previous_validation_error_codes:
                 request_groups = (("primary", tuple(unresolved.values())),)
             else:
                 repair_items: list[ContentLabelingModelItem] = []

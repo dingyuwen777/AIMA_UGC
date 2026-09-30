@@ -17,6 +17,22 @@ from aima_ugc.modules.analysis.content_labeling import (
 OBSERVED_AT = datetime(2026, 8, 18, 10, 0, tzinfo=UTC)
 
 
+def test_durable_retry_resumes_repair_or_judge_without_repeating_primary() -> None:
+    """持久恢复调用从上次校验错误继续修复，成功仍使用同一 Validator。"""
+
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    llm = FakeContentLabelingLLM(responses=[_valid_response(loader.load(), (1,))])
+    service = ContentLabelingService(prompt_loader=loader, llm=llm)
+    result = service.label_contents(
+        [_content("retry-item")],
+        max_validation_retries=0,
+        previous_validation_error_codes=("fabricated_evidence",),
+    )
+    assert result.items[0].analysis_status == "succeeded"
+    assert llm.calls[0].request_kind == "judge"
+    assert llm.calls[0].previous_validation_error_codes == ("fabricated_evidence",)
+
+
 def _content(external_content_id: str) -> CanonicalContentV1:
     return CanonicalContentV1(
         observed_fields=["title", "text"],

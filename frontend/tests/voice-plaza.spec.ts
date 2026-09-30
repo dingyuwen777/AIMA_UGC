@@ -120,6 +120,21 @@ function installSessionStorage(): Storage {
 }
 
 describe('voice plaza', () => {
+  it('旧会话内容类型不会成为列表、分析和导出的隐藏条件', async () => {
+    installSessionStorage()
+    sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
+      filters: { platform: 'xiaohongshu', contentType: 'video', search: '爱玛' },
+      sortBy: 'published_at', sortDirection: 'desc',
+    }))
+    const store = useVoicePlazaStore()
+    expect(store.filters).not.toHaveProperty('contentType')
+    expect(store.appliedFilters).not.toHaveProperty('contentType')
+    await store.refresh()
+    expect(generated.listContents.mock.lastCall?.[0]).not.toHaveProperty('content_types')
+    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ platforms: ['xiaohongshu'], search: '爱玛' })
+    expect(JSON.parse(sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}').filters).not.toHaveProperty('contentType')
+  })
+
   it('切换排序从第一页重新请求，粉丝升降序交给后端执行', async () => {
     generated.listContents.mockResolvedValue({ items: [item], next_cursor: 'next-page', has_more: true })
     const store = useVoicePlazaStore()
@@ -662,7 +677,8 @@ describe('voice plaza', () => {
       }),
     )
 
-    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(3)
+    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(2)
+    expect(html).not.toContain('aria-label="内容类型"')
     expect(html.match(/aria-disabled="true"/g)?.length ?? 0).toBe(2)
   })
 

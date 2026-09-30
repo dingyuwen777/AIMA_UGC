@@ -15,6 +15,7 @@ from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingStopped,
     ensure_labeling_running,
 )
+from aima_ugc.modules.analysis.recovery import OUTPUT_ERROR_CODES
 
 from .openai_compatible import OpenAICompatibleLLMError
 
@@ -31,11 +32,14 @@ class RetryingContentLabelingLLM:
         *,
         inner: ContentLabelingLLMPort,
         max_retries: int = DEFAULT_LLM_TRANSPORT_MAX_RETRIES,
+        retry_output_errors: bool = True,
     ) -> None:
         if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
             raise ValueError("LLM transport max_retries 必须是大于等于 0 的整数")
         self._inner = inner
         self._max_retries = max_retries
+        # 历史/离线保留原行为；新正式 Run 的 2xx 输出错误交给持久 Validation 窗口。
+        self._retry_output_errors = retry_output_errors
         self._metrics_lock = Lock()
         self._total_requests = 0
         self._total_retries = 0
@@ -89,7 +93,11 @@ class RetryingContentLabelingLLM:
                 raise
             except OpenAICompatibleLLMError as exc:
                 self._record_request()
-                if not exc.retryable or transport_attempt > self._max_retries:
+                if (
+                    not exc.retryable
+                    or transport_attempt > self._max_retries
+                    or (not self._retry_output_errors and exc.error_code in OUTPUT_ERROR_CODES)
+                ):
                     raise
                 ensure_labeling_running(actual_request.stop_event)
                 delay = _retry_delay_seconds(transport_attempt)

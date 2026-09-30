@@ -69,6 +69,7 @@ class OpenAICompatibleContentLabelingLLM:
         client: httpx.Client | None = None,
         pricing_catalog: LLMPricingCatalog | None = None,
         request_audit: Callable[[LLMHTTPRequestAudit], None] | None = None,
+        on_request_started: Callable[[], None] | None = None,
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
         normalized_base_url = _normalize_base_url(actual_base_url)
@@ -97,6 +98,7 @@ class OpenAICompatibleContentLabelingLLM:
         self._provider_name = actual_provider_name
         self._use_json_mode = use_json_mode
         self._request_audit = request_audit
+        self._on_request_started = on_request_started
         self._pricing_catalog = pricing_catalog
         self._pricing_unavailable_reason: str | None = None
         if pricing_catalog is None:
@@ -198,6 +200,8 @@ class OpenAICompatibleContentLabelingLLM:
             self._http_peak = max(self._http_peak, self._http_active)
         try:
             try:
+                if self._on_request_started is not None:
+                    self._on_request_started()
                 response = self._client.post(
                     "chat/completions",
                     headers={
@@ -211,7 +215,9 @@ class OpenAICompatibleContentLabelingLLM:
             except httpx.HTTPError as exc:
                 raise OpenAICompatibleLLMError(
                     "OpenAI-compatible LLM 网络请求失败",
-                    error_code="network_error",
+                    error_code="timeout"
+                    if isinstance(exc, httpx.TimeoutException)
+                    else "network_error",
                     retryable=True,
                 ) from exc
             finally:
@@ -224,7 +230,8 @@ class OpenAICompatibleContentLabelingLLM:
                 raise OpenAICompatibleLLMError(
                     f"OpenAI-compatible LLM 请求失败: HTTP {status_code}",
                     error_code=f"http_{status_code}",
-                    retryable=status_code in _RETRYABLE_HTTP_STATUS_CODES,
+                    retryable=status_code in _RETRYABLE_HTTP_STATUS_CODES
+                    or 500 <= status_code < 600,
                     status_code=status_code,
                 )
 
@@ -264,7 +271,7 @@ class OpenAICompatibleContentLabelingLLM:
             )
         except OpenAICompatibleLLMError as exc:
             error_code = exc.error_code
-            if exc.error_code == "network_error":
+            if exc.error_code in {"network_error", "timeout"}:
                 status = "network_error"
             elif exc.status_code is not None:
                 status = "http_error"

@@ -378,6 +378,10 @@ class ProviderConfigCreateRequest(BaseModel):
             raise ValueError("api_key 不能为空")
         if self.provider_kind == "llm" and not self.model:
             raise ValueError("LLM Provider 必须配置 model")
+        if self.provider_kind == "llm" and self.model_fields_set.intersection(
+            {"timeout_seconds", "max_retries", "max_concurrency", "max_rps"}
+        ):
+            raise ValueError("LLM 执行参数由系统自动管理，不接受人工参数")
         if self.provider_kind == "collection" and self.model is not None:
             raise ValueError("采集 Provider 不使用 model")
         if self.provider_kind == "collection" and self.is_default:
@@ -427,6 +431,28 @@ class ProviderConfigUpdateRequest(BaseModel):
         return self
 
 
+class AdaptiveLLMCapacityResponse(BaseModel):
+    """系统自动学习的只读状态；P95 为有界延迟桶上界估计。"""
+
+    model_config = ConfigDict(extra="forbid")
+    state: str
+    current_concurrency: int = Field(ge=1, le=5_000)
+    last_safe_concurrency: int = Field(ge=0, le=5_000)
+    historical_safe_concurrency: int = Field(ge=0, le=5_000)
+    current_rps: float | None = Field(default=None, gt=0)
+    active_shards: int = Field(ge=0)
+    current_shard_size: int | None = Field(default=None, gt=0)
+    persisted_contents_per_second: float = Field(ge=0)
+    latency_p95_seconds: float = Field(ge=0)
+    http_429_ratio: float = Field(ge=0, le=1)
+    timeout_ratio: float = Field(ge=0, le=1)
+    transport_error_ratio: float = Field(ge=0, le=1)
+    validation_failure_ratio: float = Field(ge=0, le=1)
+    updated_at: datetime | None = None
+    last_adjusted_at: datetime | None = None
+    adjustment_reason: str
+
+
 class ProviderConfigResponse(BaseModel):
     """Provider 管理安全投影；绝不返回 API Key 或内部 secret_ref。"""
 
@@ -437,14 +463,15 @@ class ProviderConfigResponse(BaseModel):
     display_name: str
     base_url: str
     model: str | None = None
-    timeout_seconds: int = Field(gt=0)
-    max_retries: int = Field(ge=0)
-    max_concurrency: int = Field(gt=0)
+    timeout_seconds: int | None = Field(default=None, gt=0)
+    max_retries: int | None = Field(default=None, ge=0)
+    max_concurrency: int | None = Field(default=None, gt=0)
     max_rps: int | None = Field(default=None, gt=0)
     enabled: bool
     is_default: bool
     revision: int = Field(gt=0)
     secret_configured: bool
+    adaptive_capacity: AdaptiveLLMCapacityResponse | None = None
 
 
 class ProviderConfigListResponse(BaseModel):

@@ -9,6 +9,9 @@ from uuid import UUID, uuid4
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_capacity import (
+    PostgresAnalysisCapacityRepository,
+)
 from aima_ugc.adapters.persistence.postgres.analysis_high_throughput import (
     PostgresHighThroughputAnalysisRepository,
 )
@@ -17,6 +20,7 @@ from aima_ugc.adapters.persistence.postgres.content_queries import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.contracts.http import ContentFilterSnapshot
+from aima_ugc.modules.analysis.adaptive_capacity import CAPACITY_MODE
 from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
     CONTENT_ANALYSIS_JOB_PAYLOAD_VERSION,
@@ -75,6 +79,10 @@ class HighThroughputContentAnalysisPlanJobExecutor:
                         run = repository.get_run(payload.run_id, for_update=True)
                         if run is None:
                             return JobHandlerResult.failed("analysis_run_not_found")
+                        if run["status"] == "failed":
+                            return JobHandlerResult.failed(
+                                run["error_code"] or "analysis_run_failed"
+                            )
                         if run["cancel_requested_at"] is not None:
                             return JobHandlerResult.cancelled()
 
@@ -260,8 +268,14 @@ def schedule_high_throughput_analysis_run_shards(
     run = repository.get_run(run_id, for_update=True)
     if run is None:
         return 0
+    if run["status"] not in {"queued", "running"}:
+        return 0
     if run["cancel_requested_at"] is not None:
         return 0
+    if run["runtime_config_snapshot"].get("capacity_mode") == CAPACITY_MODE:
+        max_in_flight = PostgresAnalysisCapacityRepository(session).provider_job_window(
+            run, min(max_in_flight, PostgresJobRepository(session).database_headroom())
+        )
     available = max(max_in_flight - repository.active_shard_count(run_id), 0)
     shard_numbers = repository.next_unscheduled_shards(run_id, limit=available)
     jobs = PostgresJobRepository(session)
@@ -323,6 +337,23 @@ def create_high_throughput_analysis_job_terminal_callback(
             request_id=job.request_id,
         )
         repository.refresh_run(run_id)
+        run = repository.get_run(run_id)
+        if run is not None:
+            capacity = PostgresAnalysisCapacityRepository(session)
+            provider_id = UUID(
+                run["runtime_config_snapshot"].get(
+                    "provider_config_id", "00000000-0000-4000-8000-000000000001"
+                )
+            )
+            for waiting_run in capacity.waiting_runs(provider_id, run["model"], excluding=run_id):
+                schedule_high_throughput_analysis_run_shards(
+                    session,
+                    run_id=waiting_run,
+                    max_in_flight=runtime.job_window(
+                        "analysis", ceiling=runtime.settings.analysis_run_max_in_flight_jobs
+                    ),
+                    request_id=job.request_id,
+                )
 
     return callback
 

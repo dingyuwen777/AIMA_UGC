@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 import type { ResourceLifecycleResponse } from '../../../generated/api/client'
 import { apiErrorMessage } from '../../../shared/api/http'
@@ -43,6 +43,9 @@ const loadError = ref<string | null>(null)
 const { message: notice, show: showNotice, clear: clearNotice } = useTransientNotice()
 const connectionResult = ref<ProviderConnectionTestResponse | null>(null)
 let connectionRequestVersion = 0
+let capacityTimer: ReturnType<typeof setInterval> | undefined
+let refreshingCapacity = false
+const capacityRefreshError = ref(false)
 
 const draft = reactive({
   id: '',
@@ -68,6 +71,17 @@ const panelDescription = computed(() => (
     : '管理 TikHub 的服务地址、访问密钥和请求限制。保存后，新建的采集任务会使用最新配置。'
 ))
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
+const capacity = computed(() => selectedItem.value?.adaptive_capacity)
+const capacityStates: Record<string, string> = { exploring: '自动探索', refining: '区间收敛', reprobing: '重新探测', stable: '稳定运行', cooldown: '拥塞后恢复', waiting_legacy: '等待历史任务释放容量' }
+const capacityReasons: Record<string, string> = {
+  cold_start: '等待首轮运行', configuration_warm_start: '配置变化后保守重新学习',
+  http_429: '服务商限流，已降低请求量', timeout_transport_or_latency: '请求超时、网络错误或响应变慢',
+  insufficient_demand_or_results: '等待足够的内容与成功结果', validation_failure_guard: '校验失败较多，暂缓提速',
+  healthy_cooldown: '健康窗口恢复中', healthy_stable: '保持稳定容量',
+  periodic_reprobe: '重新探测可用容量', bounded_refinement: '缩小安全容量区间',
+  refinement_complete: '完成安全容量收敛', exponential_probe: '健康窗口后提速', system_ceiling: '达到系统保护上限',
+  confirming_throughput_plateau: '确认入库速度是否继续提升', persisted_throughput_plateau: '入库速度未提升，恢复已验证容量',
+}
 const hasUnsavedChanges = computed(() => {
   const item = selectedItem.value
   if (!item) return true
@@ -75,10 +89,10 @@ const hasUnsavedChanges = computed(() => {
     || draft.displayName.trim() !== item.display_name
     || draft.baseUrl.trim() !== item.base_url
     || (isLlm.value && draft.model.trim() !== (item.model ?? ''))
-    || draft.timeoutSeconds !== item.timeout_seconds
-    || draft.maxRetries !== item.max_retries
-    || draft.maxConcurrency !== item.max_concurrency
-    || maxRpsValue() !== (item.max_rps ?? null)
+    || (!isLlm.value && (draft.timeoutSeconds !== item.timeout_seconds
+      || draft.maxRetries !== item.max_retries
+      || draft.maxConcurrency !== item.max_concurrency
+      || maxRpsValue() !== (item.max_rps ?? null)))
     || draft.enabled !== item.enabled
     || (isLlm.value && draft.isDefault !== item.is_default)
 })
@@ -93,10 +107,10 @@ const navigationDirty = computed(() => {
     || Boolean(draft.baseUrl.trim())
     || Boolean(draft.model.trim())
     || Boolean(draft.apiKey.trim())
-    || draft.timeoutSeconds !== 45
-    || draft.maxRetries !== 3
-    || draft.maxConcurrency !== 5
-    || Boolean(String(draft.maxRps).trim())
+    || (!isLlm.value && (draft.timeoutSeconds !== 45
+      || draft.maxRetries !== 3
+      || draft.maxConcurrency !== 5
+      || Boolean(String(draft.maxRps).trim())))
     || draft.enabled !== true
     || draft.isDefault !== isLlm.value
 })
@@ -105,15 +119,33 @@ const formValid = computed(() => {
   if (!draft.displayName.trim() || !draft.provider.trim() || !draft.baseUrl.trim()) return false
   if (isLlm.value && !draft.model.trim()) return false
   if (!draft.id && !draft.apiKey.trim()) return false
-  return draft.timeoutSeconds > 0
+  return isLlm.value || (draft.timeoutSeconds > 0
     && draft.maxRetries >= 0
     && draft.maxRetries <= 20
     && draft.maxConcurrency > 0
     && draft.maxConcurrency <= 5000
-    && (!draft.maxRps || (Number(draft.maxRps) > 0 && Number(draft.maxRps) <= 10000))
+    && (!draft.maxRps || (Number(draft.maxRps) > 0 && Number(draft.maxRps) <= 10000)))
 })
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  if (isLlm.value) capacityTimer = setInterval(() => { void refreshCapacity() }, 3000)
+})
+onUnmounted(() => clearInterval(capacityTimer))
+
+/** 轮询只替换安全投影，不覆盖用户正在编辑的地址、模型或密钥。 */
+async function refreshCapacity(): Promise<void> {
+  if (loading.value || saving.value || refreshingCapacity) return
+  refreshingCapacity = true
+  try {
+    items.value = (await fetchProviderConfigs(props.providerKind)).items
+    capacityRefreshError.value = false
+  } catch {
+    capacityRefreshError.value = true
+  } finally {
+    refreshingCapacity = false
+  }
+}
 
 /** 测试结果只属于发送时的已保存配置，草稿变化后不能继续显示为当前结果。 */
 function invalidateConnectionTest(): void {
@@ -192,9 +224,9 @@ function selectItem(item: ProviderConfigResponse, preserveFeedback = false): voi
     baseUrl: item.base_url,
     model: item.model ?? '',
     apiKey: '',
-    timeoutSeconds: item.timeout_seconds,
-    maxRetries: item.max_retries,
-    maxConcurrency: item.max_concurrency,
+    timeoutSeconds: item.timeout_seconds ?? 45,
+    maxRetries: item.max_retries ?? 3,
+    maxConcurrency: item.max_concurrency ?? 5,
     maxRps: item.max_rps == null ? '' : String(item.max_rps),
     enabled: item.enabled,
     isDefault: item.is_default,
@@ -210,6 +242,13 @@ function maxRpsValue(): number | null {
   return value ? Number(value) : null
 }
 
+function collectionExecutionFields(): Pick<ProviderConfigUpdateRequest, 'timeout_seconds' | 'max_retries' | 'max_concurrency' | 'max_rps'> {
+  return isLlm.value ? {} : {
+    timeout_seconds: draft.timeoutSeconds, max_retries: draft.maxRetries,
+    max_concurrency: draft.maxConcurrency, max_rps: maxRpsValue(),
+  }
+}
+
 async function save(): Promise<void> {
   if (!formValid.value) return
   saving.value = true
@@ -223,10 +262,7 @@ async function save(): Promise<void> {
         display_name: draft.displayName.trim(),
         base_url: draft.baseUrl.trim(),
         model: isLlm.value ? draft.model.trim() : null,
-        timeout_seconds: draft.timeoutSeconds,
-        max_retries: draft.maxRetries,
-        max_concurrency: draft.maxConcurrency,
-        max_rps: maxRpsValue(),
+        ...collectionExecutionFields(),
         enabled: draft.enabled,
         is_default: isLlm.value ? draft.isDefault : false,
         ...(draft.apiKey.trim() ? { api_key: draft.apiKey } : {}),
@@ -243,10 +279,7 @@ async function save(): Promise<void> {
         base_url: draft.baseUrl.trim(),
         model: isLlm.value ? draft.model.trim() : null,
         api_key: draft.apiKey,
-        timeout_seconds: draft.timeoutSeconds,
-        max_retries: draft.maxRetries,
-        max_concurrency: draft.maxConcurrency,
-        max_rps: maxRpsValue(),
+        ...collectionExecutionFields(),
         enabled: draft.enabled,
         is_default: isLlm.value ? draft.isDefault : false,
       }
@@ -486,7 +519,45 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         ><small v-if="draft.id">为安全起见，系统不会把当前密钥返回到浏览器。</small></label>
       </div>
 
-      <details class="advanced-settings">
+      <section
+        v-if="isLlm"
+        class="advanced-settings"
+        aria-label="自动执行状态"
+      >
+        <h3>自动执行状态</h3>
+        <p>系统根据成功入库速度、响应时间和服务商限流自动调整。新任务自动确定等待时间和分片大小。</p>
+        <p
+          v-if="capacityRefreshError"
+          role="status"
+        >
+          状态刷新失败，当前显示上次取得的数据。
+        </p>
+        <dl
+          v-if="capacity"
+          class="advanced-grid"
+        >
+          <div><dt>状态</dt><dd>{{ capacityStates[capacity.state] ?? capacity.state }}</dd></div>
+          <div><dt>全局同时请求目标</dt><dd>{{ capacity.current_concurrency }}</dd></div>
+          <div><dt>当前安全容量 / 历史安全容量</dt><dd>{{ capacity.last_safe_concurrency || '尚未确认' }} / {{ capacity.historical_safe_concurrency || '尚未确认' }}</dd></div>
+          <div><dt>每秒请求保护上限</dt><dd>{{ capacity.current_rps?.toFixed(2) ?? '自动观测中' }}</dd></div>
+          <div><dt>运行分片数</dt><dd>{{ capacity.active_shards }}</dd></div>
+          <div><dt>最近活动任务每片内容数</dt><dd>{{ capacity.current_shard_size ?? '暂无活动任务' }}</dd></div>
+          <div><dt>成功入库内容 / 秒</dt><dd>{{ capacity.persisted_contents_per_second.toFixed(2) }}</dd></div>
+          <div><dt>95% 请求响应时间估计</dt><dd>{{ capacity.latency_p95_seconds.toFixed(2) }} 秒</dd></div>
+          <div><dt>服务商限流比例</dt><dd>{{ (capacity.http_429_ratio * 100).toFixed(1) }}%</dd></div>
+          <div><dt>请求超时比例</dt><dd>{{ (capacity.timeout_ratio * 100).toFixed(1) }}%</dd></div>
+          <div><dt>最近调整</dt><dd>{{ capacity.last_adjusted_at ? formatDateTime(capacity.last_adjusted_at) : '暂无' }}</dd></div>
+          <div><dt>调整原因</dt><dd>{{ capacityReasons[capacity.adjustment_reason] ?? capacity.adjustment_reason }}</dd></div>
+        </dl>
+        <p v-else>
+          首次运行后显示自动学习状态。
+        </p>
+      </section>
+
+      <details
+        v-else
+        class="advanced-settings"
+      >
         <summary>高级设置</summary>
         <p>通常保持默认值即可；只有服务商限流、响应较慢或需要控制并发时才需要调整。</p>
         <div class="advanced-grid">

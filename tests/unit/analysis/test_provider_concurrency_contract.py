@@ -19,15 +19,17 @@ def _request(*, max_concurrency: int) -> ProviderConfigCreateRequest:
     )
 
 
-def test_provider_contract_accepts_1000_concurrency() -> None:
-    """管理员至少可以为高吞吐模型配置 1000 并发。"""
+def test_llm_contract_rejects_manual_concurrency() -> None:
+    """LLM 容量由系统学习，隐藏字段也不能绕过后端。"""
 
-    assert _request(max_concurrency=1_000).max_concurrency == 1_000
+    with pytest.raises(ValidationError, match="自动"):
+        _request(max_concurrency=1_000)
 
 
 def test_provider_contract_keeps_explicit_safety_ceiling() -> None:
     """异常大的线程并发仍由公共 Contract 拒绝，避免无界资源配置。"""
 
-    assert _request(max_concurrency=5_000).max_concurrency == 5_000
+    with pytest.raises(ValidationError):
+        _request(max_concurrency=5_000)
     with pytest.raises(ValidationError):
         _request(max_concurrency=5_001)

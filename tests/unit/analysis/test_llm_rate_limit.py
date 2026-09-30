@@ -74,3 +74,24 @@ def test_rate_limit_applies_to_every_transport_retry(monkeypatch) -> None:  # ty
     assert base.started_at == [0.0, 0.5, 1.0]
     assert retrying.total_requests == 3
     assert retrying.total_retries == 2
+
+
+def test_dynamic_rps_rechecks_after_drop_without_old_reservations(monkeypatch) -> None:
+    clock = _FakeClock()
+    base = _FlakyLLM(clock)
+    rate = 10.0
+
+    def sleep(seconds: float) -> None:
+        nonlocal rate
+        clock.sleep(seconds)
+        rate = 1.0
+
+    limited = RateLimitedContentLabelingLLM(
+        inner=base, current_rps=lambda: rate, clock=clock.monotonic, sleep=sleep
+    )
+    retrying = RetryingContentLabelingLLM(inner=limited, max_retries=2)
+    monkeypatch.setattr("aima_ugc.adapters.llm.retrying.time.sleep", lambda _: None)
+    retrying.complete(ContentLabelingLLMRequest(prompt="test", items=()))
+    assert base.started_at[0] == 0
+    assert base.started_at[1] >= 1.0
+    assert base.started_at[2] - base.started_at[1] >= 1.0

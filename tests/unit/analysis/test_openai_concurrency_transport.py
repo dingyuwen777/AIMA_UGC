@@ -68,3 +68,30 @@ def test_openai_compatible_builds_connection_pool_at_requested_concurrency(
     assert isinstance(limits, httpx.Limits)
     assert limits.max_connections == 250
     assert limits.max_keepalive_connections == 250
+
+
+@pytest.mark.parametrize(
+    "error_type,code",
+    [
+        (httpx.ReadTimeout, "timeout"),
+        (httpx.ConnectTimeout, "timeout"),
+        (httpx.ConnectError, "network_error"),
+    ],
+)
+def test_timeout_and_transport_have_separate_physical_audit_codes(error_type, code) -> None:
+    audits = []
+
+    def fail(request):
+        raise error_type("fake", request=request)
+
+    with httpx.Client(
+        base_url="https://example.invalid", transport=httpx.MockTransport(fail)
+    ) as client:
+        llm = OpenAICompatibleContentLabelingLLM(
+            api_key=SecretStr("fake"), model="test", client=client, request_audit=audits.append
+        )
+        with pytest.raises(OpenAICompatibleLLMError) as error:
+            llm.complete(_request())
+    assert error.value.error_code == code
+    assert error.value.retryable
+    assert len(audits) == 1 and audits[0].error_code == code

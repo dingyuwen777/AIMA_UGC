@@ -104,6 +104,32 @@ afterEach(() => {
 })
 
 describe('全局任务中心聚合', () => {
+  it('失败 Run 的在途 Shard 收尾前继续轮询，最后成功统计不会停在旧快照', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('document', { visibilityState: 'visible' })
+    const stopped = { ...analysisBase, shards: [], execution_settling: true, status: 'failed' as const, error_code: 'llm_validation_unhealthy', stats: { pending: 0, succeeded: 48, failed: 52, cancelled: 0, stale: 0 } }
+    api.fetchTaskCenterAnalysisRuns.mockResolvedValue([stopped])
+    const store = useTaskCenterStore()
+    await store.refresh()
+    store.startPolling()
+    try {
+      await vi.advanceTimersByTimeAsync(1100)
+      expect(store.hasActiveAnalysisRuns).toBe(true)
+      expect(store.items[0]?.cancelable).toBe(false)
+      api.fetchTaskCenterAnalysisRuns.mockResolvedValue([{ ...stopped,
+        execution_settling: false,
+        stats: { ...stopped.stats, succeeded: 49, failed: 51 },
+      }])
+      await vi.advanceTimersByTimeAsync(1100)
+      expect(store.analysisRuns[0]?.stats?.succeeded).toBe(49)
+      expect(store.hasActiveAnalysisRuns).toBe(false)
+      const calls = api.fetchTaskCenterAnalysisRuns.mock.calls.length
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(api.fetchTaskCenterAnalysisRuns).toHaveBeenCalledTimes(calls)
+    } finally {
+      store.stopPolling()
+    }
+  })
   it('活动 AI 每秒刷新，慢采集不阻塞，其他来源保持原频率，结束后停止快速查询', async () => {
     vi.useFakeTimers()
     const documentState = { visibilityState: 'visible' }

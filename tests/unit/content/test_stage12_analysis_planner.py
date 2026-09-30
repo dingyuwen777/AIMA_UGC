@@ -11,6 +11,7 @@ import pytest
 from aima_ugc.bootstrap import content_http
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.contracts.http import AnalysisContentRunCreateRequest, AnalysisRunTargetSelection
+from aima_ugc.modules.analysis.adaptive_capacity import CapacityState
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 
 
@@ -101,6 +102,8 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         "max_rps": None,
         "extra_config": {},
         "revision": 1,
+        "capacity_mode": "adaptive.v1",
+        "recovery_mode": "recovery.v1",
     }
     configuration_hash = content_http._analysis_configuration_hash(
         prompt_version=identity.prompt_version,
@@ -114,6 +117,11 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
     monkeypatch.setattr(content_http, "PostgresAnalysisRepository", _AnalysisRepository)
     monkeypatch.setattr(content_http, "PostgresJobRepository", _JobRepository)
     monkeypatch.setattr(content_http, "PostgresAuditRepository", _AuditRepository)
+    monkeypatch.setattr(
+        content_http,
+        "PostgresAnalysisCapacityRepository",
+        lambda _: SimpleNamespace(ensure=lambda *args, **kwargs: CapacityState()),
+    )
     monkeypatch.setattr(
         content_http,
         "current_analysis_generation_config",
@@ -134,6 +142,7 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
             identity=identity,
             llm_provider=SimpleNamespace(
                 id=provider_config_id,
+                revision=1,
                 max_concurrency=5,
                 max_rps=None,
                 safe_runtime_snapshot=lambda: runtime_config_snapshot,

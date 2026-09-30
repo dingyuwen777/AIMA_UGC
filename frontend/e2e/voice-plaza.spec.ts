@@ -769,9 +769,10 @@ test('keeps stable filters and content usable when dynamic filter options are un
   for (const label of ['平台', '相关性', '状态']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeEnabled()
   }
-  for (const label of ['情感', '发声类型', '内容类型']) {
+  for (const label of ['情感', '发声类型']) {
     await expect(filters.getByLabel(label, { exact: true })).toBeDisabled()
   }
+  await expect(filters.getByLabel('内容类型', { exact: true })).toHaveCount(0)
   for (const label of ['一级标签', '二级标签']) {
     await expect(filters.getByLabel(label, { exact: true })).toHaveAttribute('aria-disabled', 'true')
   }
@@ -1066,8 +1067,34 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
 })
 
 
-test('creates a query analysis run from the full applied filter snapshot', async ({ page }) => {
+test('旧内容类型会话及链接不会进入列表、计数、AI 和导出筛选快照', async ({ page }) => {
   let previewRequest: Record<string, any> | undefined
+  let analysisRequest: Record<string, any> | undefined
+  let exportRequest: Record<string, any> | undefined
+  const listRequests: URL[] = []
+  const countFilters: Record<string, unknown>[] = []
+  await page.addInitScript(() => {
+    sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
+      filters: { contentType: 'video', platform: 'xiaohongshu' },
+      sortBy: 'published_at', sortDirection: 'desc',
+    }))
+  })
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && ['/api/v1/contents', '/api/v1/contents/count'].includes(url.pathname)) listRequests.push(url)
+    if (request.method() === 'POST' && url.pathname === '/api/v1/contents/count') countFilters.push(request.postDataJSON().filters)
+  })
+  await page.route('**/api/v1/contents/count**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ count: 27, count_kind: 'exact', count_mode: 'exact', as_of: '2026-09-30T22:00:00+08:00' }) })
+  })
+  await page.route('**/api/v1/analysis/content-runs', async (route) => {
+    if (route.request().method() === 'POST') analysisRequest = route.request().postDataJSON()
+    await route.fallback()
+  })
+  await page.route('**/api/v1/data-exports', async (route) => {
+    if (route.request().method() === 'POST') exportRequest = route.request().postDataJSON()
+    await route.fallback()
+  })
   await page.unroute('**/api/v1/analysis/content-runs/preview')
   await page.route('**/api/v1/analysis/content-runs/preview', async (route) => {
     previewRequest = route.request().postDataJSON() as Record<string, any>
@@ -1091,8 +1118,10 @@ test('creates a query analysis run from the full applied filter snapshot', async
     })
   })
 
-  await page.goto('/voice-plaza')
+  await page.goto('/voice-plaza?content_types=video&contentType=video&content_type=video')
   const voicePlaza = page.getByRole('main', { name: '声音广场' })
+  await expect(voicePlaza.getByLabel('内容类型', { exact: true })).toHaveCount(0)
+  await expect.poll(() => new URL(page.url()).search).toBe('')
   await voicePlaza.getByLabel('平台', { exact: true }).selectOption('xiaohongshu')
   await page.getByRole('button', { name: '查询' }).click()
   await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
@@ -1107,6 +1136,22 @@ test('creates a query analysis run from the full applied filter snapshot', async
   expect(previewRequest?.targets).not.toHaveProperty('content_ids')
   expect(previewRequest?.targets?.filters).not.toHaveProperty('sort_by')
   expect(previewRequest?.targets?.filters).not.toHaveProperty('cursor')
+  expect(previewRequest?.targets?.filters).not.toHaveProperty('content_types')
+  await dialog.getByRole('button', { name: '确认开始分析' }).click()
+  await expect(page.getByText(/已创建 AI 分析任务/)).toBeVisible()
+  expect(analysisRequest?.targets?.filters).not.toHaveProperty('content_types')
+  await page.getByRole('button', { name: /导出记录/ }).click()
+  await page.getByRole('dialog', { name: '导出声音记录' }).getByRole('radio', { name: /全部查询结果/ }).check()
+  await page.getByRole('button', { name: /开始导出/ }).click()
+  await expect(page.getByText(/已创建 Excel 导出任务/)).toBeVisible()
+  expect(exportRequest?.targets?.filters).toMatchObject({ platforms: ['xiaohongshu'] })
+  expect(exportRequest?.targets?.filters).not.toHaveProperty('content_types')
+  expect(listRequests.length).toBeGreaterThan(0)
+  expect(listRequests.every((url) => !url.searchParams.has('content_types'))).toBe(true)
+  expect(countFilters.length).toBeGreaterThan(0)
+  expect(countFilters.every((filters) => !('content_types' in filters))).toBe(true)
+  const saved = await page.evaluate(() => JSON.parse(sessionStorage.getItem('aima.voice-plaza.applied-search.v1')!))
+  expect(saved.filters).not.toHaveProperty('contentType')
 })
 
 test('creates an all-data analysis run without browser-side content ids', async ({ page }) => {

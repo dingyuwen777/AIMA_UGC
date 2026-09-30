@@ -9,7 +9,7 @@ from time import perf_counter
 from typing import Literal, Protocol, cast
 from uuid import UUID
 
-from sqlalchemy import select, text, update
+from sqlalchemy import select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -319,9 +319,7 @@ class AdaptiveShardCoordinator:
     def _database_headroom(self) -> int:
         session = self._runtime.database.new_session()
         try:
-            maximum = int(session.execute(text("SHOW max_connections")).scalar_one())
-            used = int(session.execute(text("SELECT count(*) FROM pg_stat_activity")).scalar_one())
-            return max(1, maximum - used - max(10, maximum // 5))
+            return max(1, PostgresJobRepository(session).database_headroom())
         finally:
             session.close()
 

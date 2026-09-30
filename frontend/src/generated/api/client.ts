@@ -4,6 +4,59 @@
  * AIMA_UGC API
  * OpenAPI spec version: 0.1.0
  */
+/**
+ * 系统自动学习的只读状态；P95 为有界延迟桶上界估计。
+ */
+export interface AdaptiveLLMCapacityResponse {
+  /** @minimum 0 */
+  active_shards: number;
+  adjustment_reason: string;
+  /**
+     * @minimum 1
+     * @maximum 5000
+     */
+  current_concurrency: number;
+  current_rps?: number | null;
+  current_shard_size?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     */
+  historical_safe_concurrency: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  http_429_ratio: number;
+  last_adjusted_at?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     */
+  last_safe_concurrency: number;
+  /** @minimum 0 */
+  latency_p95_seconds: number;
+  /** @minimum 0 */
+  persisted_contents_per_second: number;
+  state: string;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  timeout_ratio: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  transport_error_ratio: number;
+  updated_at?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  validation_failure_ratio: number;
+}
+
 export type AnalysisContentRunCreateRequestRunIntent = typeof AnalysisContentRunCreateRequestRunIntent[keyof typeof AnalysisContentRunCreateRequestRunIntent];
 
 
@@ -204,6 +257,8 @@ export interface AnalysisContentRunResponse {
   analysis_scheme_version_id?: string | null;
   created_at: string;
   error_code?: string | null;
+  /** 关联执行仍在排队或收尾，需继续刷新统计 */
+  execution_settling?: boolean;
   finished_at?: string | null;
   generation_config: AnalysisContentRunResponseGenerationConfig;
   generation_config_hash: string;
@@ -3009,15 +3064,14 @@ export const ProviderConfigResponseProviderKind = {
  * Provider 管理安全投影；绝不返回 API Key 或内部 secret_ref。
  */
 export interface ProviderConfigResponse {
+  adaptive_capacity?: AdaptiveLLMCapacityResponse | null;
   base_url: string;
   display_name: string;
   enabled: boolean;
   id: string;
   is_default: boolean;
-  /** @exclusiveMinimum 0 */
-  max_concurrency: number;
-  /** @minimum 0 */
-  max_retries: number;
+  max_concurrency?: number | null;
+  max_retries?: number | null;
   max_rps?: number | null;
   model?: string | null;
   provider: string;
@@ -3025,8 +3079,7 @@ export interface ProviderConfigResponse {
   /** @exclusiveMinimum 0 */
   revision: number;
   secret_configured: boolean;
-  /** @exclusiveMinimum 0 */
-  timeout_seconds: number;
+  timeout_seconds?: number | null;
 }
 
 /**

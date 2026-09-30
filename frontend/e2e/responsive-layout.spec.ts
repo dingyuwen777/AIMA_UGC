@@ -294,9 +294,9 @@ for (const viewport of viewports) {
     await expect(page.locator('.provider-layout')).toBeVisible()
     await expectWorkspaceInsideViewport(page, viewport.width)
     expect(await fontSize(page, '.runtime-rule span')).toBeGreaterThanOrEqual(11)
-    await page.locator('.advanced-settings > summary').click()
-    await expect(page.locator('.advanced-grid label > small').first()).toBeVisible()
-    expect(await fontSize(page, '.advanced-grid label > small')).toBeGreaterThanOrEqual(11)
+    await expect(page.getByRole('region', { name: '自动执行状态' })).toBeVisible()
+    expect(await fontSize(page, '.advanced-settings > p')).toBeGreaterThanOrEqual(11)
+    await expect(page.locator('.advanced-grid')).toHaveCount(0)
     if (viewport.width <= 1280) {
       const providerColumns = await page.locator('.provider-layout').evaluate(
         (element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length,

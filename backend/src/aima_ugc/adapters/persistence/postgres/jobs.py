@@ -30,6 +30,15 @@ class PostgresJobRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def database_headroom(self) -> int:
+        """投放前保留管理连接余量；零余量时不新增 Job。"""
+
+        maximum = int(self._session.execute(text("SHOW max_connections")).scalar_one())
+        used = int(
+            self._session.execute(text("SELECT count(*) FROM pg_stat_activity")).scalar_one()
+        )
+        return max(0, maximum - used - max(10, maximum // 5))
+
     def enqueue(
         self,
         *,

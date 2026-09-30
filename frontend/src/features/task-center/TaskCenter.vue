@@ -23,6 +23,13 @@ function kindLabel(kind: TaskCenterItem['kind']): string {
   return '数据导出'
 }
 
+/** 服务连续不可用与结果持续不合规分别提示，避免把限流误称模型错误。 */
+function failureMessage(errorCode: string | null): string {
+  if (errorCode === 'llm_transport_unavailable') return 'AI 模型服务连续五分钟不可用，已停止打标。请检查服务后重新发起。'
+  if (errorCode === 'llm_validation_unhealthy') return 'AI 返回结果连续五分钟未通过校验，已停止打标。请检查模型和分析方案后重新发起。'
+  return '任务遇到问题，请稍后重试；如持续失败，请联系管理员。'
+}
+
 /** Escape 关闭任务中心，保持抽屉与其它全局浮层一致的键盘退出行为。 */
 function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && store.open) store.closeCenter()
@@ -148,7 +155,7 @@ onBeforeUnmount(() => {
                   v-if="item.errorCode"
                   class="task-error-note"
                 >
-                  任务遇到问题，请稍后重试；如持续失败，请联系管理员。
+                  {{ failureMessage(item.errorCode) }}
                 </p>
                 <footer class="task-card-footer">
                   <span>{{ formatDateTime(item.createdAt) }}</span>
@@ -206,7 +213,7 @@ onBeforeUnmount(() => {
                   v-if="item.errorCode"
                   class="task-error-note"
                 >
-                  任务遇到问题，请稍后重试；如持续失败，请联系管理员。
+                  {{ failureMessage(item.errorCode) }}
                 </p>
                 <footer class="task-card-footer">
                   <span>{{ formatDateTime(item.finishedAt ?? item.createdAt) }}</span>

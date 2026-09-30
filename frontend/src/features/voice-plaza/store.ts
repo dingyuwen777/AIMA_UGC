@@ -68,7 +68,6 @@ type AnalysisScope = 'selected' | 'query' | 'all'
 export interface VoicePlazaFilters {
   search: string
   platform: '' | PlatformName
-  contentType: string
   analysisStatus: '' | ContentAnalysisStatus
   relevance: '' | ContentRelevance
   voiceType: string
@@ -86,7 +85,6 @@ export interface VoicePlazaFilters {
 const EMPTY_FILTERS: VoicePlazaFilters = {
   search: '',
   platform: '',
-  contentType: '',
   analysisStatus: '',
   relevance: '',
   voiceType: '',
@@ -225,7 +223,6 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     const filters: VoicePlazaFilters = {
       search: stringValue('search'),
       platform,
-      contentType: stringValue('contentType'),
       analysisStatus,
       relevance,
       voiceType: stringValue('voiceType'),
@@ -268,12 +265,15 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
             secondaryLabels: [...filters.secondaryLabels],
           }
         : null
-    return {
+    const restored: PersistedVoicePlazaSearch = {
       filters,
       sortBy: record.sortBy === 'follower_count' ? 'follower_count' : 'published_at',
       sortDirection: record.sortDirection === 'asc' ? 'asc' : 'desc',
       legacyLabelCompatibility,
     }
+    // 已移除的筛选不再恢复，也从旧会话记录中清理，避免后续版本继续传播。
+    if ('contentType' in values) sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify(restored))
+    return restored
   } catch {
     return fallback
   }
@@ -394,7 +394,6 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     return {
       search: appliedFilters.search.trim() || undefined,
       platforms: appliedFilters.platform ? [appliedFilters.platform] : undefined,
-      content_types: appliedFilters.contentType ? [appliedFilters.contentType] : undefined,
       analysis_status: appliedFilters.analysisStatus || undefined,
       relevance: appliedFilters.relevance || undefined,
       voice_type: appliedFilters.voiceType.trim() || undefined,
