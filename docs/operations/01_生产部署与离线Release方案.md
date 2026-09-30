@@ -61,7 +61,7 @@ frontend
 | `migrate` | 独立执行 `alembic upgrade head`，完成后退出 |
 | `postgres` | 唯一业务事实库 |
 
-`bootstrap` 与 `configure` 都是部署装配动作，不是常驻业务服务。`configure` 除 Provider 首次装配外，还负责在业务进程启动前把镜像内唯一 Git `content_labeling.md` 幂等 promotion 为数据库 active Analysis Scheme：系统 Git-managed lineage 可以追加并发布新 Version，历史 Analysis Run 不阻塞且继续绑定旧 Version；人工 lineage 冲突时 `configure` 非零退出。Worker 当前实际注册内容以 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 为机器事实。
+`bootstrap` 与 `configure` 都是部署装配动作，不是常驻业务服务。`configure` 除 Provider 首次装配外，还负责在业务进程启动前把镜像内唯一 Git [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](../../backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md) 幂等 promotion 为数据库 active Analysis Scheme：系统 Git-managed lineage 可以追加并发布新 Version，历史 Analysis Run 不阻塞且继续绑定旧 Version；人工 lineage 冲突时 `configure` 非零退出。Worker 当前实际注册内容以 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 为机器事实。
 
 工作台聚合快照的 Migration 只创建可重建快照表、数据修订序列与投影 statement trigger，不在 Alembic 内扫描或回填既有 Content。升级顺序保持 `migrate → worker → api/frontend`：Worker 启动后幂等安排默认近 30 日心智与趋势预热；预热完成前 API 对冷筛选返回真实 preparing 状态，同一 Scheme/Taxonomy 的兼容成功快照继续可读，旧口径快照不会混入当前结果。回滚应用镜像不删除快照或 canonical 事实；需要删除新增结构时只能通过后续批准的 Migration 处理。
 
@@ -279,7 +279,7 @@ DEPLOY.md
 
 `images.tar` 包含当前版本 Backend/Frontend 的版本标签与 `latest` 运行别名；同一应用镜像的两个标签必须指向相同 Image ID。它同时包含固定 PostgreSQL 镜像。Bundle 内 [`env.production.example`](../../env.production.example) 使用 `AIMA_IMAGE_TAG=latest`，但 `release-manifest.json` 仍以版本标签、版本号、Git SHA、镜像 ID / registry digest 记录正式发布身份，不把 `latest` 当版本事实。
 
-`release-manifest.json` 还记录构建时间、`linux/amd64`、Alembic head、OpenAPI SHA256 和当前发布能力边界；同时记录 `analysis_prompt.protocol / prompt_sha256 / taxonomy_sha256 / source_sha256`。这些值从**实际 backend 镜像**读取，`source_sha256` 还必须与当前 checkout 唯一 `content_labeling.md` 的原始文件字节 Hash 一致，否则构建失败。正式发布路径额外记录应用 registry digest。
+`release-manifest.json` 还记录构建时间、`linux/amd64`、Alembic head、OpenAPI SHA256 和当前发布能力边界；同时记录 `analysis_prompt.protocol / prompt_sha256 / taxonomy_sha256 / source_sha256`。这些值从**实际 backend 镜像**读取，`source_sha256` 还必须与当前 checkout 唯一 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](../../backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md) 的原始文件字节 Hash 一致，否则构建失败。正式发布路径额外记录应用 registry digest。
 
 `migration-manifest.json` 记录 Alembic head、正式 upgrade 动作和当前没有自动 Schema rollback / 协调 Backup/Restore 的事实。
 
