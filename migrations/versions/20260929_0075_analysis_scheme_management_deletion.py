@@ -1,7 +1,7 @@
 """支持 Analysis Scheme 从管理视图删除并保留历史版本快照。
 
 Revision ID: 20260929_0075
-Revises: 20260928_0074
+Revises: 20260928_0075
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260929_0075"
-down_revision: str | Sequence[str] | None = "20260928_0074"
+down_revision: str | Sequence[str] | None = "20260928_0075"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
