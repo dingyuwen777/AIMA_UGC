@@ -9,11 +9,13 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
+from aima_ugc.bootstrap.analysis_identity import promote_git_analysis_scheme
 from aima_ugc.bootstrap.worker import create_worker_runtime
 from aima_ugc.modules.analysis import CONTENT_LABELING_PROMPT_PATH, PROMPT_VERSION
 from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.platform.config import load_settings
+from aima_ugc.modules.system.tables import audit_events_table
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.time import beijing_now
 from sqlalchemy import insert, select
@@ -171,11 +173,12 @@ def test_deployment_promotion_applies_git_prompt_after_historical_run(
             )
 
             with session.begin():
-                repository = PostgresAnalysisSchemeRepository(session)
-                promoted, action = repository.promote_git_prompt()
-                assert action == "promoted"
+                promotion = promote_git_analysis_scheme(session)
+                promoted = promotion.scheme
+                assert promotion.action == "promoted"
                 assert promoted.version == 2
                 assert promoted.definition.labels["品牌评价"][0] == "Git部署自动发布标签"
+                repository = PostgresAnalysisSchemeRepository(session)
                 assert repository.get_active_version() == promoted
 
                 historical_version_id = session.scalar(
@@ -185,9 +188,26 @@ def test_deployment_promotion_applies_git_prompt_after_historical_run(
                 )
                 assert historical_version_id == first.id
 
-                unchanged, second_action = repository.promote_git_prompt()
-                assert second_action == "unchanged"
-                assert unchanged == promoted
+                audit = (
+                    session.execute(
+                        select(
+                            audit_events_table.c.event_type,
+                            audit_events_table.c.safe_detail,
+                        ).where(
+                            audit_events_table.c.object_id == str(promoted.id),
+                            audit_events_table.c.event_type == "analysis_scheme_git_promoted",
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                assert audit["safe_detail"]["action"] == "promoted"
+                assert audit["safe_detail"]["version"] == 2
+                assert "prompt_text" not in audit["safe_detail"]
+
+                second = promote_git_analysis_scheme(session)
+                assert second.action == "unchanged"
+                assert second.scheme == promoted
         finally:
             session.close()
     finally:
