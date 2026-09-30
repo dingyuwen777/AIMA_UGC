@@ -96,7 +96,7 @@ Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但�
 → 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
 ```
 
-直接修改 Git bootstrap Prompt 也支持一级/二级标签增删改：只修改第 9 节人类可读 `### 一级标签` 与其下 `- 二级标签` 列表即可，不需要手工同步 `AIMA_TAXONOMY.labels`。Loader/Compiler 会自动生成一致机器镜像；若原有详细解释表已与新标签不一致，会从实际运行 Prompt 自动移除。Git 变更仍遵守既有 Scheme 生命周期：它能建立空库基线，并可在“仅有未使用系统 bootstrap、无 Analysis Run、无人工/额外 Version”时自动刷新；**不会静默覆盖已经被 Analysis Run 使用或人工发布的 active Scheme**。已有生产 Scheme 要采用新标签，应通过管理员发布新 Version，或按既有重置/部署流程明确切换。
+直接修改 Git bootstrap Prompt 也支持一级/二级标签增删改：只修改第 9 节人类可读 `### 一级标签` 与其下 `- 二级标签` 列表即可，不需要手工同步 `AIMA_TAXONOMY.labels`。Loader/Compiler 会自动生成一致机器镜像；若原有详细解释表已与新标签不一致，会从实际运行 Prompt 自动移除。当前数据库仍是纯 Git-managed lineage 时，Git Prompt 变化会自动追加并发布新 Version，从下一次新建 Analysis Run 开始使用；历史 Run 继续冻结旧 Version。存在任何人工 Scheme 或人工 Version 时，不自动覆盖管理员配置。
 
 当前 Taxonomy 与机器语义规则必须同时合法。`source_type/content_intent` 是当前输出格式的内部辅助闭集，不是新的业务持久字段，也不负责推导 `voice_type`；最终发声类型以 Prompt 的独立三分类为准。
 
