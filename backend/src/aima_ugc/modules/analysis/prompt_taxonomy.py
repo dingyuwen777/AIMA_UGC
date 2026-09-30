@@ -24,6 +24,16 @@ _PROMPT_VERSION_PATTERN = re.compile(
 _OUTPUT_PROTOCOL_PATTERN = re.compile(
     r"<!-- AIMA_OUTPUT_PROTOCOL: (?P<version>content-labeling\.v\d+(?:\.\d+)?) -->"
 )
+_HUMAN_LABELS_PATTERN = re.compile(
+    r"(?ms)(^## 9\\. 标签 Taxonomy[^\\n]*\\n\\n相关内容至少返回一个标签对。\\n\\n)"
+    r"(?P<labels>.*?)(?=^### 标签规则[^\\n]*$)"
+)
+_LABEL_GUIDE_START = "<!-- AIMA_LABEL_GUIDE_START -->"
+_LABEL_GUIDE_END = "<!-- AIMA_LABEL_GUIDE_END -->"
+_LABEL_GUIDE_PATTERN = re.compile(
+    re.escape(_LABEL_GUIDE_START) + r".*?" + re.escape(_LABEL_GUIDE_END),
+    flags=re.DOTALL,
+)
 _PROMPT_DIRECTORY = Path(__file__).with_name("prompts")
 CONTENT_LABELING_PROMPT_PATH = _PROMPT_DIRECTORY / "content_labeling.md"
 
@@ -100,6 +110,144 @@ class PromptTaxonomy:
         )
 
 
+def _parse_human_labels(prompt_text: str) -> dict[str, tuple[str, ...]]:
+    """把 Git Prompt 的人类可读一级/二级标签区解析为唯一标签事实。"""
+
+    matches = list(_HUMAN_LABELS_PATTERN.finditer(prompt_text))
+    if len(matches) != 1:
+        raise PromptTaxonomyError("Prompt 必须且只能包含一个人类可读标签闭集")
+
+    labels: dict[str, tuple[str, ...]] = {}
+    current_primary: str | None = None
+    current_secondaries: list[str] = []
+    all_secondaries: set[str] = set()
+
+    def flush_current() -> None:
+        """把当前一级标签及其二级标签提交到解析结果。"""
+
+        nonlocal current_primary, current_secondaries
+        if current_primary is None:
+            return
+        if not current_secondaries:
+            raise PromptTaxonomyError(f"一级标签必须至少包含一个二级标签: {current_primary}")
+        labels[current_primary] = tuple(current_secondaries)
+        current_primary = None
+        current_secondaries = []
+
+    for raw_line in matches[0].group("labels").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("### "):
+            flush_current()
+            primary = line[4:].strip()
+            if not primary or primary in labels:
+                raise PromptTaxonomyError(f"一级标签非法或重复: {primary}")
+            current_primary = primary
+            continue
+        if line.startswith("- "):
+            if current_primary is None:
+                raise PromptTaxonomyError("二级标签必须位于一级标签标题下")
+            secondary = line[2:].strip()
+            if not secondary:
+                raise PromptTaxonomyError(f"二级标签不能为空: {current_primary}")
+            if secondary in current_secondaries:
+                raise PromptTaxonomyError(f"同一一级标签下二级标签重复: {secondary}")
+            if secondary in all_secondaries:
+                raise PromptTaxonomyError(f"二级标签在不同一级标签下重复: {secondary}")
+            current_secondaries.append(secondary)
+            all_secondaries.add(secondary)
+            continue
+        raise PromptTaxonomyError(f"标签闭集包含无法识别的 Markdown 行: {line}")
+
+    flush_current()
+    if not labels:
+        raise PromptTaxonomyError("Prompt 人类可读标签闭集不能为空")
+    return labels
+
+
+def _render_taxonomy_block(
+    *,
+    schema_version: str,
+    sentiments: tuple[str, ...],
+    voice_types: tuple[str, ...],
+    labels: Mapping[str, tuple[str, ...]],
+) -> str:
+    """按当前人类可读标签事实生成规范化机器 Taxonomy 镜像。"""
+
+    payload = {
+        "schema_version": schema_version,
+        "sentiments": list(sentiments),
+        "voice_types": list(voice_types),
+        "labels": {primary: list(secondaries) for primary, secondaries in labels.items()},
+    }
+    readable_json = json.dumps(payload, ensure_ascii=False, indent=2)
+    return (
+        f"{_TAXONOMY_START}\n"
+        f"```json\n{readable_json}\n```\n"
+        f"{_TAXONOMY_END}"
+    )
+
+
+def _replace_taxonomy_block(prompt_text: str, block: str) -> str:
+    """用规范化机器镜像替换 Prompt 中唯一 Taxonomy 区块。"""
+
+    pattern = re.compile(
+        re.escape(_TAXONOMY_START) + r".*?" + re.escape(_TAXONOMY_END),
+        flags=re.DOTALL,
+    )
+    normalized, substitutions = pattern.subn(lambda _match: block, prompt_text)
+    if substitutions != 1:
+        raise PromptTaxonomyError("Prompt 必须且只能包含一组 Taxonomy 标记")
+    return normalized
+
+
+def _normalize_label_guide(
+    prompt_text: str,
+    *,
+    labels: Mapping[str, tuple[str, ...]],
+) -> str:
+    """标签结构变化时移除已失效的静态解释表，避免旧说明继续影响模型。"""
+
+    start_count = prompt_text.count(_LABEL_GUIDE_START)
+    end_count = prompt_text.count(_LABEL_GUIDE_END)
+    if start_count == 0 and end_count == 0:
+        return prompt_text
+    if start_count != 1 or end_count != 1:
+        raise PromptTaxonomyError("Prompt 标签解释指南标记必须成对且唯一")
+
+    match = _LABEL_GUIDE_PATTERN.search(prompt_text)
+    if match is None:
+        raise PromptTaxonomyError("Prompt 标签解释指南标记顺序不合法")
+
+    guide_pairs: list[tuple[str, str]] = []
+    for raw_line in match.group(0).splitlines():
+        line = raw_line.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        primary, secondary = cells[0], cells[1]
+        if primary in {"一级标签", "---"} or secondary in {"二级标签", "---"}:
+            continue
+        if primary and secondary:
+            guide_pairs.append((primary, secondary))
+
+    expected_pairs = [
+        (primary, secondary)
+        for primary, secondaries in labels.items()
+        for secondary in secondaries
+    ]
+    if guide_pairs == expected_pairs:
+        return prompt_text
+
+    normalized = _LABEL_GUIDE_PATTERN.sub("", prompt_text)
+    while "\n\n\n" in normalized:
+        normalized = normalized.replace("\n\n\n", "\n\n")
+    return normalized
+
+
 class PromptTaxonomyLoader:
     """从唯一 Markdown Prompt 严格解析、校验并计算版本 Hash。"""
 
@@ -158,28 +306,21 @@ class PromptTaxonomyLoader:
         sentiments = _clean_string_list(payload["sentiments"], field_name="sentiments")
         voice_types = _clean_string_list(payload["voice_types"], field_name="voice_types")
         raw_labels = payload["labels"]
-        if not isinstance(raw_labels, dict) or not raw_labels:
-            raise PromptTaxonomyError("labels 必须是非空 JSON object")
+        if not isinstance(raw_labels, dict):
+            raise PromptTaxonomyError("Prompt Taxonomy labels 镜像必须是 JSON object")
 
-        labels: dict[str, tuple[str, ...]] = {}
-        all_secondaries: set[str] = set()
-        for raw_primary, raw_secondaries in raw_labels.items():
-            if not isinstance(raw_primary, str):
-                raise PromptTaxonomyError("一级标签必须是字符串")
-            primary = raw_primary.strip()
-            if not primary or primary != raw_primary:
-                raise PromptTaxonomyError("一级标签必须是非空且无首尾空白的字符串")
-            if primary in labels:
-                raise PromptTaxonomyError(f"一级标签重复: {primary}")
-            secondaries = _clean_string_list(
-                raw_secondaries,
-                field_name=f"labels.{primary}",
-            )
-            for secondary in secondaries:
-                if secondary in all_secondaries:
-                    raise PromptTaxonomyError(f"二级标签在不同一级标签下重复: {secondary}")
-                all_secondaries.add(secondary)
-            labels[primary] = secondaries
+        labels = _parse_human_labels(prompt_text)
+        normalized_block = _render_taxonomy_block(
+            schema_version=schema_version,
+            sentiments=sentiments,
+            voice_types=voice_types,
+            labels=labels,
+        )
+        normalized_prompt_text = _replace_taxonomy_block(prompt_text, normalized_block)
+        normalized_prompt_text = _normalize_label_guide(
+            normalized_prompt_text,
+            labels=labels,
+        )
 
         normalized_taxonomy = json.dumps(
             {
@@ -193,9 +334,9 @@ class PromptTaxonomyLoader:
             separators=(",", ":"),
         ).encode("utf-8")
 
-        output_protocol_version = _output_protocol_from_text(prompt_text)
+        output_protocol_version = _output_protocol_from_text(normalized_prompt_text)
         semantic_rules = _parse_semantic_rules(
-            prompt_text,
+            normalized_prompt_text,
             output_protocol_version=output_protocol_version,
             voice_types=voice_types,
         )
@@ -203,14 +344,14 @@ class PromptTaxonomyLoader:
         return PromptTaxonomy(
             prompt_version=resolved_prompt_version,
             output_protocol_version=output_protocol_version,
-            prompt_text=prompt_text,
+            prompt_text=normalized_prompt_text,
             schema_version=schema_version,
             sentiments=sentiments,
             voice_types=voice_types,
             labels=MappingProxyType(labels),
             semantic_rules=semantic_rules,
             taxonomy_sha256=hashlib.sha256(normalized_taxonomy).hexdigest(),
-            prompt_sha256=hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),
+            prompt_sha256=hashlib.sha256(normalized_prompt_text.encode("utf-8")).hexdigest(),
         )
 
 
