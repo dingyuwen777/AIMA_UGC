@@ -5,10 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
-from sqlalchemy import func, insert, select
-
 import aima_ugc.adapters.persistence.postgres.analysis_schemes as analysis_schemes_module
+import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
@@ -20,6 +18,7 @@ from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.time import beijing_now
+from sqlalchemy import func, insert, select
 
 
 def test_empty_database_bootstraps_the_unique_current_prompt(tmp_path: Path) -> None:
