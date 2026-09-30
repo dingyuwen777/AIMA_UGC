@@ -198,7 +198,10 @@ class PostgresAnalysisSchemeRepository:
         if not version_rows or any(row["created_by"] not in git_actors for row in version_rows):
             return None
 
-        next_version = max(int(row["version"]) for row in version_rows) + 1
+        latest_version = max(int(row["version"]) for row in version_rows)
+        if active.version != latest_version:
+            return None
+        next_version = latest_version + 1
         now = beijing_now()
         self._session.execute(
             update(analysis_scheme_versions_table)
