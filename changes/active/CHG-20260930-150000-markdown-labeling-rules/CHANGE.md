@@ -1,6 +1,6 @@
 ---
 schema: coding-change/v1
-id: CHG-20260930-markdown-labeling-rules
+id: CHG-20260930-150000-markdown-labeling-rules
 title: 可读 Markdown 作为内容打标规则唯一编辑入口
 level: L3
 status: ready_for_review
@@ -59,6 +59,17 @@ data_changes:
 
 非目标：付费模型调用、生产数据迁移、Release、部署和生产环境写入。
 
+# 约束与意图决策
+
+| 决策维度 | 当前决定 | 依据 | 影响 |
+| --- | --- | --- | --- |
+| 规则编辑源 | `content_labeling.md` 是唯一人工维护入口 | #679 / R1 | Taxonomy 与语义快照只能由 Markdown 编译生成 |
+| 固定与可编辑边界 | 版本行、六张标记表、表头、内部值和条件语法固定；分类名称、定义与判断原则可编辑 | #679 / R1-R2 | 编译器稳定解析，业务维护者仍可调整实际分类和规则 |
+| 动态分类消费 | 保存、查询、Excel/报告通用分类分布使用 Scheme 的实际字符串值 | #679 / R2-R4 | 不维护正负向、真实用户或其他统计含义映射 |
+| 请求粒度 | 每条内容一个模型请求，system 为完整冻结 Prompt，user 为含 `platform` 的单条输入 | #679 / R3 | 保持正式高并发执行边界与版本可追溯性 |
+| 历史兼容 | 新版使用派生快照；legacy v3.0 使用冻结定义恢复 | #679 / R4 | 历史 Version/Run 不由新编译器重新解释 |
+| 交付 | 全部本地修改通过 PR required checks、精确 head 合并和 main-fresh 收口 | #679 / R6 | 不绕过 Ruleset，不把合并后证据提前写成完成 |
+
 # 修改方案与决策依据
 
 统一 Markdown 表格编译 → 完整模型文本与机器快照 → Scheme 草稿/发布 → Run 冻结 → Validator、保存和查询按版本消费实际分类值。
@@ -78,6 +89,17 @@ data_changes:
 | R5 | 前端启动器保留当前本地 npm 直接执行行为 | #679#AC6 | satisfied | `_npm_command` 直接返回 npm 命令及参数；Ruff 和本机锁定 Node/npm 版本探测通过后进入 Ready |
 | R6 | 全部本地修改按受保护 PR 流程合并远程主分支 | #679#AC7 | explicitly_deferred | 本地实现与验证完成；commit 后的 PR current-head required checks、精确 head guarded merge、main-fresh、仓库原生 Change 归档与 Issue Closure 只能按交付时序取得，不作为 Ready 前的伪造证据，也不豁免任何门禁 |
 
+# 计划改动
+
+| 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 |
+| --- | --- | --- | --- |
+| `prompts/content_labeling.md` / `markdown_prompt.py` | 建立六表 Markdown 编辑源、编译器、闭集与组合校验 | 消除手工 Taxonomy JSON 和正文双写 | R1-R3 |
+| `prompt_taxonomy.py` / `schemes.py` / `content_labeling.py` | 编译并冻结快照，恢复历史 Version，校验准入与发声组合 | 让实际打标、保存与查询使用同一 Scheme | R2-R4 |
+| Administration Contract / OpenAPI / generated client / Scheme Panel | 支持 Markdown 导入、编辑、预览、保存、发布和回滚 | 给管理员提供同一编辑入口 | R2/R4 |
+| Analysis 测试、PostgreSQL Integration、Fake LLM、Playwright / Full-stack | 覆盖编译、动态改名、历史冻结、单条请求与 UI 工作流 | 直接验证跨组件闭环 | R1-R4 |
+| `scripts/dev/frontend.py` | Windows 直接执行解析出的 `npm.CMD` | 纳入用户要求交付的现有本地修改 | R5 |
+| Analysis README、Appendix、Blueprint、项目规则与 Change | 同步当前事实、维护边界和交付证据 | 防止文档恢复第二套事实 | R1-R6 |
+
 # 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
@@ -94,6 +116,14 @@ data_changes:
 # 风险、兼容性、迁移与回滚
 
 新 Markdown 格式独立于内容修订号；旧发布快照不经新编译器重写。内部准入布尔字段仅新格式要求，不增加持久结果字段。Scheme JSONB 保存派生快照，不新增数据库列或 Migration。仅在隔离 PostgreSQL 验证，不操作生产。旧 Version 回滚复用冻结协议。
+
+# 文档、依赖、部署与发布影响
+
+- **文档**：同步项目 Contract 基线、Analysis README、AI 打标实现专题和技术决策，明确 Markdown 固定模板、可编辑规则、动态分类及历史冻结边界。
+- **依赖 / Runtime**：不新增或升级 Python、Node、npm、前端或后端依赖；继续使用仓库锁定版本。
+- **Contract / 数据**：Administration Request、OpenAPI 和 generated client 增加可选编译快照表达；不新增数据库表、列或 Migration。
+- **部署 / Release**：本 PR 只交付代码与文档，不执行 Release、Deploy、生产 Scheme 更新或重新打标；上线仍走既有 Analysis Scheme 与 Release 运维边界。
+- **回滚**：代码可回滚 PR merge；已发布 Scheme 继续使用现有版本回滚能力，历史 Run 保持冻结。
 
 # 完成审计
 
