@@ -3,6 +3,7 @@
 import pytest
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
 from aima_ugc.modules.analysis import CONTENT_LABELING_PROMPT_PATH
+from aima_ugc.modules.analysis.prompt_taxonomy import PromptTaxonomyLoader
 from aima_ugc.modules.analysis.schemes import (
     bootstrap_definition_from_prompt,
     compile_analysis_scheme,
@@ -57,6 +58,45 @@ def test_compile_analysis_scheme_updates_human_and_machine_taxonomy_together() -
     assert taxonomy.sentiments == edited.sentiments
     assert taxonomy.voice_types == edited.voice_types
     assert dict(taxonomy.labels) == dict(edited.labels)
+    assert "AIMA_LABEL_GUIDE_START" not in compiled.prompt_text
+    assert "AIMA_LABEL_GUIDE_START" not in compiled.definition.prompt_template
+
+
+def test_git_markdown_label_edit_auto_normalizes_machine_taxonomy() -> None:
+    """直接修改 Git Markdown 标签区时自动生成一致的运行时机器 Taxonomy。"""
+
+    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    edited_prompt = prompt.replace(
+        "### 品牌评价\n\n- 口碑与信任\n",
+        "### 品牌评价\n\n- Git直改标签\n",
+        1,
+    )
+    assert edited_prompt != prompt
+
+    taxonomy = PromptTaxonomyLoader.load_text(edited_prompt)
+
+    assert taxonomy.labels["品牌评价"][0] == "Git直改标签"
+    assert '"Git直改标签"' in taxonomy.prompt_text
+    assert "AIMA_LABEL_GUIDE_START" not in taxonomy.prompt_text
+
+    definition = bootstrap_definition_from_prompt(edited_prompt)
+    compiled = compile_analysis_scheme(definition)
+
+    assert compiled.definition.labels["品牌评价"][0] == "Git直改标签"
+    assert compiled.to_prompt_taxonomy().labels["品牌评价"][0] == "Git直改标签"
+    assert '"Git直改标签"' in compiled.prompt_text
+    assert "AIMA_LABEL_GUIDE_START" not in compiled.prompt_text
+
+
+def test_current_bootstrap_label_guide_matches_all_current_label_pairs() -> None:
+    """默认 Git Prompt 的详细标签指南必须与当前人类可读闭集完全一致。"""
+
+    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+
+    assert len(taxonomy.primary_labels) == 9
+    assert len(taxonomy.all_secondary_labels) == 39
+    assert "AIMA_LABEL_GUIDE_START" in taxonomy.prompt_text
+    assert "AIMA_LABEL_GUIDE_END" in taxonomy.prompt_text
 
 
 def test_compile_analysis_scheme_rejects_noncurrent_prompt_template() -> None:
