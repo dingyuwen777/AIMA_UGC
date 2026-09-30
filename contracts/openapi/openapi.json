@@ -9971,7 +9971,7 @@
         "properties": {
           "column_span": {
             "maximum": 12.0,
-            "minimum": 4.0,
+            "minimum": 5.0,
             "title": "Column Span",
             "type": "integer"
           },

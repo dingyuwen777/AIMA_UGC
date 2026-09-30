@@ -21,6 +21,7 @@ import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDrawer from '../../../../../shared/ui/AimaDrawer.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { platformLabels, shortId } from '../../../format'
+import { PLATFORM_KEYS } from '../../../../../shared/domain/platform'
 import type { SupplementSourceSelection } from '../../../store'
 
 const props = defineProps<{
@@ -53,14 +54,6 @@ const includeSubComments = ref(false)
 const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
 const validation = ref<string | null>(null)
 const lastRequestedSourceValue = ref('')
-const supportedPlatforms: CollectionPlatform[] = [
-  'xiaohongshu',
-  'douyin',
-  'weibo',
-  'bilibili',
-  'kuaishou',
-]
-
 function encodeSource(source: SupplementSourceSelection | null | undefined): string {
   return source ? `${source.kind}:${source.id}` : ''
 }
@@ -76,7 +69,7 @@ function decodeSource(value: string): SupplementSourceSelection | null {
 const selectedSupplementSource = computed(() => decodeSource(supplementSourceValue.value))
 
 function isCollectionPlatform(value: string): value is CollectionPlatform {
-  return supportedPlatforms.includes(value as CollectionPlatform)
+  return PLATFORM_KEYS.includes(value as CollectionPlatform)
 }
 
 const selectedProvider = computed(() =>
@@ -135,7 +128,7 @@ function searchCapability(platform: CollectionPlatform): CollectionSearchCapabil
 }
 
 function clearSearchConfigs(): void {
-  for (const platform of supportedPlatforms) delete searchConfigByPlatform[platform]
+  for (const platform of PLATFORM_KEYS) delete searchConfigByPlatform[platform]
 }
 
 const canSubmit = computed(() => {
@@ -209,7 +202,7 @@ watch(providerConfigId, () => {
 
 watch([includeComments, includeSubComments, availablePlatforms], () => {
   platforms.value = platforms.value.filter((platform) => availablePlatforms.value.includes(platform))
-  for (const platform of supportedPlatforms) {
+  for (const platform of PLATFORM_KEYS) {
     if (!platforms.value.includes(platform)) delete searchConfigByPlatform[platform]
   }
   validation.value = null

@@ -6,7 +6,8 @@ import type {
   WorkbenchMindDimensionResponse,
   WorkbenchMindResponse,
 } from '../../../generated/api/client'
-import type { WorkbenchMindMetric } from '../store'
+import type { WorkbenchDateRange, WorkbenchMindMetric } from '../store'
+import AimaDateRange from '../../../shared/ui/AimaDateRange.vue'
 
 const props = defineProps<{
   mind: WorkbenchMindResponse | null
@@ -14,6 +15,7 @@ const props = defineProps<{
   metric: WorkbenchMindMetric
   loading: boolean
   error: string | null
+  dateRange: WorkbenchDateRange
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +23,7 @@ const emit = defineEmits<{
   metric: [value: WorkbenchMindMetric]
   retry: []
   openVoice: [primaryLabel: string]
+  'update:date-range': [value: WorkbenchDateRange]
 }>()
 
 const dimensions = computed(() => props.mind?.dimensions ?? [])
@@ -34,6 +37,8 @@ const selected = computed(() =>
 const chartElement = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
+const selectedCardStyle = ref<Record<string, string>>({})
+const selectedCardEl = ref<HTMLButtonElement | null>(null)
 
 /** 根据当前切换维度返回条形图值；占比与正向率都以 0..1 Contract 展示。 */
 function metricValue(item: WorkbenchMindDimensionResponse): number {
@@ -58,21 +63,31 @@ function setMetric(value: WorkbenchMindMetric): void {
   emit('metric', value)
 }
 
+/** 日期确认后把有序区间回传给页面，由 store 只刷新本模块。 */
+function updateDateRange(value: { from: string; to: string }): void {
+  emit('update:date-range', { dateFrom: value.from, dateTo: value.to })
+}
+
 /** active Taxonomy 的每个业务一级标签对应一条雷达轴，数量变化时自然形成 N 边图。 */
 function renderChart(): void {
-  if (!chartElement.value || dimensions.value.length === 0) return
-  if (!chart) {
-    chart = echarts.init(chartElement.value)
+  const el = chartElement.value
+  if (!el || dimensions.value.length === 0) return
+  const existing = echarts.getInstanceByDom(el)
+  if (existing) {
+    chart = existing
+  } else {
+    chart?.dispose()
+    chart = echarts.init(el)
     chart.on('click', (event) => {
       if (event.componentType !== 'radar') return
-      const label = String(event.name ?? '')
-      if (dimensions.value.some((item) => item.primary_label === label)) emit('select', label)
+      const label = String(event.name ?? '').split('\n')[0]
+      if (label && dimensions.value.some((item) => item.primary_label === label)) emit('select', label)
     })
   }
   const values = dimensions.value.map(metricValue)
   const labelValues = new Map(dimensions.value.map((item) => [item.primary_label, metricValue(item)]))
   chart.setOption({
-    animationDuration: 280,
+    animation: false,
     tooltip: {
       trigger: 'item',
       backgroundColor: '#fff',
@@ -87,6 +102,7 @@ function renderChart(): void {
       center: ['46%', '52%'],
       radius: dimensions.value.length > 8 ? '56%' : '62%',
       shape: 'polygon',
+      triggerEvent: true,
       splitNumber: 4,
       startAngle: 90,
       indicator: dimensions.value.map((item) => ({ name: item.primary_label, max: 1 })),
@@ -96,9 +112,10 @@ function renderChart(): void {
         fontSize: dimensions.value.length > 8 ? 9 : 10,
         fontWeight: 600,
         lineHeight: 16,
-        formatter: (name: string) => (
-          `${name}\n{value|${percent(labelValues.get(name))}} {unit|${props.metric === 'share' ? '占比' : '正向率'}}`
-        ),
+        formatter: (name: string) => {
+          if (name === selected.value?.primary_label) return ''
+          return `${name}\n{value|${percent(labelValues.get(name))}} {unit|${props.metric === 'share' ? '占比' : '正向率'}}`
+        },
         rich: {
           value: { color: '#ed0b68', fontSize: 14, fontWeight: 700, lineHeight: 20 },
           unit: { color: '#8a96ad', fontSize: 9, fontWeight: 400, lineHeight: 20 },
@@ -118,20 +135,61 @@ function renderChart(): void {
       data: [{ value: values }],
     }],
   }, true)
+  syncSelectedCard()
+}
+
+/** 用 DOM 尺寸计算选中卡片位置，保证与 ECharts 雷达同口径。 */
+function syncSelectedCard(): void {
+  const el = chartElement.value
+  if (!el) return
+  const width = el.clientWidth
+  const height = el.clientHeight
+  if (width <= 0 || height <= 0) return
+  const cx = width * 0.46
+  const cy = height * 0.52
+
+  if (!selected.value) return
+  const index = dimensions.value.findIndex((item) => item.primary_label === selected.value?.primary_label)
+  if (index < 0) return
+  // 与 renderChart 中的 radar option 保持同口径：center ['46%','52%']、radius '62%'/'56%'、startAngle 90。
+  const n = dimensions.value.length
+  const radius = (n > 8 ? 0.56 : 0.62) * (Math.min(width, height) / 2)
+  const distance = radius + 28
+  const angle = Math.PI / 2 + index * (Math.PI * 2 / n)
+  let x = cx + distance * Math.cos(angle)
+  let y = cy - distance * Math.sin(angle)
+
+  // 卡片可能贴到雷达边界外，按卡片实际尺寸把中心夹在 stage 内，避免右侧/上下溢出。
+  const halfW = (selectedCardEl.value?.offsetWidth ?? 80) / 2
+  const halfH = (selectedCardEl.value?.offsetHeight ?? 40) / 2
+  x = Math.min(Math.max(x, halfW), width - halfW)
+  y = Math.min(Math.max(y, halfH), height - halfH)
+
+  selectedCardStyle.value = {
+    left: `${x}px`,
+    top: `${y}px`,
+    right: 'auto',
+    transform: 'translate(-50%, -50%)',
+  }
+}
+
+function observeChart(): void {
+  observer?.disconnect()
+  if (!chartElement.value) return
+  observer = new ResizeObserver(() => { chart?.resize(); syncSelectedCard() })
+  observer.observe(chartElement.value)
 }
 
 onMounted(async () => {
   await nextTick()
   renderChart()
-  if (chartElement.value) {
-    observer = new ResizeObserver(() => chart?.resize())
-    observer.observe(chartElement.value)
-  }
+  observeChart()
 })
 
-watch([dimensions, () => props.metric], async () => {
+watch([dimensions, () => props.metric, () => props.selectedLabel], async () => {
   await nextTick()
   renderChart()
+  observeChart()
 }, { deep: true })
 
 onBeforeUnmount(() => {
@@ -155,7 +213,13 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="header-actions">
-        <small>当前筛选 · {{ mind ? `${mind.date_from} — ${mind.date_to}` : '近30天' }}</small>
+        <AimaDateRange
+          class="mind-date"
+          label="心智时间范围"
+          :from="dateRange.dateFrom"
+          :to="dateRange.dateTo"
+          @update:range="updateDateRange"
+        />
         <div class="metric-toggle">
           <button
             type="button"
@@ -174,21 +238,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </header>
-
-    <p
-      v-if="mind?.snapshot_status === 'refreshing' || (loading && !preparing)"
-      class="refresh-note"
-      role="status"
-    >
-      后台正在更新当前筛选，以下为最近成功结果…
-    </p>
-    <p
-      v-else-if="mind?.snapshot_status === 'failed' && mind.computed_at"
-      class="refresh-note"
-      role="status"
-    >
-      当前继续显示最近成功结果，后台会自动完成后续更新。
-    </p>
 
     <div
       v-if="error"
@@ -211,6 +260,12 @@ onBeforeUnmount(() => {
       role="status"
     >
       首次聚合正在后台准备，完成后会自动显示…
+      <button
+        type="button"
+        @click="emit('retry')"
+      >
+        立即刷新
+      </button>
     </div>
     <div
       v-else-if="loading && dimensions.length === 0"
@@ -250,8 +305,10 @@ onBeforeUnmount(() => {
           </div>
           <button
             v-if="selected"
+            ref="selectedCardEl"
             type="button"
             class="radar-selected-card"
+            :style="selectedCardStyle"
             @click="emit('select', selected.primary_label)"
           >
             <strong>{{ selected.primary_label }}</strong>
@@ -334,6 +391,8 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
 .title p { margin-top: 2px; color: var(--aima-text-secondary); font-size: 11px; }
 .header-actions { display: flex; flex: none; align-items: center; gap: 8px; }
 .header-actions small { color: var(--aima-text-disabled); font-size: 10px; }
+.mind-date { width: 205px; }
+.mind-date :deep(.date-trigger) { height: 30px; border-radius: 6px; font-size: 11px; }
 .metric-toggle { display: flex; padding: 2px; border-radius: 6px; background: var(--aima-surface-disabled); }
 .metric-toggle button { padding: 4px 7px; border: 0; border-radius: 4px; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 10px; }
 .metric-toggle .active { color: var(--aima-primary); background: var(--aima-primary-soft); font-weight: 700; }
@@ -347,10 +406,10 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
 .radar-center { position: absolute; top: 52%; left: 46%; display: grid; width: 76px; height: 76px; place-content: center; transform: translate(-50%, -50%); border-radius: 50%; color: #fff; background: linear-gradient(145deg, #f5418b, #ed0b68); box-shadow: 0 8px 18px rgb(237 11 104 / 25%); text-align: center; pointer-events: none; }
 .radar-center strong { font-size: 17px; }
 .radar-center span { margin-top: 2px; font-size: 9px; }
-.radar-selected-card { position: absolute; top: 12px; right: 4px; display: grid; min-width: 104px; gap: 5px; padding: 9px 12px; border: 2px solid #ed0b68; border-radius: 12px; color: var(--aima-text); background: #fff5f9; cursor: pointer; text-align: left; box-shadow: 0 4px 10px rgb(237 11 104 / 10%); }
-.radar-selected-card strong { max-width: 150px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.radar-selected-card > span { color: #ed0b68; font-size: 16px; font-weight: 700; }
-.radar-selected-card small { color: var(--aima-text-disabled); font-size: 9px; font-weight: 400; }
+.radar-selected-card { position: absolute; display: grid; gap: 0; padding: 5px 8px; border: 1px solid #ed0b68; border-radius: 8px; color: var(--aima-text); background: #fff5f9; cursor: pointer; text-align: left; box-shadow: 0 2px 6px rgb(237 11 104 / 10%); }
+.radar-selected-card strong { max-width: 96px; color: #17233d; font-size: 10px; font-weight: 600; line-height: 16px; overflow-wrap: anywhere; }
+.radar-selected-card > span { color: #ed0b68; font-size: 14px; font-weight: 700; line-height: 20px; }
+.radar-selected-card small { color: #8a96ad; font-size: 9px; font-weight: 400; line-height: 20px; }
 .radar-accessible-list { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .mind-detail { display: flex; min-width: 0; flex-direction: column; gap: 9px; padding: 12px; overflow: auto; }
 .mind-detail > small { color: var(--aima-text-disabled); font-size: 9px; text-transform: uppercase; }
@@ -372,18 +431,14 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
 .module-state--error { color: var(--aima-danger); }
 .module-state--error span { color: var(--aima-text-secondary); }
 .module-state--inline { min-height: 0; grid-template-columns: auto auto auto; align-items: center; justify-content: start; margin: 5px 12px 0; padding: 5px 8px; border-radius: 5px; background: var(--aima-primary-soft); text-align: left; font-size: 10px; }
-.refresh-note { margin: 5px 12px 0; color: var(--aima-text-secondary); font-size: 10px; }
 footer { display: flex; min-height: 26px; align-items: center; justify-content: space-between; padding: 5px 12px; border-top: 1px solid var(--aima-border); color: var(--aima-text-disabled); font-size: 9px; }
-@container (max-width: 760px) {
+@container (max-width: 520px) {
   header { align-items: flex-start; flex-wrap: wrap; }
-  .header-actions { width: 100%; justify-content: space-between; }
+  .header-actions { width: 100%; align-items: flex-start; flex-direction: column; justify-content: space-between; }
   .mind-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .mind-radar { min-height: 310px; border-right: 0; border-bottom: 1px solid var(--aima-border); }
-}
-@container (max-width: 520px) {
-  .header-actions { align-items: flex-start; flex-direction: column; }
   .radar-title { align-items: flex-start; flex-direction: column; }
-  .radar-selected-card { top: 4px; right: 0; min-width: 92px; padding: 7px 9px; }
+  .radar-selected-card { padding: 4px 6px; }
   .metric-cards { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

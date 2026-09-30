@@ -174,7 +174,7 @@ class WorkbenchLayoutModule(BaseModel):
     module_id: WorkbenchModuleId
     visible: bool = True
     order: int = Field(ge=0, le=20)
-    column_span: int = Field(ge=4, le=12)
+    column_span: int = Field(ge=5, le=12)
     row_units: int = Field(ge=48, le=160)
 
 

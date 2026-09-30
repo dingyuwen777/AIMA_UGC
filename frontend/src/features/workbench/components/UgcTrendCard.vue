@@ -3,16 +3,20 @@ import * as echarts from 'echarts'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type { WorkbenchTrendResponse } from '../../../generated/api/client'
+import type { WorkbenchDateRange } from '../store'
+import AimaDateRange from '../../../shared/ui/AimaDateRange.vue'
 
 const props = defineProps<{
   trend: WorkbenchTrendResponse | null
   loading: boolean
   error: string | null
+  dateRange: WorkbenchDateRange
 }>()
 
 const emit = defineEmits<{
   retry: []
   openDay: [day: string]
+  'update:date-range': [value: WorkbenchDateRange]
 }>()
 
 const chartElement = ref<HTMLDivElement | null>(null)
@@ -46,6 +50,11 @@ function changePp(value: number | null | undefined): string {
   return `${sign}${value.toFixed(1)}pp`
 }
 
+/** 日期确认后把有序区间回传给页面，由 store 只刷新本模块。 */
+function updateDateRange(value: { from: string; to: string }): void {
+  emit('update:date-range', { dateFrom: value.from, dateTo: value.to })
+}
+
 /** 情感颜色按 active Taxonomy 当前顺序循环，不维护另一套业务枚举。 */
 function sentimentColor(index: number): string {
   return palette[index % palette.length] ?? '#7f8a9c'
@@ -53,11 +62,18 @@ function sentimentColor(index: number): string {
 
 /** 把后端 daily 序列绘成 Figma 对应的平滑面积折线，数据本身不在前端重算。 */
 function renderChart(): void {
-  if (!chartElement.value) return
-  if (!chart) chart = echarts.init(chartElement.value)
+  const el = chartElement.value
+  if (!el) return
+  const existing = echarts.getInstanceByDom(el)
+  if (existing) {
+    chart = existing
+  } else {
+    chart?.dispose()
+    chart = echarts.init(el)
+  }
   const daily = props.trend?.daily ?? []
   chart.setOption({
-    animationDuration: 280,
+    animation: false,
     grid: { left: 46, right: 14, top: 24, bottom: 28 },
     tooltip: {
       trigger: 'axis',
@@ -115,18 +131,23 @@ function resizeChart(): void {
   chart?.resize()
 }
 
+function observeChart(): void {
+  observer?.disconnect()
+  if (!chartElement.value) return
+  observer = new ResizeObserver(resizeChart)
+  observer.observe(chartElement.value)
+}
+
 onMounted(async () => {
   await nextTick()
   renderChart()
-  if (chartElement.value) {
-    observer = new ResizeObserver(resizeChart)
-    observer.observe(chartElement.value)
-  }
+  observeChart()
 })
 
 watch(() => props.trend?.daily, async () => {
   await nextTick()
   renderChart()
+  observeChart()
 }, { deep: true })
 
 onBeforeUnmount(() => {
@@ -149,23 +170,14 @@ onBeforeUnmount(() => {
           <p>关注每日声量起伏与当前生效分析规则下的情感变化</p>
         </div>
       </div>
-      <small>{{ trend ? `${trend.date_from} — ${trend.date_to}` : '近30天' }}</small>
+      <AimaDateRange
+        class="trend-date"
+        label="趋势时间范围"
+        :from="dateRange.dateFrom"
+        :to="dateRange.dateTo"
+        @update:range="updateDateRange"
+      />
     </header>
-
-    <p
-      v-if="trend?.snapshot_status === 'refreshing' || (loading && !preparing)"
-      class="refresh-note"
-      role="status"
-    >
-      后台正在更新当前筛选，以下为最近成功结果…
-    </p>
-    <p
-      v-else-if="trend?.snapshot_status === 'failed' && trend.computed_at"
-      class="refresh-note"
-      role="status"
-    >
-      当前继续显示最近成功结果，后台会自动完成后续更新。
-    </p>
 
     <div
       v-if="error"
@@ -188,6 +200,12 @@ onBeforeUnmount(() => {
       role="status"
     >
       首次趋势聚合正在后台准备，完成后会自动显示…
+      <button
+        type="button"
+        @click="emit('retry')"
+      >
+        立即刷新
+      </button>
     </div>
     <div
       v-else-if="loading && !trend"
@@ -280,6 +298,8 @@ header { display: flex; min-height: 56px; align-items: center; justify-content: 
 .title h2 { color: var(--aima-text); font-size: 16px; }
 .title p { margin-top: 2px; color: var(--aima-text-secondary); font-size: 11px; }
 header > small { color: var(--aima-text-disabled); font-size: 10px; }
+.trend-date { width: 205px; }
+.trend-date :deep(.date-trigger) { height: 30px; border-radius: 6px; font-size: 11px; }
 .trend-body { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(0, 1fr) 190px; gap: 10px; padding: 10px; }
 .trend-main { display: grid; min-width: 0; grid-template-rows: auto minmax(150px, 1fr) auto; gap: 8px; }
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
@@ -314,17 +334,10 @@ aside { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 
 .module-state--error { color: var(--aima-danger); }
 .module-state--error span { color: var(--aima-text-secondary); }
 .module-state--inline { min-height: 0; grid-template-columns: auto auto auto; align-items: center; justify-content: start; margin: 5px 12px 0; padding: 5px 8px; border-radius: 5px; background: var(--aima-primary-soft); text-align: left; font-size: 10px; }
-.refresh-note { margin: 5px 12px 0; color: var(--aima-text-secondary); font-size: 10px; }
-@container (max-width: 760px) {
-  header { align-items: flex-start; flex-wrap: wrap; }
-  .trend-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
-  aside { display: grid; grid-template-columns: minmax(130px, .8fr) 110px minmax(150px, 1fr); align-items: center; }
-  .sentiment-title, .rate-change, .coverage { grid-column: 1; }
-  .positive-ring { grid-column: 2; grid-row: 1 / span 3; }
-  .sentiment-list { grid-column: 3; grid-row: 1 / span 3; }
-}
 @container (max-width: 520px) {
+  header { align-items: flex-start; flex-wrap: wrap; }
   .title p { white-space: normal; }
+  .trend-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .insight-card { grid-template-columns: auto minmax(0, 1fr); }
   .insight-card button { grid-column: 2; justify-self: start; }

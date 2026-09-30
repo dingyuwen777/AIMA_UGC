@@ -148,8 +148,8 @@ describe('工作台状态与 Figma 基线', () => {
     const store = useWorkbenchStore()
     await store.initialize()
 
-    store.setFilters({
-      ...store.filters,
+    store.setStreamFilters({
+      ...store.streamFilters,
       primaryLabels: ['外观设计', '电池、续航与充电'],
       secondaryLabels: ['颜色与配色', '续航里程'],
     })
@@ -159,24 +159,24 @@ describe('工作台状态与 Figma 基线', () => {
       '续航里程',
     ])
 
-    store.setFilters({
-      ...store.filters,
+    store.setStreamFilters({
+      ...store.streamFilters,
       primaryLabels: ['外观设计'],
       secondaryLabels: ['颜色与配色', '续航里程'],
     })
 
-    expect(store.filters.secondaryLabels).toEqual(['颜色与配色'])
+    expect(store.streamFilters.secondaryLabels).toEqual(['颜色与配色'])
     expect(store.secondaryLabelOptions.map((item) => item.value)).toEqual([
       '颜色与配色',
       '整体造型与颜值',
     ])
 
-    store.setFilters({
-      ...store.filters,
+    store.setStreamFilters({
+      ...store.streamFilters,
       primaryLabels: [],
       secondaryLabels: ['颜色与配色'],
     })
-    expect(store.filters.secondaryLabels).toEqual([])
+    expect(store.streamFilters.secondaryLabels).toEqual([])
     expect(store.secondaryLabelOptions).toEqual([])
   })
 
@@ -329,16 +329,15 @@ describe('工作台状态与 Figma 基线', () => {
     expect(store.moduleErrors.stream).toBeNull()
   })
 
-  it('筛选改变后清除上一筛选结果，避免把旧数据冒充当前筛选快照', async () => {
+  it('声音流筛选改变后只清除声音流结果，品牌心智与趋势保留', async () => {
     const store = useWorkbenchStore()
     await store.initialize()
 
-    store.setFilters({ ...store.filters, sentiments: ['负面'] })
+    store.setStreamFilters({ ...store.streamFilters, sentiments: ['负面'] })
 
     expect(store.stream).toBeNull()
-    expect(store.mind).toBeNull()
-    expect(store.trend).toBeNull()
-    expect(store.selectedMind).toBeNull()
+    expect(store.mind).toEqual(mind)
+    expect(store.trend).toEqual(trend)
   })
 
   it('编辑态只改草稿，取消恢复；保存时一次提交 revision CAS', async () => {
@@ -381,7 +380,7 @@ describe('工作台状态与 Figma 基线', () => {
       expect.objectContaining({ column_span: 8, row_units: 64 }),
     )
     expect(store.currentModules.find((item) => item.module_id === 'sound-stream')).toEqual(
-      expect.objectContaining({ column_span: 4, row_units: 55 }),
+      expect.objectContaining({ column_span: 5, row_units: 55 }),
     )
     expect(store.currentModules.find((item) => item.module_id === 'brand-mind')).toEqual(
       expect.objectContaining({ column_span: 11, row_units: 73 }),
@@ -391,8 +390,8 @@ describe('工作台状态与 Figma 基线', () => {
   it('active Taxonomy 切换后自动移除失效 AI 筛选值', async () => {
     const store = useWorkbenchStore()
     await store.initialize()
-    store.setFilters({
-      ...store.filters,
+    store.setStreamFilters({
+      ...store.streamFilters,
       sentiments: ['正面', '已删除情感'],
       voiceTypes: ['真实用户发声', '已删除发声'],
       primaryLabels: ['外观设计', '已删除一级'],
@@ -401,24 +400,62 @@ describe('工作台状态与 Figma 基线', () => {
 
     await store.refreshTaxonomy()
 
-    expect(store.filters.sentiments).toEqual(['正面'])
-    expect(store.filters.voiceTypes).toEqual(['真实用户发声'])
-    expect(store.filters.primaryLabels).toEqual(['外观设计'])
-    expect(store.filters.secondaryLabels).toEqual(['颜色与配色'])
+    expect(store.streamFilters.sentiments).toEqual(['正面'])
+    expect(store.streamFilters.voiceTypes).toEqual(['真实用户发声'])
+    expect(store.streamFilters.primaryLabels).toEqual(['外观设计'])
+    expect(store.streamFilters.secondaryLabels).toEqual(['颜色与配色'])
   })
 
-  it('反向日期在进入三个模块请求前统一规范为有序区间', async () => {
+  it('反向日期只在声音流请求前规范为有序区间', async () => {
     const store = useWorkbenchStore()
-    store.setFilters({ ...store.filters, dateFrom: '2026-08-29', dateTo: '2026-08-28' })
-    expect(store.filters.dateFrom).toBe('2026-08-28')
-    expect(store.filters.dateTo).toBe('2026-08-29')
+    store.setStreamFilters({ ...store.streamFilters, dateFrom: '2026-08-29', dateTo: '2026-08-28' })
+    expect(store.streamFilters.dateFrom).toBe('2026-08-28')
+    expect(store.streamFilters.dateTo).toBe('2026-08-29')
+    await store.refreshModule('stream')
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledWith(expect.objectContaining({
+      date_from: '2026-08-28',
+      date_to: '2026-08-29',
+    }))
+  })
+
+  it('声音流维度筛选不会混入品牌心智与趋势聚合参数', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+    api.fetchWorkbenchStream.mockClear()
+    api.fetchWorkbenchMind.mockClear()
+    api.fetchWorkbenchTrend.mockClear()
+
+    store.setStreamFilters({ ...store.streamFilters, sentiments: ['负面'] })
     await store.refreshData()
-    for (const call of [api.fetchWorkbenchStream, api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
-      expect(call).toHaveBeenCalledWith(expect.objectContaining({
-        date_from: '2026-08-28',
-        date_to: '2026-08-29',
-      }))
-    }
+
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledWith(expect.objectContaining({
+      sentiments: ['负面'],
+    }))
+    expect(api.fetchWorkbenchMind.mock.calls.at(-1)?.[0]).toEqual({
+      date_from: expect.any(String),
+      date_to: expect.any(String),
+    })
+    expect(api.fetchWorkbenchTrend.mock.calls.at(-1)?.[0]).toEqual({
+      date_from: expect.any(String),
+      date_to: expect.any(String),
+    })
+  })
+
+  it('品牌心智与趋势各自维护独立时间范围，且只刷新自身模块', async () => {
+    const store = useWorkbenchStore()
+    await store.initialize()
+
+    store.setMindFilters({ dateFrom: '2026-09-01', dateTo: '2026-09-10' })
+    expect(store.mindFilters).toEqual({ dateFrom: '2026-09-01', dateTo: '2026-09-10' })
+    expect(store.mind).toBeNull()
+    expect(store.stream).toEqual(stream)
+    expect(store.trend).toEqual(trend)
+
+    store.setTrendFilters({ dateFrom: '2026-09-20', dateTo: '2026-09-19' })
+    expect(store.trendFilters).toEqual({ dateFrom: '2026-09-19', dateTo: '2026-09-20' })
+    expect(store.trend).toBeNull()
+    expect(store.stream).toEqual(stream)
+    expect(store.mind).toBeNull()
   })
 
   it('声音流和趋势先返回时无需等待较慢的品牌心智请求', async () => {

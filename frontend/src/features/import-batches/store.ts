@@ -29,6 +29,7 @@ import type {
   LocalDataImportCampaignCreateRequest,
 } from '../../generated/api/client'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
+import { PLATFORM_KEYS } from '../../shared/domain/platform'
 import { createClientIdempotencyKey } from '../../shared/idempotency'
 import {
   createTikHubCollectionRun,
@@ -93,14 +94,6 @@ const EMPTY_FILTERS: CollectionRuntimeFilters = {
   createdFrom: '',
   createdTo: '',
 }
-
-const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
-  'xiaohongshu',
-  'douyin',
-  'weibo',
-  'bilibili',
-  'kuaishou',
-]
 
 const LOCAL_CAMPAIGN_UPLOAD_CONCURRENCY = 3
 const REPLAY_CANCEL_UNCONFIRMED = '取消请求结果暂未确认；系统会继续刷新任务状态，也可点击“重试取消并撤回”。'
@@ -547,8 +540,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     error.value = null
     try {
       const eligibility = source.kind === 'campaign'
-        ? await fetchCampaignContentPlatforms(source.id, SUPPORTED_PLATFORMS)
-        : await fetchBatchContentPlatforms(source.id, SUPPORTED_PLATFORMS)
+        ? await fetchCampaignContentPlatforms(source.id, PLATFORM_KEYS)
+        : await fetchBatchContentPlatforms(source.id, PLATFORM_KEYS)
       if (version === supplementPlatformVersion) {
         supplementContentPlatforms.value = eligibility.platforms
         supplementDiagnostics.value = eligibility.diagnostics

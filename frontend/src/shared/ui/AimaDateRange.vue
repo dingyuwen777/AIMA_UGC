@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import AimaButton from './AimaButton.vue'
 
 const props = withDefaults(defineProps<{ from: string; to: string; label?: string }>(), { label: '发布时间范围' })
@@ -17,6 +17,9 @@ const month = ref('')
 const focused = ref('')
 const position = ref({ left: '0px', top: '0px' })
 const weekdays = ['一', '二', '三', '四', '五', '六', '日']
+const nativePopoverSupported = typeof HTMLElement !== 'undefined'
+  && typeof HTMLElement.prototype.showPopover === 'function'
+  && typeof HTMLElement.prototype.hidePopover === 'function'
 
 /** 以北京时间获取当天自然日，浏览器所在时区不改变筛选范围。 */
 function today(): string {
@@ -47,7 +50,7 @@ const days = computed(() => {
 
 /** 打开时恢复已确认范围，并把面板放在视口内的触发器附近。 */
 async function show(): Promise<void> {
-  if (open.value) { panel.value?.hidePopover(); return }
+  if (open.value) { close(); return }
   const dates = [props.from, props.to].filter(Boolean).sort()
   draftFrom.value = dates[0] ?? ''
   draftTo.value = dates[1] ?? ''
@@ -55,8 +58,20 @@ async function show(): Promise<void> {
   month.value = focused.value.slice(0, 7)
   const box = trigger.value!.getBoundingClientRect()
   position.value = { left: `${Math.max(12, Math.min(box.right - 258, window.innerWidth - 270))}px`, top: `${Math.max(12, Math.min(box.bottom + 6, window.innerHeight - 410))}px` }
-  panel.value?.showPopover()
+  open.value = true
+  await nextTick()
+  if (nativePopoverSupported && panel.value && !panel.value.matches(':popover-open')) {
+    panel.value.showPopover()
+  }
   await focusDate()
+}
+
+/** 关闭原生或 fallback 面板，不依赖浏览器初始 Popover 样式。 */
+function close(): void {
+  if (nativePopoverSupported && panel.value?.matches(':popover-open')) {
+    panel.value.hidePopover()
+  }
+  open.value = false
 }
 
 /** 月份导航不提交筛选值，跨年由标准日期运算处理。 */
@@ -107,9 +122,39 @@ function confirm(): void {
   emit('update:range', { from, to })
   emit('update:from', from)
   emit('update:to', to)
-  panel.value?.hidePopover()
+  close()
   trigger.value?.focus()
 }
+
+/** 原生 light-dismiss 后同步 Vue 状态，关闭态样式不继续占据页面。 */
+function syncNativeToggle(event: Event): void {
+  const nextState = (event as ToggleEvent).newState
+  open.value = nextState === 'open'
+}
+
+/** fallback 模式补齐原生 Popover 的点击外部与 Escape 关闭。 */
+function dismissOnPointerDown(event: PointerEvent): void {
+  if (!open.value || !(event.target instanceof Node)) return
+  if (panel.value?.contains(event.target) || trigger.value?.contains(event.target)) return
+  close()
+}
+
+function dismissOnKeyDown(event: KeyboardEvent): void {
+  if (!open.value || event.key !== 'Escape') return
+  event.preventDefault()
+  close()
+  trigger.value?.focus()
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', dismissOnPointerDown, true)
+  document.addEventListener('keydown', dismissOnKeyDown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', dismissOnPointerDown, true)
+  document.removeEventListener('keydown', dismissOnKeyDown)
+})
 </script>
 
 <template>
@@ -132,12 +177,13 @@ function confirm(): void {
     </button>
     <div
       ref="panel"
-      popover="auto"
+      :popover="nativePopoverSupported ? 'auto' : undefined"
       class="date-panel"
+      :class="{ 'date-panel--open': open }"
       :style="position"
       role="dialog"
       :aria-label="`选择${label}`"
-      @toggle="open = $event.newState === 'open'"
+      @toggle="syncNativeToggle"
     >
       <div class="month-nav">
         <button
@@ -212,7 +258,7 @@ function confirm(): void {
           清空
         </button><AimaButton
           size="small"
-          @click="panel?.hidePopover()"
+          @click="close"
         >
           取消
         </AimaButton><AimaButton
@@ -230,7 +276,7 @@ function confirm(): void {
 <style scoped>
 .aima-date-range { min-width: 0; }
 .date-trigger { display: flex; width: 100%; height: 40px; min-width: 0; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 1px solid var(--aima-border-strong); border-radius: 6px; color: var(--aima-text-muted); background: #fff; font-size: 12px; cursor: pointer; white-space: nowrap; }
-.date-panel { position: fixed; width: 258px; max-height: calc(100dvh - 24px); overflow-y: auto; margin: 0; padding: 16px 9px 12px; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; color: var(--aima-text); box-shadow: 0 6px 16px -2px rgb(0 0 0 / 10%); }
+.date-panel { position: fixed; width: 258px; max-height: calc(100dvh - 24px); overflow-y: auto; margin: 0; padding: 16px 9px 12px; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; color: var(--aima-text); box-shadow: 0 6px 16px -2px rgb(0 0 0 / 10%); display: none; }
 .month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }
 .month-nav button { width: 24px; height: 24px; border: 0; color: var(--aima-text-muted); background: transparent; cursor: pointer; }
 .calendar-week, .calendar-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
@@ -243,6 +289,7 @@ function confirm(): void {
 .calendar-days button:focus-visible { outline: 2px solid var(--aima-primary); outline-offset: -2px; }
 .date-shortcuts { display: flex; gap: 4px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--aima-border); }
 .date-shortcuts button { flex: 1; height: 26px; border: 0; border-radius: 4px; background: var(--aima-color-bg-hover); color: var(--aima-text-muted); font-size: 11px; cursor: pointer; }
+.date-panel--open { display: block; }
 .date-panel footer { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
 .clear-date { margin-right: auto; padding: 0; border: 0; background: transparent; color: var(--aima-text-muted); font-size: 11px; cursor: pointer; }
 </style>

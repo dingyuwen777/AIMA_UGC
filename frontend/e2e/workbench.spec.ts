@@ -289,7 +289,7 @@ test('工作台按 active Taxonomy 展示真实模块，并使用后端 as_of', 
   await expect(page.locator('.mind-card .radar-selected-card')).toContainText('外观设计')
   await expect(page.locator('.trend-card .sentiment-list').getByText('混合', { exact: true })).toBeVisible()
   await expect(page.locator('.trend-card .sentiment-list').getByText('无法判断', { exact: true })).toBeVisible()
-  await expect(page.getByText(/2026.*09.*27.*08.*10.*每 15 秒检查更新/)).toBeVisible()
+  await expect(page.getByText(/2026.*09.*27.*08.*10.*每 1 小时检查更新/)).toBeVisible()
   await expect(page.getByAltText('工作台开发中')).toHaveCount(0)
 
   // Figma 默认态 1440×900：侧栏后两张主卡同排，页面留白不能叠加两层。
@@ -459,7 +459,7 @@ test('声音流自动滚动时筛选面板保持打开，筛选条滚动时关�
   await expect(trigger).toHaveAttribute('aria-expanded', 'false')
 })
 
-test('声音流筛选下拉可操作，选择后同口径刷新三个真实模块请求', async ({ page }) => {
+test('声音流筛选下拉可操作，选择后只刷新声音流请求', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   const sentiment = page.locator('.aima-multi-select').filter({ has: page.getByRole('button', { name: '情感', exact: true }) })
@@ -475,17 +475,21 @@ test('声音流筛选下拉可操作，选择后同口径刷新三个真实模�
   await expect(sentiment.getByRole('dialog', { name: '选择情感' })).toBeVisible()
   await sentiment.getByRole('checkbox', { name: '正面' }).check({ timeout: 3000 })
 
-  const paths = ['/api/v1/workbench/stream', '/api/v1/workbench/mind', '/api/v1/workbench/trend']
-  for (const path of paths) {
-    await expect.poll(() => page.evaluate((target) =>
+  await expect.poll(() => page.evaluate(() =>
+    performance.getEntriesByType('resource').some((entry) => {
+      const url = new URL(entry.name)
+      return url.pathname === '/api/v1/workbench/stream' && url.searchParams.get('sentiments') === '正面'
+    }))).toBe(true)
+  for (const path of ['/api/v1/workbench/mind', '/api/v1/workbench/trend']) {
+    expect(await page.evaluate((target) =>
       performance.getEntriesByType('resource').some((entry) => {
         const url = new URL(entry.name)
         return url.pathname === target && url.searchParams.get('sentiments') === '正面'
-      }), path)).toBe(true)
+      }), path)).toBe(false)
   }
 })
 
-test('确认日期后起止日期同时进入声音流、心智与趋势查询', async ({ page }) => {
+test('确认声音流日期后只把起止日期带入声音流查询', async ({ page }) => {
   await page.goto('/')
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -493,53 +497,95 @@ test('确认日期后起止日期同时进入声音流、心智与趋势查询',
   const from = new Date(`${today}T00:00:00Z`)
   from.setUTCDate(from.getUTCDate() - 6)
   const expectedFrom = from.toISOString().slice(0, 10)
-  const requests: URL[] = []
+  const aggregateRequests: URL[] = []
   page.on('request', (request) => {
     const url = new URL(request.url())
-    if (url.pathname.startsWith('/api/v1/workbench/') && url.pathname !== '/api/v1/workbench/layout') {
-      requests.push(url)
+    if (url.pathname === '/api/v1/workbench/mind' || url.pathname === '/api/v1/workbench/trend') {
+      aggregateRequests.push(url)
     }
   })
 
-  await page.getByRole('button', { name: '工作台时间范围' }).click()
+  const streamDateRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/workbench/stream'
+      && url.searchParams.get('date_from') === expectedFrom
+      && url.searchParams.get('date_to') === today
+  })
+  await page.getByRole('button', { name: '声音流时间范围' }).click()
   await page.getByRole('button', { name: '近7天' }).click()
   await page.getByRole('button', { name: '确定' }).click()
-  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3)
+  await streamDateRequest
 
-  for (const path of ['/api/v1/workbench/stream', '/api/v1/workbench/mind', '/api/v1/workbench/trend']) {
-    const request = requests.findLast((item) => item.pathname === path)
-    expect(request?.searchParams.get('date_from')).toBe(expectedFrom)
-    expect(request?.searchParams.get('date_to')).toBe(today)
+  for (const path of ['/api/v1/workbench/mind', '/api/v1/workbench/trend']) {
+    const request = aggregateRequests.findLast((item) => item.pathname === path)
+    expect(request?.searchParams.get('date_from')).not.toBe(expectedFrom)
   }
 })
 
-test('反向点击日期也形成合法范围并立即请求三个模块', async ({ page }) => {
+test('反向点击声音流日期也形成合法范围并只请求声音流', async ({ page }) => {
   await page.goto('/')
-  const requests: URL[] = []
+  const aggregateRequests: URL[] = []
   page.on('request', (request) => {
     const url = new URL(request.url())
-    if (['stream', 'mind', 'trend'].some((module) => url.pathname.endsWith(`/workbench/${module}`))) requests.push(url)
+    if (['mind', 'trend'].some((module) => url.pathname.endsWith(`/workbench/${module}`))) aggregateRequests.push(url)
   })
-  await page.getByRole('button', { name: '工作台时间范围' }).click()
+  await page.getByRole('button', { name: '声音流时间范围' }).click()
   const dates = await page.locator('.calendar-days [data-date]').evaluateAll((buttons) =>
     buttons.map((button) => button.getAttribute('data-date')).filter((value): value is string => !!value))
   const earlier = dates[4]!
   const later = dates[5]!
+  const streamDateRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname.endsWith('/workbench/stream')
+      && url.searchParams.get('date_from') === earlier
+      && url.searchParams.get('date_to') === later
+  })
   await page.getByRole('button', { name: later, exact: true }).click()
   await page.getByRole('button', { name: earlier, exact: true }).click()
   await page.getByRole('button', { name: '确定' }).click()
-  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3)
-  for (const module of ['stream', 'mind', 'trend']) {
-    const url = requests.findLast((item) => item.pathname.endsWith(`/workbench/${module}`))
-    expect(url?.searchParams.get('date_from')).toBe(earlier)
-    expect(url?.searchParams.get('date_to')).toBe(later)
+  await streamDateRequest
+  for (const module of ['mind', 'trend']) {
+    const url = aggregateRequests.findLast((item) => item.pathname.endsWith(`/workbench/${module}`))
+    expect(url?.searchParams.get('date_from')).not.toBe(earlier)
   }
-  await expect(page.getByRole('button', { name: '工作台时间范围' })).toContainText(`${earlier}—${later}`)
+  await expect(page.getByRole('button', { name: '声音流时间范围' })).toContainText(`${earlier}—${later}`)
+})
+
+test('品牌心智与 UGC 趋势各用自己的时间筛选器并只请求各自模块', async ({ page }) => {
+  await page.goto('/')
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+  const from = new Date(`${today}T00:00:00Z`)
+  from.setUTCDate(from.getUTCDate() - 6)
+  const expectedFrom = from.toISOString().slice(0, 10)
+
+  const mindDateRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/workbench/mind'
+      && url.searchParams.get('date_from') === expectedFrom
+      && url.searchParams.get('date_to') === today
+  })
+  await page.getByRole('button', { name: '心智时间范围' }).click()
+  await page.getByRole('button', { name: '近7天' }).click()
+  await page.getByRole('button', { name: '确定' }).click()
+  await mindDateRequest
+
+  const trendDateRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/workbench/trend'
+      && url.searchParams.get('date_from') === expectedFrom
+      && url.searchParams.get('date_to') === today
+  })
+  await page.getByRole('button', { name: '趋势时间范围' }).click()
+  await page.getByRole('button', { name: '近7天' }).click()
+  await page.getByRole('button', { name: '确定' }).click()
+  await trendDateRequest
 })
 
 test('日期取消、单日确认、清空后的默认范围始终一致', async ({ page }) => {
   await page.goto('/')
-  const trigger = page.getByRole('button', { name: '工作台时间范围' })
+  const trigger = page.getByRole('button', { name: '声音流时间范围' })
   const original = await trigger.textContent()
   await trigger.click()
   await page.getByRole('button', { name: '近7天' }).click()
@@ -595,7 +641,7 @@ test('一级标签多选只开放对应二级候选，并在父级取消后清�
   await expect(secondaryTrigger).toContainText('全部二级标签')
 })
 
-test('筛选后的后端结果同步替换三个模块，重置后恢复', async ({ page }) => {
+test('声音流筛选只替换声音流结果，重置后恢复', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.stream-list article')).toHaveCount(1)
   await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
@@ -604,9 +650,8 @@ test('筛选后的后端结果同步替换三个模块，重置后恢复', async
   await page.getByRole('button', { name: '情感', exact: true }).click()
   await page.getByRole('checkbox', { name: '负面' }).check()
   await expect(page.locator('.stream-card')).toContainText('当前筛选范围暂无声音记录')
-  await expect(page.locator('.mind-card')).toContainText('当前筛选范围暂无可统计的用户心智')
-  await expect(page.locator('.trend-card .kpis > div').first()).toContainText('0')
-  await expect(page.locator('.trend-card')).toContainText('当前时间范围暂无可展示的 UGC 声量')
+  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
+  await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(page.locator('.stream-list article')).toHaveCount(1)
@@ -614,7 +659,7 @@ test('筛选后的后端结果同步替换三个模块，重置后恢复', async
   await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 })
 
-test('新筛选请求失败时不把上一筛选结果冒充当前数据', async ({ page }) => {
+test('声音流新筛选失败时不把上一结果冒充当前数据', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.stream-cycle:first-child article')).toHaveCount(1)
   await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
@@ -624,12 +669,9 @@ test('新筛选请求失败时不把上一筛选结果冒充当前数据', async
   await page.getByRole('checkbox', { name: '混合' }).check()
 
   await expect(page.getByText('声音流暂时无法更新')).toBeVisible()
-  await expect(page.getByText('品牌用户心智暂时无法更新')).toBeVisible()
-  await expect(page.getByText('趋势数据暂时无法更新')).toBeVisible()
-  await expect(page.locator('.module-state--inline')).toHaveCount(0)
   await expect(page.locator('.stream-cycle:first-child article')).toHaveCount(0)
-  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(0)
-  await expect(page.locator('.trend-card .kpis > div')).toHaveCount(0)
+  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
+  await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 })
 
 test('品牌心智失败只重试自身，不耦合刷新声音流和趋势', async ({ page }) => {
@@ -783,7 +825,7 @@ test('短声音流按 Figma 连续滚动，平台标识复用声音广场样式'
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(5)
 })
 
-test('页面保持可见时按 15 秒补读聚合且不重置声音流游标', async ({ page }) => {
+test('页面保持可见时按 1 小时补读聚合且不重置声音流游标', async ({ page }) => {
   await page.clock.install()
   const requests: string[] = []
   page.on('request', (request) => {
@@ -795,7 +837,7 @@ test('页面保持可见时按 15 秒补读聚合且不重置声音流游标', a
   const initialStream = requests.filter((path) => path.endsWith('/stream')).length
   const initialMind = requests.filter((path) => path.endsWith('/mind')).length
   const initialTrend = requests.filter((path) => path.endsWith('/trend')).length
-  await page.clock.fastForward(15_000)
+  await page.clock.fastForward(3_600_000)
   await expect.poll(() => requests.filter((path) => path.endsWith('/mind')).length)
     .toBeGreaterThanOrEqual(initialMind + 1)
   await expect.poll(() => requests.filter((path) => path.endsWith('/trend')).length)
@@ -865,6 +907,51 @@ test('趋势模块横向按单列缩放，窄模块内部自适应且不重叠',
   expect(payload.modules.find((item) => item.module_id === 'brand-mind')?.column_span).toBe(6)
 })
 
+/** 进入编辑态并开始拖动趋势模块缩放手柄，随后用指定事件打断拖动。 */
+async function interruptTrendResize(page: Page, cancelEvent: 'pointercancel' | 'lostpointercapture'): Promise<void> {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+  await page.getByRole('button', { name: '+ 编辑工作台' }).click()
+  const trendShell = page.locator('.module-shell').filter({ has: page.getByRole('heading', { name: 'UGC 声量与情感趋势' }) })
+  const handle = trendShell.getByRole('button', { name: '调整模块尺寸' })
+  await handle.scrollIntoViewIfNeeded()
+  const handleBox = await handle.boundingBox()
+  expect(handleBox).not.toBeNull()
+
+  await page.mouse.move((handleBox?.x ?? 0) + 12, (handleBox?.y ?? 0) + 12)
+  await page.mouse.down()
+  await page.mouse.move((handleBox?.x ?? 0) - 320, (handleBox?.y ?? 0) + 12, { steps: 12 })
+
+  await expect.poll(async () => ((await trendShell.getAttribute('style')) ?? '').includes('width:')).toBe(true)
+  await page.evaluate((eventType) => {
+    window.dispatchEvent(new PointerEvent(eventType, { bubbles: true, cancelable: true }))
+  }, cancelEvent)
+  await expect.poll(async () => !((await trendShell.getAttribute('style')) ?? '').includes('width:')).toBe(true)
+  await page.mouse.up()
+}
+
+test('趋势模块缩放被 pointercancel 打断时不提交尺寸', async ({ page }) => {
+  await interruptTrendResize(page, 'pointercancel')
+  const saveRequest = page.waitForRequest((request) =>
+    request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/workbench/layout')
+  await page.getByRole('button', { name: '保存完成' }).click()
+  const request = await saveRequest
+  const payload = request.postDataJSON() as { modules: typeof modules }
+  expect(payload.modules.find((item) => item.module_id === 'ugc-trend')?.column_span).toBe(6)
+  expect(payload.modules.find((item) => item.module_id === 'ugc-trend')?.row_units).toBe(48)
+})
+
+test('趋势模块缩放捕获丢失时不提交尺寸', async ({ page }) => {
+  await interruptTrendResize(page, 'lostpointercapture')
+  const saveRequest = page.waitForRequest((request) =>
+    request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/workbench/layout')
+  await page.getByRole('button', { name: '保存完成' }).click()
+  const request = await saveRequest
+  const payload = request.postDataJSON() as { modules: typeof modules }
+  expect(payload.modules.find((item) => item.module_id === 'ugc-trend')?.column_span).toBe(6)
+  expect(payload.modules.find((item) => item.module_id === 'ugc-trend')?.row_units).toBe(48)
+})
+
 test('三个模块在各自最窄宽度下独立重排且不产生横向溢出', async ({ page }) => {
   await page.unroute('**/api/v1/workbench/layout')
   await page.route('**/api/v1/workbench/layout', async (route) => {
@@ -873,7 +960,7 @@ test('三个模块在各自最窄宽度下独立重排且不产生横向溢出',
       body: JSON.stringify({
         schema_version: 1,
         revision: 4,
-        modules: modules.map((item) => ({ ...item, column_span: 4 })),
+        modules: modules.map((item) => ({ ...item, column_span: 5 })),
         updated_at: '2026-09-27T08:12:00+08:00',
       }),
     })
