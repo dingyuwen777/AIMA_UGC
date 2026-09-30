@@ -22,7 +22,6 @@ from aima_ugc.modules.analysis.schemes import (
     bootstrap_definition_from_prompt,
     compile_analysis_scheme,
 )
-from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.platform.time import beijing_now
 
 register_analysis_lifecycle_schema()
