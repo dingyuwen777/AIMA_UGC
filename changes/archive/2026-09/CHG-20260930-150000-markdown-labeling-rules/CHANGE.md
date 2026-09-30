@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260930-150000-markdown-labeling-rules
 title: 可读 Markdown 作为内容打标规则唯一编辑入口
 level: L3
-status: ready_for_review
+status: done
 owner: assistant
 branch: feature/markdown-labeling-rules
 created: 2026-09-30 15:00:00 +08:00
