@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from aima_ugc.bootstrap.internal_v1 import (
@@ -232,3 +234,93 @@ def test_prepare_host_rejects_missing_password_for_initialized_postgres(
     assert result.returncode == 1
     assert "已有 PostgreSQL 18 数据" in result.stderr
     assert "postgres_password" in result.stderr
+
+
+def test_internal_v1_configure_promotes_git_prompt_and_reports_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """configure 必须执行 Git Prompt promotion 并输出可审计身份。"""
+
+    from aima_ugc.entrypoints import internal_v1_configure_main as entrypoint
+
+    class FakeSession:
+        """提供 configure 需要的最小事务 Session。"""
+
+        def begin(self):  # type: ignore[no-untyped-def]
+            return nullcontext()
+
+        def close(self) -> None:
+            return None
+
+    class FakeRuntime:
+        """提供 configure 需要的最小 DatabaseRuntime。"""
+
+        def __init__(self, _settings) -> None:  # type: ignore[no-untyped-def]
+            pass
+
+        def new_session(self) -> FakeSession:
+            return FakeSession()
+
+        def dispose(self) -> None:
+            return None
+
+    class FakeProviderRepository:
+        """模拟尚未由数据库托管的 Provider 配置。"""
+
+        def __init__(self, _session) -> None:  # type: ignore[no-untyped-def]
+            pass
+
+        def get(self, _config_id):  # type: ignore[no-untyped-def]
+            return None
+
+        def list_all(self, *, provider_kind: str):  # type: ignore[no-untyped-def]
+            assert provider_kind == "llm"
+            return ()
+
+        def get_default(self, provider_kind: str):  # type: ignore[no-untyped-def]
+            assert provider_kind == "llm"
+            return None
+
+    promotion = SimpleNamespace(
+        action="promoted",
+        scheme=SimpleNamespace(
+            version=3,
+            prompt_sha256="a" * 64,
+            taxonomy_sha256="b" * 64,
+        ),
+        taxonomy=SimpleNamespace(output_protocol_version="content-labeling.v3.0"),
+    )
+    monkeypatch.setattr(entrypoint, "load_settings", lambda: object())
+    monkeypatch.setattr(
+        entrypoint,
+        "load_internal_v1_provider_settings",
+        lambda: SimpleNamespace(enabled=False),
+    )
+    monkeypatch.setattr(entrypoint, "DatabaseRuntime", FakeRuntime)
+    monkeypatch.setattr(entrypoint, "PostgresProviderConfigRepository", FakeProviderRepository)
+    monkeypatch.setattr(
+        entrypoint,
+        "promote_git_analysis_scheme",
+        lambda _session: promotion,
+    )
+    monkeypatch.setattr(
+        entrypoint,
+        "bootstrap_internal_v1_external_secrets",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(entrypoint, "validate_internal_v1_llm_settings", lambda _settings: False)
+    monkeypatch.setattr(
+        entrypoint,
+        "provision_internal_v1_provider_config",
+        lambda *_args, **_kwargs: None,
+    )
+
+    assert entrypoint.main() == 0
+
+    output = capsys.readouterr().out
+    assert "Analysis Git Prompt: PROMOTED" in output
+    assert "version=3" in output
+    assert "protocol=content-labeling.v3.0" in output
+    assert f"prompt_sha256={'a' * 64}" in output
+    assert f"taxonomy_sha256={'b' * 64}" in output
