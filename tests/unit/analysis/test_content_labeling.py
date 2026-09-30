@@ -240,9 +240,7 @@ def test_prompt_taxonomy_changes_are_runtime_driven_without_python_changes(tmp_p
     def add_label(human_section: str) -> str:
         return human_section + "### 临时测试一级\n\n- 临时测试二级\n\n"
 
-    changed = PromptTaxonomyLoader(
-        _prompt_with_human_labels_mutation(tmp_path, add_label)
-    ).load()
+    changed = PromptTaxonomyLoader(_prompt_with_human_labels_mutation(tmp_path, add_label)).load()
 
     assert changed.primary_labels == (*original.primary_labels, "临时测试一级")
     assert changed.labels["临时测试一级"] == ("临时测试二级",)
@@ -319,6 +317,7 @@ def test_invalid_prompt_taxonomy_fails_before_llm_call(
     current = PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
 
     if failure_kind == "duplicate_sentiment":
+
         def mutate_machine(payload: dict[str, Any]) -> None:
             payload["sentiments"].append(payload["sentiments"][0])
 
