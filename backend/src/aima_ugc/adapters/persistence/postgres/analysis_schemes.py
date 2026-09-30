@@ -229,16 +229,6 @@ class PostgresAnalysisSchemeRepository:
             version, created = self.bootstrap_default(actor_ref="system:git-bootstrap")
             return version, "bootstrapped" if created else "unchanged"
 
-        prompt_text = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
-        definition = bootstrap_definition_from_prompt(prompt_text)
-        compiled = compile_analysis_scheme(definition)
-        if (
-            active.prompt_sha256 == compiled.prompt_sha256
-            and active.taxonomy_sha256 == compiled.taxonomy_sha256
-            and active.compiled_prompt == compiled.prompt_text
-        ):
-            return active, "unchanged"
-
         version_actors = tuple(
             self._session.scalars(
                 select(analysis_scheme_versions_table.c.created_by).where(
@@ -257,6 +247,16 @@ class PostgresAnalysisSchemeRepository:
             raise RuntimeError(
                 "当前 active Analysis Scheme 含人工 Version，拒绝由 Git Prompt 自动覆盖"
             )
+
+        prompt_text = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+        definition = bootstrap_definition_from_prompt(prompt_text)
+        compiled = compile_analysis_scheme(definition)
+        if (
+            active.prompt_sha256 == compiled.prompt_sha256
+            and active.taxonomy_sha256 == compiled.taxonomy_sha256
+            and active.compiled_prompt == compiled.prompt_text
+        ):
+            return active, "unchanged"
 
         latest_version = int(
             self._session.scalar(
