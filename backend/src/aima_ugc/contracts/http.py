@@ -1481,6 +1481,9 @@ class AnalysisContentRunResponse(BaseModel):
     generation_config_hash: str
     error_code: str | None = None
     stats: AnalysisContentRunStatsResponse = AnalysisContentRunStatsResponse()
+    execution_settling: bool = Field(
+        default=False, description="关联执行仍在排队或收尾，需继续刷新统计"
+    )
     shards: tuple[AnalysisContentRunShardResponse, ...] = ()
     created_at: datetime
     started_at: datetime | None = None

@@ -40,7 +40,7 @@ class PostgresHighThroughputAnalysisRepository(PostgresAnalysisRepository):
         run = self.get_run(run_id)
         if run is None:
             raise AnalysisRequestNotFound
-        if run["cancel_requested_at"] is not None:
+        if run["cancel_requested_at"] is not None or run["status"] not in {"queued", "running"}:
             return ()
         scheduled_count = cast(
             int,
@@ -124,7 +124,8 @@ class PostgresHighThroughputAnalysisRepository(PostgresAnalysisRepository):
 
         unscheduled_count = max(cast(int, run["target_count"]) - scheduled_count, 0)
         if run["status"] == "failed":
-            counts["failed"] += unscheduled_count
+            counts["failed"] += unscheduled_count + counts["pending"]
+            counts["pending"] = 0
         elif run["cancel_requested_at"] is not None or run["status"] == "cancelled":
             counts["cancelled"] += unscheduled_count
         else:

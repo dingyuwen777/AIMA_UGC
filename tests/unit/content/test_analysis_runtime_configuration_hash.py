@@ -39,3 +39,17 @@ def test_runtime_provider_revision_changes_analysis_configuration_hash() -> None
 
 def test_empty_runtime_snapshot_preserves_legacy_analysis_configuration_hash() -> None:
     assert _configuration_hash(None) == _configuration_hash({})
+
+
+def test_adaptive_derived_limits_do_not_change_preview_or_idempotency_hash() -> None:
+    first = {
+        "capacity_mode": "adaptive.v1",
+        "provider_config_id": "provider",
+        "revision": 1,
+        "timeout_seconds": 45,
+        "max_concurrency": 256,
+        "max_rps": None,
+        "max_retries": 3,
+    }
+    assert _configuration_hash(first) == _configuration_hash({**first, "timeout_seconds": 180})
+    assert _configuration_hash(first) != _configuration_hash({**first, "revision": 2})

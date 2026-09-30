@@ -148,9 +148,9 @@ ContentLabelingLLMResponse
 ### 公共有界并发与自动 Shard
 
 - [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py)：Offline / Formal 共用首批并发、bounded in-flight、`FIRST_COMPLETED`、停止调度和 backpressure。
-- [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py)：根据 Run 冻结 Provider `max_concurrency / max_rps` 自动计算 Shard Size。
+- [`backend/src/aima_ugc/modules/analysis/adaptive_capacity.py`](adaptive_capacity.py)：新 Run 从成功入库速度派生 Shard Size；[`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) 保留历史固定 Snapshot 的算法。
 
-当前数据库 Provider 的默认计算规则：
+历史固定协议的计算规则：
 
 ```text
 shard_size = clamp(min(max_concurrency × 20, max_rps × 900 秒〔仅配置 max_rps 时〕), 20, 50_000)
@@ -165,9 +165,9 @@ max_concurrency = 1000, max_rps = 1    → shard_size = 900
 max_concurrency = 250,  max_rps = 5    → shard_size = 4,500
 ```
 
-Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。未配置 `max_rps` 时仍以 20 个并发波次为基线；配置 `max_rps` 时再用 900 秒物理 Attempt 启动预算收紧，低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，为 Retry、数据库批量提交、Heartbeat 和取消留出余量。异常高重试仍可能触发 Job timeout，因此该预算不是吞吐承诺。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。
+新 Run 的每片大小按历史成功吞吐、所需分片数和约 300 秒目标耗时派生，限制在 200–50,000 条，创建时写入 `analysis_content_runs.shard_size`。每片物理并发上限 256，全局目标上限 5000。冻结范围之后不随学习变化；`analysis.content-label.v1` 的 1800 秒 Attempt Deadline 仍是执行硬边界，恢复等待不能无限续期。
 
-环境配置与数据库配置都使用同一自动分片公式和并发执行器。旧静态 `AIMA_ANALYSIS_RUN_SHARD_SIZE` / `AIMA_ANALYSIS_BATCH_SIZE` 已移除；环境配置的容量来自 `AIMA_LLM_MAX_CONNECTIONS`。
+环境与数据库配置的新 Run 都使用同一自适应策略和并发执行器；环境里的旧人工执行值只供历史固定 Snapshot 兼容。旧静态 `AIMA_ANALYSIS_RUN_SHARD_SIZE` / `AIMA_ANALYSIS_BATCH_SIZE` 已移除。
 
 ### 正式 Job
 
@@ -228,17 +228,17 @@ analysis.content-label.v1
 
 ```text
 管理员 Provider 配置
-→ Base URL / Model / API Key / max_concurrency / max_rps / timeout / Validation Retry
+→ Base URL / Model / API Key；LLM 执行参数由系统管理
 → 新 Run 读取并冻结安全 Provider Snapshot
 
 POST /api/v1/analysis/content-runs/preview
 → 预检目标数
-→ 根据 Provider max_concurrency 计算 shard_size
+→ 根据当前学习状态估计 shard_size；学习漂移不改变确认 hash
 → 返回目标数、Shard 数、Scheme/Prompt/Taxonomy/Model/配置身份
 
 POST /api/v1/analysis/content-runs
 → 短事务创建 analysis_content_runs + Planner Job
-→ 冻结同一 Provider Snapshot 与计算后的 shard_size
+→ 冻结连接身份、按历史派生的 timeout 和 shard_size
 
 Planner
 → selected/query 集合式冻结
@@ -250,11 +250,11 @@ Analysis Shard Worker
 → 加载 Run 冻结 Provider/Scheme
 → 校验 Prompt/Taxonomy/Provider/Model 身份
 → 本地预检后首批并发，不串行等待第一条
-→ bounded concurrency，最大 in-flight = Provider.max_concurrency
+→ 每秒刷新同 Provider/Model 跨 Run 的共享容量，分配有界本地目标
 → 每条 Content 独立 ContentLabelingService 调用
-→ max_rps 对每个物理 HTTP Attempt 生效
+→ 动态 RPS 保护对每个物理 HTTP Attempt（含 Retry）生效
 → Transport Retry 仅重发当前 Content 的物理请求
-→ Validation Retry 仍由 ContentLabelingService 处理当前 Content
+→ Validation Retry 的单轮推理复用 ContentLabelingService，正式恢复由持久 Item ready-at 调度
 → 结构/Taxonomy 错误进入 repair；证据伪造、主体/意图/发声矛盾或 needs_judge 才进入条件 Judge
 → 已成功 Content 不随另一条复判而重发
 → 完成结果有界缓冲
@@ -344,18 +344,18 @@ HTTP 已成功
 → ContentLabelingService 对当前 Content 重新推理
 ```
 
-管理员 Provider 的 `max_retries` 当前表示每条 Content 的 **Validation Retry** 轮数上限。
+新正式 Run 的 Validation Retry 没有固定轮数上限；每轮只处理 unresolved Item。历史 Run 的冻结 `max_retries` 和离线入口的显式上限继续有效。正式持久健康窗口和停止边界见[失败恢复](#15-正式-run-失败恢复)。
 
 当前格式的 Validation Attempt 记录 `request_kind=primary/repair/judge`。Judge 不读取上一响应全文，只收到当前 unresolved item、稳定错误码、`platform` 与五个原始文本字段，并独立重新判断；同一轮同时出现结构错误与证据/协议问题时按 item 拆成 repair/judge 请求，每条 Content 仍只消耗一轮重试。没有触发校验错误的清晰内容保持单次调用。
 
 ### Transport Retry
 
 ```text
-连接/超时/408/429/部分 5xx
+连接/超时/408/429/5xx
 → RetryingContentLabelingLLM
 ```
 
-Base Adapter 一次 `complete()` 最多一次物理 HTTP 发送。Transport Retry 是显式 wrapper 的新物理 Attempt，不与 Validation Retry 共用计数器。
+Base Adapter 一次 `complete()` 最多一次物理 HTTP 发送。Transport Retry 是显式 wrapper 的新物理 Attempt，每次逻辑调用最多四次重试（连同首次最多五次发送），不与 Validation Retry 共用计数器。新正式 Run 耗尽后仍 pending，按持久恢复协议重新探活；历史固定/离线协议继续遵守原终态边界。
 
 ### max_rps
 
@@ -445,8 +445,8 @@ Dry Run 会在输入 Excel 同目录生成带时间戳的运行目录，包含�
 | 改 Scheme 编译、发布或回滚 | [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) + Administration Service/Repository + Migration/API/审计/Integration tests |
 | 改当前表格输出协议或 Judge 路由 | [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + 当前格式/离线回归 |
 | 改持久化 `ContentLabelAnalysisV3` 结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
-| 改模型/Base URL/API Key/模型并发/RPS | 管理员 Provider 配置 + [`backend/src/aima_ugc/contracts/administration.py`](../../contracts/administration.py) + [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) + `adapters/llm` |
-| 改自动 Shard 策略 | [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) + Preview/Create + Planner tests |
+| 改模型/Base URL/API Key | 管理员 Provider 配置 + [`backend/src/aima_ugc/contracts/administration.py`](../../contracts/administration.py) + [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) |
+| 改容量/Shard/Timeout 策略 | [`backend/src/aima_ugc/modules/analysis/adaptive_capacity.py`](adaptive_capacity.py) + Capacity Repository + Preview/Create + Worker/Planner tests；[`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) 保留历史固定策略验证 |
 | 改网络 Retry | [`backend/src/aima_ugc/adapters/llm/retrying.py`](../../adapters/llm/retrying.py) + [`backend/src/aima_ugc/adapters/llm/rate_limited.py`](../../adapters/llm/rate_limited.py) + audit/retry tests |
 | 改 Validation Retry | [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + Analysis tests |
 | 改正式 LLM 并发 | [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py) + [`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py) |
@@ -466,7 +466,7 @@ analysis_content_runs / planner Job
 → worker-*.log
 → analysis_content_run_targets 连续 ordinal
 → analysis_content_requests / Shard jobs
-→ Provider snapshot max_concurrency / max_rps
+→ analysis_llm_capacity_profiles + Run 冻结 timeout/shard_size
 → analysis_content_request_items
 ```
 
@@ -475,9 +475,9 @@ analysis_content_runs / planner Job
 按顺序检查：
 
 ```text
-Run runtime_config_snapshot.max_concurrency
+Profile current / last_safe / reason
 → 实际 peak in-flight / Provider latency
-→ max_rps 是否主动限速
+→ 共享 RPS 是否主动限速，历史固定 Run 是否尚未排空
 → Transport/Validation Retry 数
 → PostgreSQL batch flush 延迟
 → Worker 是否持续有可处理 Shard
@@ -494,7 +494,7 @@ Job error / Request Item error_code
 → Batch Repository / Fence / Content Version
 ```
 
-并发阶段单条可识别 Transport 错误只终结对应 Content，不把整个大 Shard 重新请求。
+新正式 Run 的临时 Transport 错误进入持久 pending；系统错误或五分钟健康窗口到期停止父 Run。历史固定 Run 保留单条 Transport 耗尽终结对应 Content 的行为；已成功内容始终不重发。
 
 ### 页面提示 LLM Runtime 未配置
 
@@ -542,7 +542,7 @@ Query Preview 返回服务端权威目标数；用户确认 Create 时，服务�
 
 因此新 query Run 不需要跨全部批次持有长事务或单一 MVCC Snapshot，同时仍能证明 Planner 最终冻结集合与确认 Create 时集合一致；确认完成后的后续内容或 Analysis 变化不会改写已冻结目标。
 
-所有配置来源的 Provider 下，Shard Size 不由用户配置，而由 Run 创建时冻结的 `max_concurrency` 自动推导；`analysis_content_runs.shard_size` 保存最终值，后续 Provider 修改不影响旧 Run。环境配置同样遵守上述规则。
+新 Run 使用 `adaptive.v1`：Shard size 从历史成功入库速率与约 300 秒目标时长推导，并在 Create 冻结。没有历史时使用内部冷启动估计；运行中不修改已有 `shard_size` 或 `shard_no × shard_size` 范围。环境配置与数据库配置走同一规则；历史 Run 保留自己的固定快照。
 
 ---
 
@@ -556,4 +556,24 @@ Query Preview 返回服务端权威目标数；用户确认 Create 时，服务�
 - Monitoring/Alert/VOC/Ticket 业务域。
 - 已人工复核的 Gold Set 与量化准确率门禁；当前没有依据调整模型、thinking 或生成参数。
 
-当前高吞吐实现仍使用同一个 PostgreSQL durable Job Runtime。1000 并发的代码容量由 Provider 配置、HTTP 连接池和 bounded executor 支持；某台真实服务器/模型部署是否能稳定跑满 1000，必须由对应部署环境的 CPU、内存、网络、Provider/GPU 与 PostgreSQL 压测证明，不能从 CI Runner 的线程测试推断。
+当前高吞吐实现仍使用同一个 PostgreSQL durable Job Runtime。共享容量有 5000 的系统保护上限，每片物理线程池上限为 256；实际可用容量还受 Worker、数据库和服务商限制。Simulator 只证明控制算法，不能证明实际模型或服务器的吞吐收益。
+
+## 14. 共享自适应容量
+
+规则在 [`backend/src/aima_ugc/modules/analysis/adaptive_capacity.py`](adaptive_capacity.py)，单表 Owner 在 [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_capacity.py`](../../adapters/persistence/postgres/analysis_capacity.py)，Worker 装配在 [`backend/src/aima_ugc/bootstrap/analysis_capacity.py`](../../bootstrap/analysis_capacity.py)。`analysis_llm_capacity_profiles` 按 Provider Config UUID + Model 保存当前 C、已确认/历史安全容量、拥塞上界、从属 RPS、吞吐/延迟、冷却和有限收敛状态。Revision 或 Prompt 变化保守热启动，旧身份反馈不覆盖新状态。
+
+控制器先从小容量指数探索，拥塞时快速减半，健康冷却后有限区间收敛；稳定后周期重探。升档必须有足够需求与真实成功入库，两个窗口未提升入库速度时恢复已确认容量。周期重探失败恢复已知安全点，避免反复完整搜索造成稳定吞吐损失。RPS 只在 429 后按实际发送速率收紧，并独立逐步恢复。
+
+有效 Lease/Deadline 的运行分片跨 Run 共享整数份额，余数按稳定 Job ID 分配，允许零份额。每秒刷新，因此控制窗内允许短暂超目标；降档只停止补充，既有发送由原 Timeout/取消/Fence 收敛。无强分布式信号量或 Capacity Lease。历史固定 Run 的 Snapshot 不变，新协议等待同 Provider/Model 的历史工作排空，终态回调唤醒待执行 Run。
+
+HTTP 线程只更新有界计数和延迟桶，调度线程持有 Job Fence 后合并共享墙钟窗。通常 10 秒，慢请求最多等待 30 秒成熟；Profile 行锁保证同窗只推进一次，不相加并发 Shard 的耗时。P95 是固定桶上界估计。成功吞吐只计事务提交后的新增 succeeded；stale、失败、取消和重复回调不计成功。新协议每轮已验证逻辑结果与物理 Attempt 的分母分别计算，pending 重试不能算已成功入库。
+
+Job 投放复用 `runtime.job_window()` 的 CPU/内存边界，再结合 Provider 所需分片数、全局已投放量、DB 连接余量与剩余分片。在无可继续领取工作的零余量边界保留一片持久 Job，避免压力恢复后无人唤醒；不扩大既有积压。新 Run 的 HTTP timeout 在创建时派生并冻结，范围 15–180 秒。冷启动默认 45 秒；无成功样本的 timeout 也保存真实等待下界，允许下一 Run 有界增加等待时间，当前 Run 的 Timeout 不变。
+
+LLM 管理 Create/Update 拒绝显式 timeout/retry/concurrency/RPS；这些字段只继续服务 Collection。LLM 页面每 3 秒读取安全只读投影，轮询不覆盖未保存草稿。学习不改变模型、Prompt、Taxonomy、生成参数或 Job timeout；新 Run 的 Primary/Repair/Judge 与持久恢复配合，详见下节。
+
+## 15. 正式 Run 失败恢复
+
+新 Run 在创建时冻结 `recovery.v1`；历史 Snapshot 不补写 marker，旧失败 Item 不自动重新排队。详细计时、探活与迁移边界由[AI 实现专题](../../../../../docs/appendix/07_AI舆情打标与分析实现.md#295-正式-run-持久恢复)解释。机器入口为 [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_recovery.py`](../../adapters/persistence/postgres/analysis_recovery.py)、[`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py) 和现有 Run/Request Item 表。
+
+退避项留在 PostgreSQL，只有 ready-at 到期才进入有界执行器；取消、Fence 与 Deadline 在等待期间仍持续检查。Retry 不消耗新的 Job attempt；进程失权后由原 Job 接管机制恢复。五分钟窗口无法延长 1800 秒 Attempt Deadline。恢复回归见 [`tests/integration/content/test_analysis_retry_recovery.py`](../../../../../tests/integration/content/test_analysis_retry_recovery.py)。

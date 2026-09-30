@@ -21,6 +21,7 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
     analysis_content_run_targets_table,
     analysis_content_runs_table,
+    analysis_llm_capacity_profiles_table,
 )
 from aima_ugc.modules.collection.candidate_tables import (
     collection_candidate_ingestions_table,
@@ -160,6 +161,7 @@ __all__ = [
     "analysis_content_results_table",
     "analysis_content_run_targets_table",
     "analysis_content_runs_table",
+    "analysis_llm_capacity_profiles_table",
     "analysis_scheme_versions_table",
     "analysis_schemes_table",
     "account_external_ids_table",

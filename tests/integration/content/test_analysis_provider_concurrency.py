@@ -20,6 +20,7 @@ from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfig
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
+from aima_ugc.bootstrap.runtime_config import active_llm_provider
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_worker,
@@ -132,7 +133,7 @@ def _xlsx(row_count: int = 8) -> bytes:
                 f"Provider Concurrency {index}",
                 f"爱玛第 {index} 条并发测试内容",
                 f"用户 {index}",
-                f"2026-09-04 01:{index:02d}:00",
+                f"2026-09-04 {1 + index // 60:02d}:{index % 60:02d}:00",
                 f"https://www.xiaohongshu.com/explore/provider-concurrency-{index}",
             ]
         )
@@ -166,7 +167,7 @@ def _runtime(tmp_path: Path, *, max_concurrency: int = 4):  # type: ignore[no-un
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
             "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts, audit_events, "
-            "provider_configs RESTART IDENTITY CASCADE"
+            "provider_configs, analysis_llm_capacity_profiles RESTART IDENTITY CASCADE"
         )
 
     def cleanup_provider_configs() -> None:
@@ -258,18 +259,19 @@ def _seed_contents(client: TestClient, runtime, *, row_count: int = 8) -> tuple[
 def _create_run(
     client: TestClient,
     content_ids: tuple[UUID, ...],
+    runtime,
     *,
     key: str,
     shard_size: int = 80,
     shard_count: int = 1,
+    legacy: bool = True,
 ) -> str:
-    """从公开 Preview/Create 入口创建 selected Analysis Run 并返回 Run ID。"""
+    """创建正式 Run；旧并发回归显式恢复历史 Snapshot，新增测试使用 adaptive。"""
 
     targets = {"scope": "selected", "content_ids": [str(item) for item in content_ids]}
     preview = client.post("/api/v1/analysis/content-runs/preview", json={"targets": targets})
     assert preview.status_code == 200
-    assert preview.json()["shard_size"] == shard_size
-    assert preview.json()["shard_count"] == shard_count
+    assert preview.json()["shard_size"] >= 200
     created = client.post(
         "/api/v1/analysis/content-runs",
         json={
@@ -281,6 +283,25 @@ def _create_run(
         },
     )
     assert created.status_code == 202
+    if legacy:
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                provider = active_llm_provider(session, runtime.settings)
+                assert provider is not None
+                session.execute(
+                    update(analysis_content_runs_table)
+                    .where(
+                        analysis_content_runs_table.c.id == UUID(created.json()["run_id"]),
+                    )
+                    .values(
+                        runtime_config_snapshot=provider.safe_runtime_snapshot(),
+                        shard_size=shard_size,
+                        shard_count=shard_count,
+                    )
+                )
+        finally:
+            session.close()
     return str(created.json()["run_id"])
 
 
@@ -320,7 +341,7 @@ def test_provider_drives_concurrency_shard_and_batch_persistence(
         client = _client(runtime)
         content_ids = _seed_contents(client, runtime)
         assert len(content_ids) == 8
-        run_id = _create_run(client, content_ids, key="provider-concurrency-success")
+        run_id = _create_run(client, content_ids, runtime, key="provider-concurrency-success")
 
         llm = _ConcurrentFakeLLM(max_concurrency=4)
         assert _drain(runtime, llm, worker_id="provider-concurrency-success") == 2
@@ -361,7 +382,7 @@ def test_parallel_transport_error_only_fails_one_content(tmp_path: Path) -> None
         _seed_provider(runtime, max_concurrency=4)
         client = _client(runtime)
         content_ids = _seed_contents(client, runtime)
-        run_id = _create_run(client, content_ids, key="provider-concurrency-one-failure")
+        run_id = _create_run(client, content_ids, runtime, key="provider-concurrency-one-failure")
 
         llm = _ConcurrentFakeLLM(max_concurrency=4, fail_parallel_call=2)
         assert _drain(runtime, llm, worker_id="provider-concurrency-failure") == 2
@@ -395,7 +416,12 @@ def test_automatic_shards_refill_bounded_job_window(tmp_path: Path) -> None:
         client = _client(runtime)
         content_ids = _seed_contents(client, runtime, row_count=41)
         run_id = _create_run(
-            client, content_ids, key="automatic-multiple-shards", shard_size=20, shard_count=3
+            client,
+            content_ids,
+            runtime,
+            key="automatic-multiple-shards",
+            shard_size=20,
+            shard_count=3,
         )
         planner_worker = create_job_worker(
             runtime=runtime,
@@ -437,7 +463,7 @@ def test_concurrent_executor_preserves_existing_frozen_single_item_shards(tmp_pa
     try:
         client = _client(runtime)
         content_ids = _seed_contents(client, runtime, row_count=3)
-        run_id = _create_run(client, content_ids, key="existing-frozen-single-item-shards")
+        run_id = _create_run(client, content_ids, runtime, key="existing-frozen-single-item-shards")
         # 构造旧版本已创建但尚未执行的冻结分片事实，仅作用于隔离测试库。
         with runtime.database.engine.begin() as connection:
             connection.execute(
@@ -529,7 +555,7 @@ def _planned_run(tmp_path: Path, *, rows: int = 2):
     runtime = _runtime(tmp_path, max_concurrency=2)
     client = _client(runtime)
     ids = _seed_contents(client, runtime, row_count=rows)
-    run_id = _create_run(client, ids, key=str(uuid4()), shard_size=40)
+    run_id = _create_run(client, ids, runtime, key=str(uuid4()), shard_size=40)
     worker = create_job_worker(
         runtime=runtime,
         registry=create_collection_job_registry(runtime=runtime),
@@ -784,7 +810,7 @@ def test_active_run_remains_visible_outside_recent_limit(tmp_path: Path) -> None
     try:
         with runtime.database.engine.begin() as connection:
             ids = tuple(connection.execute(select(contents_table.c.id)).scalars())
-        new_run_id = _create_run(client, ids, key=str(uuid4()), shard_size=40)
+        new_run_id = _create_run(client, ids, runtime, key=str(uuid4()), shard_size=40)
         session = runtime.database.new_session()
         try:
             with session.begin():

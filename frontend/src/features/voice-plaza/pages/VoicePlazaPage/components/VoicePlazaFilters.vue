@@ -17,7 +17,6 @@ import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
 import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import {
   analysisStatusLabel,
-  contentTypeLabel,
   platformLabel,
   relevanceLabel,
 } from '../../../format'
@@ -26,7 +25,6 @@ import type { LegacyLabelCompatibility } from '../../../store'
 const props = withDefaults(defineProps<{
   search: string
   platform: '' | PlatformName
-  contentType: string
   analysisStatus: '' | ContentAnalysisStatus
   relevance: '' | ContentRelevance
   voiceType: string
@@ -54,7 +52,6 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'update:search': [value: string]
   'update:platform': [value: '' | PlatformName]
-  'update:contentType': [value: string]
   'update:analysisStatus': [value: '' | ContentAnalysisStatus]
   'update:relevance': [value: '' | ContentRelevance]
   'update:voiceType': [value: string]
@@ -280,16 +277,6 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
         :key="item.value"
         :value="item.value"
       >{{ optionLabel(item.value, item.source) }}</option></select></label>
-      <label class="field field--content-type"><span>内容类型</span><select
-        aria-label="内容类型"
-        :value="contentType"
-        :disabled="filterOptionsLoading || !filterOptions"
-        @change="emit('update:contentType', value($event))"
-      ><option value="">全部内容类型</option><option
-        v-for="item in filterOptions?.content_types ?? []"
-        :key="item"
-        :value="item"
-      >{{ contentTypeLabel(item) }}</option></select></label>
     </div>
 
     <div class="filter-row filter-row--tertiary">

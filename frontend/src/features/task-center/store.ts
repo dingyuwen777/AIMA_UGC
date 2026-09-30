@@ -39,6 +39,13 @@ const ACTIVE_ANALYSIS_STATUSES = new Set(['queued', 'running', 'cancelling'])
 const ACTIVE_COLLECTION_STATUSES = new Set(['queued', 'running'])
 const ACTIVE_EXPORT_STATUSES = new Set(['queued', 'running'])
 
+/** 父 Run 停止后仍收割已发合法结果，关联 Shard 全部收尾前继续同步真实统计。 */
+function analysisNeedsPolling(run: AnalysisContentRunResponse): boolean {
+  return ACTIVE_ANALYSIS_STATUSES.has(run.status) || (
+    run.status === 'failed' && run.execution_settling === true
+  )
+}
+
 const ANALYSIS_STATUS_LABELS: Record<string, string> = {
   queued: '排队中',
   running: '处理中',
@@ -125,7 +132,7 @@ function analysisTask(run: AnalysisContentRunResponse): TaskCenterItem {
     statusLabel: ANALYSIS_STATUS_LABELS[run.status] ?? '状态待确认',
     progress: analysisRunProgress(run),
     progressDetail: `${processed} / ${run.target_count} 条已处理`,
-    active: ACTIVE_ANALYSIS_STATUSES.has(run.status),
+    active: analysisNeedsPolling(run),
     cancelable: run.status === 'queued' || run.status === 'running',
     createdAt: run.created_at,
     finishedAt: run.finished_at ?? null,
@@ -224,7 +231,7 @@ export const useTaskCenterStore = defineStore('task-center', () => {
   let lastAnalysisPollAt = Number.NEGATIVE_INFINITY
   let pollHandle: ReturnType<typeof setInterval> | undefined
   const hasActiveAnalysisRuns = computed(() =>
-    analysisRuns.value.some((run) => ACTIVE_ANALYSIS_STATUSES.has(run.status)))
+    analysisRuns.value.some(analysisNeedsPolling))
 
   const items = computed(() => [
     ...analysisRuns.value.map(analysisTask),

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
+from time import sleep
 
 _CONTROL_POLL_SECONDS = 0.1
 
@@ -43,6 +44,8 @@ def run_bounded_concurrently[ItemT, ResultT](
     stop_requested: Callable[[], bool] | None = None,
     request_stop: Callable[[], None] | None = None,
     on_tick: Callable[[], None] | None = None,
+    current_capacity: Callable[[], int] | None = None,
+    poll_items: Callable[[int, tuple[ItemT, ...]], tuple[Sequence[ItemT], bool]] | None = None,
 ) -> BoundedConcurrencySummary:
     """从首批开始并发，并在等待期间持续执行取消和持久化控制检查。
 
@@ -70,7 +73,27 @@ def run_bounded_concurrently[ItemT, ResultT](
             """只补到并发上限，不把整个输入一次性提交进线程池队列。"""
 
             nonlocal exhausted, peak_in_flight, stopped
-            while not exhausted and len(in_flight) < max_concurrency:
+            target = max_concurrency if current_capacity is None else current_capacity()
+            if (
+                isinstance(target, bool)
+                or not isinstance(target, int)
+                or not 0 <= target <= max_concurrency
+            ):
+                raise ValueError("动态并发目标必须在 0 与物理上限之间")
+            if poll_items is not None:
+                room = max(target - len(in_flight), 0)
+                if not _should_stop(stop_requested):
+                    ready, exhausted = poll_items(room, tuple(in_flight.values()))
+                    if len(ready) > room:
+                        raise ValueError("轮询工作项超过当前有界容量")
+                    for item in ready:
+                        if _should_stop(stop_requested):
+                            stopped = True
+                            break
+                        in_flight[executor.submit(task, item)] = item
+                    peak_in_flight = max(peak_in_flight, len(in_flight))
+                return
+            while not exhausted and len(in_flight) < target:
                 if _should_stop(stop_requested):
                     stopped = True
                     return
@@ -89,7 +112,7 @@ def run_bounded_concurrently[ItemT, ResultT](
             if on_tick is not None:
                 on_tick()
             fill_capacity()
-            while in_flight:
+            while in_flight or (not exhausted and not stopped):
                 if on_tick is not None:
                     on_tick()
                 if _should_stop(stop_requested):
@@ -99,11 +122,16 @@ def run_bounded_concurrently[ItemT, ResultT](
                     for future in in_flight:
                         future.cancel()
 
-                done, _ = wait(
-                    tuple(in_flight),
-                    timeout=_CONTROL_POLL_SECONDS,
-                    return_when=FIRST_COMPLETED,
-                )
+                if in_flight:
+                    done, _ = wait(
+                        tuple(in_flight),
+                        timeout=_CONTROL_POLL_SECONDS,
+                        return_when=FIRST_COMPLETED,
+                    )
+                else:
+                    # 零份额仍需刷新共享容量并响应取消，不消费输入或忙轮询。
+                    sleep(_CONTROL_POLL_SECONDS)
+                    done = set()
                 done.update(future for future in in_flight if future.done())
                 outcomes = _collect_completed(in_flight, done)
                 if outcomes:

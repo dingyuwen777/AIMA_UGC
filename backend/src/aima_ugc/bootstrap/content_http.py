@@ -18,6 +18,9 @@ from aima_ugc.adapters.persistence.postgres.analysis import (
     AnalysisRunStateConflict,
     PostgresAnalysisRepository,
 )
+from aima_ugc.adapters.persistence.postgres.analysis_capacity import (
+    PostgresAnalysisCapacityRepository,
+)
 from aima_ugc.adapters.persistence.postgres.analysis_high_throughput import (
     PostgresHighThroughputAnalysisRepository,
 )
@@ -87,6 +90,13 @@ from aima_ugc.contracts.product import (
 from aima_ugc.contracts.relevance_review import (
     ContentRelevanceReviewRequest,
     ContentRelevanceReviewResponse,
+)
+from aima_ugc.modules.analysis.adaptive_capacity import (
+    CAPACITY_MODE,
+    SHARD_CONCURRENCY_CEILING,
+    VALIDATION_RETRIES,
+    CapacityState,
+    learned_run_limits,
 )
 from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
@@ -621,9 +631,19 @@ class PostgresContentHttpService:
                 llm_provider = configuration.llm_provider
                 if identity is None or llm_provider is None:
                     raise ContentAnalysisUnavailable
-                runtime_config_snapshot = cast(
-                    dict[str, object], llm_provider.safe_runtime_snapshot()
+                runtime_config_snapshot = _adaptive_provider_snapshot(llm_provider)
+                profile = PostgresAnalysisCapacityRepository(session).get(
+                    llm_provider.id, identity.model
                 )
+                state = (
+                    CapacityState(**profile["state"]) if profile is not None else CapacityState()
+                )
+                if profile is not None and (
+                    profile["revision"] != llm_provider.revision
+                    or profile["prompt_sha256"] != identity.prompt_sha256
+                ):
+                    state = state.warm_start()
+                shard_size, _ = learned_run_limits(state)
                 target_count = self._analysis_target_count(
                     session,
                     targets,
@@ -633,7 +653,6 @@ class PostgresContentHttpService:
                     raise ContentSelectionEmpty
         finally:
             session.close()
-        shard_size = _analysis_shard_size(llm_provider)
         return AnalysisContentRunPreviewResponse(
             target_count=target_count,
             shard_count=ceil(target_count / shard_size),
@@ -753,7 +772,7 @@ class PostgresContentHttpService:
         llm_provider = configuration.llm_provider
         if identity is None or llm_provider is None:
             raise ContentAnalysisUnavailable
-        runtime_config_snapshot = cast(dict[str, object], llm_provider.safe_runtime_snapshot())
+        runtime_config_snapshot = _adaptive_provider_snapshot(llm_provider)
         generation_config, generation_hash = current_analysis_generation_config()
         configuration_hash = _analysis_configuration_hash(
             prompt_version=identity.prompt_version,
@@ -766,7 +785,6 @@ class PostgresContentHttpService:
         )
         if configuration_hash != expected_configuration_hash:
             raise ContentAnalysisRunConflict
-        shard_size = _analysis_shard_size(llm_provider)
         request_filter_snapshot = _analysis_filter_snapshot(targets)
         stored_filter_snapshot = request_filter_snapshot
         storage_scope = _analysis_storage_scope(targets)
@@ -818,6 +836,14 @@ class PostgresContentHttpService:
                         request_filter_snapshot,
                         target_fingerprint=target_fingerprint,
                     )
+                state = PostgresAnalysisCapacityRepository(session).ensure(
+                    llm_provider.id,
+                    identity.model,
+                    revision=llm_provider.revision,
+                    prompt_sha256=identity.prompt_sha256,
+                )
+                shard_size, timeout_seconds = learned_run_limits(state)
+                runtime_config_snapshot["timeout_seconds"] = timeout_seconds
                 shard_count = ceil(expected_target_count / shard_size)
                 run_id = uuid5(_ANALYSIS_RUN_ID_NAMESPACE, client_idempotency_key)
                 planner_job = PostgresJobRepository(session).enqueue(
@@ -1152,6 +1178,20 @@ def _analysis_shard_size(provider: ProviderConfig) -> int:
     )
 
 
+def _adaptive_provider_snapshot(provider: ProviderConfig) -> dict[str, object]:
+    """连接身份冻结；新协议执行参数由系统派生，历史快照无需重写。"""
+
+    return {
+        **provider.safe_runtime_snapshot(),
+        "capacity_mode": CAPACITY_MODE,
+        "recovery_mode": "recovery.v1",
+        "max_concurrency": SHARD_CONCURRENCY_CEILING,
+        "max_rps": None,
+        "max_retries": VALIDATION_RETRIES,
+        "timeout_seconds": 45,
+    }
+
+
 def _analysis_response_scope(row: RowMapping) -> Literal["all", "query", "selected"]:
     """只有新 all 专用内部标记投影为 all；历史空 query 保持 query。"""
 
@@ -1182,7 +1222,15 @@ def _analysis_configuration_hash(
         "taxonomy_sha256": taxonomy_sha256,
     }
     if runtime_config_snapshot:
-        payload["runtime_config_snapshot"] = runtime_config_snapshot
+        snapshot = runtime_config_snapshot
+        if snapshot.get("capacity_mode") == CAPACITY_MODE:
+            # 学习状态和创建时派生 timeout 不参与用户确认/幂等身份；连接 Revision 仍参与。
+            snapshot = {
+                key: value
+                for key, value in snapshot.items()
+                if key not in {"timeout_seconds", "max_concurrency", "max_rps", "max_retries"}
+            }
+        payload["runtime_config_snapshot"] = snapshot
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -1246,6 +1294,7 @@ def _analysis_run_response(
         generation_config=cast(dict[str, object], row["generation_config"]),
         generation_config_hash=cast(str, row["generation_config_hash"]),
         error_code=cast(str | None, row["error_code"]),
+        execution_settling=bool(row.get("execution_settling", False)),
         stats=AnalysisContentRunStatsResponse.model_validate(
             repository.run_stats(cast(UUID, row["id"]))
         ),

@@ -235,7 +235,7 @@ def test_analysis_runs_freeze_targets_bound_shards_and_keep_run_order_current(
         assert preview.status_code == 200
         assert preview.json()["target_count"] == 3
         assert preview.json()["shard_count"] == 1
-        assert preview.json()["shard_size"] == 200
+        assert preview.json()["shard_size"] == 600
         assert preview.json()["cost_estimate_available"] is False
 
         create_body = {

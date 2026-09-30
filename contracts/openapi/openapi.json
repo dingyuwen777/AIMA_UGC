@@ -1,6 +1,141 @@
 {
   "components": {
     "schemas": {
+      "AdaptiveLLMCapacityResponse": {
+        "additionalProperties": false,
+        "description": "系统自动学习的只读状态；P95 为有界延迟桶上界估计。",
+        "properties": {
+          "active_shards": {
+            "minimum": 0.0,
+            "title": "Active Shards",
+            "type": "integer"
+          },
+          "adjustment_reason": {
+            "title": "Adjustment Reason",
+            "type": "string"
+          },
+          "current_concurrency": {
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Current Concurrency",
+            "type": "integer"
+          },
+          "current_rps": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Rps"
+          },
+          "current_shard_size": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Shard Size"
+          },
+          "historical_safe_concurrency": {
+            "maximum": 5000.0,
+            "minimum": 0.0,
+            "title": "Historical Safe Concurrency",
+            "type": "integer"
+          },
+          "http_429_ratio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Http 429 Ratio",
+            "type": "number"
+          },
+          "last_adjusted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Adjusted At"
+          },
+          "last_safe_concurrency": {
+            "maximum": 5000.0,
+            "minimum": 0.0,
+            "title": "Last Safe Concurrency",
+            "type": "integer"
+          },
+          "latency_p95_seconds": {
+            "minimum": 0.0,
+            "title": "Latency P95 Seconds",
+            "type": "number"
+          },
+          "persisted_contents_per_second": {
+            "minimum": 0.0,
+            "title": "Persisted Contents Per Second",
+            "type": "number"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "timeout_ratio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Timeout Ratio",
+            "type": "number"
+          },
+          "transport_error_ratio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Transport Error Ratio",
+            "type": "number"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "validation_failure_ratio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Validation Failure Ratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "state",
+          "current_concurrency",
+          "last_safe_concurrency",
+          "historical_safe_concurrency",
+          "active_shards",
+          "persisted_contents_per_second",
+          "latency_p95_seconds",
+          "http_429_ratio",
+          "timeout_ratio",
+          "transport_error_ratio",
+          "validation_failure_ratio",
+          "adjustment_reason"
+        ],
+        "title": "AdaptiveLLMCapacityResponse",
+        "type": "object"
+      },
       "AnalysisContentRunCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -236,6 +371,12 @@
               }
             ],
             "title": "Error Code"
+          },
+          "execution_settling": {
+            "default": false,
+            "description": "关联执行仍在排队或收尾，需继续刷新统计",
+            "title": "Execution Settling",
+            "type": "boolean"
           },
           "finished_at": {
             "anyOf": [
@@ -9095,6 +9236,16 @@
         "additionalProperties": false,
         "description": "Provider 管理安全投影；绝不返回 API Key 或内部 secret_ref。",
         "properties": {
+          "adaptive_capacity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdaptiveLLMCapacityResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "base_url": {
             "title": "Base Url",
             "type": "string"
@@ -9117,14 +9268,28 @@
             "type": "boolean"
           },
           "max_concurrency": {
-            "exclusiveMinimum": 0.0,
-            "title": "Max Concurrency",
-            "type": "integer"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Concurrency"
           },
           "max_retries": {
-            "minimum": 0.0,
-            "title": "Max Retries",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Retries"
           },
           "max_rps": {
             "anyOf": [
@@ -9171,9 +9336,16 @@
             "type": "boolean"
           },
           "timeout_seconds": {
-            "exclusiveMinimum": 0.0,
-            "title": "Timeout Seconds",
-            "type": "integer"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout Seconds"
           }
         },
         "required": [
@@ -9182,9 +9354,6 @@
           "provider",
           "display_name",
           "base_url",
-          "timeout_seconds",
-          "max_retries",
-          "max_concurrency",
           "enabled",
           "is_default",
           "revision",

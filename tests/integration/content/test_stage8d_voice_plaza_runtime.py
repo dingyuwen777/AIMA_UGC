@@ -524,11 +524,13 @@ class _VersionChangingLabelingService:
         *,
         max_validation_retries,
         stop_event=None,
+        previous_validation_error_codes=(),
     ):
         result = self._delegate.label_contents(
             contents,
             max_validation_retries=max_validation_retries,
             stop_event=stop_event,
+            previous_validation_error_codes=previous_validation_error_codes,
         )
         with self._runtime.database.engine.begin() as connection:
             connection.execute(
