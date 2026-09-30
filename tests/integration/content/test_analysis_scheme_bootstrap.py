@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from uuid import uuid4
+from threading import Barrier
+from uuid import UUID, uuid4
 
 import pytest
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
@@ -81,7 +83,7 @@ def _edited_prompt(tmp_path: Path) -> Path:
     return path
 
 
-def _insert_historical_run(session, version) -> object:  # type: ignore[no-untyped-def]
+def _insert_historical_run(session, version) -> UUID:  # type: ignore[no-untyped-def]
     """插入绑定旧 Scheme Version 的最小历史 Run，验证 promotion 不改写快照。"""
 
     now = beijing_now()
@@ -252,6 +254,10 @@ def test_deployment_promotion_rejects_manual_scheme_lineage(
                 )
                 assert published.created_by == "user:test-admin"
 
+            with pytest.raises(RuntimeError, match="人工 Version"):
+                with session.begin():
+                    PostgresAnalysisSchemeRepository(session).promote_git_prompt()
+
             edited_prompt = _edited_prompt(tmp_path)
             monkeypatch.setattr(
                 "aima_ugc.adapters.persistence.postgres.analysis_schemes."
@@ -269,5 +275,71 @@ def test_deployment_promotion_rejects_manual_scheme_lineage(
                 assert current.id == published.id
         finally:
             session.close()
+    finally:
+        runtime.close()
+
+
+def test_deployment_promotion_serializes_concurrent_git_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """并发 configure 只允许一个 promotion，第二个事务观察新 active 后幂等返回。"""
+
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    try:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE analysis_schemes, analysis_scheme_versions, jobs "
+                "RESTART IDENTITY CASCADE"
+            )
+
+        seed_session = runtime.database.new_session()
+        try:
+            with seed_session.begin():
+                first, created = PostgresAnalysisSchemeRepository(
+                    seed_session
+                ).bootstrap_default(actor_ref="system:git-bootstrap")
+                assert created is True
+                assert first.version == 1
+        finally:
+            seed_session.close()
+
+        edited_prompt = _edited_prompt(tmp_path)
+        monkeypatch.setattr(
+            "aima_ugc.adapters.persistence.postgres.analysis_schemes."
+            "CONTENT_LABELING_PROMPT_PATH",
+            edited_prompt,
+        )
+        barrier = Barrier(2)
+
+        def promote_once() -> tuple[str, UUID, int]:
+            """在独立事务中模拟一个并发 configure promotion。"""
+
+            session = runtime.database.new_session()
+            try:
+                barrier.wait(timeout=10)
+                with session.begin():
+                    version, action = PostgresAnalysisSchemeRepository(
+                        session
+                    ).promote_git_prompt()
+                    return action, version.id, version.version
+            finally:
+                session.close()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(executor.map(lambda _index: promote_once(), range(2)))
+
+        assert sorted(action for action, _id, _version in results) == [
+            "promoted",
+            "unchanged",
+        ]
+        assert {version for _action, _id, version in results} == {2}
+        assert len({version_id for _action, version_id, _version in results}) == 1
     finally:
         runtime.close()
