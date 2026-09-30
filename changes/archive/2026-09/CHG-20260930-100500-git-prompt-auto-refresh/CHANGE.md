@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260930-100500-git-prompt-auto-refresh
 title: Git Prompt 标签变更自动刷新运行 Scheme
 level: L2
-status: ready_for_review
+status: done
 owner: assistant
 branch: fix/676-git-prompt-auto-refresh
 created: 2026-09-30 10:05:00 +08:00
