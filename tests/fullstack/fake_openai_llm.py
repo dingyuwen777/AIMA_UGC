@@ -99,7 +99,9 @@ class _Handler(BaseHTTPRequestHandler):
                 return
         type(self).request_no += 1
         taxonomy = PromptTaxonomyLoader.load_text(request["messages"][0]["content"])
-        sentiment = taxonomy.sentiments[0]
+        # 全栈 Fixture 按第 1/3 行交替验证结果更新；改名后仍取冻结表实际值。
+        sentiment_index = 0 if type(self).request_no % 2 else min(2, len(taxonomy.sentiments) - 1)
+        sentiment = taxonomy.sentiments[sentiment_index]
         if len(user_payload["items"]) != 1 or "platform" not in user_payload["items"][0]:
             self.send_error(400, "formal request must contain one platform-aware item")
             return
