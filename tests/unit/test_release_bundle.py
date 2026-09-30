@@ -180,9 +180,9 @@ def test_bundle_uses_latest_runtime_alias_and_saves_both_application_tags(
         alembic_head="head123",
         openapi_sha256="openapi123",
         analysis_prompt_protocol="content-labeling.v3.0",
-        analysis_prompt_sha256="prompt123",
-        analysis_taxonomy_sha256="taxonomy123",
-        analysis_prompt_source_sha256="source123",
+        analysis_prompt_sha256="a" * 64,
+        analysis_taxonomy_sha256="b" * 64,
+        analysis_prompt_source_sha256="c" * 64,
     )
     bundle = tmp_path / "release-bundle"
     archive = tmp_path / "AIMA_UGC-v3.2.0-deploy.tar.gz"
@@ -310,9 +310,9 @@ def test_manifest_records_profile_upstreams_and_verification_state() -> None:
         alembic_head="head123",
         openapi_sha256="openapi123",
         analysis_prompt_protocol="content-labeling.v3.0",
-        analysis_prompt_sha256="prompt123",
-        analysis_taxonomy_sha256="taxonomy123",
-        analysis_prompt_source_sha256="source123",
+        analysis_prompt_sha256="a" * 64,
+        analysis_taxonomy_sha256="b" * 64,
+        analysis_prompt_source_sha256="c" * 64,
     )
 
     manifest = module._release_manifest(
@@ -333,9 +333,9 @@ def test_manifest_records_profile_upstreams_and_verification_state() -> None:
     assert manifest["publication"] == {"github_release": False, "ghcr": False}
     assert manifest["analysis_prompt"] == {
         "protocol": "content-labeling.v3.0",
-        "prompt_sha256": "prompt123",
-        "taxonomy_sha256": "taxonomy123",
-        "source_sha256": "source123",
+        "prompt_sha256": "a" * 64,
+        "taxonomy_sha256": "b" * 64,
+        "source_sha256": "c" * 64,
     }
 
 
@@ -367,8 +367,8 @@ def test_backend_prompt_identity_reads_image_and_requires_source_match(
         return json.dumps(
             {
                 "protocol": "content-labeling.v3.0",
-                "prompt_sha256": "p" * 64,
-                "taxonomy_sha256": "t" * 64,
+                "prompt_sha256": "a" * 64,
+                "taxonomy_sha256": "b" * 64,
                 "source_sha256": source_sha,
             }
         )
@@ -408,8 +408,8 @@ def test_backend_prompt_identity_rejects_image_source_drift(
         lambda *_args, **_kwargs: json.dumps(
             {
                 "protocol": "content-labeling.v3.0",
-                "prompt_sha256": "p" * 64,
-                "taxonomy_sha256": "t" * 64,
+                "prompt_sha256": "a" * 64,
+                "taxonomy_sha256": "b" * 64,
                 "source_sha256": "0" * 64,
             }
         ),
@@ -521,6 +521,12 @@ def test_bundle_checksum_archive_and_publication_finalization(tmp_path: Path) ->
                         "version": "v3.2.0",
                         "git_sha": "abc123",
                         "build_source_profile": "official",
+                        "analysis_prompt": {
+                            "protocol": "content-labeling.v3.0",
+                            "prompt_sha256": "a" * 64,
+                            "taxonomy_sha256": "b" * 64,
+                            "source_sha256": "c" * 64,
+                        },
                         "verification": {"offline_replay": True, "strict_replay": True},
                         "images": {
                             "backend": {"registry_ref": None},
