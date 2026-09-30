@@ -26,6 +26,15 @@ from .runtime_config import active_llm_provider
 
 
 @dataclass(frozen=True, slots=True)
+class GitPromptPromotion:
+    """部署期 Git Prompt promotion 的安全可观察结果。"""
+
+    action: str
+    scheme: AnalysisSchemeVersionRecord
+    taxonomy: PromptTaxonomy
+
+
+@dataclass(frozen=True, slots=True)
 class ActiveAnalysisConfiguration:
     """数据库 active Scheme 与 LLM Provider 形成的原子运行快照。"""
 
@@ -33,6 +42,39 @@ class ActiveAnalysisConfiguration:
     taxonomy: PromptTaxonomy
     identity: AnalysisConfigurationIdentity | None
     llm_provider: ProviderConfig | None
+
+
+def promote_git_analysis_scheme(session: Session) -> GitPromptPromotion:
+    """部署期幂等发布镜像内 Git Prompt，并把实际写入记录为系统审计。"""
+
+    scheme, action = PostgresAnalysisSchemeRepository(session).promote_git_prompt()
+    taxonomy = prompt_taxonomy_from_version(scheme)
+    if action != "unchanged":
+        PostgresAuditRepository(session).append(
+            AuditEvent(
+                id=uuid4(),
+                actor_kind="system",
+                actor_ref="system:git-promotion",
+                event_type=(
+                    "analysis_scheme_bootstrapped"
+                    if action == "bootstrapped"
+                    else "analysis_scheme_git_promoted"
+                ),
+                object_type="analysis_scheme_version",
+                object_id=str(scheme.id),
+                request_id=None,
+                safe_detail={
+                    "action": action,
+                    "scheme_id": str(scheme.scheme_id),
+                    "version": scheme.version,
+                    "prompt_version": taxonomy.output_protocol_version,
+                    "prompt_sha256": scheme.prompt_sha256,
+                    "taxonomy_sha256": scheme.taxonomy_sha256,
+                },
+                created_at=beijing_now(),
+            )
+        )
+    return GitPromptPromotion(action=action, scheme=scheme, taxonomy=taxonomy)
 
 
 def active_analysis_configuration(
@@ -115,6 +157,8 @@ def current_analysis_generation_config() -> tuple[dict[str, object], str]:
 
 __all__ = [
     "ActiveAnalysisConfiguration",
+    "GitPromptPromotion",
     "active_analysis_configuration",
     "current_analysis_generation_config",
+    "promote_git_analysis_scheme",
 ]
