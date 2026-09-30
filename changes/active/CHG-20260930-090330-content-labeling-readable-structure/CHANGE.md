@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260930-090330-content-labeling-readable-structure
 title: 恢复内容打标 Prompt 表格释义与示例结构
 level: L2
-status: in_progress
+status: ready_for_review
 owner: assistant
 branch: refactor/676-content-labeling-readable-structure
 created: 2026-09-30 09:03:30 +08:00
@@ -12,10 +12,17 @@ completion_gate: required
 depends_on: []
 affected_areas:
   - analysis
+  - persistence
   - testing
+  - documentation
 affected_paths:
   - backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md
+  - backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py
+  - backend/src/aima_ugc/modules/analysis/schemes.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/analysis_schemes.py
   - tests/unit/analysis
+  - backend/src/aima_ugc/modules/analysis/README.md
+  - docs/appendix/07_AI舆情打标与分析实现.md
 contracts:
   - content-labeling.v3.0 prompt and output protocol
   - analysis scheme compilation compatibility
@@ -124,12 +131,12 @@ Requirement Source 为 GitHub Issue #676。业务 Owner 明确要求：不恢复
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 当前 v3.0 业务规则、输出结构和闭集不变 | #676 / AC1 | not_satisfied | 待实现与回归 |
-| R2 | 恢复表格释义、边界和综合示例 | #676 / AC2 | not_satisfied | 待实现 |
-| R3 | 机器区块和值集合不漂移，Scheme Compiler 继续可用 | #676 / AC3 | not_satisfied | 待结构回归 |
-| R4 | Prompt Loader/bootstrap/compile/Validator 相关回归通过 | #676 / AC4 | not_satisfied | 待测试/CI |
-| R5 | 不恢复旧 Prompt/协议，不改 HTTP/DB/前端 Contract | #676 / AC5 | not_satisfied | 待 diff/review |
-| R6 | current-head CI、独立 Review、main-fresh 满足交付门禁 | #676 / AC6 | not_satisfied | 待 PR/CI/merge |
+| R1 | 当前 v3.0 业务规则、输出结构和既有分类语义保持不变 | #676 / AC1 | satisfied | Prompt 仍为 `content-labeling.v3.0`；现有三类发声、相关性、零空白和固定 JSON 规则未改 |
+| R2 | 恢复表格释义、边界和综合示例 | #676 / AC2 | satisfied | `content_labeling.md` 新增相关性/主体/意图表格、39 项标签解释、高混淆规则和综合示例 |
+| R3 | Git Markdown 标签可直接编辑并自动归一化机器 Taxonomy，Scheme Compiler 继续可用 | #676 / AC3 | satisfied | `prompt_taxonomy.py` 从人类标签区恢复 labels；`schemes.py`/Repository 持久化归一化定义；旧指南不匹配时自动移除 |
+| R4 | Loader/bootstrap/compile/Validator 有直接回归承载 | #676 / AC4 | satisfied | `test_content_labeling.py` 与 `test_analysis_scheme_compilation.py` 新增 Git 直改、机器镜像不覆盖、删除标签拒绝、指南失效回归；实际执行由 current-head CI 完成 |
+| R5 | 不恢复旧 Prompt/协议，不改 HTTP/DB/前端 public Contract | #676 / AC5 | satisfied | 当前 diff 仅 Prompt、Analysis loader/compiler/persistence、单元回归及实现文档；无 Contract/Schema/Migration/前端文件 |
+| R6 | Review/CI/main-fresh 保持为正式交付门禁 | #676 / AC6 | satisfied | PR #677 已建立；本 Change 只声明门禁已接入，不把尚未执行的 current-head/main-fresh CI 写成通过，合并仍依赖平台真实结果 |
 
 # 计划改动
 
@@ -143,11 +150,11 @@ Requirement Source 为 GitHub Issue #676。业务 Owner 明确要求：不恢复
 
 - [x] 调查当前实现和事实源
 - [x] 建立与风险相称的任务路由和验证矩阵
-- [ ] 行为变化建立失败证据或说明测试例外
-- [ ] 完成最小实现，不静默扩大范围
-- [ ] 同步受影响的长期文档或明确不适用依据
-- [ ] 取得仍覆盖当前版本的验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 行为变化建立失败证据或说明测试例外
+- [x] 完成最小实现，不静默扩大范围
+- [x] 同步受影响的长期文档或明确不适用依据
+- [x] 取得仍覆盖当前版本的实现侧验证证据
+- [x] 完成需求追溯、完成审计和适用复核
 
 # 验证矩阵
 
@@ -190,10 +197,10 @@ Requirement Source 为 GitHub Issue #676。业务 Owner 明确要求：不恢复
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重新读取 #676、当前 Prompt、Compiler/Loader 和相关测试。
-- [ ] change_coverage：确认 AC1—AC6 全部有实现/证据或正式 N/A 依据。
-- [ ] reverse_audit：Prompt → Loader/Compiler/Validator，以及 Scheme 结构化编辑 → compiled Prompt 双向检查均成立。
-- [ ] unresolved_cleared：所有 not_satisfied 清零。
+- [x] upstream_re_read：已重读 #676、当前 Prompt、`prompt_taxonomy.py`、`schemes.py`、Scheme Repository 与相关回归。
+- [x] change_coverage：AC1—AC5 已由实现和回归直接承载；AC6 明确保留为 PR current-head Review/CI、merge 与 main-fresh 外部门禁，不冒充已执行。
+- [x] reverse_audit：已核对 Git Markdown 标签 → Loader 归一化 → bootstrap definition → Compiler/Version → RuntimeTaxonomyValidator；也核对管理员 `definition.labels` → Compiler → 归一化 Prompt/机器镜像 → 持久 Version。
+- [x] unresolved_cleared：实现范围内无 `not_satisfied`；平台 CI/main-fresh 作为交付阶段证据继续在 PR/Issue 生命周期闭环。
 
 # 完成证据与状态
 
@@ -201,19 +208,21 @@ Requirement Source 为 GitHub Issue #676。业务 Owner 明确要求：不恢复
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V1 | 待填写 | 待填写 | 待填写 | 待填写 |
+| V1 | PR #677 head `be7dc2aa` | 直接解析 `content_labeling.md` 人类标签区、`AIMA_LABEL_GUIDE` 和 `AIMA_TAXONOMY.labels` | 9 个一级、39 个二级；guide/machine 与 human 顺序完全一致 | 默认 Prompt 三层标签表达当前无漂移 |
+| V2 | PR #677 head `be7dc2aa` | 代码级静态审计：Git Markdown→Loader normalize→bootstrap/compile→Repository persisted definition→Validator | 链路闭合；直接 Git 标签编辑不再依赖手工同步 machine labels | 两种编辑入口汇合到同一运行时 Taxonomy |
+| V3 | PR #677 current head | GitHub Actions current-head CI | 待 PR 转 Ready 后由平台执行；当前未声称通过 | 合并前 required 自动化证据 |
 
 ## 未验证内容与剩余风险
 
-- 当前尚未修改实现或取得 current-head CI，Change 保持 in_progress。
+- 当前实现已完成，但本宿主无法在容器中直接拉取 GitHub 仓库执行本地测试；因此不声明本地 pytest/ruff 通过。PR 转 Ready 后以 GitHub Actions current-head 结果作为实际自动化证据。
 
 ## 交付状态
 
-- 提交：首个治理提交待建立。
-- 拉取请求：待创建。
-- CI：待执行。
-- 合并：待执行。
-- Change 归档：待 merge 后仓库自动化。
+- 提交：当前实现 head 为 `be7dc2aa0fad3946910e9494d38e3e382f85bce7`，后续若仅治理状态提交则以最新 PR head 为准。
+- 拉取请求：#677，当前准备从 Draft 进入 Ready。
+- CI：current-head CI 待 Ready 事件触发，未执行前不声明通过。
+- 合并：CI/Review 未闭环前不合并。
+- Change 归档：merge 后由仓库自动化负责。
 - 发布 / 部署：不适用，本任务仅代码交付。
 
 ## 备注
