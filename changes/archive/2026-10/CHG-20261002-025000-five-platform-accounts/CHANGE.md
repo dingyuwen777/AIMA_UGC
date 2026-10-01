@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261002-025000-five-platform-accounts
 title: 五平台稳定账号采集与当前主线集成
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/pr662-account-integration
 created: 2026-10-02
