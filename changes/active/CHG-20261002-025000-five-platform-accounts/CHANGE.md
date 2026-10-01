@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261002-025000-five-platform-accounts
 title: 五平台稳定账号采集与当前主线集成
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: fix/pr662-account-integration
 created: 2026-10-02
@@ -69,7 +69,7 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 
 ## 成功标准
 
-- [ ] AC1–AC7 的实现与回归已验证；AC8 的同 Reviewer 修复复核及正式 CI 门禁待闭合。
+- [x] AC1–AC7 的实现与回归已验证；同 Reviewer REPAIR_VERIFY 已 PASS，8 项阻塞 Findings 全部 CLOSED。AC8 按阶段执行：Ready 前本机检查和独立审查已完成，正式 current-head/current-base CI 仍是合并前强制门禁，合并后状态只由平台实际证据确认。
 
 ## 范围
 
@@ -125,7 +125,7 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 | R5 | 账号采集 AC5 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC5 | satisfied | V1/V2/V4：单作品/根评论 HTTP 或 TransportFailure 隔离、成功行保留与摘要 |
 | R6 | 账号采集 AC6 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC6 | satisfied | V1/V2/V4：原子重开验证、长 ID/公式防护及生产 reader/mapper 三条评论身份保持 |
 | R7 | 账号采集 AC7 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC7 | satisfied | V3：23 次本机有界真实发送，生产 Transport/Operation；脱敏摘录，无自动跨 family fallback |
-| R8 | 账号采集 AC8 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC8 | not_satisfied | V1/V2 已通过；独立审查、Ready 与 current-head/current-base CI 待闭合。合并后状态由真实 PR/Commit/CI/原生 Archive 持有。 |
+| R8 | 账号采集 AC8（按 Ready、merge、合并后阶段执行） | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC8 | satisfied | V4/V5：实现基于最新 main da99a65f，本机适用检查和独立审查 PASS，F-662-001–008 全部 CLOSED；本状态仅证明 Ready 前完成定义。current-head/current-base 官方 CI 是 merge 前硬门禁；main-fresh、Archive、cleanup 由后续平台真实证据持有，不在此预先宣称完成。 |
 
 # 计划改动
 
@@ -146,7 +146,7 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 | 用户 / 工作流验收 | required | 五平台账号公开入口与失败摘要 |
 | 跨组件关键路径 | required | FakeTransport → Operation → Mapper → Canonical → Excel |
 | 外部依赖 / 供应方探测 | required | 本机有界生产 Transport/Operation Probe |
-| 构建 / 打包 / 运行 | required | changed-scope preflight 对真实影响执行 |
+| 构建 / 打包 / 运行 | required（按实际影响） | changed-scope preflight 为 backend_only，执行当前后端检查；package_required=false，Manifest/lock、入口和构建配置无变更，新增模块仍处于既有 package 内，因此单独 wheel 构建不适用；无部署或服务变更 |
 | 文档 / 治理 / 其他 | required | 需求追溯、Completion、Review、CI、main-fresh、Archive |
 
 ## 验证计划
@@ -178,9 +178,9 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 # 完成审计
 
 - [x] upstream_re_read：已重读当前 README AC1–AC8 与 Owner 决定；#591/#592 是取消，竞争范围保留。
-- [ ] change_coverage：AC1–AC7 已逐项绑定实现/测试/Probe；AC8 独立审查与合并前门禁仍需闭合。
+- [x] change_coverage：AC1–AC7 绑定实现/测试/受限 Probe；AC8 的 Ready 前本机检查及独立审查已完成，正式 CI 与合并后动作按平台阶段强制执行，未把未来状态写成完成。
 - [x] reverse_audit：五平台公开入口 → 生产 Operation/Mapper → Canonical/共享 Excel 已用 FakeTransport 纵切；评论文件 → 生产 reader/mapper 证明三条独立 ID。无前端/数据库能力变更。
-- [ ] unresolved_cleared：not_satisfied 尚未清零。
+- [x] unresolved_cleared：Ready 前需求状态已清零；同 Reviewer 复核关闭 8 项阻塞 Findings。正式 CI 未通过前禁止 merge，合并后各轴仍需实际证据。
 
 # 完成证据与状态
 
@@ -192,17 +192,18 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 | V1 | 9ff83534；Python 3.14.7 / uv 0.12.3；child PYTHONUTF8=1、PYTHONIOENCODING=utf-8；清除 child SSLKEYLOGFILE | .venv/Scripts/python scripts/dev/validate_changed.py --base origin/main --execute | exit 0；Ruff 38 文件、mypy 435 源文件通过；1899 passed、16 skipped、12 subtests passed | 当前 backend-only 影响范围的单元、Contract、API 回归 |
 | V2 | 同一实现 revision / Windows 本机 | .venv/Scripts/python -m pytest -q --tb=short tests/unit/collection/test_account_entrypoint_flows.py tests/unit/fullstack/test_seed_collection_plan_provider.py | exit 0；44 passed，其中账号公开入口 43 个参数化场景 | 五平台软目标/上限/身份/缺失时间/映射及传输局部失败；Excel 生产重导入 |
 | V3 | 本轮 Probe 的历史观测，不能当作修复后全量重跑 | 生产公开入口 → 生产 Transport/Operation，api.tikhub.io，实际 23 次发送 | 12 个脱敏记录 + 首轮 11 次发送计数；HTTP 200 与微博评论 HTTP 400 如实记录 | 五平台真实字段的有限摘录；Bilibili V2 upMid；不证明完整真实评论/回复链 |
-| V4 | 当前修复代码；Python 3.14.7 / uv 0.12.3 / Windows；无新付费请求 | .venv/Scripts/python scripts/dev/validate_changed.py --base origin/main --execute；.venv/Scripts/python scripts/quality/check_docs.py | 均 exit 0；Ruff 39 文件；mypy 435 源文件；1931 passed、16 skipped、12 subtests passed；文档 gate 通过 | 稳定 ledger F-662-001–008 的直接回归及相邻关键词/小红书/Mapper/Excel；旧快手过滤断言改为验证坏项保留，与公开入口 partial 验收共同约束 |
-
+| V4 | fb70b37deddd4317de287e491b8c87c147934a18；Python 3.14.7 / uv 0.12.3 / Windows；无新付费请求 | .venv/Scripts/python scripts/dev/validate_changed.py --base origin/main --execute；.venv/Scripts/python scripts/quality/check_docs.py | 均 exit 0；Ruff 39 文件；mypy 435 源文件；1931 passed、16 skipped、12 subtests passed；文档 gate 通过 | 稳定 ledger F-662-001–008 的直接回归及相邻关键词/小红书/Mapper/Excel；旧快手过滤断言改为验证坏项保留，与公开入口 partial 验收共同约束 |
+| V5 | fb70b37deddd4317de287e491b8c87c147934a18 / da99a65fa94e94b298bb1750cb36e54cf60c8384；同一独立 Reviewer | REPAIR_VERIFY：冻结 8 项 Findings、修复 diff、直接相邻兼容边界；22 个独立纯内存断言、check_docs、git diff --check；读取 preflight.repair.log | PASS；F-662-001–008 全部 CLOSED | Review 没有重启全量审查或追加付费 Probe；文件集成依赖 Owner V4，不冒充 Reviewer 文件系统重跑 |
+| V6 | 最终 Ready 元数据；实现与 fb70b37d 相同、Base 仍 da99a65f | check_change_completion.py --root . --require-active-ready --json；check_docs.py；scan_secrets.py；check_docs_facts.py；check_architecture.py；check_table_ownership.py；git diff --check | 全部 exit 0；Completion ok=true、errors=[] | Ready 文档与仓库质量门禁已验证；不代替后续官方 CI |
 
 ## 未验证内容与剩余风险
 
-FIRST_ASSEMBLY 在 9ff83534/da99a65f 给出 BLOCK，8 项稳定 Findings 已按同批修复并通过 V4，仍待同 Reviewer REPAIR_VERIFY 和 current-head/current-base CI，PR 保持 Draft。真实 Probe 未完成五平台全量评论/回复，微博评论出现 HTTP 400；有限响应形状由离线生产入口反例补充，不宣称真实全量验收。未执行 Release/Deploy/生产 Migration 或数据库写入。
+FIRST_ASSEMBLY 在 9ff83534/da99a65f 给出 BLOCK；同 Reviewer 在 fb70b37d/da99a65f 执行 REPAIR_VERIFY，结论 PASS，8 项稳定 Findings 全部 CLOSED。官方 current-head/current-base CI 将在 Ready 后执行，绿灯前禁止 merge；当前尚未合并。真实 Probe 未完成五平台全量评论/回复，微博评论出现 HTTP 400；有限响应形状由离线生产入口反例补充，不宣称真实全量验收。未执行 Release/Deploy/生产 Migration 或数据库写入。
 
 ## 交付状态
 
-- 提交：9ff83534 已正常推送到原 feature/BOLL，未改写原作者历史。
-- 拉取请求：https://github.com/dingyuwen777/AIMA_UGC/pull/662，Draft。
+- 提交：修复 checkpoint fb70b37d 已正常推送到原 feature/BOLL；本次仅记录 Review/Ready 元数据，未改写原作者历史。
+- 拉取请求：https://github.com/dingyuwen777/AIMA_UGC/pull/662；Ready 前记录，后续 Draft → Ready 与 CI 以平台实际状态为准。
 - CI：当前本机 preflight 已通过；Draft 的 required full CI 尚待进入 Ready 后取得。
 - 合并：未合并。
 - Change 归档：未归档。
@@ -220,3 +221,5 @@ FIRST_ASSEMBLY 在 9ff83534/da99a65f 给出 BLOCK，8 项稳定 Findings 已按�
 - [tests/unit/collection/test_account_entrypoint_flows.py](https://github.com/dingyuwen777/AIMA_UGC/blob/9ff83534f0e00cbd1d86c81ded7a674143431e93/tests/unit/collection/test_account_entrypoint_flows.py)
 - [changes/active/CHG-20261002-025000-five-platform-accounts/evidence/probe_accounts.sanitized.json](https://github.com/dingyuwen777/AIMA_UGC/blob/9ff83534f0e00cbd1d86c81ded7a674143431e93/changes/active/CHG-20261002-025000-five-platform-accounts/evidence/probe_accounts.sanitized.json)
 - [docs/appendix/04_TikHub接口选型与真实验证台账.md](https://github.com/dingyuwen777/AIMA_UGC/blob/9ff83534f0e00cbd1d86c81ded7a674143431e93/docs/appendix/04_TikHub接口选型与真实验证台账.md)
+
+- [changes/active/CHG-20261002-025000-five-platform-accounts/evidence/ASSEMBLY_REVIEW.md](https://github.com/dingyuwen777/AIMA_UGC/blob/fb70b37deddd4317de287e491b8c87c147934a18/changes/active/CHG-20261002-025000-five-platform-accounts/evidence/ASSEMBLY_REVIEW.md)（首次 ledger 与修复证据；最终 REPAIR_VERIFY 结论另由本 PR Review/Ready 提交及平台 PR 记录持有）
