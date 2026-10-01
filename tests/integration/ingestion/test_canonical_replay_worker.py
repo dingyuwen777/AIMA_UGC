@@ -1289,10 +1289,10 @@ def test_all_replay_revoke_hides_replay_only_content_and_preserves_history(
         runtime.close()
 
 
-def test_new_content_batch_persists_vehicle_and_derived_brand_evidence(
+def test_new_content_batch_persists_configured_brand_and_vehicle_evidence(
     tmp_path: Path,
 ) -> None:
-    """车型匹配的新内容快路径必须同时保存车型证据、派生品牌证据和 Replay ledger。"""
+    """新版快路径必须同时命中配置品牌、车型并保存 Replay ledger。"""
 
     runtime = _runtime(tmp_path)
     _truncate(runtime)
@@ -1312,6 +1312,7 @@ def test_new_content_batch_persists_vehicle_and_derived_brand_evidence(
             brand_ids=(brand_id,),
         )
         vehicle_id = _create_replay_vehicle(runtime, brand_id=brand_id)
+        _add_replay_alias(runtime, brand_id)
         created = _create_all_replay(
             client,
             runtime,
@@ -1335,8 +1336,8 @@ def test_new_content_batch_persists_vehicle_and_derived_brand_evidence(
         assert vehicle["vehicle_model_id"] == vehicle_id
         assert vehicle["source"] == "alias_match"
         assert brand["brand_id"] == brand_id
-        assert brand["source"] == "vehicle_match"
-        assert brand["derived_vehicle_model_id"] == vehicle_id
+        assert brand["source"] == "alias_match"
+        assert brand["derived_vehicle_model_id"] is None
         assert len(ledger["vehicle_evidence_after"]) == 1
         assert len(ledger["brand_evidence_after"]) == 1
     finally:
@@ -2432,6 +2433,8 @@ def test_all_replay_revoke_keeps_version_when_only_evidence_converged(
             "author_snapshot": None,
             "collections": {},
             "account": None,
+            "resolver_outcome": "matched",
+            "classification_outcome": "matched",
         }
 
         requested = client.post(f"/api/v1/canonical-replays/all/{request_id}/revoke")

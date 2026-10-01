@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,7 +16,14 @@ BrandStatus = Literal["active", "deprecated"]
 FilterScope = Literal["all_active", "selected"]
 ResolverSource = Literal["manual_review", "vehicle_match", "alias_match"]
 ResolverField = Literal["title", "raw_text", "transcript_text"]
-_CatalogIdentity = tuple[int, FilterScope, tuple[UUID, ...]]
+ResolverSemantics = Literal["field_priority_v1", "brand_scoped_vehicle_v2"]
+CURRENT_RESOLVER_SEMANTICS: ResolverSemantics = "brand_scoped_vehicle_v2"
+SHORT_VEHICLE_CONTEXT_MAX_GAP = 12
+_LOCAL_SEPARATORS = frozenset("。！？!?；;\n\r")
+_BRAND_JOINERS = frozenset(
+    ("", "和", "与", "及", "或", "或者", "、", ",", "，", "/", "&", "对比", "vs", "vs.")
+)
+_CatalogIdentity = tuple[int, FilterScope, tuple[UUID, ...], ResolverSemantics]
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +90,10 @@ class BrandVehicleCatalogSnapshot:
     ambiguous_brand_aliases: tuple[str, ...] = ()
     ambiguous_vehicle_aliases: tuple[str, ...] = ()
     unresolved_active_vehicle_ids: tuple[UUID, ...] = ()
+    # 缺字段的历史持久快照保持旧语义；生产新建目录由 Repository 显式冻结新语义。
+    resolver_semantics: ResolverSemantics = "field_priority_v1"
+    # 匹配只使用 active 车型；清理范围还包含冻结时所属的停用及合并源身份。
+    automatic_evidence_vehicle_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +132,38 @@ class _ResolverCatalogIndex:
     vehicle_aliases_by_text: dict[str, tuple[VehicleAliasRecord, ...]]
     brand_alias_matcher: _AliasAutomaton
     vehicle_alias_matcher: _AliasAutomaton
+    vehicle_matchers_by_brand: dict[UUID, _AliasAutomaton]
+    vehicle_aliases_by_brand: dict[UUID, dict[str, tuple[VehicleAliasRecord, ...]]]
+
+
+@dataclass(frozen=True, slots=True)
+class AliasOccurrence:
+    """归一化文本内一次命中的半开区间；重复出现保留各自位置。"""
+
+    normalized_alias: str
+    start: int
+    end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _FieldContext:
+    """匹配文本到原文字符位置的映射，避免空白归一化放宽局部间隔。"""
+
+    raw: str
+    normalized: str
+    raw_positions: tuple[int, ...]
+
+    def raw_span(self, start: int, end: int) -> tuple[int, int]:
+        return self.raw_positions[start], self.raw_positions[end - 1] + 1
+
+
+@dataclass(frozen=True, slots=True)
+class _BrandGroup:
+    """相邻并列品牌共同修饰后续车型，不凭最近品牌强行归属。"""
+
+    start: int
+    end: int
+    brand_ids: frozenset[UUID]
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,8 +216,13 @@ class _AliasAutomaton:
     def find(self, text: str) -> tuple[str, ...]:
         """按正文字符单次推进；英数字别名只匹配完整词，避免短车型误命中。"""
 
+        return tuple({item.normalized_alias for item in self.find_occurrences(text)})
+
+    def find_occurrences(self, text: str) -> tuple[AliasOccurrence, ...]:
+        """返回全部位置，用于单次命中归属、局部消歧和稳定代表证据。"""
+
         state = 0
-        matched: set[str] = set()
+        matched: list[AliasOccurrence] = []
         for index, character in enumerate(text):
             while state and character not in self.transitions[state]:
                 state = self.failures[state]
@@ -186,7 +235,7 @@ class _AliasAutomaton:
                     and _ascii_word(text[index + 1])
                 ):
                     continue
-                matched.add(pattern)
+                matched.append(AliasOccurrence(pattern, start, index + 1))
         return tuple(matched)
 
 
@@ -198,8 +247,11 @@ class BrandVehicleResolver:
     def __init__(self, snapshot: BrandVehicleCatalogSnapshot | None = None) -> None:
         """可选预编译冻结目录；单条兼容调用仍可在 resolve 时传入。"""
 
-        self._snapshot_identity = _catalog_identity(snapshot) if snapshot is not None else None
-        self._compiled = _compile_catalog(snapshot) if snapshot is not None else None
+        self._cached_catalog = (
+            (_catalog_identity(snapshot), _compile_catalog(snapshot))
+            if snapshot is not None
+            else None
+        )
 
     def resolve(
         self,
@@ -211,21 +263,25 @@ class BrandVehicleResolver:
         manual_brand_ids: tuple[UUID, ...] | None = None,
         manual_vehicle_ids: tuple[UUID, ...] | None = None,
     ) -> BrandVehicleResolution:
-        """自动解析先品牌再其车型；无品牌别名时用车型回推品牌，人工锁优先。"""
+        """按任务冻结语义解析；v2 品牌先行，历史 v1 保留原优先级和反推。"""
 
         texts = {
             "title": title,
             "raw_text": raw_text,
             "transcript_text": transcript_text,
         }
-        index = (
-            self._compiled
-            if (
-                self._snapshot_identity == _catalog_identity(snapshot)
-                and self._compiled is not None
+        identity = _catalog_identity(snapshot)
+        cached = self._cached_catalog
+        if cached is None or cached[0] != identity:
+            cached = (identity, _compile_catalog(snapshot))
+            self._cached_catalog = cached
+        index = cached[1]
+        if snapshot.resolver_semantics == "brand_scoped_vehicle_v2":
+            return self._resolve_brand_scoped(
+                snapshot, index, texts, manual_brand_ids, manual_vehicle_ids
             )
-            else _compile_catalog(snapshot)
-        )
+        if snapshot.resolver_semantics != "field_priority_v1":
+            raise ValueError(f"不支持的 Resolver 语义：{snapshot.resolver_semantics}")
         active_brands = index.active_brands
         active_vehicles = index.active_vehicles
         conflicts: list[str] = []
@@ -314,6 +370,159 @@ class BrandVehicleResolver:
             vehicle_evidence=vehicle_evidence,
             brand_evidence=brand_evidence,
             conflicts=tuple(dict.fromkeys(conflicts)),
+        )
+
+    def _resolve_brand_scoped(
+        self,
+        snapshot: BrandVehicleCatalogSnapshot,
+        index: _ResolverCatalogIndex,
+        texts: dict[str, str | None],
+        manual_brand_ids: tuple[UUID, ...] | None,
+        manual_vehicle_ids: tuple[UUID, ...] | None,
+    ) -> BrandVehicleResolution:
+        """完整品牌集合限定车型候选；文本关联只用于高风险或共享车型别名。"""
+
+        conflicts: list[str] = []
+        contexts = {field: _field_context(texts[field]) for field in self._FIELDS}
+        brand_evidence: dict[UUID, ResolverEvidence] = {}
+        brand_ranks: dict[UUID, tuple[int, int, int, str, str]] = {}
+        groups: dict[ResolverField, tuple[_BrandGroup, ...]] = {}
+        for field_rank, field in enumerate(self._FIELDS):
+            context = contexts[field]
+            if context is None:
+                groups[field] = ()
+                continue
+            hits: list[tuple[AliasOccurrence, UUID]] = []
+            for occurrence in index.brand_alias_matcher.find_occurrences(context.normalized):
+                alias_text = occurrence.normalized_alias
+                aliases = index.brand_aliases_by_text[alias_text]
+                candidates = {alias.brand_id for alias in aliases}
+                if alias_text in snapshot.ambiguous_brand_aliases or len(candidates) != 1:
+                    conflicts.append(f"ambiguous_brand_alias:{alias_text}")
+                    continue
+                brand_id = next(iter(candidates))
+                hits.append((occurrence, brand_id))
+                alias = min(aliases, key=lambda item: (item.text, str(item.id)))
+                rank = (field_rank, -len(alias_text), occurrence.start, alias_text, str(alias.id))
+                if brand_id not in brand_ranks or rank < brand_ranks[brand_id]:
+                    brand_ranks[brand_id] = rank
+                    brand_evidence[brand_id] = ResolverEvidence(
+                        brand_id, "alias_match", alias.text, field
+                    )
+            groups[field] = _brand_groups(context, hits)
+
+        if manual_brand_ids is not None:
+            brand_ids = self._validated_manual_ids(
+                manual_brand_ids,
+                available=set(index.active_brands),
+                entity="brand",
+                conflicts=conflicts,
+            )
+            brand_evidence = {
+                item: ResolverEvidence(item, "manual_review", None, None) for item in brand_ids
+            }
+        allowed_brands = set(brand_evidence)
+        vehicle_evidence: dict[UUID, ResolverEvidence] = {}
+        if manual_vehicle_ids is not None:
+            vehicle_ids = self._validated_manual_ids(
+                manual_vehicle_ids,
+                available=set(index.active_vehicles),
+                entity="vehicle",
+                conflicts=conflicts,
+            )
+            vehicle_evidence = {
+                item: ResolverEvidence(item, "manual_review", None, None) for item in vehicle_ids
+            }
+            if manual_brand_ids is None:
+                for vehicle_id in vehicle_ids:
+                    manual_vehicle_brand = index.active_vehicles[vehicle_id].brand_id
+                    if (
+                        manual_vehicle_brand is None
+                        or manual_vehicle_brand not in index.active_brands
+                    ):
+                        conflicts.append(f"vehicle_brand_unresolved:{vehicle_id}")
+                    elif manual_vehicle_brand not in brand_evidence:
+                        brand_evidence[manual_vehicle_brand] = ResolverEvidence(
+                            manual_vehicle_brand, "vehicle_match", None, None, vehicle_id
+                        )
+        else:
+            vehicle_ranks: dict[UUID, tuple[int, int, int, str, str]] = {}
+            for field_rank, field in enumerate(self._FIELDS):
+                context = contexts[field]
+                if context is None:
+                    continue
+                occurrences: dict[AliasOccurrence, list[VehicleAliasRecord]] = {}
+                for brand_id in sorted(allowed_brands, key=str):
+                    matcher = index.vehicle_matchers_by_brand.get(brand_id)
+                    if matcher is not None:
+                        for occurrence in matcher.find_occurrences(context.normalized):
+                            occurrences.setdefault(occurrence, []).extend(
+                                index.vehicle_aliases_by_brand[brand_id][
+                                    occurrence.normalized_alias
+                                ]
+                            )
+                for occurrence in sorted(
+                    occurrences,
+                    key=lambda item: (
+                        item.start,
+                        -len(item.normalized_alias),
+                        item.normalized_alias,
+                    ),
+                ):
+                    alias_text = occurrence.normalized_alias
+                    vehicle_aliases = occurrences[occurrence]
+                    candidates = {alias.vehicle_model_id for alias in vehicle_aliases}
+                    if len(candidates) > 1:
+                        owners = _local_brand_owners(context, occurrence, groups[field])
+                        candidates = (
+                            {
+                                item
+                                for item in candidates
+                                if index.active_vehicles[item].brand_id in owners
+                            }
+                            if len(owners) == 1
+                            else set()
+                        )
+                        if len(candidates) != 1:
+                            conflicts.append(f"ambiguous_vehicle_alias:{alias_text}")
+                            continue
+                    if not candidates:
+                        continue
+                    vehicle_id = next(iter(candidates))
+                    if len(alias_text) == 1 and _local_brand_owners(
+                        context, occurrence, groups[field]
+                    ) != frozenset((index.active_vehicles[vehicle_id].brand_id,)):
+                        conflicts.append(f"unsafe_short_vehicle_alias:{alias_text}")
+                        continue
+                    vehicle_alias = min(
+                        (item for item in vehicle_aliases if item.vehicle_model_id == vehicle_id),
+                        key=lambda item: (item.text, str(item.id)),
+                    )
+                    rank = (
+                        field_rank,
+                        -len(alias_text),
+                        occurrence.start,
+                        alias_text,
+                        str(vehicle_alias.id),
+                    )
+                    if vehicle_id not in vehicle_ranks or rank < vehicle_ranks[vehicle_id]:
+                        vehicle_ranks[vehicle_id] = rank
+                        vehicle_evidence[vehicle_id] = ResolverEvidence(
+                            vehicle_id, "alias_match", vehicle_alias.text, field
+                        )
+
+        brand_ids = tuple(sorted(brand_evidence, key=str))
+        vehicle_ids = tuple(sorted(vehicle_evidence, key=str))
+        return BrandVehicleResolution(
+            catalog_version=snapshot.catalog_version,
+            matched=bool(brand_ids or vehicle_ids),
+            brand_matches=brand_ids,
+            vehicle_matches=vehicle_ids,
+            effective_brand_ids=brand_ids,
+            effective_vehicle_model_ids=vehicle_ids,
+            vehicle_evidence=tuple(vehicle_evidence[item] for item in vehicle_ids),
+            brand_evidence=tuple(brand_evidence[item] for item in brand_ids),
+            conflicts=tuple(sorted(set(conflicts))),
         )
 
     def _resolve_vehicle_aliases(
@@ -465,6 +674,75 @@ def _ascii_word(character: str) -> bool:
     return character.isascii() and (character.isalnum() or character == "_")
 
 
+def _field_context(value: str | None) -> _FieldContext | None:
+    """保持目录的空白/大小写归一化，并保留原始距离及换行边界。"""
+
+    if value is None or not value.strip():
+        return None
+    characters: list[str] = []
+    positions: list[int] = []
+    pending_space: int | None = None
+    for position, character in enumerate(value):
+        if character.isspace():
+            if characters and pending_space is None:
+                pending_space = position
+            continue
+        if pending_space is not None:
+            characters.append(" ")
+            positions.append(pending_space)
+            pending_space = None
+        folded = character.casefold()
+        characters.extend(folded)
+        positions.extend([position] * len(folded))
+    return _FieldContext(value, "".join(characters), tuple(positions))
+
+
+def _brand_groups(
+    context: _FieldContext, hits: list[tuple[AliasOccurrence, UUID]]
+) -> tuple[_BrandGroup, ...]:
+    groups: list[_BrandGroup] = []
+    for occurrence, brand_id in sorted(
+        hits, key=lambda item: (item[0].start, -item[0].end, str(item[1]))
+    ):
+        start, end = context.raw_span(occurrence.start, occurrence.end)
+        if groups:
+            previous = groups[-1]
+            bridge = context.raw[previous.end : start]
+            if start < previous.end or (
+                not any(character in _LOCAL_SEPARATORS for character in bridge)
+                and bridge.strip().casefold() in _BRAND_JOINERS
+            ):
+                groups[-1] = _BrandGroup(
+                    previous.start, max(previous.end, end), previous.brand_ids | {brand_id}
+                )
+                continue
+        groups.append(_BrandGroup(start, end, frozenset((brand_id,))))
+    return tuple(groups)
+
+
+def _local_brand_owners(
+    context: _FieldContext, occurrence: AliasOccurrence, groups: tuple[_BrandGroup, ...]
+) -> frozenset[UUID]:
+    """优先同片段前置品牌；并列品牌保留歧义，只有无前置关联时使用后置品牌。"""
+
+    start, end = context.raw_span(occurrence.start, occurrence.end)
+    next_index = bisect_left(groups, end, key=lambda group: group.start)
+    before = groups[next_index - 1] if next_index else None
+    after = groups[next_index] if next_index < len(groups) else None
+    if before is not None and before.end > start:
+        return before.brand_ids
+    for group, bridge_start, bridge_end in (
+        (before, before.end if before is not None else start, start),
+        (after, end, after.start if after is not None else end),
+    ):
+        # 先检查数值距离，再截取局部文本，避免远距离重复命中复制整个正文。
+        if group is not None and bridge_end - bridge_start <= SHORT_VEHICLE_CONTEXT_MAX_GAP:
+            bridge = context.raw[bridge_start:bridge_end]
+            if not any(character in _LOCAL_SEPARATORS for character in bridge):
+                return group.brand_ids
+    return frozenset()
+
+
 def _catalog_identity(snapshot: BrandVehicleCatalogSnapshot) -> _CatalogIdentity:
     """返回冻结目录的稳定身份，避免反序列化后因对象地址变化而重复编译。"""
 
@@ -472,6 +750,7 @@ def _catalog_identity(snapshot: BrandVehicleCatalogSnapshot) -> _CatalogIdentity
         snapshot.catalog_version,
         snapshot.filter_scope,
         tuple(sorted(set(snapshot.selected_brand_ids), key=str)),
+        snapshot.resolver_semantics,
     )
 
 
@@ -488,17 +767,37 @@ def _compile_catalog(snapshot: BrandVehicleCatalogSnapshot) -> _ResolverCatalogI
     for vehicle_alias in snapshot.vehicle_aliases:
         if vehicle_alias.vehicle_model_id in active_vehicles:
             vehicle_aliases.setdefault(vehicle_alias.normalized_text, []).append(vehicle_alias)
+    by_brand: dict[UUID, dict[str, list[VehicleAliasRecord]]] = {}
+    if snapshot.resolver_semantics == "brand_scoped_vehicle_v2":
+        for aliases in vehicle_aliases.values():
+            for alias in aliases:
+                brand_id = active_vehicles[alias.vehicle_model_id].brand_id
+                if brand_id is not None and brand_id in active_brands:
+                    by_brand.setdefault(brand_id, {}).setdefault(alias.normalized_text, []).append(
+                        alias
+                    )
     return _ResolverCatalogIndex(
         active_brands=active_brands,
         active_vehicles=active_vehicles,
         brand_aliases_by_text={key: tuple(value) for key, value in brand_aliases.items()},
         vehicle_aliases_by_text={key: tuple(value) for key, value in vehicle_aliases.items()},
         brand_alias_matcher=_AliasAutomaton.compile(tuple(brand_aliases)),
-        vehicle_alias_matcher=_AliasAutomaton.compile(tuple(vehicle_aliases)),
+        vehicle_alias_matcher=_AliasAutomaton.compile(
+            tuple(vehicle_aliases) if snapshot.resolver_semantics == "field_priority_v1" else ()
+        ),
+        vehicle_matchers_by_brand={
+            brand_id: _AliasAutomaton.compile(tuple(aliases))
+            for brand_id, aliases in by_brand.items()
+        },
+        vehicle_aliases_by_brand={
+            brand_id: {key: tuple(value) for key, value in aliases.items()}
+            for brand_id, aliases in by_brand.items()
+        },
     )
 
 
 __all__ = [
+    "AliasOccurrence",
     "BrandAliasRecord",
     "BrandRecord",
     "BrandRole",
@@ -510,6 +809,8 @@ __all__ = [
     "ResolverEvidence",
     "ResolverField",
     "ResolverSource",
+    "ResolverSemantics",
+    "SHORT_VEHICLE_CONTEXT_MAX_GAP",
     "VehicleAliasRecord",
     "VehicleRecord",
 ]

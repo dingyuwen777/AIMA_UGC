@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, bindparam, func, insert, or_, select, tuple_, update
+from sqlalchemy import and_, bindparam, delete, func, insert, or_, select, tuple_, update
 from sqlalchemy import cast as sql_cast
 from sqlalchemy import column as sql_column
 from sqlalchemy import values as sql_values
@@ -150,6 +150,8 @@ class PostgresContentRepository:
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._prepared_new_accounts: set[UUID] = set()
+        self._prepared_author_by_content: dict[tuple[str, str], UUID | None] = {}
 
     def ingest_content(
         self,
@@ -639,9 +641,52 @@ class PostgresContentRepository:
             )
         return tuple(results)
 
+    def lock_ingestion_inputs(
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        """先锁观察涉及的账号，再锁 Current，供可撤回写入冻结真实 before。"""
+
+        if not observations:
+            return {}
+        author_ids = self._upsert_content_authors_batch(observations, apply_updates=False)
+        self._prepared_author_by_content = {
+            (item.platform, item.external_content_id): author_id
+            for item, author_id in zip(observations, author_ids, strict=True)
+        }
+        identities = tuple((item.platform, item.external_content_id) for item in observations)
+        return {
+            (cast(str, row["platform"]), cast(str, row["external_content_id"])): dict(row)
+            for row in self._session.execute(
+                select(contents_table)
+                .where(
+                    tuple_(contents_table.c.platform, contents_table.c.external_content_id).in_(
+                        identities
+                    )
+                )
+                .order_by(contents_table.c.id)
+                .with_for_update()
+            ).mappings()
+        }
+
+    def discard_unneeded_prepared_accounts(
+        self, observations: tuple[CanonicalContentV1, ...]
+    ) -> None:
+        """回收本事务准备阶段创建且无获准观察使用的账号，避免受保护行遗留副作用。"""
+
+        used = {
+            self._prepared_author_by_content.get((item.platform, item.external_content_id))
+            for item in observations
+        }
+        unused = self._prepared_new_accounts.difference(used)
+        if unused:
+            self._session.execute(delete(accounts_table).where(accounts_table.c.id.in_(unused)))
+        self._prepared_new_accounts.clear()
+
     def _upsert_content_authors_batch(
         self,
         observations: tuple[CanonicalContentV1, ...],
+        *,
+        apply_updates: bool = True,
     ) -> tuple[UUID | None, ...]:
         """按主 ID 与备用稳定 ID 的连通分量批量收敛账号并应用字段新鲜度。"""
 
@@ -799,13 +844,19 @@ class PostgresContentRepository:
                         observation.observed_fields,
                         _ACCOUNT_FIELD_COLUMNS,
                         observation.observed_at,
-                    ),
+                    )
+                    if apply_updates
+                    else {},
                     "updated_at": observation.observed_at,
-                    **_account_candidate_updates(author, observation.observed_fields),
+                    **(
+                        _account_candidate_updates(author, observation.observed_fields)
+                        if apply_updates
+                        else {}
+                    ),
                 }
             )
         for chunk in batched(inserts, _MULTI_VALUES_INSERT_ROWS, strict=False):
-            self._session.execute(
+            statement = (
                 pg_insert(accounts_table)
                 .values(list(chunk))
                 .on_conflict_do_nothing(
@@ -815,6 +866,12 @@ class PostgresContentRepository:
                     ]
                 )
             )
+            if apply_updates:
+                self._session.execute(statement)
+            else:
+                self._prepared_new_accounts.update(
+                    self._session.scalars(statement.returning(accounts_table.c.id))
+                )
 
         identity_accounts = load_identity_accounts()
         component_accounts = resolve_components(identity_accounts)
@@ -830,6 +887,11 @@ class PostgresContentRepository:
                 .with_for_update()
             ).mappings()
         }
+        if not apply_updates:
+            return tuple(
+                component_accounts[find(primary_tokens[index])] if index in primary_tokens else None
+                for index in range(len(observations))
+            )
         for index, observation, raw_author in entries:
             author = raw_author
             account_id = component_accounts[find(primary_tokens[index])]

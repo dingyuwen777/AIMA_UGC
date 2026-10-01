@@ -393,7 +393,7 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(
         assert projected.vehicles[0].vehicle_model_id == target_vehicle.id
         assert projected.vehicles[0].display_name == "新车型 Stage5"
         # 合并车型后应重定向原导入 Evidence 到目标车型，同时保留原始来源。
-        assert {evidence.source for evidence in projected.vehicles[0].evidences} == {"import"}
+        assert {evidence.source for evidence in projected.vehicles[0].evidences} == {"alias_match"}
         assert projected.vehicles[0].brand is not None
         assert projected.vehicles[0].brand.id == owned.id
 

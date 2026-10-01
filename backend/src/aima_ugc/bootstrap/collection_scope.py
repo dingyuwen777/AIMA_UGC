@@ -112,7 +112,7 @@ from aima_ugc.modules.ingestion.brand_vehicle_filter import (
     resolve_canonical_brand_vehicle,
 )
 from aima_ugc.modules.system.models import ProviderConfig
-from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolution
+from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolution, BrandVehicleResolver
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.logging import log_exception_event
 from aima_ugc.platform.security import SecretFileError
@@ -345,6 +345,7 @@ class TikHubCollectionScopeExecutor:
         self._scope_gateway = PostgresCollectionRunExecutionGateway(session_factory)
         self._content_state = PostgresCollectionContentStateReader(session_factory)
         self._content_writer = PostgresFencedCollectionIngestionWriter(session_factory)
+        self._brand_vehicle_resolver = BrandVehicleResolver()
         self._content_actions = PostgresCollectionContentActionRepository(session_factory)
         self._decision_service = CollectionDecisionService()
         self._reconciler = ProviderAttemptReconciler(
@@ -963,7 +964,9 @@ class TikHubCollectionScopeExecutor:
     ) -> _PreparedSearchContent:
         """保持当前 Search→Detail fallback，只确定最终 Filter Canonical。"""
 
-        search_resolution = resolve_canonical_brand_vehicle(filter_snapshot, content)
+        search_resolution = resolve_canonical_brand_vehicle(
+            filter_snapshot, content, resolver=self._brand_vehicle_resolver
+        )
         if search_resolution.matched:
             return _PreparedSearchContent(
                 search_content=content,
@@ -1008,7 +1011,9 @@ class TikHubCollectionScopeExecutor:
         search_content = prepared.search_content
         prefetched_details = prepared.prefetched_details
         detail_prefetched = bool(prefetched_details)
-        accepted_resolution = resolve_canonical_brand_vehicle(filter_snapshot, content)
+        accepted_resolution = resolve_canonical_brand_vehicle(
+            filter_snapshot, content, resolver=self._brand_vehicle_resolver
+        )
         if not accepted_resolution.matched:
             self._content_writer.record_candidate_filtered(
                 candidate_id=prepared.search_candidate_id,
@@ -1083,7 +1088,9 @@ class TikHubCollectionScopeExecutor:
             candidate_resolution: BrandVehicleResolution | None = accepted_resolution
             if detail_prefetched:
                 candidate_resolution = (
-                    resolve_canonical_brand_vehicle(filter_snapshot, candidate.content)
+                    resolve_canonical_brand_vehicle(
+                        filter_snapshot, candidate.content, resolver=self._brand_vehicle_resolver
+                    )
                     if candidate_index > 0
                     else None
                 )
@@ -1269,7 +1276,9 @@ class TikHubCollectionScopeExecutor:
         latest_detail: CanonicalContentV1 | None = None
         for detail in details:
             detail_resolution = (
-                resolve_canonical_brand_vehicle(filter_snapshot, detail.content)
+                resolve_canonical_brand_vehicle(
+                    filter_snapshot, detail.content, resolver=self._brand_vehicle_resolver
+                )
                 if filter_snapshot is not None
                 else None
             )

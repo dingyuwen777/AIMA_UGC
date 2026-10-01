@@ -4,6 +4,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from aima_ugc.bootstrap.representative_report_pipeline import (
     _is_usable_screenshot,
     _OptionalScreenshotSession,
@@ -386,7 +387,10 @@ def test_douyin_screenshot_budget_skips_remaining_rows_once(tmp_path: Path) -> N
     assert warnings == ["抖音截图达到时间预算，已跳过剩余截图并继续生成报告"]
 
 
-def test_douyin_screenshot_skips_login_overlay(tmp_path: Path) -> None:
+def test_douyin_screenshot_skips_login_overlay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class _LoginPage:
         def goto(self, url: str, **_: object) -> None:
             del url
@@ -403,6 +407,8 @@ def test_douyin_screenshot_skips_login_overlay(tmp_path: Path) -> None:
 
     warnings: list[str] = []
     session = _OptionalScreenshotSession(warnings, target_dir=tmp_path)
+    # 单元场景明确模拟无法启用登录态，不读取或启动本机真实浏览器配置。
+    monkeypatch.setattr(session, "_switch_to_authenticated_browser", lambda: False)
     session._page = _LoginPage()  # type: ignore[assignment]
     row = RepresentativeReportRow(
         platform="抖音",

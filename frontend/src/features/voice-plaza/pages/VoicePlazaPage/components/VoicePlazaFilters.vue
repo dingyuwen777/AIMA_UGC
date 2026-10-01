@@ -130,11 +130,28 @@ const competitionOptions: Array<{ value: ContentFilterSnapshotCompetitionScopesI
 ]
 const competitionLabel = computed(() => {
   if (!props.competitionScopes.length) return '全部竞争范围'
+  if (props.competitionScopes.length === 2 && includesCompetitors.value) return '含竞品'
   if (props.competitionScopes.length === 1) {
     return competitionOptions.find((item) => item.value === props.competitionScopes[0])?.label ?? '已选 1 项'
   }
   return `已选 ${props.competitionScopes.length} 项`
 })
+const includesCompetitors = computed(() =>
+  props.competitionScopes.includes('competitor_only') && props.competitionScopes.includes('mixed'),
+)
+
+/** 组合当前支持的两个范围，保留“仅竞品”独立选择和已有 API 语义。 */
+function toggleIncludesCompetitors(): void {
+  const next = new Set(props.competitionScopes)
+  if (includesCompetitors.value) {
+    next.delete('competitor_only')
+    next.delete('mixed')
+  } else {
+    next.add('competitor_only')
+    next.add('mixed')
+  }
+  emit('update:competitionScopes', [...next])
+}
 
 function optionLabel(value: string, source: 'active' | 'historical'): string {
   return source === 'historical' ? `${value}（历史数据）` : value
@@ -257,7 +274,12 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
       />
       <div class="field field--competition">
         <span>竞争范围</span><details class="multi-select">
-          <summary>{{ competitionLabel }}</summary><label
+          <summary>{{ competitionLabel }}</summary>
+          <label><input
+            type="checkbox"
+            :checked="includesCompetitors"
+            @change="toggleIncludesCompetitors"
+          >含竞品</label><label
             v-for="item in competitionOptions"
             :key="item.value"
           ><input

@@ -67,6 +67,7 @@ from aima_ugc.modules.ingestion.historical_tables import (
 )
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
+from aima_ugc.modules.vehicles.brand_vehicle import CURRENT_RESOLVER_SEMANTICS, ResolverSemantics
 from aima_ugc.platform.jobs import JobExecutionFence, JobIdempotencyConflict, JobRecord
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.logging.timing import StageTimings
@@ -214,6 +215,21 @@ class PostgresCanonicalReplayRepository:
             request_id=request_id,
         )
 
+    def all_request_admission_times(self, request_ids: tuple[UUID, ...]) -> dict[UUID, datetime]:
+        """批量读取归属顺序，旧重筛不能覆盖更晚受理的规则结果。"""
+
+        if not request_ids:
+            return {}
+        return {
+            cast(UUID, row.id): cast(datetime, row.accepted_before)
+            for row in self._session.execute(
+                select(
+                    canonical_replay_all_requests_table.c.id,
+                    canonical_replay_all_requests_table.c.accepted_before,
+                ).where(canonical_replay_all_requests_table.c.id.in_(request_ids))
+            )
+        }
+
     def enqueue_all(
         self,
         *,
@@ -232,13 +248,21 @@ class PostgresCanonicalReplayRepository:
 
         self._lock_all_idempotency_key(key)
         candidates = self._list_replayable_artifacts()
-        selection_digest = _selection_digest(candidates)
         artifact_count = len(candidates)
         run_count = (
             artifact_count + CANONICAL_REPLAY_ARTIFACTS_PER_RUN - 1
         ) // CANONICAL_REPLAY_ARTIFACTS_PER_RUN
         all_request_id = uuid5(_ALL_REQUEST_NAMESPACE, key)
         existing = self._get_all_request(all_request_id)
+        # 同幂等键是恢复原请求；不得以当前算法重新解释旧请求的身份。
+        semantics = (
+            existing.filter_snapshot.catalog.resolver_semantics
+            if existing is not None and existing.filter_snapshot is not None
+            else "field_priority_v1"
+            if existing is not None
+            else CURRENT_RESOLVER_SEMANTICS
+        )
+        selection_digest = _selection_digest(candidates, resolver_semantics=semantics)
         if existing is not None:
             requested_identity = (
                 key,
@@ -489,7 +513,9 @@ class PostgresCanonicalReplayRepository:
         if record.filter_snapshot != snapshot:
             raise RuntimeError("Replay Planner 冻结规则快照发生漂移")
 
-        selection_digest = _selection_digest(candidates)
+        selection_digest = _selection_digest(
+            candidates, resolver_semantics=snapshot.catalog.resolver_semantics
+        )
         artifact_count = len(candidates)
         run_count = (
             artifact_count + CANONICAL_REPLAY_ARTIFACTS_PER_RUN - 1
@@ -1518,10 +1544,16 @@ def _all_request_from_row(row: RowMapping) -> CanonicalReplayAllRequestRecord:
 
 def _selection_digest(
     candidates: tuple[tuple[UUID, CanonicalReplaySourceKind], ...],
+    *,
+    resolver_semantics: ResolverSemantics = "field_priority_v1",
 ) -> str:
-    """对稳定有序的 Artifact/来源清单生成幂等输入摘要。"""
+    """冻结有序输入和新算法身份，同时保持历史请求摘要的原始字节。"""
 
     digest = hashlib.sha256()
+    if resolver_semantics != "field_priority_v1":
+        digest.update(b"resolver-semantics\x00")
+        digest.update(resolver_semantics.encode("ascii"))
+        digest.update(b"\n")
     for artifact_id, source_kind in candidates:
         digest.update(artifact_id.bytes)
         digest.update(b"\x00")

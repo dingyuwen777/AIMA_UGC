@@ -77,6 +77,8 @@ class PostgresContentRuleFilterRepository:
                         FROM canonical_replay_content_changes AS change
                         WHERE change.all_request_id = :request_id
                           AND change.reverted_at IS NULL
+                          AND COALESCE(change.delta ->> 'resolver_outcome', 'matched')
+                              <> 'unmatched'
                     ) AS matched ON matched.content_id = content.id
                     WHERE content.rule_filter_visible IS DISTINCT FROM (
                         matched.content_id IS NOT NULL

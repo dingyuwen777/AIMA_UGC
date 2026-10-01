@@ -1,0 +1,176 @@
+{
+  "generated_at": "2026-10-01T19:20:12.601751+08:00",
+  "implementation_parent": "04cccef5b5038b03fafab437bc32343a03683342",
+  "baseline": "15dd366db6e1632535fadc615513636a4b22c639",
+  "canonical_source": "041c9b60aae0f566553002794eb5fde4ed614c7f",
+  "production_source_manifest": [
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py",
+      "sha256_lf": "2217c2be9c99fb7363dccb2f884297d2b55dcfdf1b96010f9818bccb24af0be3"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle_classification.py",
+      "sha256_lf": "678ed5ceae8905ef714f4fb6eb868fa86b90a65cf951a0fadd36e4f7b8fb2fb1"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/canonical_replay.py",
+      "sha256_lf": "dc6165d548a671358edbc3275c42edec92b1d9bcaf90c067278fcc07ca55e7d2"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py",
+      "sha256_lf": "7c8cc0386e0a3d5c1f9acebb3d8da466f66ba5b96e24f15855e1f2da3f77ca3f"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/content.py",
+      "sha256_lf": "72f4544f8cc017371d14ae04fbc5882eb77ff5982d463269f194eb57a5510d00"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py",
+      "sha256_lf": "7b70e11e9c3c66ef33e0e787d2ebf6c32adf19068b980d48eae2bf09505ded7a"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/content_reclassification.py",
+      "sha256_lf": "48c495366aa801a4a406a54df4f61ca3ba9ab4db99a25f417e10835a10700e23"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/content_rule_filter.py",
+      "sha256_lf": "c5474e32c1a20818d65c8959ae846b3533bb6e76b5fde06d969f3a510afe8f9a"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py",
+      "sha256_lf": "42014ad3200c99a624f2a465aa9d632d807aedb21dd2a1ce55ae800e67aac50b"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/canonical_replay_worker.py",
+      "sha256_lf": "bce35d16fb070d817b225886659569d150a07af838511d6b9222177a36680839"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/collection_scope.py",
+      "sha256_lf": "1dbfb81ba22d3da3c210ff43cab852f45be541339576d7f52f3dab877555e304"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/content_reclassification_worker.py",
+      "sha256_lf": "22177dfb7b4a0bb4fba5712befc190efe443d5bb2e22ede38002cf35b909b7a4"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/historical_import_worker.py",
+      "sha256_lf": "be4babb934c7e0a9a0f1c0698f4fa20488ddd1f53f72ef8313275dbb6a67099b"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/manual_ingestion.py",
+      "sha256_lf": "afe23a56a0b22c90d36588bfcc56ac32dbf6da8e769416b2e574ec3c3377de08"
+    },
+    {
+      "path": "backend/src/aima_ugc/modules/ingestion/canonical_replay.py",
+      "sha256_lf": "f419162b5c995867cc36adfabcda604c6a086ff3d3bd1d650cd1a948abaf7267"
+    },
+    {
+      "path": "backend/src/aima_ugc/modules/vehicles/brand_vehicle.py",
+      "sha256_lf": "5f2de4bbc5dc89b1bfe87769409b3c5c73f0bbdde185601d6caa90709415b707"
+    },
+    {
+      "path": "backend/src/aima_ugc/modules/vehicles/content_reclassification.py",
+      "sha256_lf": "dd8cbfa65d7dc8304e25cc3d27bb57e8a10c2e27d833a35fd11213fa04ea1f09"
+    },
+    {
+      "path": "frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue",
+      "sha256_lf": "913e09c4986f707fc4cd951521408dd1f64cb33f5a34b78e2c562f5dff1885e2"
+    }
+  ],
+  "production_source_manifest_sha256": "56da1bcfb53377a043130cb772b9af76098a64e85cb450d3fca4709e9f895d39",
+  "records": [
+    {
+      "path": ".runtime/brand-backend-frozen.xml",
+      "sha256": "828cf0c2db12648557a722fd98ada8096b112a7b1a9760886b2f7af51359075d",
+      "tests": 1781,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16
+    },
+    {
+      "path": ".runtime/brand-ci-platform.xml",
+      "sha256": "39e8a48abecc0cd90b1afe1cf11bf5c8583255400d79c730c537b1ef903a0bee",
+      "tests": 56,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-database.xml",
+      "sha256": "d781768909ba0dc13c9abd0ea40623dca9deba48b92b8a7fcf367e05562e217f",
+      "tests": 119,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-jobs.xml",
+      "sha256": "945c645c0dbc028db56e6abe83d879326fe5e081536962fa78a5ead15ed07e9c",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-collection.xml",
+      "sha256": "bb663a14399f3c232e68c3ae740819c26569d456eb5c7ca8411852fc950bc615",
+      "tests": 143,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-content.xml",
+      "sha256": "7505d50d673f9696ad2638998fa32ca49a365dd6ad56eebd7b29cef6abf314c0",
+      "tests": 127,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-ingestion.xml",
+      "sha256": "d9425418a2513eb57c2a5aaa6e80362f215f6b4d24fdb497739eb1291e1a3ffd",
+      "tests": 111,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-vehicles.xml",
+      "sha256": "ea0d1915b1d8471ac8403b60144584a511c3ff8bb1e716ffaf3e39baa22eba7c",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-frozen-and-legacy.xml",
+      "sha256": "4717e2cf924588ddba96b9c5082eba7bb404da1c64a487ab6f8435ec31c194a2",
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-frozen-scope-red.xml",
+      "sha256": "389b9003b6578ea599c5aaa55c09712eb32e4d5cbf61cda18a01ae7fc4ab1404",
+      "tests": 2,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-all-postgres.xml",
+      "sha256": "d6a8086a6a11942e179ffcf3be351a1e737c3affa1849ea1e35036b5545a03d5",
+      "tests": 578,
+      "failures": 60,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "scope_notes": [
+    "生产源摘要规范化CRLF为LF，对应本轮测试所用实现；仅测试文件随后统一了Ruff格式。",
+    "原始失败记录保留；分套结果才代表与CI相同的空库边界。",
+    "此证据不替代最终current-head/current-base Review及required CI。"
+  ]
+}

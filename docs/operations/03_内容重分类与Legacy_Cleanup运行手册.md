@@ -14,18 +14,20 @@
 数据流是：
 
 ```text
-已有非 alias Vehicle Evidence
+已有明确车型列、AI 或人工等非自动 Vehicle Evidence
 → 冻结目录中的 Vehicle.brand_id
 → Brand Evidence(source=vehicle_match)
 
 Current Content title + text
 → 冻结 Brand/Vehicle Catalog Snapshot
 → BrandVehicleResolver
-→ 替换该 Content Version 的自动 alias Evidence
-→ 保留 import/manual/AI Vehicle Evidence 和所有人工锁
+→ 收敛该 Content Version 的自动 alias 与旧文本 import Evidence
+→ 保留明确车型导入事实、manual/AI Vehicle Evidence 和所有人工锁
 ```
 
 重分类不调用 TikHub 或 LLM，不修改 `contents` Current 字段，也不改变 AI/人工 Relevance。车型合并身份按最终 active 车型解释；人工 Brand/Vehicle Review Lock 始终优先，自动 Evidence 不得覆盖。
+
+新建 Run 的冻结目录显式持有 `brand_scoped_vehicle_v2`，先完整命中品牌，再在确认品牌内匹配车型；单字车型需同字段、同片段和原文 12 字符内唯一品牌关联。旧快照缺字段仍按 `field_priority_v1` 执行。新版将 `import` 中 `title/raw_text/transcript_text/title_text` 文本来源视为自动匹配，明确 `vehicle_model` 列及 NULL 字段继续保留；不能将所有 import 行一律清除。Current 和两类人工锁在每批读取、解析与提交期间保持稳定，人工品牌限制自动车型，明确空锁也有效。
 
 生产实现入口：
 
