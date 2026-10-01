@@ -149,84 +149,6 @@ class XiaohongshuCommentPagination:
         return cls(cursor, index, next_page_area, True)
 
 
-@dataclass(frozen=True, slots=True)
-class XiaohongshuUserSearchPagination:
-    """小红书用户搜索的页码和 search_id 状态。"""
-
-    next_page: int
-    search_id: str | None
-    should_continue: bool
-    stop_reason: str | None = None
-
-    @classmethod
-    def from_response(
-        cls,
-        *,
-        current_page: int,
-        body: dict[str, Any],
-    ) -> XiaohongshuUserSearchPagination:
-        if current_page < 1:
-            raise ValueError("current_page 必须从 1 开始")
-        users = _first_list(body, "users", "user_list")
-        metadata = _find_mapping(
-            body,
-            required_any=("users", "user_list", "search_id", "next_page"),
-        )
-        search_id = _string(_first_value((metadata, body), "search_id"))
-        next_page = _integer(
-            _first_value((metadata, body), "next_page"),
-            default=current_page + 1,
-        )
-        if not users:
-            return cls(next_page, search_id, False, "empty_page")
-        has_more = _first_value((metadata, body), "has_more")
-        if has_more is False:
-            return cls(next_page, search_id, False, "provider_exhausted")
-        if next_page <= current_page:
-            return cls(next_page, search_id, False, "pagination_not_advanced")
-        return cls(next_page, search_id, True)
-
-
-@dataclass(frozen=True, slots=True)
-class XiaohongshuUserNotesPagination:
-    """小红书用户发布笔记接口的 cursor 状态。"""
-
-    next_cursor: str
-    should_continue: bool
-    stop_reason: str | None = None
-
-    @classmethod
-    def from_response(
-        cls,
-        *,
-        previous_cursor: str,
-        body: dict[str, Any],
-    ) -> XiaohongshuUserNotesPagination:
-        notes = _first_list(body, "notes")
-        if not notes:
-            return cls(previous_cursor, False, "empty_page")
-
-        metadata = _find_mapping(body, required_any=("notes", "cursor", "has_more"))
-        has_more = _first_value((metadata, body), "has_more")
-        if has_more is False:
-            return cls(previous_cursor, False, "provider_exhausted")
-
-        # TikHub 官方说明通常要求使用上一页最后一条笔记的 cursor；
-        # 同时兼容响应在 data.cursor/next_cursor 提供游标的版本。
-        last_note = notes[-1] if isinstance(notes[-1], dict) else {}
-        cursor = (
-            _string(_first_value((metadata, body), "next_cursor"))
-            or _string(last_note.get("cursor"))
-            or _string(_first_value((metadata, body), "cursor"))
-            or ""
-        )
-        if not cursor:
-            return cls(previous_cursor, False, "cursor_unavailable")
-        if cursor == previous_cursor:
-            return cls(cursor, False, "pagination_not_advanced")
-        return cls(cursor, True)
-
-
 def build_search_notes_request(
     *,
     keyword: str,
@@ -257,59 +179,6 @@ def build_search_notes_request(
     if search_session_id:
         params["search_session_id"] = search_session_id
     return XiaohongshuRequest(f"{_BASE}/search_notes", params)
-
-
-def build_search_users_request(
-    *,
-    keyword: str,
-    page: int = 1,
-    search_id: str | None = None,
-    source: str = "search_result",
-) -> XiaohongshuRequest:
-    """构造小红书用户搜索请求。"""
-    normalized_keyword = keyword.strip()
-    if not normalized_keyword:
-        raise ValueError("keyword 不能为空")
-    if page < 1:
-        raise ValueError("page 必须从 1 开始")
-    params: dict[str, object] = {
-        "keyword": normalized_keyword,
-        "page": page,
-        "source": source,
-    }
-    if search_id:
-        params["search_id"] = search_id
-    return XiaohongshuRequest(f"{_BASE}/search_users", params)
-
-
-def build_user_info_request(
-    *,
-    user_id: str | None = None,
-    share_text: str | None = None,
-) -> XiaohongshuRequest:
-    """构造小红书用户信息请求；user_id 与 share_text 必须二选一。"""
-    normalized_user_id = user_id.strip() if isinstance(user_id, str) else ""
-    normalized_share_text = share_text.strip() if isinstance(share_text, str) else ""
-    if bool(normalized_user_id) == bool(normalized_share_text):
-        raise ValueError("user_id 与 share_text 必须恰好提供一个")
-    if normalized_user_id:
-        return XiaohongshuRequest(f"{_BASE}/get_user_info", {"user_id": normalized_user_id})
-    return XiaohongshuRequest(f"{_BASE}/get_user_info", {"share_text": normalized_share_text})
-
-
-def build_user_posted_notes_request(
-    *,
-    user_id: str,
-    cursor: str = "",
-) -> XiaohongshuRequest:
-    """构造小红书用户发布笔记请求。"""
-    normalized_user_id = user_id.strip()
-    if not normalized_user_id:
-        raise ValueError("user_id 不能为空")
-    return XiaohongshuRequest(
-        f"{_BASE}/get_user_posted_notes",
-        {"user_id": normalized_user_id, "cursor": cursor.strip()},
-    )
 
 
 def build_app_v1_search_candidate_request(
@@ -475,37 +344,6 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(item for item in items if isinstance(item, dict))
 
 
-def extract_user_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """从用户搜索响应中提取用户候选，不对候选身份做猜测。"""
-    items = _first_list(body, "users", "user_list")
-    return tuple(item for item in items if isinstance(item, dict))
-
-
-def extract_user_info(body: dict[str, Any]) -> dict[str, Any]:
-    """从用户详情响应中提取用户对象。"""
-    for candidate in _mapping_candidates(body):
-        if any(
-            key in candidate
-            for key in (
-                "user_id",
-                "userid",
-                "userId",
-                "red_id",
-                "redId",
-                "nickname",
-                "nick_name",
-            )
-        ):
-            return candidate
-    raise ValueError("小红书用户信息响应缺少用户对象")
-
-
-def extract_user_posted_notes(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """从用户发布笔记响应中提取 notes。"""
-    notes = _first_list(body, "notes")
-    return tuple(item for item in notes if isinstance(item, dict))
-
-
 def extract_detail_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """统一提取图文 detail 的 note_list 与视频 detail 的直接 note item。"""
     outer = body.get("data")
@@ -570,40 +408,6 @@ def _find_mapping(body: dict[str, Any], *, required_any: tuple[str, ...]) -> dic
             break
         current = nested
     return fallback
-
-
-def _mapping_candidates(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    candidates: list[dict[str, Any]] = []
-    current: object = body
-    for _ in range(6):
-        if not isinstance(current, dict):
-            break
-        candidates.append(current)
-        for key in ("user", "user_info", "userInfo", "user_data", "profile", "data"):
-            nested = current.get(key)
-            if isinstance(nested, dict):
-                candidates.append(nested)
-        nested_data = current.get("data")
-        if not isinstance(nested_data, dict):
-            break
-        current = nested_data
-    return tuple(candidates)
-
-
-def _first_list(body: dict[str, Any], *keys: str) -> list[object]:
-    current: object = body
-    for _ in range(6):
-        if not isinstance(current, dict):
-            break
-        for key in keys:
-            value = current.get(key)
-            if isinstance(value, list):
-                return value
-        nested = current.get("data")
-        if not isinstance(nested, dict):
-            break
-        current = nested
-    return []
 
 
 def _first_value(mappings: tuple[dict[str, Any], ...], key: str) -> object:

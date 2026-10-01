@@ -109,57 +109,9 @@ base_url 与当前调试 .env 一致
 
 ## 3.1 小红书指定账号历史采集
 
-指定账号采集已经接入统一的 TikHub Operation、Mapper、Canonical JSONL 和 Excel
-链路。人工入口是：
-
-- [`backend/src/aima_ugc/adapters/providers/tikhub_test/xiaohongshu_accounts_test.py`](xiaohongshu_accounts_test.py)
-
-先在脚本顶部填写 `ACCOUNTS`、`START_DATE` 和 `END_DATE`，再执行：
-
-```powershell
-uv run python backend/src/aima_ugc/adapters/providers/tikhub_test/xiaohongshu_accounts_test.py
-```
-
-账号使用结构化配置，可以填写一个或多个：
-
-```python
-ACCOUNTS = [
-    XiaohongshuAccountTarget(
-        nickname="官方账号 A",
-        red_id="123456",
-        user_id=None,
-    ),
-    XiaohongshuAccountTarget(
-        nickname="官方账号 B",
-        red_id="654321",
-        user_id="TikHub 内部 user_id（已知时填写）",
-    ),
-]
-```
-
-字段含义：
-
-- `nickname`：人工识别名称；有 `red_id` 时作为辅助校验，只有昵称时要求搜索结果精确匹配；
-- `red_id`：小红书号，优先用于精确账号匹配；
-- `user_id`：TikHub 用户接口所需的内部 ID，已知时可以跳过用户搜索；首次解析或强制解析时会请求用户信息校验身份，命中已验证缓存时默认直接复用。
-
-账号无法唯一匹配、搜索结果与用户详情的 `user_id` 不一致，或配置身份与返回身份不一致时，该账号会失败，程序不会猜测其他账号。多账号运行会继续处理其他账号，失败原因和每个账号的计数会写入 `run_summary.json`。
-
-日期按北京时间 `Asia/Shanghai` 解释，`START_DATE` 与 `END_DATE` 两天均包含。例如 `2026-08-01` 到 `2026-09-02` 会包含 9 月 2 日全天。笔记接口按 cursor 翻页；不假设 Provider 一定按发布时间倒序，只在 `MAX_USER_NOTE_PAGES` 达到时停止。
-
-评论配置：
-
-```python
-INCLUDE_COMMENTS = True
-INCLUDE_REPLIES = True
-COMMENT_MODE = "all"  # 或 "limited"
-```
-
-`COMMENT_MODE="all"` 会关闭每条内容的评论/回复数量软目标；当 `MAX_COMMENT_PAGES_PER_CONTENT = None` 且 `MAX_REPLY_PAGES_PER_ROOT = None` 时，会持续翻页直到 TikHub 返回 `has_more=false` 或游标不再推进，从而采集接口能返回的全部一级评论和二级回复。只有显式填写正整数时才启用对应技术页数上限，触达上限会在内容覆盖字段和摘要中标记为 partial。需要控制请求规模时使用 `"limited"` 或填写页数上限。
-
-脚本中还可以手动调整 `MAX_CONTENTS`、`MAX_ACCOUNT_SEARCH_PAGES`、`MAX_USER_NOTE_PAGES`、`FORCE_REFRESH`、`FORCE_RESOLVE_ACCOUNTS` 和 `RUN_ID`。默认 `WRITE_TO_DATABASE=False`，只写文件；开启数据库模式前必须额外填写正式 `PROVIDER_CONFIG_ID`，且不会自动执行迁移。
-
-账号解析成功后会在 `output/xiaohongshu/resolved_accounts.json` 保存不含密钥的身份缓存。命中缓存时默认复用已验证身份，不再让用户信息接口的临时失败阻断采集；需要强制重新搜索和重新校验时把 `FORCE_RESOLVE_ACCOUNTS=True`。历史运行目录不会被覆盖。
+小红书继续使用现有的 [xiaohongshu_accounts_test.py](xiaohongshu_accounts_test.py) 与独立账号执行器。
+账号解析、身份缓存、包含式日期和参数见下方“4.1.1 小红书指定账号按日期采集”；四个平台的新入口复用同一内容处理链。
+五个平台指定账号入口均固定为纯文件模式，不开放数据库写入或正式 Collection Plan/Scheduler 账号来源。
 
 ## 3.2 抖音指定账号历史采集
 
@@ -193,9 +145,11 @@ ACCOUNTS = [
 
 日期按北京时间 `Asia/Shanghai` 解释，起止日期均包含。`COMMENT_MODE="all"` 且两个评论页数配置均为 `None` 时，会持续翻页直到 Provider 报告 `has_more=false` 或游标不再推进；不会把 `MAX_COMMENTS_PER_CONTENT`、`MAX_REPLIES_PER_ROOT` 当作全量采集目标。显式填写页数上限后，达到上限会在摘要中标记为 partial。
 
+抖音作品默认使用 App V3；可显式设置 ACCOUNT_POSTS_SOURCE="douplus"，请求失败后不会自动切换 family。
+
 抖音账号模式只输出一个 `文章` Sheet，格式与人工标注参考 Excel 一致。表头固定为：`序号`、`监测项名称`、`文章编号`、`标题`、`内文`、`媒体名称（中文）`、`版面`、`出版日期`、`媒体类型`、`作者`、`全文情感`、`原文链接`、`粉丝数`。每条一级评论和每条二级回复各占一行，`媒体名称（中文）` 为“抖音”，`版面` 为“评论”。
 
-脚本中还可以手动调整 `MAX_CONTENTS`、`MAX_ACCOUNT_POST_PAGES`、`MAX_COMMENTS_PER_CONTENT`、`MAX_COMMENT_PAGES_PER_CONTENT`、`MAX_REPLIES_PER_ROOT`、`MAX_REPLY_PAGES_PER_ROOT`、`FORCE_REFRESH` 和 `RUN_ID`。默认 `WRITE_TO_DATABASE=False`，只写文件；运行摘要会保存到本次运行目录的 `run_summary.json`。
+脚本中还可以手动调整 `MAX_CONTENTS`、`MAX_ACCOUNT_POST_PAGES`、`MAX_COMMENTS_PER_CONTENT`、`MAX_COMMENT_PAGES_PER_CONTENT`、`MAX_REPLIES_PER_ROOT`、`MAX_REPLY_PAGES_PER_ROOT`、`FORCE_REFRESH` 和 `RUN_ID`。账号模式固定只写文件；运行摘要会保存到本次运行目录的 `run_summary.json`。
 
 ## 3.3 快手指定账号历史采集
 
@@ -264,8 +218,8 @@ uv run python backend/src/aima_ugc/adapters/providers/tikhub_test/bilibili_accou
 ```
 
 每个账号推荐填写个人空间 `space.bilibili.com/<uid>` 中的数字 `uid`；也可填写该完整主页
-链接。作品发现使用无历史分页上限的
-`/api/v1/bilibili/web/fetch_user_post_videos_v2`，按发布时间倒序持续翻到最早投稿。日期按
+链接。作品发现使用官方文档提供的 V2 分页接口
+`/api/v1/bilibili/web/fetch_user_post_videos_v2`，按页码遍历，空列表结束；本程序不靠排序假设提前停页。日期按
 北京时间解释，起止日均包含。
 
 默认 `COMMENT_MODE="all"`，且作品、一级评论、二级回复的页数上限均为 `None`。一级评论
@@ -276,7 +230,7 @@ uv run python backend/src/aima_ugc/adapters/providers/tikhub_test/bilibili_accou
 输出文件为 `bilibili_comments_for_labeling.xlsx`，仅含 `文章` Sheet，格式与其他指定账号
 采集的评论标注 Excel 相同。
 
-**小红书指定账号入口当前固定为纯文件模式，不开放 `write_to_database=True`。** 它不是正式 Collection Plan / Scheduler / 数据库账号采集能力。
+**五个平台指定账号入口固定为纯文件模式，不开放 `write_to_database=True`。** 它不是正式 Collection Plan / Scheduler / 数据库账号采集能力。
 
 ## 3. 关键词怎么传
 
@@ -459,7 +413,7 @@ max_comment_pages_per_content
 max_reply_pages_per_root
 ```
 
-作为异常响应或极端数据量下的技术硬保护。如果硬上限先于 Provider 耗尽触发，运行摘要不能把该结果视为完整。二级回复由于共享 Runner 不暴露最终 Provider 停止原因，账号 `all` 在**触达回复硬页数边界**时采取保守策略，标记账号为 `partial`，避免假完整。
+作为异常响应或极端数据量下的技术硬保护。如果硬上限先于 Provider 耗尽触发，运行摘要不能把该结果视为完整。共享 Runner 现在按 Provider 明确终止状态判断；小红书既有入口仍保持保守策略，账号 `all` 在**触达回复硬页数边界**时采取保守策略，标记账号为 `partial`，避免假完整。
 
 账号 Discovery 使用：
 
@@ -488,7 +442,6 @@ result = run_douyin(
 
 - [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../tikhub/capabilities.py)
 - [`backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py`](../tikhub/operations/douyin.py)
-[`backend/src/aima_ugc/adapters/providers/tikhub_test/.env`](.en
 ### 4.3 微博
 
 ```python
@@ -1018,4 +971,10 @@ Fake Transport 纵切 / PostgreSQL integration
 
 ### AC8
 
-PR 基于最新 main，当前 Head 取得适用检查、五平台 FakeTransport 纵切、关键词回归和独立审查；按受保护合并、main-fresh、原生 Change Archive 与安全 cleanup 完成交付。
+合并前，PR 基于最新 main，当前 Head 取得适用检查、五平台 FakeTransport 纵切、关键词回归和独立审查。
+合并后，以平台实际 PR/Commit/CI 证据完成 main-fresh、原生 Change Archive 与安全 cleanup；不在合并前宣称后续状态已完成。
+
+账号模式的身份冲突、缺失日期、映射错误、分页停滞及硬上限都会保留不完整事实；昵称查询必须精确且唯一。
+快手双源共用每篇作品/每条根评论的技术页数上限，不能对两个源分别重复使用同一上限。
+评论标注文件中“文章编号”是评论自身 ID，“原文链接”留空，以避免生产导入器从作品 URL 提取 ID 并将评论合并。
+完整作品关系与 Raw 来源继续保留在 Canonical JSONL 中。

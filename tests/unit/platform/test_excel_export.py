@@ -380,13 +380,13 @@ def test_comment_labeling_export_matches_reference_article_sheet(tmp_path: Path)
             "一级",
             "评论者",
             None,
-            "https://example.invalid/content/00123456789012345678",
+            None,
             1234,
         )
         assert row[2].number_format == "@"
         assert row[7].number_format == "yyyy-mm-dd hh:mm:ss"
-        assert row[11].hyperlink is not None
-        assert row[11].hyperlink.target == "https://example.invalid/content/00123456789012345678"
+        # 评论行必须保留自身文章编号，作品 URL 会令生产导入器将多条评论归并。
+        assert row[11].hyperlink is None
         assert sheet["A1"].font.name == "微软雅黑"
         assert sheet["A1"].font.sz == pytest.approx(10)
         assert sheet["A1"].font.bold is True

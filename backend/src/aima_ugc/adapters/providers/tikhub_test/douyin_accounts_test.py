@@ -10,7 +10,6 @@ TikHub Base URL、API Key 和超时继续从本目录的 ``.env`` 读取。
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -20,12 +19,8 @@ from aima_ugc.adapters.providers.tikhub_test import (
     run_douyin_accounts,
 )
 
-# 某些本机调试环境会继承 SSLKEYLOGFILE；Transport 不需要它，移除可避免
-# 系统证书日志路径权限干扰真实请求。
-os.environ.pop("SSLKEYLOGFILE", None)
-
 # 在这里填写要采集的抖音官方账号。推荐填写 unique_id（抖音号）或真实 sec_uid；
-# uid/homepage_url 也支持，但必须和 ACCOUNT_ID_PARAM 的含义匹配。
+# 完整 www.douyin.com/user/<sec_uid> 主页会解析为 sec_uid；uid 仅用于交叉核验。
 # 旧版配置若把非长格式的抖音号/短用户标识填进 sec_uid，程序也会自动按 unique_id 解析。
 ACCOUNTS = [
     # DouyinAccountTarget(
@@ -59,11 +54,11 @@ ACCOUNTS = [
     #         homepage_url=None,
     #     ),
     DouyinAccountTarget(
-            nickname="爱玛电动车生活服务旗舰店",
-            sec_uid="83283506022",
-            uid=None,
-            homepage_url=None,
-        ),
+        nickname="爱玛电动车生活服务旗舰店",
+        unique_id="83283506022",
+        uid=None,
+        homepage_url=None,
+    ),
 ]
 
 # 起止日期均包含，按北京时间（Asia/Shanghai）解释。
@@ -86,9 +81,8 @@ ACCOUNT_CURSOR_PATH = "data.max_cursor"
 ACCOUNT_HAS_MORE_PATH = "data.has_more"
 ACCOUNT_PROFILE_PATH = "/api/v1/douyin/web/handler_user_profile_v2"
 ACCOUNT_PROFILE_ID_PARAM = "unique_id"
-# App V3 用户作品接口对部分真实账号会返回 HTTP 400；开启后自动改用
-# TikHub Dou+ 简洁作品接口继续分页。
-DOUPLUS_POSTS_FALLBACK_ENABLED = True
+# 显式选择作品接口；失败时保留 partial，不自动跨 family 切换。
+ACCOUNT_POSTS_SOURCE: Literal["app_v3", "douplus"] = "app_v3"
 DOUPLUS_POST_PAGE_SIZE = 10
 
 OUTPUT_ROOT = Path(__file__).resolve().parent / "output"
@@ -99,12 +93,9 @@ MAX_COMMENTS_PER_CONTENT = 100
 MAX_COMMENT_PAGES_PER_CONTENT = None
 MAX_REPLIES_PER_ROOT = 20
 MAX_REPLY_PAGES_PER_ROOT = None
-# App V3 默认 20 条分页会在部分作品上重复旧评论；Web 补采使用较大分页，
-# 仍会按返回 cursor 继续翻页并按评论 ID 去重。
-WEB_COMMENT_PAGE_SIZE = 50
 FORCE_REFRESH = True
 WRITE_TO_DATABASE = False
-# 只有 WRITE_TO_DATABASE=True 时才填写正式 provider_configs 的 UUID。
+# 指定账号固定纯文件模式；WRITE_TO_DATABASE=True 会在发送前拒绝。
 PROVIDER_CONFIG_ID: UUID | None = None
 
 
@@ -141,7 +132,7 @@ def main() -> None:
         account_has_more_path=ACCOUNT_HAS_MORE_PATH,
         account_profile_path=ACCOUNT_PROFILE_PATH,
         account_profile_id_param=ACCOUNT_PROFILE_ID_PARAM,
-        douplus_posts_fallback_enabled=DOUPLUS_POSTS_FALLBACK_ENABLED,
+        account_posts_source=ACCOUNT_POSTS_SOURCE,
         douplus_post_page_size=DOUPLUS_POST_PAGE_SIZE,
         output_root=OUTPUT_ROOT,
         run_id=RUN_ID,
@@ -151,7 +142,6 @@ def main() -> None:
         max_comment_pages_per_content=MAX_COMMENT_PAGES_PER_CONTENT,
         max_replies_per_root=MAX_REPLIES_PER_ROOT,
         max_reply_pages_per_root=MAX_REPLY_PAGES_PER_ROOT,
-        web_comment_page_size=WEB_COMMENT_PAGE_SIZE,
         force_refresh=FORCE_REFRESH,
         write_to_database=WRITE_TO_DATABASE,
         provider_config_id=PROVIDER_CONFIG_ID,

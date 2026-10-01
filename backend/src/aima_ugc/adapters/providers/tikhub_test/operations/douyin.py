@@ -4,8 +4,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID
 
-from .runner import DouyinAccountTarget, TikHubTestRunResult, run_platform
-from .runner import run_douyin_accounts as _run_douyin_accounts
+from .accounts import DouyinAccountTarget
+from .accounts import run_douyin_accounts as _run_douyin_accounts
+from .runner import TikHubTestRunResult, run_platform
 
 
 def run_douyin(

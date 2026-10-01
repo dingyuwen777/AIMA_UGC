@@ -582,9 +582,9 @@ def _configure_labeling_sheet(sheet: Any) -> None:
         footer=0.3,
     )
     for column_number, header in enumerate(_LABELING_HEADERS, start=1):
-        sheet.column_dimensions[get_column_letter(column_number)].width = (
-            _LABELING_COLUMN_WIDTHS[header]
-        )
+        sheet.column_dimensions[get_column_letter(column_number)].width = _LABELING_COLUMN_WIDTHS[
+            header
+        ]
 
 
 def _labeling_header_cells(sheet: Any) -> list[Cell]:
@@ -616,7 +616,7 @@ def _labeling_comment_cells(
         comment.level,
         comment.author_display_name,
         None,
-        content.content_url,
+        None,  # 评论以评论 ID 导入，作品 URL 会覆盖该身份。
         content.author_follower_count,
     )
     text_id_indices = {2}

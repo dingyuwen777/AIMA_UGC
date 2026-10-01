@@ -11,7 +11,6 @@ TikHub Base URL、API Key 和超时继续从本目录已经配置好的 ``.env``
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -22,7 +21,6 @@ from aima_ugc.adapters.providers.tikhub_test import (
 )
 
 # 避免部分 Windows 环境继承的证书日志路径权限影响真实请求。
-os.environ.pop("SSLKEYLOGFILE", None)
 
 # 每个账号填写以下四类标识中的至少一个：
 # 1. user_id：纯数字，最推荐，作品接口可直接使用；

@@ -452,9 +452,7 @@ def _find_user_posts_container(
             if not isinstance(value, list):
                 continue
             items = tuple(
-                item
-                for item in value
-                if isinstance(item, dict) and _is_user_post_item(item)
+                item for item in value if isinstance(item, dict) and _is_user_post_item(item)
             )
             if items or (not value and "pcursor" in current):
                 return current, items
@@ -491,9 +489,7 @@ def _find_user_search_container(
             if not isinstance(value, list):
                 continue
             items = tuple(
-                item
-                for item in value
-                if isinstance(item, dict) and _is_user_search_item(item)
+                item for item in value if isinstance(item, dict) and _is_user_search_item(item)
             )
             if items or (not value and "pcursor" in current):
                 return current, items

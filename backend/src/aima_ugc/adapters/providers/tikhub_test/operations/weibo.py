@@ -4,11 +4,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID
 
+from .accounts import WeiboAccountTarget, run_weibo_accounts
 from .runner import (
     TikHubTestRunResult,
-    WeiboAccountTarget,
     run_platform,
-    run_weibo_accounts,
 )
 
 

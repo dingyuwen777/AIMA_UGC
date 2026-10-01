@@ -298,11 +298,7 @@ def extract_user_post_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     archives = provider_data.get("archives")
     if not isinstance(archives, list):
         return ()
-    return tuple(
-        item
-        for item in archives
-        if isinstance(item, dict) and _string(item.get("aid"))
-    )
+    return tuple(item for item in archives if isinstance(item, dict) and _string(item.get("aid")))
 
 
 def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -12,8 +11,6 @@ from aima_ugc.adapters.providers.tikhub_test import (
     BilibiliAccountTarget,
     run_bilibili_accounts,
 )
-
-os.environ.pop("SSLKEYLOGFILE", None)
 
 # 推荐填写 uid（B站个人空间 space.bilibili.com/<uid> 中的数字）。
 ACCOUNTS: list[BilibiliAccountTarget] = [

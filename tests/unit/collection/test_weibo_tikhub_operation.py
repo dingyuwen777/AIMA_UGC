@@ -112,11 +112,7 @@ def test_account_user_search_and_post_builders_use_documented_web_v2_contracts()
 
 def test_account_extractors_and_since_id_pagination_handle_nested_response() -> None:
     search_body = {
-        "data": {
-            "data": {
-                "users": [{"uid": "1234567890", "screen_name": "爱玛电动车"}]
-            }
-        }
+        "data": {"data": {"users": [{"uid": "1234567890", "screen_name": "爱玛电动车"}]}}
     }
     assert extract_user_search_items(search_body) == (
         {"uid": "1234567890", "screen_name": "爱玛电动车"},

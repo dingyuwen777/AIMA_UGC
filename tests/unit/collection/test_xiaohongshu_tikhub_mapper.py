@@ -148,7 +148,6 @@ def test_image_positions_follow_response_order_when_provider_indices_repeat() ->
     assert [media.position for media in result.media] == [0, 1, 2]
 
 
-
 def test_mapper_does_not_invent_missing_or_blank_fields() -> None:
     result = map_content(
         {"note": {"id": "note-2", "type": "video", "title": "", "desc": ""}},

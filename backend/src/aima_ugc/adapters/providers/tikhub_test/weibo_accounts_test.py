@@ -11,7 +11,6 @@ TikHub Base URL、API Key 和超时继续从本目录已经配置好的 ``.env``
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -22,7 +21,6 @@ from aima_ugc.adapters.providers.tikhub_test import (
 )
 
 # 避免部分 Windows 环境继承的证书日志路径权限影响真实请求。
-os.environ.pop("SSLKEYLOGFILE", None)
 
 # 每个账号填写以下标识中的至少一个：
 # 1. uid：微博数字 UID，最推荐；可从主页 URL 中取得，例如 weibo.com/u/1234567890；
@@ -63,9 +61,7 @@ PROVIDER_CONFIG_ID: UUID | None = None
 
 def main() -> None:
     if not ACCOUNTS:
-        raise ValueError(
-            "请先在 weibo_accounts_test.py 的 ACCOUNTS 中填写至少一个真实微博账号"
-        )
+        raise ValueError("请先在 weibo_accounts_test.py 的 ACCOUNTS 中填写至少一个真实微博账号")
     placeholders = {"请填写微博官号名称", "请填写微博数字 UID", "请填写微博主页地址"}
     if any(
         value in placeholders
