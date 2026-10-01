@@ -1,4 +1,11 @@
 import {
+  cancelReport,
+  createReport,
+  listReports,
+  preflightReport,
+  publishReport,
+  retryReport,
+  type ReportSubmitRequest,
   archiveAnalysisScheme,
   archiveProviderConfig,
   addVehicleBrandAlias,
@@ -62,6 +69,14 @@ import {
   type VehicleModelUpdateRequest,
 } from '../../generated/api/client'
 import { unwrapResponse } from '../../shared/api/http'
+
+export const preflightDatabaseReport = async (body: ReportSubmitRequest) => unwrapResponse(await preflightReport(body))
+export const createDatabaseReport = async (body: ReportSubmitRequest) => unwrapResponse(await createReport(body))
+export const fetchDatabaseReports = async () =>
+  unwrapResponse(await listReports({ cache: 'no-store', signal: AbortSignal.timeout(15000) }))
+export const publishDatabaseReport = async (id: string) => unwrapResponse(await publishReport(id))
+export const retryDatabaseReport = async (id: string) => unwrapResponse(await retryReport(id))
+export const cancelDatabaseReport = async (id: string) => unwrapResponse(await cancelReport(id))
 
 /** 分页读取全部车型，避免管理配置在车型超过单页上限时截断。 */
 export async function fetchVehicles(): Promise<VehicleModelListResponse> {

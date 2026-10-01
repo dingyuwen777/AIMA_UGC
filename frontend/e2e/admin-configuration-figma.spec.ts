@@ -968,8 +968,11 @@ test('guards an edited analysis-rule copy name before switching tabs', async ({ 
   await expect(copyName).toHaveValue('未保存的规则副本名称')
 })
 
-test('guards unsaved analysis-rule and report-strategy inputs before switching tabs', async ({ page }) => {
+test('guards unsaved analysis-rule and report-generation inputs before switching tabs', async ({ page }) => {
   await mockAdmin(page)
+  await page.route('**/api/v1/reports', async (route) => {
+    await route.fulfill({ json: { items: [] } })
+  })
   await page.goto('/admin/configuration')
 
   await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
@@ -983,8 +986,8 @@ test('guards unsaved analysis-rule and report-strategy inputs before switching t
   await page.getByRole('button', { name: '操作记录', exact: true }).click()
   await dialog.getByRole('button', { name: '放弃修改并切换', exact: true }).click()
 
-  await page.getByRole('button', { name: '报告策略', exact: true }).click()
-  const startDate = page.getByLabel('开始日期', { exact: true })
+  await page.getByRole('button', { name: '报告生成', exact: true }).click()
+  const startDate = page.getByLabel('报告开始日期', { exact: true })
   await startDate.fill('2026-09-01')
   await page.getByRole('button', { name: '操作记录', exact: true }).click()
   dialog = page.getByRole('dialog', { name: '放弃未保存的修改' })

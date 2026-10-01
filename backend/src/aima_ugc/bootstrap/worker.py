@@ -316,6 +316,14 @@ def create_collection_job_registry(
         registry,
         PostgresFeishuPublicationJobExecutor(runtime),
     )
+    from aima_ugc.modules.reporting.report_jobs import register_report_jobs
+
+    from .report_runs_worker import PostgresReportJobExecutor
+
+    report_executor = PostgresReportJobExecutor(runtime)
+    register_report_jobs(
+        registry, generate=report_executor.generate, publish=report_executor.publish
+    )
     return registry
 
 

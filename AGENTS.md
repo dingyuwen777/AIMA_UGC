@@ -370,6 +370,8 @@ ingestion.data-import-revocation.v1
 analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
+reporting.report-generation.v1
+reporting.report-publication.v1
 vehicles.content-reclassification.v1
 ingestion.canonical-replay.v1
 ingestion.canonical-replay-cancellation.v1

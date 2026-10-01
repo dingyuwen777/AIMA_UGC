@@ -29,6 +29,7 @@ ALL_POSTGRES_SUITES = (
     "content",
     "ingestion",
     "vehicles",
+    "reporting",
 )
 POSTGRES_ALL = ("all",)
 BACKEND_ALL = ("all",)
@@ -375,6 +376,7 @@ def _postgres_targets_for_path(path: str) -> tuple[str, ...]:
             "content",
             "ingestion",
             "vehicles",
+            "reporting",
         }:
             return (path,)
     return ()
@@ -402,6 +404,7 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
             "content",
             "ingestion",
             "vehicles",
+            "reporting",
         }:
             return ()
         return POSTGRES_ALL
