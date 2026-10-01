@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID
 
+from .accounts import KuaishouAccountTarget
+from .accounts import run_kuaishou_accounts as _run_kuaishou_accounts
 from .runner import TikHubTestRunResult, run_platform
 
 
@@ -47,4 +49,7 @@ def run_kuaishou(
     )
 
 
-__all__ = ["run_kuaishou"]
+run_kuaishou_accounts = _run_kuaishou_accounts
+
+
+__all__ = ["KuaishouAccountTarget", "run_kuaishou", "run_kuaishou_accounts"]

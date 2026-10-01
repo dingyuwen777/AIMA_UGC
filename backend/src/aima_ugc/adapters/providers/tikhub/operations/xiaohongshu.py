@@ -373,6 +373,18 @@ def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(item for item in items if isinstance(item, dict))
 
 
+def extract_comment_counts(body: dict[str, Any]) -> tuple[int | None, int | None]:
+    """提取小红书评论接口返回的全部评论数和一级评论数。"""
+    data = _find_mapping(
+        body,
+        required_any=("comments", "comment_count", "comment_count_l1"),
+    )
+    return (
+        _optional_nonnegative_integer(data.get("comment_count")),
+        _optional_nonnegative_integer(data.get("comment_count_l1")),
+    )
+
+
 def _mapped_or_provider_value(mapping: dict[str, str], value: str, field_name: str) -> str:
     normalized = value.strip()
     if normalized in mapping:
@@ -431,6 +443,12 @@ def _decode_cursor_mapping(value: object) -> dict[str, object]:
 
 def _string(value: object) -> str | None:
     return str(value) if value is not None and str(value) else None
+
+
+def _optional_nonnegative_integer(value: object) -> int | None:
+    """把 Provider 评论计数字段转换为非负整数；缺失或非法值返回 None。"""
+    parsed = _integer(value, default=-1)
+    return parsed if parsed >= 0 else None
 
 
 def _integer(value: object, *, default: int) -> int:

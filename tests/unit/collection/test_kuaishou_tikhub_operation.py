@@ -5,14 +5,23 @@ from __future__ import annotations
 import pytest
 from aima_ugc.adapters.providers.tikhub.operations.kuaishou import (
     KuaishouCursorPagination,
+    KuaishouUserPostsPagination,
+    KuaishouUserSearchPagination,
     build_app_video_comments_request,
     build_app_video_sub_comments_request,
     build_search_request,
+    build_user_posts_request,
+    build_user_profile_request,
+    build_user_search_request,
     build_video_comments_request,
     build_video_detail_request,
     build_video_sub_comments_request,
     build_web_video_comments_request,
     build_web_video_sub_comments_request,
+    extract_comment_counts,
+    extract_user_post_items,
+    extract_user_profile,
+    extract_user_search_items,
 )
 
 
@@ -33,6 +42,97 @@ def test_detail_uses_photo_id() -> None:
     assert request.method == "GET"
     assert request.path == "/api/v1/kuaishou/app/fetch_one_video"
     assert request.params == {"photo_id": "photo-1"}
+
+
+def test_account_profile_and_user_posts_use_documented_v2_contracts() -> None:
+    profile = build_user_profile_request(user_id="3xfixtureeid")
+    assert profile.path == "/api/v1/kuaishou/app/fetch_one_user_v2"
+    assert profile.params == {"user_id": "3xfixtureeid"}
+
+    first = build_user_posts_request(user_id="123456789")
+    assert first.path == "/api/v1/kuaishou/app/fetch_user_post_v2"
+    assert first.params == {
+        "user_id": "123456789",
+        "pcursor": "",
+        "sort": "latest",
+    }
+    next_page = build_user_posts_request(
+        user_id="123456789",
+        pcursor="next-page",
+    )
+    assert next_page.params["pcursor"] == "next-page"
+    with pytest.raises(ValueError, match="纯数字"):
+        build_user_posts_request(user_id="3xfixtureeid")
+
+    search = build_user_search_request(keyword="loveaima123", pcursor="next")
+    assert search.path == "/api/v1/kuaishou/app/search_user_v2"
+    assert search.params == {
+        "keyword": "loveaima123",
+        "pcursor": "next",
+        "user_relation": "all",
+        "user_gender": "all",
+        "fans_sort": "default",
+    }
+
+
+def test_account_profile_and_posts_extractors_handle_nested_envelopes() -> None:
+    body = {
+        "data": {
+            "result": {
+                "feeds": [
+                    {"feed": {"photoId": "photo-1"}},
+                    {"ignored": True},
+                ],
+                "pcursor": "next-page",
+            }
+        }
+    }
+    # 坏作品不能静默过滤：保留原索引，由账号执行器记录 Mapper 失败与 partial。
+    assert extract_user_post_items(body) == ({"feed": {"photoId": "photo-1"}}, {"ignored": True})
+    pagination = KuaishouUserPostsPagination.from_response(
+        previous_cursor="",
+        body=body,
+    )
+    assert pagination.should_continue is True
+    assert pagination.next_cursor == "next-page"
+
+    profile = extract_user_profile(
+        {"data": {"profile": {"userId": 123456789, "userName": "快手官号"}}}
+    )
+    assert profile["userId"] == 123456789
+
+    search_body = {
+        "data": {
+            "mixFeeds": [
+                {
+                    "user": {
+                        "userId": "123456789",
+                        "kwaiId": "loveaima123",
+                    }
+                }
+            ],
+            "pcursor": "next-users",
+        }
+    }
+    assert extract_user_search_items(search_body) == (
+        {
+            "user": {
+                "userId": "123456789",
+                "kwaiId": "loveaima123",
+            }
+        },
+    )
+    user_search = KuaishouUserSearchPagination.from_response(
+        previous_cursor="",
+        body=search_body,
+    )
+    assert user_search.should_continue is True
+    assert user_search.next_cursor == "next-users"
+
+
+def test_comment_count_extractor_accepts_integer_and_numeric_text() -> None:
+    assert extract_comment_counts({"data": {"commentCount": 12}}) == (12, None)
+    assert extract_comment_counts({"data": {"comment_count": "13"}}) == (13, None)
 
 
 def test_primary_comments_use_app_photo_id_and_pcursor() -> None:
@@ -113,7 +213,7 @@ def test_web_comment_builders_remain_explicit_verified_backup_only() -> None:
     }
 
 
-def test_cursor_state_does_not_guess_response_json_path_or_provider_sentinels() -> None:
+def test_cursor_state_uses_verified_provider_terminal_sentinel() -> None:
     next_page = KuaishouCursorPagination.from_returned_cursor(
         previous_cursor="",
         returned_cursor="cursor-2",
@@ -121,13 +221,38 @@ def test_cursor_state_does_not_guess_response_json_path_or_provider_sentinels() 
     assert next_page.should_continue is True
     assert next_page.next_cursor == "cursor-2"
 
-    unknown_nonempty_cursor = KuaishouCursorPagination.from_returned_cursor(
+    terminal_cursor = KuaishouCursorPagination.from_returned_cursor(
         previous_cursor="cursor-2",
         returned_cursor="no_more",
     )
-    assert unknown_nonempty_cursor.should_continue is True
-    assert unknown_nonempty_cursor.next_cursor == "no_more"
-    assert unknown_nonempty_cursor.stop_reason is None
+    assert terminal_cursor.should_continue is False
+    assert terminal_cursor.next_cursor == "no_more"
+    assert terminal_cursor.stop_reason == "provider_exhausted"
+
+    terminal_comment_page = KuaishouCursorPagination.from_response(
+        previous_cursor="cursor-2",
+        body={
+            "data": {
+                "rootComments": [{"commentId": "comment-1"}],
+                "pcursor": "no_more",
+            }
+        },
+        item_key="rootComments",
+    )
+    assert terminal_comment_page.should_continue is False
+    assert terminal_comment_page.stop_reason == "provider_exhausted"
+
+    terminal_posts_page = KuaishouUserPostsPagination.from_response(
+        previous_cursor="cursor-2",
+        body={
+            "data": {
+                "feeds": [{"photo_id": "photo-1"}],
+                "pcursor": "no_more",
+            }
+        },
+    )
+    assert terminal_posts_page.should_continue is False
+    assert terminal_posts_page.stop_reason == "provider_exhausted"
 
     unavailable = KuaishouCursorPagination.from_returned_cursor(
         previous_cursor="cursor-2",

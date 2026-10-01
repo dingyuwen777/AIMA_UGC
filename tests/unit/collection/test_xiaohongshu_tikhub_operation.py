@@ -13,6 +13,7 @@ from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
     build_search_notes_request,
     build_sub_comments_request,
     build_video_detail_request,
+    extract_comment_counts,
     extract_search_items,
 )
 
@@ -120,6 +121,34 @@ def test_comment_pagination_preserves_cursor_index_and_page_area() -> None:
     assert pagination.cursor == "cursor-2"
     assert pagination.index == 20
     assert pagination.page_area == "FOLDED"
+
+    string_cursor = XiaohongshuCommentPagination.from_response(
+        previous_cursor="",
+        previous_index=0,
+        page_area="UNFOLDED",
+        body={
+            "data": {
+                "comments": [{"id": "comment-string-cursor"}],
+                "cursor": '{"cursor":"cursor-2","index":2,"pageArea":"ALL"}',
+                "comment_count": 12,
+                "comment_count_l1": 9,
+                "has_more": True,
+            }
+        },
+    )
+    assert string_cursor.should_continue is True
+    assert string_cursor.cursor == "cursor-2"
+    assert string_cursor.index == 2
+    assert string_cursor.page_area == "ALL"
+    assert extract_comment_counts(
+        {
+            "data": {
+                "comments": [],
+                "comment_count": 12,
+                "comment_count_l1": 9,
+            }
+        }
+    ) == (12, 9)
 
     sub_comment_cursor = XiaohongshuCommentPagination.from_response(
         previous_cursor="",

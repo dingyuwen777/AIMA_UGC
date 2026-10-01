@@ -8,6 +8,8 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     advance_comments,
     advance_sub_comments,
     build_comments_call,
+    build_kuaishou_web_comments_call,
+    build_kuaishou_web_sub_comments_call,
     build_sub_comments_call,
     extract_sub_comment_items,
 )
@@ -80,6 +82,29 @@ def test_runtime_extracts_platform_specific_sub_comment_shapes() -> None:
     ) == ({"commentId": "kuaishou-reply"},)
 
 
+def test_kuaishou_web_comment_calls_remain_explicit_and_use_pcursor() -> None:
+    comments = build_kuaishou_web_comments_call(
+        external_content_id="stable-photo",
+        alternate_ids={"photo_id": "provider-photo"},
+        state={"pcursor": "comment-next"},
+    )
+    assert comments.path == "/api/v1/kuaishou/web/fetch_one_video_comment"
+    assert comments.params == {"photo_id": "provider-photo", "pcursor": "comment-next"}
+
+    replies = build_kuaishou_web_sub_comments_call(
+        external_content_id="stable-photo",
+        root_comment_id="root-1",
+        alternate_ids={"photo_id": "provider-photo"},
+        state={"pcursor": "reply-next"},
+    )
+    assert replies.path == "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
+    assert replies.params == {
+        "photo_id": "provider-photo",
+        "root_comment_id": "root-1",
+        "pcursor": "reply-next",
+    }
+
+
 def test_comment_pagination_uses_existing_platform_state_models() -> None:
     """共享 Runtime 应把解码后的分页状态原样带入下一次小红书请求。"""
     xiaohongshu = advance_comments(
@@ -112,6 +137,22 @@ def test_comment_pagination_uses_existing_platform_state_models() -> None:
         body={"data": {"comments": [{"cid": "1"}], "cursor": 20, "has_more": 1}},
     )
     assert douyin.next_state == {"cursor": 20}
+
+    exhausted_douyin = advance_comments(
+        platform="douyin",
+        state={"cursor": 20},
+        body={"data": {"comments": [{"cid": "2"}], "cursor": 40, "has_more": 0}},
+    )
+    assert exhausted_douyin.next_state is None
+    assert exhausted_douyin.resume_state == {"cursor": 40}
+
+    empty_exhausted_douyin = advance_comments(
+        platform="douyin",
+        state={"cursor": 40},
+        body={"data": {"comments": [], "cursor": 60, "has_more": 0, "total": 40}},
+    )
+    assert empty_exhausted_douyin.next_state is None
+    assert empty_exhausted_douyin.resume_state is None
 
     weibo = advance_comments(
         platform="weibo",

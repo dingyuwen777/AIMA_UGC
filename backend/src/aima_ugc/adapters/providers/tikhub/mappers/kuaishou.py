@@ -33,11 +33,11 @@ def map_content(
     raw: dict[str, Any], context: KuaishouMappingContext, *, item_locator: str
 ) -> CanonicalContentV1:
     """把真实 App Search V2 feed 或 Detail photo 映射为内容 Observation。"""
-    item = first_dict(raw, "feed") or raw
-    if "photo_id" not in item:
+    item = first_dict(raw, "feed", "photo") or raw
+    if "photo_id" not in item and "photoId" not in item:
         raise ValueError("快手内容缺少 photo_id")
 
-    provider_photo_id = required_string(item, "photo_id")
+    provider_photo_id = required_string(item, "photo_id", "photoId")
     share_photo_id = _share_photo_id(item)
     external_id = context.external_content_id or share_photo_id or provider_photo_id
     observed_fields: list[str] = ["content_type", "alternate_ids"]
@@ -52,9 +52,16 @@ def map_content(
     if kwai_id is not None:
         alternate_ids["kwai_id"] = kwai_id
 
-    text = optional_string(item, "caption")
+    text = optional_string(item, "caption", "content", "description")
     if text is not None:
         observed_fields.append("text")
+    title = optional_string(item, "title") or text
+    if title is not None:
+        observed_fields.append("title")
+
+    share_url = _share_url(item, share_photo_id)
+    if share_url is not None:
+        observed_fields.append("share_url")
 
     author, author_fields = _map_content_author(item)
     observed_fields.extend(f"author.{field}" for field in author_fields)
@@ -62,7 +69,7 @@ def map_content(
     metrics, metric_fields = _map_metrics(item)
     observed_fields.extend(f"metrics.{field}" for field in metric_fields)
 
-    published_at = timestamp(item, "timestamp")
+    published_at = timestamp(item, "timestamp", "createTime", "create_time")
     if published_at is not None:
         observed_fields.append("published_at")
 
@@ -75,7 +82,9 @@ def map_content(
         external_content_id=external_id,
         alternate_ids=alternate_ids,
         content_type=_content_type(item),
+        title=title,
         text=text,
+        share_url=share_url,
         author=author,
         published_at=published_at,
         observed_at=context.observed_at,
@@ -89,6 +98,9 @@ def map_content(
 def _share_photo_id(item: dict[str, Any]) -> str | None:
     """解析快手公开分享作品 ID；它与 Raw 数字 ``photo_id`` 不是同一字段。"""
 
+    direct = optional_string(item, "photoId")
+    if direct is not None:
+        return direct
     raw = item.get("share_info") or item.get("shareInfo")
     if isinstance(raw, dict):
         return optional_string(raw, "photoId", "photo_id")
@@ -105,6 +117,35 @@ def _share_photo_id(item: dict[str, Any]) -> str | None:
         return None
     value = values[0].strip()
     return value or None
+
+
+def _share_url(item: dict[str, Any], share_photo_id: str | None) -> AnyHttpUrl | None:
+    for key in ("share_url", "shareUrl"):
+        parsed = _http_url(item.get(key))
+        if parsed is not None:
+            return parsed
+    raw = item.get("share_info") or item.get("shareInfo")
+    if isinstance(raw, dict):
+        for key in ("share_url", "shareUrl", "url"):
+            parsed = _http_url(raw.get(key))
+            if parsed is not None:
+                return parsed
+    else:
+        parsed = _http_url(raw)
+        if parsed is not None:
+            return parsed
+    if share_photo_id is None:
+        return None
+    return AnyHttpUrl(f"https://www.kuaishou.com/short-video/{share_photo_id}")
+
+
+def _http_url(value: object) -> AnyHttpUrl | None:
+    if not isinstance(value, str) or not value.startswith(("http://", "https://")):
+        return None
+    try:
+        return AnyHttpUrl(value)
+    except ValueError:
+        return None
 
 
 def map_comment(

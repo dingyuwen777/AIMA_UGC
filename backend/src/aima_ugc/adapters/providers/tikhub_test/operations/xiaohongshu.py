@@ -5,6 +5,8 @@ from pathlib import Path
 from uuid import UUID
 
 from .runner import TikHubTestRunResult, run_platform
+from .xiaohongshu_accounts import XiaohongshuAccountTarget
+from .xiaohongshu_accounts import run_xiaohongshu_accounts as _run_xiaohongshu_accounts
 
 
 def run_xiaohongshu(
@@ -55,4 +57,7 @@ def run_xiaohongshu(
     )
 
 
-__all__ = ["run_xiaohongshu"]
+run_xiaohongshu_accounts = _run_xiaohongshu_accounts
+
+
+__all__ = ["XiaohongshuAccountTarget", "run_xiaohongshu", "run_xiaohongshu_accounts"]

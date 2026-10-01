@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
 from aima_ugc.adapters.providers.tikhub.capabilities import TIKHUB_PLATFORM_CAPABILITIES
@@ -33,7 +35,9 @@ from aima_ugc.modules.collection.decision import (
     CollectionDecisionService,
     known_comment_boundary_reached,
 )
+from aima_ugc.modules.collection.providers.transport import ProviderTransportFailure
 from aima_ugc.platform.export import (
+    export_comment_labeling_excel,
     export_unified_data_excel,
     project_canonical_comment,
     project_canonical_content,
@@ -44,6 +48,7 @@ if TYPE_CHECKING:
 
 _DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parent.parent / "output"
 _CAPABILITIES = {item.platform: item for item in TIKHUB_PLATFORM_CAPABILITIES}
+_BEIJING = ZoneInfo("Asia/Shanghai")
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,9 +68,9 @@ class _RunLimits:
     max_search_pages: int
     max_contents: int | None
     max_comments_per_content: int
-    max_comment_pages_per_content: int
+    max_comment_pages_per_content: int | None
     max_replies_per_root: int
-    max_reply_pages_per_root: int
+    max_reply_pages_per_root: int | None
 
     def validate(self) -> None:
         values = {
@@ -77,7 +82,7 @@ class _RunLimits:
         }
         if self.max_contents is not None:
             values["max_contents"] = self.max_contents
-        invalid = [name for name, value in values.items() if value < 1]
+        invalid = [name for name, value in values.items() if isinstance(value, int) and value < 1]
         if invalid:
             raise ValueError(f"TikHub 调试上限必须大于 0: {', '.join(invalid)}")
 
@@ -93,16 +98,19 @@ class _TikHubHttpStatusError(RuntimeError):
         operation: str,
         external_request_id: str | None,
         raw_file: str,
+        retryable: bool = False,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.operation = operation
         self.external_request_id = external_request_id
         self.raw_file = raw_file
+        self.retryable = retryable
 
 
 class _TikHubDebugRunner:
     _continue_after_item_http_error = False
+    comment_mode: Literal["limited", "all"] = "limited"
 
     def __init__(
         self,
@@ -132,6 +140,10 @@ class _TikHubDebugRunner:
         self.force_refresh = force_refresh
         self.write_to_database = write_to_database
         self.provider_config_id = provider_config_id
+        self.account_mode = False
+        self.start_date: date | None = None
+        self.end_date: date | None = None
+        self.account_feed_config: dict[str, object] = {}
         self.capability = _CAPABILITIES[platform]
         self.decision_service = CollectionDecisionService()
         self.store = RunOutputStore.create(
@@ -151,6 +163,14 @@ class _TikHubDebugRunner:
         self._root_comment_count = 0
         self._reply_count = 0
         self._search_stop_reasons: dict[str, str] = {}
+        self._account_results: list[dict[str, object]] = []
+        self._partial_content_ids: set[str] = set()
+        self._comment_page_counts: dict[str, int] = {}
+        self._reply_page_counts: dict[tuple[str, str], int] = {}
+        self._reply_expansion_counts: dict[tuple[str, str], int | None] = {}
+        self._reply_ids_by_root: dict[tuple[str, str], set[str]] = {}
+        self._comment_coverage_failures: list[dict[str, object]] = []
+        self._comment_count_discrepancies: list[dict[str, object]] = []
 
     def run(self) -> TikHubTestRunResult:
         error: Exception | None = None
@@ -198,11 +218,18 @@ class _TikHubDebugRunner:
                 finally:
                     self._database = None
             self.state.save()
-            workbook_path = export_unified_data_excel(
-                self._blocks_with_keywords(),
-                self.store.raw_data_dir / f"{self.platform}_raw_data.xlsx",
-                include_analysis=False,
-            ).output_path
+            records = self._blocks_with_keywords()
+            if self.platform in {"douyin", "kuaishou", "weibo", "bilibili"} and self.account_mode:
+                workbook_path = export_comment_labeling_excel(
+                    records,
+                    self.store.raw_data_dir / f"{self.platform}_comments_for_labeling.xlsx",
+                ).output_path
+            else:
+                workbook_path = export_unified_data_excel(
+                    records,
+                    self.store.raw_data_dir / f"{self.platform}_raw_data.xlsx",
+                    include_analysis=False,
+                ).output_path
             run_summary_path = self.store.write_run_summary(self._run_summary(error))
 
         if error is not None:
@@ -299,7 +326,6 @@ class _TikHubDebugRunner:
         search_content: CanonicalContentV1,
         search_raw_locator: str,
     ) -> None:
-        """按正式决策链处理单条内容，并在允许时把局部 HTTP 失败降级为部分结果。"""
         content_id = search_content.external_content_id
         previous_exists = self.state.has_content(self.platform, content_id)
         previous_count = self.state.previous_comment_count(self.platform, content_id)
@@ -309,6 +335,7 @@ class _TikHubDebugRunner:
             previous_count=previous_count,
             after_detail=False,
         )
+        decision = self._apply_comment_mode(decision)
         content = search_content
         content_raw_locator = search_raw_locator
 
@@ -320,25 +347,43 @@ class _TikHubDebugRunner:
                     detail_call,
                     keyword=keyword,
                 )
-            except _TikHubHttpStatusError as exc:
-                if self._continue_after_item_http_error or (
-                    self.platform == "douyin"
-                    and detail_call.operation == "fetch_one_video_v3"
-                    and exc.status_code == 400
-                ):
+            except (_TikHubHttpStatusError, ProviderTransportFailure) as exc:
+                can_collect_from_account_item = (
+                    self._continue_after_item_http_error or self.platform == "douyin"
+                )
+                if can_collect_from_account_item:
                     self._record_content_http_failure(
                         content_id=content_id,
                         stage="detail",
                         error=exc,
                     )
+                    fallback_comments: list[UnifiedDataExcelCommentV1] = []
+                    fallback_coverage = "unavailable"
+                    fallback_decision = self._apply_comment_mode(decision)
+                    if self.account_mode and fallback_decision.comment_action not in {
+                        "skip",
+                        "defer_until_detail",
+                    }:
+                        fallback_comments, fallback_coverage = self._fetch_comments(
+                            transport,
+                            keyword=keyword,
+                            content=search_content,
+                            action=fallback_decision.comment_action,
+                            target=(
+                                None
+                                if self.account_mode and self.comment_mode == "all"
+                                else fallback_decision.comment_target
+                                or self.limits.max_comments_per_content
+                            ),
+                        )
                     self._blocks.append(
                         UnifiedDataExcelV1(
                             content=project_canonical_content(
                                 search_content,
-                                coverage="unavailable",
+                                coverage=fallback_coverage,
                                 raw_locator=search_raw_locator,
                             ),
-                            comments=(),
+                            comments=tuple(fallback_comments),
                         )
                     )
                     return
@@ -346,6 +391,13 @@ class _TikHubDebugRunner:
             detail_items = tikhub_runtime.extract_detail_items(self.platform, detail_body)
             mapped_details: list[tuple[CanonicalContentV1, str]] = []
             for index, detail_item in enumerate(detail_items):
+                if self.platform == "kuaishou":
+                    native_id = detail_item.get("photo_id", detail_item.get("photoId"))
+                    expected_native = search_content.alternate_ids.get(
+                        "provider_photo_id", content_id
+                    )
+                    if str(native_id) != expected_native:
+                        continue
                 item_locator = f"detail.items[{index}]"
                 candidate_id = self._discover_candidate(
                     raw_record=detail_raw,
@@ -364,6 +416,7 @@ class _TikHubDebugRunner:
                             source_type="content",
                             source_value=content_id,
                             observed_at=detail_raw.observed_at,
+                            external_content_id=content_id if self.platform == "kuaishou" else None,
                         ),
                         item_locator=item_locator,
                     )
@@ -374,6 +427,23 @@ class _TikHubDebugRunner:
                         error=exc,
                     )
                     raise
+                if mapped.external_content_id != content_id:
+                    # Detail 可能包含其他作品；这些数据不能进入当前作品的输出或写入链。
+                    continue
+                if self.account_mode or self._strict_full_comment_mode():
+                    expected_author = search_content.author
+                    actual_author = mapped.author
+                    if (
+                        expected_author is None
+                        or actual_author is None
+                        or not expected_author.external_account_id
+                        or actual_author.external_account_id != expected_author.external_account_id
+                    ):
+                        error = ValueError("账号作品 Detail 作者身份不一致或缺失")
+                        self._record_candidate_failure(
+                            candidate_id=candidate_id, raw_record=detail_raw, error=error
+                        )
+                        raise error
                 self.store.append_canonical("contents", mapped)
                 self._ingest_content(mapped, candidate_id=candidate_id)
                 mapped_details.append(
@@ -397,6 +467,7 @@ class _TikHubDebugRunner:
                 previous_count=previous_count,
                 after_detail=True,
             )
+            decision = self._apply_comment_mode(decision)
 
         comments: list[UnifiedDataExcelCommentV1] = []
         coverage = self._coverage_for_skipped_comments(
@@ -408,7 +479,11 @@ class _TikHubDebugRunner:
                 keyword=keyword,
                 content=content,
                 action=decision.comment_action,
-                target=decision.comment_target or self.limits.max_comments_per_content,
+                target=(
+                    None
+                    if self.account_mode and self.comment_mode == "all"
+                    else decision.comment_target or self.limits.max_comments_per_content
+                ),
             )
 
         self.state.remember_content(
@@ -438,7 +513,7 @@ class _TikHubDebugRunner:
         current_count = content.metrics.comment_count
         previous = PreviousContentStateV1(comment_count=previous_count) if previous_exists else None
         context = CollectionDecisionContextV1(
-            scheduled_refresh_checkpoint=self.force_refresh and not after_detail,
+            scheduled_refresh_checkpoint=(self._full_refresh_requested() and not after_detail),
         )
         if after_detail and previous is None:
             # Detail 已执行后，以“已有但评论计数未知”的最小快照进入第二次纯决策，
@@ -461,14 +536,150 @@ class _TikHubDebugRunner:
             )
         )
 
+    def _apply_comment_mode(self, decision: CollectionDecisionV1) -> CollectionDecisionV1:
+        if not self.account_mode or self.comment_mode != "all":
+            return decision
+        if decision.comment_action == "skip":
+            if (
+                self._strict_kuaishou_comment_mode()
+                and self.include_comments
+                and decision.comment_reason == "provider_reported_zero"
+            ):
+                # 快手全量账号模式会对每条范围内作品同时探测 App/Web；不因作品
+                # 列表或详情中的瞬时 0 计数跳过真实评论分页。
+                return decision.model_copy(
+                    update={
+                        "comment_action": "fetch_adaptive",
+                        "comment_target": None,
+                        "reply_target_per_root": None,
+                    }
+                )
+            # 保留 Provider 明确零值与不可用语义，避免强制请求造成虚假失败。
+            return decision
+        if not self.include_comments:
+            return decision.model_copy(
+                update={
+                    "comment_action": "skip",
+                    "comment_reason": "comments_disabled",
+                    "comment_target": None,
+                    "reply_target_per_root": None,
+                }
+            )
+        return decision.model_copy(
+            update={
+                "comment_action": "fetch_adaptive",
+                "comment_target": None,
+                "reply_target_per_root": None,
+            }
+        )
+
     def _policy(self) -> CollectionDecisionPolicyV1:
         return CollectionDecisionPolicyV1(
             comments_enabled=self.include_comments,
             full_fetch_threshold=self.limits.max_comments_per_content,
             sample_target=self.limits.max_comments_per_content,
             reply_target_per_root=self.limits.max_replies_per_root,
-            comment_refresh_when_count_unchanged=self.force_refresh,
+            comment_refresh_when_count_unchanged=self._full_refresh_requested(),
         )
+
+    def _full_refresh_requested(self) -> bool:
+        # “全部评论”描述的是本次导出，而不是历史增量。即使 state.json 已有
+        # 相同作品和评论计数，也必须重新抓详情、一级评论和全部二级回复；否则
+        # 新一轮 Excel 只会得到内容块和表头，无法包含历史运行中的评论。
+        return self.force_refresh or self._strict_full_comment_mode()
+
+    def _strict_full_comment_mode(self) -> bool:
+        return self.account_mode and self.comment_mode == "all"
+
+    def _strict_douyin_comment_mode(self) -> bool:
+        return self.platform == "douyin" and self.account_mode and self.comment_mode == "all"
+
+    def _strict_kuaishou_comment_mode(self) -> bool:
+        return self.platform == "kuaishou" and self.account_mode and self.comment_mode == "all"
+
+    def _strict_weibo_comment_mode(self) -> bool:
+        return self.platform == "weibo" and self.account_mode and self.comment_mode == "all"
+
+    def _strict_bilibili_comment_mode(self) -> bool:
+        return self.platform == "bilibili" and self.account_mode and self.comment_mode == "all"
+
+    def _map_root_comment_items(
+        self,
+        *,
+        content_id: str,
+        call: tikhub_runtime.TikHubOperationCall,
+        raw_record: RawOutputRecord,
+        items: tuple[dict[str, Any], ...],
+        page_no: int,
+        locator_group: str,
+    ) -> tuple[
+        list[UnifiedDataExcelCommentV1],
+        list[CanonicalCommentV1],
+        list[str],
+    ]:
+        rows: list[UnifiedDataExcelCommentV1] = []
+        roots: list[CanonicalCommentV1] = []
+        page_comment_ids: list[str] = []
+        for item_index, raw_item in enumerate(items):
+            item_locator = f"{locator_group}.page[{page_no}].items[{item_index}]"
+            candidate_id = self._discover_candidate(
+                raw_record=raw_record,
+                item_kind="comment",
+                item_locator=item_locator,
+            )
+            try:
+                comment = tikhub_runtime.map_comment(
+                    platform=self.platform,
+                    raw=raw_item,
+                    context=tikhub_runtime.mapping_context(
+                        provider_request_id=raw_record.request_id,
+                        provider_attempt_id=raw_record.attempt_id,
+                        raw_artifact_id=raw_record.artifact_id,
+                        operation=call.operation,
+                        source_type="content",
+                        source_value=content_id,
+                        observed_at=raw_record.observed_at,
+                        external_content_id=content_id,
+                    ),
+                    item_locator=item_locator,
+                    is_root=True,
+                )
+            except Exception as exc:
+                self._record_candidate_failure(
+                    candidate_id=candidate_id,
+                    raw_record=raw_record,
+                    error=exc,
+                )
+                if self.account_mode and isinstance(exc, (ValueError, TypeError, KeyError)):
+                    self._record_account_row_failure(
+                        content_id=content_id,
+                        raw_record=raw_record,
+                        item_locator=item_locator,
+                        error=exc,
+                    )
+                    continue
+                raise
+            page_comment_ids.append(comment.external_comment_id)
+            key = (content_id, comment.external_comment_id)
+            is_new = key not in self._seen_comments
+            if is_new:
+                self._seen_comments.add(key)
+                self.store.append_canonical("comments", comment)
+            self._ingest_comment(comment, candidate_id=candidate_id)
+            if not is_new:
+                if self._strict_kuaishou_comment_mode():
+                    roots.append(comment)
+                continue
+            self.state.remember_comment(
+                self.platform,
+                content_id,
+                comment.external_comment_id,
+            )
+            locator = f"{self.store.relative_path(raw_record.path)}#{item_locator}"
+            rows.append(project_canonical_comment(comment, level="一级", raw_locator=locator))
+            roots.append(comment)
+            self._root_comment_count += 1
+        return rows, roots, page_comment_ids
 
     def _fetch_comments(
         self,
@@ -479,18 +690,36 @@ class _TikHubDebugRunner:
         action: str,
         target: int | None,
     ) -> tuple[list[UnifiedDataExcelCommentV1], str]:
-        """分页采集一级评论，保留成功页并显式返回完整或部分覆盖状态。"""
         content_id = content.external_content_id
         pagination: dict[str, object] | None = None
         mapped_rows: list[UnifiedDataExcelCommentV1] = []
         root_total = 0
+        reply_total = 0
+        reported_comment_count: int | None = None
+        reported_comment_count_l1: int | None = None
+        reported_comment_count_requires_fix = False
         provider_exhausted = False
+        attempted_cursors: set[int] = {0}
+        progressless_pages = 0
         known_comment_ids = (
             self.state.known_comment_ids(self.platform, content_id)
             if action == "fetch_incremental"
             else frozenset()
         )
-        for page_no in range(1, self.limits.max_comment_pages_per_content + 1):
+        page_no = 0
+        while (
+            self.limits.max_comment_pages_per_content is None
+            or self._comment_page_counts.get(content.external_content_id, 0)
+            < self.limits.max_comment_pages_per_content
+        ):
+            page_no += 1
+            self._comment_page_counts[content.external_content_id] = (
+                self._comment_page_counts.get(content.external_content_id, 0) + 1
+            )
+            if pagination is not None:
+                current_cursor = pagination.get("cursor")
+                if isinstance(current_cursor, int) and not isinstance(current_cursor, bool):
+                    attempted_cursors.add(current_cursor)
             call = tikhub_runtime.build_comments_call(
                 platform=self.platform,
                 external_content_id=content_id,
@@ -499,94 +728,110 @@ class _TikHubDebugRunner:
             )
             try:
                 body, raw_record = self._send(transport, call, keyword=keyword)
-            except _TikHubHttpStatusError as exc:
-                if not self._continue_after_item_http_error:
-                    raise
-                self._record_content_http_failure(
-                    content_id=content_id,
-                    stage="comments",
-                    error=exc,
-                )
-                expected = (
-                    str(content.metrics.comment_count)
-                    if content.metrics.comment_count is not None
-                    else "unknown"
-                )
-                return mapped_rows, f"partial {root_total}/{expected} (http_{exc.status_code})"
-            items = tikhub_runtime.extract_comment_items(self.platform, body)
-            mapped_roots: list[CanonicalCommentV1] = []
-            page_comment_ids: list[str] = []
-            for item_index, raw_item in enumerate(items):
-                item_locator = f"comments.page[{page_no}].items[{item_index}]"
-                candidate_id = self._discover_candidate(
-                    raw_record=raw_record,
-                    item_kind="comment",
-                    item_locator=item_locator,
-                )
-                try:
-                    comment = tikhub_runtime.map_comment(
-                        platform=self.platform,
-                        raw=raw_item,
-                        context=tikhub_runtime.mapping_context(
-                            provider_request_id=raw_record.request_id,
-                            provider_attempt_id=raw_record.attempt_id,
-                            raw_artifact_id=raw_record.artifact_id,
-                            operation=call.operation,
-                            source_type="content",
-                            source_value=content_id,
-                            observed_at=raw_record.observed_at,
-                            external_content_id=content_id,
-                        ),
-                        item_locator=item_locator,
-                        is_root=True,
-                    )
-                except Exception as exc:
-                    self._record_candidate_failure(
-                        candidate_id=candidate_id,
-                        raw_record=raw_record,
+            except (_TikHubHttpStatusError, ProviderTransportFailure) as exc:
+                if self._continue_after_item_http_error:
+                    self._record_content_http_failure(
+                        content_id=content_id,
+                        stage="comments",
                         error=exc,
                     )
+                    expected = (
+                        str(content.metrics.comment_count)
+                        if content.metrics.comment_count is not None
+                        else "unknown"
+                    )
+                    failure_code = (
+                        f"http_{exc.status_code}"
+                        if isinstance(exc, _TikHubHttpStatusError)
+                        else exc.code
+                    )
+                    return mapped_rows, f"partial {root_total}/{expected} ({failure_code})"
+                if not self._strict_full_comment_mode():
                     raise
-                page_comment_ids.append(comment.external_comment_id)
-                key = (content_id, comment.external_comment_id)
-                is_new = key not in self._seen_comments
-                if is_new:
-                    self._seen_comments.add(key)
-                    self.store.append_canonical("comments", comment)
-                self._ingest_comment(comment, candidate_id=candidate_id)
-                if not is_new:
-                    continue
-                self.state.remember_comment(
-                    self.platform,
-                    content_id,
-                    comment.external_comment_id,
+                # 严格全量模式会继续使用 Web 接口补采；同时保留此前已映射的
+                # App 评论，不能因为后续某一页失败而丢掉整个作品的数据。
+                provider_exhausted = False
+                break
+            items = tikhub_runtime.extract_comment_items(self.platform, body)
+            page_comment_count, page_comment_count_l1 = tikhub_runtime.extract_comment_counts(
+                self.platform,
+                body,
+            )
+            if _douyin_comment_total_requires_fix(body):
+                reported_comment_count_requires_fix = True
+            if items:
+                reported_comment_count = _maximum_known_count(
+                    reported_comment_count,
+                    page_comment_count,
                 )
-                locator = f"{self.store.relative_path(raw_record.path)}#{item_locator}"
-                mapped_rows.append(
-                    project_canonical_comment(comment, level="一级", raw_locator=locator)
+                reported_comment_count_l1 = _maximum_known_count(
+                    reported_comment_count_l1,
+                    page_comment_count_l1,
                 )
-                mapped_roots.append(comment)
-                root_total += 1
-                self._root_comment_count += 1
+            page_rows, mapped_roots, page_comment_ids = self._map_root_comment_items(
+                content_id=content_id,
+                call=call,
+                raw_record=raw_record,
+                items=items,
+                page_no=page_no,
+                locator_group=("comments.app_v3" if self.platform == "douyin" else "comments.app"),
+            )
+            mapped_rows.extend(page_rows)
+            root_total += len(page_rows)
+            if page_rows:
+                progressless_pages = 0
+            else:
+                progressless_pages += 1
 
             if self.include_replies:
                 for root in mapped_roots:
-                    mapped_rows.extend(
-                        self._fetch_replies(
-                            transport,
-                            keyword=keyword,
-                            content=content,
-                            root=root,
-                        )
+                    reply_rows = self._fetch_replies(
+                        transport,
+                        keyword=keyword,
+                        content=content,
+                        root=root,
                     )
+                    mapped_rows.extend(reply_rows)
+                    reply_total += len(reply_rows)
 
             advance = tikhub_runtime.advance_comments(
                 platform=self.platform,
                 state=pagination,
                 body=body,
             )
+            expected_comment_count = _maximum_known_count(
+                content.metrics.comment_count,
+                reported_comment_count,
+            )
             if not advance.should_continue:
-                provider_exhausted = True
+                stalled = self._strict_douyin_comment_mode() and progressless_pages >= 2
+                resume_state = None
+                if (
+                    self.platform == "douyin"
+                    and not self._strict_full_comment_mode()
+                    and not stalled
+                ):
+                    resume_state = _resume_douyin_comment_state(
+                        advance,
+                        observed_count=root_total + reply_total,
+                        expected_count=(
+                            expected_comment_count
+                            if self._strict_douyin_comment_mode()
+                            else reported_comment_count or content.metrics.comment_count
+                        ),
+                        attempted_cursors=attempted_cursors,
+                    )
+                if resume_state is not None:
+                    pagination = resume_state
+                    provider_exhausted = False
+                    continue
+                provider_exhausted = not stalled and (
+                    not self._strict_full_comment_mode()
+                    or advance.stop_reason in {"provider_exhausted", "empty_page"}
+                )
+                break
+            if self._strict_douyin_comment_mode() and progressless_pages >= 2:
+                provider_exhausted = False
                 break
             if action == "fetch_incremental" and known_comment_boundary_reached(
                 page_comment_ids, known_comment_ids
@@ -601,14 +846,275 @@ class _TikHubDebugRunner:
                 break
             pagination = cast(dict[str, object], advance.next_state)
 
-        observed = root_total
-        provider_count = content.metrics.comment_count
+        if self._strict_kuaishou_comment_mode():
+            (
+                web_rows,
+                web_root_total,
+                web_reply_total,
+                web_reported_comment_count,
+                web_exhausted,
+            ) = self._fetch_kuaishou_web_comments(
+                transport,
+                keyword=keyword,
+                content=content,
+            )
+            mapped_rows.extend(web_rows)
+            root_total += web_root_total
+            reply_total += web_reply_total
+            reported_comment_count = _maximum_known_count(
+                reported_comment_count,
+                web_reported_comment_count,
+            )
+            expected_comment_count = _maximum_known_count(
+                content.metrics.comment_count,
+                reported_comment_count,
+            )
+            sources_exhausted = provider_exhausted and web_exhausted
+            observed_comment_count = root_total + reply_total
+            comments_complete = sources_exhausted and (
+                expected_comment_count is None or observed_comment_count >= expected_comment_count
+            )
+            if not comments_complete:
+                self._partial_content_ids.add(content_id)
+                self._comment_coverage_failures.append(
+                    {
+                        "content_id": content_id,
+                        "kind": "comments",
+                        "expected": expected_comment_count,
+                        "collected": observed_comment_count,
+                        "root_collected": root_total,
+                        "reply_collected": reply_total,
+                        "sources": ["app", "web"],
+                        "app_exhausted": provider_exhausted,
+                        "web_exhausted": web_exhausted,
+                    }
+                )
+            status = "complete" if content_id not in self._partial_content_ids else "partial"
+            expected_text = (
+                str(expected_comment_count) if expected_comment_count is not None else "unknown"
+            )
+            return (
+                mapped_rows,
+                f"{status} {observed_comment_count}/{expected_text} "
+                f"(一级 {root_total}，二级 {reply_total}，App/Web 已合并)",
+            )
+
+        if self._strict_douyin_comment_mode():
+            expected_comment_count = _maximum_known_count(
+                content.metrics.comment_count,
+                reported_comment_count,
+            )
+            observed_comment_count = root_total + reply_total
+            comments_complete = provider_exhausted and (
+                expected_comment_count is None or observed_comment_count >= expected_comment_count
+            )
+            provider_count_discrepancy = (
+                not comments_complete
+                and provider_exhausted
+                and expected_comment_count is not None
+                and reported_comment_count_requires_fix
+            )
+            if provider_count_discrepancy:
+                # 抖音 App 会用 need_fix_total=true 明确标记 total 不可靠。
+                # App、Web 与重叠窗口都已耗尽且每个根评论的回复数均已对齐时，
+                # 少于该陈旧 total 的差额不应被误报为采集器失败。
+                self._comment_count_discrepancies.append(
+                    {
+                        "content_id": content_id,
+                        "reported_total": expected_comment_count,
+                        "accessible_collected": observed_comment_count,
+                        "root_collected": root_total,
+                        "reply_collected": reply_total,
+                        "reason": "provider_total_marked_need_fix",
+                        "sources_exhausted": ["app_v3", "web", "web_overlap"],
+                    }
+                )
+                comments_complete = True
+            if not comments_complete:
+                self._partial_content_ids.add(content_id)
+                self._comment_coverage_failures.append(
+                    {
+                        "content_id": content_id,
+                        "kind": "comments",
+                        "expected": expected_comment_count,
+                        "collected": observed_comment_count,
+                        "root_collected": root_total,
+                        "reply_collected": reply_total,
+                        "sources": ["app_v3", "web"],
+                    }
+                )
+            status = "complete" if content_id not in self._partial_content_ids else "partial"
+            expected_text = (
+                str(expected_comment_count) if expected_comment_count is not None else "unknown"
+            )
+            return (
+                mapped_rows,
+                f"{status} {observed_comment_count}/{expected_text} "
+                f"(一级 {root_total}，二级 {reply_total}"
+                f"{'，Provider 总数标记需修正' if provider_count_discrepancy else ''})",
+            )
+
+        if self._strict_bilibili_comment_mode():
+            observed_comment_count = root_total + reply_total
+            expected_comment_count = _maximum_known_count(
+                content.metrics.comment_count,
+                reported_comment_count,
+            )
+            comments_complete = provider_exhausted and (
+                expected_comment_count is None or observed_comment_count >= expected_comment_count
+            )
+            if not comments_complete and provider_exhausted and expected_comment_count is not None:
+                # B站详情的 stat.reply 会包含删除、审核或权限不可见的评论；当
+                # 当前评论接口明确 is_end=true 时，已无合法游标可继续请求。保留
+                # 差额审计，但将“接口可访问的全部评论”视为完整采集。
+                self._comment_count_discrepancies.append(
+                    {
+                        "content_id": content_id,
+                        "reported_total": expected_comment_count,
+                        "accessible_collected": observed_comment_count,
+                        "root_collected": root_total,
+                        "reply_collected": reply_total,
+                        "reason": "provider_reported_total_exceeds_accessible_completed_pagination",
+                        "sources_exhausted": ["app"],
+                    }
+                )
+                comments_complete = True
+            if not comments_complete:
+                self._partial_content_ids.add(content_id)
+                self._comment_coverage_failures.append(
+                    {
+                        "content_id": content_id,
+                        "kind": "comments",
+                        "expected": expected_comment_count,
+                        "collected": observed_comment_count,
+                        "root_collected": root_total,
+                        "reply_collected": reply_total,
+                        "sources": ["app"],
+                        "app_exhausted": provider_exhausted,
+                    }
+                )
+            status = "complete" if comments_complete else "partial"
+            expected_text = (
+                str(expected_comment_count) if expected_comment_count is not None else "unknown"
+            )
+            return (
+                mapped_rows,
+                f"{status} {observed_comment_count}/{expected_text} "
+                f"(一级 {root_total}，二级 {reply_total}，App 已分页结束)",
+            )
+
+        observed = root_total + reply_total
+        provider_count = (
+            reported_comment_count
+            if reported_comment_count is not None
+            else content.metrics.comment_count
+        )
+        provider_root_count = reported_comment_count_l1
         if provider_exhausted and provider_count is not None and observed >= provider_count:
-            return mapped_rows, f"complete {observed}/{provider_count}"
+            root_coverage = (
+                f"一级 {root_total}/{provider_root_count}"
+                if provider_root_count is not None
+                else f"一级 {root_total}/unknown"
+            )
+            return mapped_rows, f"complete {observed}/{provider_count} ({root_coverage})"
         if provider_exhausted and provider_count is None:
-            return mapped_rows, f"complete {observed}/unknown"
+            root_coverage = (
+                f"一级 {root_total}/{provider_root_count}"
+                if provider_root_count is not None
+                else f"一级 {root_total}/unknown"
+            )
+            return mapped_rows, f"complete {observed}/unknown ({root_coverage})"
         expected = str(provider_count) if provider_count is not None else "unknown"
-        return mapped_rows, f"partial {observed}/{expected}"
+        root_expected = str(provider_root_count) if provider_root_count is not None else "unknown"
+        return mapped_rows, f"partial {observed}/{expected} (一级 {root_total}/{root_expected})"
+
+    def _fetch_kuaishou_web_comments(
+        self,
+        transport: TikHubHttpTransport,
+        *,
+        keyword: str,
+        content: CanonicalContentV1,
+    ) -> tuple[list[UnifiedDataExcelCommentV1], int, int, int | None, bool]:
+        """遍历快手 Web 一级评论，并与 App 结果按稳定评论 ID 合并。"""
+
+        pagination: dict[str, object] | None = None
+        mapped_rows: list[UnifiedDataExcelCommentV1] = []
+        root_total = 0
+        reply_total = 0
+        reported_comment_count: int | None = None
+        provider_exhausted = False
+        page_no = 0
+        while (
+            self.limits.max_comment_pages_per_content is None
+            or self._comment_page_counts.get(content.external_content_id, 0)
+            < self.limits.max_comment_pages_per_content
+        ):
+            page_no += 1
+            self._comment_page_counts[content.external_content_id] = (
+                self._comment_page_counts.get(content.external_content_id, 0) + 1
+            )
+            call = tikhub_runtime.build_kuaishou_web_comments_call(
+                external_content_id=content.external_content_id,
+                alternate_ids=content.alternate_ids,
+                state=pagination,
+            )
+            try:
+                body, raw_record = self._send(transport, call, keyword=keyword)
+            except (_TikHubHttpStatusError, ProviderTransportFailure) as exc:
+                self._record_content_http_failure(
+                    content_id=content.external_content_id, stage="comments", error=exc
+                )
+                return mapped_rows, root_total, reply_total, reported_comment_count, False
+            items = tikhub_runtime.extract_comment_items("kuaishou", body)
+            page_reported_count, _ = tikhub_runtime.extract_comment_counts(
+                "kuaishou",
+                body,
+            )
+            if items:
+                reported_comment_count = _maximum_known_count(
+                    reported_comment_count,
+                    page_reported_count,
+                )
+            page_rows, mapped_roots, _ = self._map_root_comment_items(
+                content_id=content.external_content_id,
+                call=call,
+                raw_record=raw_record,
+                items=items,
+                page_no=page_no,
+                locator_group="comments.web",
+            )
+            mapped_rows.extend(page_rows)
+            root_total += len(page_rows)
+            if self.include_replies:
+                for root in mapped_roots:
+                    reply_rows = self._fetch_replies(
+                        transport,
+                        keyword=keyword,
+                        content=content,
+                        root=root,
+                    )
+                    mapped_rows.extend(reply_rows)
+                    reply_total += len(reply_rows)
+
+            advance = tikhub_runtime.advance_comments(
+                platform="kuaishou",
+                state=pagination,
+                body=body,
+            )
+            if not advance.should_continue:
+                provider_exhausted = (
+                    not self._strict_full_comment_mode()
+                    or advance.stop_reason in {"provider_exhausted", "empty_page"}
+                )
+                break
+            pagination = cast(dict[str, object], advance.next_state)
+        return (
+            mapped_rows,
+            root_total,
+            reply_total,
+            reported_comment_count,
+            provider_exhausted,
+        )
 
     def _fetch_replies(
         self,
@@ -619,42 +1125,178 @@ class _TikHubDebugRunner:
         root: CanonicalCommentV1,
         fetch_all: bool = False,
     ) -> list[UnifiedDataExcelCommentV1]:
-        """分页采集单条一级评论的回复，并在容错模式下保留已成功回复。"""
-        reply_decision = self.decision_service.decide_reply(
-            ReplyDecisionRequestV1(
-                reply_count=root.metrics.reply_count,
-                policy=self._policy(),
-                capability=self.capability,
+        strict_douyin = self._strict_douyin_comment_mode()
+        strict_kuaishou = self._strict_kuaishou_comment_mode()
+        strict_full = self._strict_full_comment_mode()
+        page_key = (content.external_content_id, root.external_comment_id)
+        if strict_kuaishou and page_key in self._reply_expansion_counts:
+            previous_count = self._reply_expansion_counts[page_key]
+            incoming_count = root.metrics.reply_count
+            if incoming_count is None and (previous_count is None or previous_count > 0):
+                return []
+            if (
+                incoming_count is not None
+                and previous_count is not None
+                and incoming_count <= previous_count
+            ):
+                return []
+        if strict_kuaishou:
+            self._reply_expansion_counts[page_key] = root.metrics.reply_count
+        full_fetch_requested = strict_full or fetch_all
+        if full_fetch_requested:
+            if not self.include_replies or not self.capability.operation("sub_comments"):
+                return []
+            if root.metrics.reply_count == 0:
+                return []
+            target: int | None = None
+        else:
+            reply_decision = self.decision_service.decide_reply(
+                ReplyDecisionRequestV1(
+                    reply_count=root.metrics.reply_count,
+                    policy=self._policy(),
+                    capability=self.capability,
+                )
             )
+            if reply_decision.action == "skip":
+                return []
+            target = reply_decision.target or self.limits.max_replies_per_root
+
+        app_rows, app_count, app_reported, app_exhausted = self._fetch_reply_pages(
+            transport,
+            keyword=keyword,
+            content=content,
+            root=root,
+            target=target,
+            use_web=False,
+            already_collected=0,
         )
-        if reply_decision.action == "skip":
-            return []
-        target = None if fetch_all else (reply_decision.target or self.limits.max_replies_per_root)
+        mapped_rows = list(app_rows)
+        mapped_count = app_count
+        expected_replies = _maximum_known_count(root.metrics.reply_count, app_reported)
+        provider_exhausted = app_exhausted
+
+        should_fetch_web = strict_kuaishou
+        if should_fetch_web:
+            web_rows, web_count, web_reported, web_exhausted = self._fetch_reply_pages(
+                transport,
+                keyword=keyword,
+                content=content,
+                root=root,
+                target=None,
+                use_web=True,
+                already_collected=mapped_count,
+            )
+            mapped_rows.extend(web_rows)
+            mapped_count += web_count
+            expected_replies = _maximum_known_count(expected_replies, web_reported)
+            provider_exhausted = app_exhausted and web_exhausted
+
+        observed_count = len(self._reply_ids_by_root.get(page_key, set()))
+        if strict_kuaishou:
+            self._reply_expansion_counts[page_key] = (
+                max(expected_replies or 0, observed_count)
+                if expected_replies is not None or observed_count
+                else None
+            )
+        replies_complete = provider_exhausted and (
+            expected_replies is None or observed_count >= expected_replies
+        )
+        if strict_full and not replies_complete:
+            self._partial_content_ids.add(content.external_content_id)
+            self._comment_coverage_failures.append(
+                {
+                    "content_id": content.external_content_id,
+                    "kind": "replies",
+                    "root_comment_id": root.external_comment_id,
+                    "expected": expected_replies,
+                    "collected": observed_count,
+                    "sources": (
+                        ["app_v3"]
+                        if strict_douyin
+                        else ["app", "web"]
+                        if strict_kuaishou
+                        else ["app"]
+                    ),
+                    "app_exhausted": app_exhausted,
+                    "web_exhausted": (web_exhausted if should_fetch_web else None),
+                }
+            )
+        return mapped_rows
+
+    def _fetch_reply_pages(
+        self,
+        transport: TikHubHttpTransport,
+        *,
+        keyword: str,
+        content: CanonicalContentV1,
+        root: CanonicalCommentV1,
+        target: int | None,
+        use_web: bool,
+        already_collected: int,
+    ) -> tuple[list[UnifiedDataExcelCommentV1], int, int | None, bool]:
         pagination: dict[str, object] | None = None
         mapped_rows: list[UnifiedDataExcelCommentV1] = []
         mapped_count = 0
-        for page_no in range(1, self.limits.max_reply_pages_per_root + 1):
-            call = tikhub_runtime.build_sub_comments_call(
-                platform=self.platform,
-                external_content_id=content.external_content_id,
-                alternate_ids=content.alternate_ids,
-                root_comment_id=root.external_comment_id,
-                state=pagination,
+        reported_count: int | None = None
+        provider_exhausted = False
+        attempted_cursors: set[int] = {0}
+        progressless_pages = 0
+        page_no = 0
+        while (
+            self.limits.max_reply_pages_per_root is None
+            or self._reply_page_counts.get(
+                (content.external_content_id, root.external_comment_id), 0
             )
+            < self.limits.max_reply_pages_per_root
+        ):
+            page_no += 1
+            page_key = (content.external_content_id, root.external_comment_id)
+            self._reply_page_counts[page_key] = self._reply_page_counts.get(page_key, 0) + 1
+            if pagination is not None:
+                current_cursor = pagination.get("cursor")
+                if isinstance(current_cursor, int) and not isinstance(current_cursor, bool):
+                    attempted_cursors.add(current_cursor)
+            if use_web:
+                call = tikhub_runtime.build_kuaishou_web_sub_comments_call(
+                    external_content_id=content.external_content_id,
+                    root_comment_id=root.external_comment_id,
+                    alternate_ids=content.alternate_ids,
+                    state=pagination,
+                )
+                locator_group = "replies.web"
+            else:
+                call = tikhub_runtime.build_sub_comments_call(
+                    platform=self.platform,
+                    external_content_id=content.external_content_id,
+                    root_comment_id=root.external_comment_id,
+                    alternate_ids=content.alternate_ids,
+                    state=pagination,
+                )
+                locator_group = "replies.app_v3" if self.platform == "douyin" else "replies.app"
             try:
                 body, raw_record = self._send(transport, call, keyword=keyword)
-            except _TikHubHttpStatusError as exc:
-                if not self._continue_after_item_http_error:
+            except (_TikHubHttpStatusError, ProviderTransportFailure) as exc:
+                if self._continue_after_item_http_error:
+                    self._record_content_http_failure(
+                        content_id=content.external_content_id,
+                        stage="replies",
+                        error=exc,
+                    )
+                    return mapped_rows, mapped_count, reported_count, False
+                if not self._strict_full_comment_mode():
                     raise
-                self._record_content_http_failure(
-                    content_id=content.external_content_id,
-                    stage="replies",
-                    error=exc,
-                )
-                return mapped_rows
+                # 保留此前已采回复；快手显式双源由调用方分别执行。
+                return mapped_rows, mapped_count, reported_count, False
             items = tikhub_runtime.extract_sub_comment_items(self.platform, body)
+            if self.platform in {"douyin", "kuaishou"} and items:
+                page_reported_count, _ = tikhub_runtime.extract_comment_counts(
+                    self.platform,
+                    body,
+                )
+                reported_count = _maximum_known_count(reported_count, page_reported_count)
+            page_new_count = 0
             for item_index, raw_item in enumerate(items):
-                item_locator = f"replies.page[{page_no}].items[{item_index}]"
+                item_locator = f"{locator_group}.page[{page_no}].items[{item_index}]"
                 candidate_id = self._discover_candidate(
                     raw_record=raw_record,
                     item_kind="comment",
@@ -684,7 +1326,18 @@ class _TikHubDebugRunner:
                         raw_record=raw_record,
                         error=exc,
                     )
+                    if self.account_mode and isinstance(exc, (ValueError, TypeError, KeyError)):
+                        self._record_account_row_failure(
+                            content_id=content.external_content_id,
+                            raw_record=raw_record,
+                            item_locator=item_locator,
+                            error=exc,
+                        )
+                        continue
                     raise
+                self._reply_ids_by_root.setdefault(
+                    (content.external_content_id, root.external_comment_id), set()
+                ).add(comment.external_comment_id)
                 key = (content.external_content_id, comment.external_comment_id)
                 is_new = key not in self._seen_comments
                 if is_new:
@@ -703,17 +1356,52 @@ class _TikHubDebugRunner:
                     project_canonical_comment(comment, level="二级", raw_locator=locator)
                 )
                 mapped_count += 1
+                page_new_count += 1
                 self._reply_count += 1
+            if page_new_count:
+                progressless_pages = 0
+            else:
+                progressless_pages += 1
 
             advance = tikhub_runtime.advance_sub_comments(
                 platform=self.platform,
                 state=pagination,
                 body=body,
             )
-            if not advance.should_continue or (target is not None and mapped_count >= target):
+            if not advance.should_continue:
+                resume_state = None
+                stalled = self.platform == "douyin" and progressless_pages >= 2
+                if (
+                    self.platform == "douyin"
+                    and not self._strict_full_comment_mode()
+                    and not use_web
+                    and not stalled
+                ):
+                    resume_state = _resume_douyin_comment_state(
+                        advance,
+                        observed_count=already_collected + mapped_count,
+                        expected_count=_maximum_known_count(
+                            root.metrics.reply_count,
+                            reported_count,
+                        ),
+                        attempted_cursors=attempted_cursors,
+                    )
+                if resume_state is not None:
+                    pagination = resume_state
+                    provider_exhausted = False
+                    continue
+                provider_exhausted = not stalled and (
+                    not self._strict_full_comment_mode()
+                    or advance.stop_reason in {"provider_exhausted", "empty_page"}
+                )
+                break
+            if self.platform == "douyin" and progressless_pages >= 2:
+                provider_exhausted = False
+                break
+            if target is not None and mapped_count >= target:
                 break
             pagination = cast(dict[str, object], advance.next_state)
-        return mapped_rows
+        return mapped_rows, mapped_count, reported_count, provider_exhausted
 
     def _send(
         self,
@@ -722,10 +1410,24 @@ class _TikHubDebugRunner:
         *,
         keyword: str,
     ) -> tuple[dict[str, Any], RawOutputRecord]:
-        """发送单次 Provider 请求、先落 Raw，再按调用方策略分类 HTTP 错误。"""
         self._request_no += 1
         if self._database is None:
-            response = transport.send(call.transport_request(self.provider_config.api_key))
+            try:
+                response = transport.send(call.transport_request(self.provider_config.api_key))
+            except ProviderTransportFailure as exc:
+                self._requests.append(
+                    {
+                        "request_no": self._request_no,
+                        "business_operation": call.business_operation,
+                        "operation": call.operation,
+                        "method": call.method,
+                        "path": call.path,
+                        "delivery": exc.delivery,
+                        "error_code": exc.code,
+                        "billing_status": exc.billing.status,
+                    }
+                )
+                raise
             raw_record = self.store.save_raw(
                 operation=call.operation,
                 body=response.body,
@@ -788,22 +1490,13 @@ class _TikHubDebugRunner:
         status_code = response.status_code
         if status_code is not None and status_code >= 400:
             message = f"TikHub {self.platform} {call.operation} 返回 HTTP {status_code}"
-            if (
-                self._continue_after_item_http_error
-                and call.business_operation in {"content_detail", "comments", "sub_comments"}
-            ) or (
-                call.platform == "douyin"
-                and call.operation == "fetch_one_video_v3"
-                and status_code == 400
-            ):
-                raise _TikHubHttpStatusError(
-                    message,
-                    status_code=status_code,
-                    operation=call.operation,
-                    external_request_id=response.external_request_id,
-                    raw_file=raw_file,
-                )
-            raise RuntimeError(message)
+            raise _TikHubHttpStatusError(
+                message,
+                status_code=status_code,
+                operation=call.operation,
+                external_request_id=response.external_request_id,
+                raw_file=raw_file,
+            )
         if not isinstance(response.body, dict):
             raise RuntimeError(f"TikHub {self.platform} {call.operation} 返回 JSON 顶层不是对象")
         return cast(dict[str, Any], response.body), raw_record
@@ -813,17 +1506,51 @@ class _TikHubDebugRunner:
         *,
         content_id: str,
         stage: Literal["detail", "comments", "replies"],
-        error: _TikHubHttpStatusError,
+        error: _TikHubHttpStatusError | ProviderTransportFailure,
     ) -> None:
         """记录已落盘的内容级 HTTP 失败，供容错运行保留安全诊断信息。"""
-        self._content_failures.append(
+        if self.account_mode:
+            self._partial_content_ids.add(content_id)
+        if isinstance(error, ProviderTransportFailure):
+            self._content_failures.append(
+                {
+                    "external_content_id": content_id,
+                    "stage": stage,
+                    "error_type": type(error).__name__,
+                    "delivery": error.delivery,
+                    "code": error.code,
+                    "billing_status": error.billing.status,
+                }
+            )
+        else:
+            self._content_failures.append(
+                {
+                    "external_content_id": content_id,
+                    "stage": stage,
+                    "operation": error.operation,
+                    "status_code": error.status_code,
+                    "external_request_id": error.external_request_id,
+                    "raw_file": error.raw_file,
+                }
+            )
+
+    def _record_account_row_failure(
+        self,
+        *,
+        content_id: str,
+        raw_record: RawOutputRecord,
+        item_locator: str,
+        error: Exception,
+    ) -> None:
+        """保留单行映射错误与原始来源，其他可映射评论继续进入文件。"""
+        self._partial_content_ids.add(content_id)
+        self._comment_coverage_failures.append(
             {
-                "external_content_id": content_id,
-                "stage": stage,
-                "operation": error.operation,
-                "status_code": error.status_code,
-                "external_request_id": error.external_request_id,
-                "raw_file": error.raw_file,
+                "content_id": content_id,
+                "kind": "mapping",
+                "item_locator": item_locator,
+                "error_type": type(error).__name__,
+                "raw_file": self.store.relative_path(raw_record.path),
             }
         )
 
@@ -935,9 +1662,29 @@ class _TikHubDebugRunner:
         status = "failed" if error is not None else "completed"
         if error is None and self._content_failures:
             status = "completed_with_errors"
+        account_failures = sum(
+            result.get("status") != "completed" for result in self._account_results
+        )
+        if error is None and self.account_mode and account_failures:
+            status = (
+                "partial_success"
+                if self._blocks
+                or any(result.get("status") == "partial" for result in self._account_results)
+                else "failed"
+            )
+        if self.account_mode:
+            self._partial_content_ids.update(
+                block.content.external_content_id
+                for block in self._blocks
+                if block.content.coverage
+                and block.content.coverage.startswith(("partial", "unavailable"))
+            )
+        if error is None and self._partial_content_ids and status != "failed":
+            status = "partial_success"
         return {
             "schema_version": "tikhub-test-run.v1",
             "operations": self.platform,
+            "mode": (f"{self.platform}_accounts" if self.account_mode else "keyword_search"),
             "keyword": self.keywords[0] if len(self.keywords) == 1 else None,
             "keywords": list(self.keywords),
             "matched_keywords": self._matched_keywords,
@@ -953,6 +1700,28 @@ class _TikHubDebugRunner:
             "search_stop_reasons": self._search_stop_reasons,
             "requests": self._requests,
             "content_failures": self._content_failures,
+            "comment_coverage_failures": self._comment_coverage_failures,
+            "comment_count_discrepancies": self._comment_count_discrepancies,
+            "partial_content_count": len(self._partial_content_ids),
+            "comment_mode": self.comment_mode,
+            "account_date_range": (
+                {
+                    "start": self.start_date.isoformat(),
+                    "end": self.end_date.isoformat(),
+                    "timezone": "Asia/Shanghai",
+                    "inclusive": True,
+                }
+                if self.account_mode and self.start_date is not None and self.end_date is not None
+                else None
+            ),
+            "accounts_total": len(self._account_results) if self.account_mode else None,
+            "accounts_success": (
+                sum(result.get("status") == "completed" for result in self._account_results)
+                if self.account_mode
+                else None
+            ),
+            "accounts_failed": account_failures if self.account_mode else None,
+            "accounts": self._account_results if self.account_mode else [],
             "error_type": type(error).__name__ if error is not None else None,
             "error_summary": str(error) if error is not None else None,
         }
@@ -970,9 +1739,9 @@ def run_platform(
     max_search_pages: int = 20,
     max_contents: int | None = None,
     max_comments_per_content: int = 100,
-    max_comment_pages_per_content: int = 20,
+    max_comment_pages_per_content: int | None = None,
     max_replies_per_root: int = 20,
-    max_reply_pages_per_root: int = 10,
+    max_reply_pages_per_root: int | None = None,
     include_comments: bool = True,
     include_replies: bool = True,
     force_refresh: bool = False,
@@ -1006,6 +1775,45 @@ def run_platform(
         write_to_database=write_to_database,
         provider_config_id=provider_config_id,
     ).run()
+
+
+def _resume_douyin_comment_state(
+    advance: tikhub_runtime.TikHubPageAdvance,
+    *,
+    observed_count: int,
+    expected_count: int | None,
+    attempted_cursors: set[int],
+) -> dict[str, object] | None:
+    """在 TikHub 提前宣称结束但评论总数未对齐时恢复下一页探测。"""
+
+    if expected_count is None or observed_count >= expected_count:
+        return None
+    resume_state = advance.resume_state
+    if resume_state is None:
+        return None
+    candidate = resume_state.get("cursor")
+    if isinstance(candidate, bool) or not isinstance(candidate, int) or candidate < 0:
+        return None
+    if candidate in attempted_cursors:
+        return None
+    attempted_cursors.add(candidate)
+    return dict(resume_state)
+
+
+def _maximum_known_count(*values: int | None) -> int | None:
+    known = [value for value in values if value is not None]
+    return max(known) if known else None
+
+
+def _douyin_comment_total_requires_fix(body: object) -> bool:
+    """识别抖音响应明确声明当前评论 total 需要修正的标志。"""
+    if not isinstance(body, Mapping):
+        return False
+    data = body.get("data")
+    if not isinstance(data, Mapping):
+        return False
+    value = data.get("need_fix_total")
+    return value is True or value == 1 or value == "1" or value == "true"
 
 
 def _normalize_keywords(

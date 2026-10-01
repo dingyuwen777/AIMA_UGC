@@ -191,7 +191,8 @@ def _map_author(
     raw: dict[str, Any], *, is_search: bool
 ) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
     author_raw = raw if is_search else first_dict(raw, "owner")
-    external_id = optional_string(author_raw, "mid")
+    # 用户投稿 V2 精简卡片省略 owner；upMid 是本轮观察到的作者稳定身份。
+    external_id = optional_string(author_raw, "mid") or optional_string(raw, "upMid")
     display_name = optional_string(author_raw, "author", "name")
     avatar_url = http_url(author_raw, "face")
     fields: list[str] = []

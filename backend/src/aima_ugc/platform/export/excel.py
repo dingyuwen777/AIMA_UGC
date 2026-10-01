@@ -41,6 +41,7 @@ _BEIJING = ZoneInfo("Asia/Shanghai")
 _CONTENT_SHEET = "内容"
 _LABEL_SHEET = "标签明细"
 _COMMENT_SHEET = "评论"
+_LABELING_SHEET = "文章"
 _ExcelCellValue = str | int | float | bool | datetime | None
 _CONTENT_HEADERS = (
     "平台",
@@ -205,6 +206,40 @@ _COMMENT_COLUMN_WIDTHS = {
     "来源Provider": 15,
     "Raw/来源定位": 50,
 }
+_LABELING_HEADERS = (
+    "序号",
+    "监测项名称",
+    "文章编号",
+    "标题",
+    "内文",
+    "媒体名称（中文）",
+    "版面",
+    "出版日期",
+    "媒体类型",
+    "作者",
+    "全文情感",
+    "原文链接",
+    "粉丝数",
+)
+_LABELING_COLUMN_WIDTHS = {
+    "序号": 10,
+    "监测项名称": 18,
+    "文章编号": 34,
+    "标题": 50,
+    "内文": 60,
+    "媒体名称（中文）": 18,
+    "版面": 12,
+    "出版日期": 20,
+    "媒体类型": 14,
+    "作者": 20,
+    "全文情感": 14,
+    "原文链接": 34,
+    "粉丝数": 12,
+}
+_LABELING_HEADER_FONT = Font(name="微软雅黑", size=10, bold=True, color="FF000000")
+_LABELING_BODY_FONT = Font(name="微软雅黑", size=10, color="FF000000")
+_LABELING_HEADER_FILL = PatternFill(fill_type="solid", fgColor="FFFFC000")
+_LABELING_DATE_FORMAT = "yyyy-mm-dd hh:mm:ss"
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,6 +505,147 @@ def export_unified_data_excel(
         comment_rows=comment_rows,
         label_rows=label_rows,
     )
+
+
+def export_comment_labeling_excel(
+    records: Iterable[UnifiedDataExcelV1],
+    output_path: Path,
+) -> ExcelExportSummary:
+    """按人工标注模板输出评论行；仅创建一个名为“文章”的 Sheet。"""
+
+    target_path = Path(output_path)
+    if target_path.suffix.lower() != ".xlsx":
+        raise ValueError("评论标注 Excel 导出目标必须使用 .xlsx 扩展名")
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = target_path.with_name(f".{target_path.stem}.tmp{target_path.suffix}")
+    temp_path.unlink(missing_ok=True)
+
+    workbook = Workbook(write_only=True)
+    sheet = workbook.create_sheet(_LABELING_SHEET)
+    _configure_labeling_sheet(sheet)
+    sheet.append(_labeling_header_cells(sheet))
+    comment_rows = 0
+    first_comment_id: str | None = None
+    try:
+        for record in records:
+            for comment in record.comments:
+                comment_rows += 1
+                if first_comment_id is None:
+                    first_comment_id = comment.external_comment_id
+                sheet.append(
+                    _labeling_comment_cells(
+                        sheet,
+                        content=record.content,
+                        comment=comment,
+                        sequence=comment_rows,
+                    )
+                )
+        _set_auto_filter(sheet, len(_LABELING_HEADERS), comment_rows)
+        workbook.save(temp_path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
+    finally:
+        workbook.close()
+
+    try:
+        _verify_labeling_workbook(
+            temp_path,
+            expected_rows=comment_rows,
+            first_comment_id=first_comment_id,
+        )
+        os.replace(temp_path, target_path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+    return ExcelExportSummary(
+        output_path=target_path,
+        content_rows=0,
+        comment_rows=comment_rows,
+        label_rows=0,
+    )
+
+
+def _configure_labeling_sheet(sheet: Any) -> None:
+    sheet.freeze_panes = "A2"
+    sheet.sheet_view.showGridLines = True
+    sheet.sheet_format.defaultRowHeight = 15
+    sheet.row_dimensions[1].height = 15
+    sheet.page_setup.orientation = "portrait"
+    sheet.page_margins = PageMargins(
+        left=0.7,
+        right=0.7,
+        top=0.75,
+        bottom=0.75,
+        header=0.3,
+        footer=0.3,
+    )
+    for column_number, header in enumerate(_LABELING_HEADERS, start=1):
+        sheet.column_dimensions[get_column_letter(column_number)].width = _LABELING_COLUMN_WIDTHS[
+            header
+        ]
+
+
+def _labeling_header_cells(sheet: Any) -> list[Cell]:
+    cells: list[Cell] = []
+    for value in _LABELING_HEADERS:
+        cell = WriteOnlyCell(sheet, value=value)
+        cell.font = _LABELING_HEADER_FONT
+        cell.fill = _LABELING_HEADER_FILL
+        cells.append(cell)
+    return cells
+
+
+def _labeling_comment_cells(
+    sheet: Any,
+    *,
+    content: UnifiedDataExcelContentV1,
+    comment: UnifiedDataExcelCommentV1,
+    sequence: int,
+) -> list[Cell]:
+    values: tuple[_ExcelCellValue, ...] = (
+        sequence,
+        None,
+        comment.external_comment_id,
+        content.title,
+        comment.text,
+        platform_display_name(comment.platform),
+        "评论",
+        _labeling_datetime(comment.published_at),
+        comment.level,
+        comment.author_display_name,
+        None,
+        None,  # 评论以评论 ID 导入，作品 URL 会覆盖该身份。
+        content.author_follower_count,
+    )
+    text_id_indices = {2}
+    hyperlink_indices = {11}
+    date_indices = {7}
+    wrap_indices = {3, 4}
+    cells: list[Cell] = []
+    for index, value in enumerate(values):
+        safe_value = _safe_excel_value(value)
+        cell = WriteOnlyCell(sheet, value=safe_value)
+        cell.font = _LABELING_BODY_FONT
+        if index in text_id_indices and safe_value is not None:
+            cell.number_format = "@"
+        if index in date_indices and safe_value is not None:
+            cell.number_format = _LABELING_DATE_FORMAT
+            cell.alignment = Alignment(vertical="top")
+        if index in hyperlink_indices and isinstance(value, str) and _is_http_url(value):
+            cell.hyperlink = value
+            cell.style = "Hyperlink"
+        if index in wrap_indices:
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+        cells.append(cell)
+    return cells
+
+
+def _labeling_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value.astimezone(_BEIJING).replace(tzinfo=None)
 
 
 def build_unified_report_workbook(records: Iterable[UnifiedDataExcelV1]) -> Workbook:
@@ -969,6 +1145,39 @@ def _verify_workbook(
                 comment_headers.index("评论ID") + 1 if "评论ID" in comment_headers else None
             ),
         )
+    finally:
+        workbook.close()
+
+
+def _verify_labeling_workbook(
+    path: Path,
+    *,
+    expected_rows: int,
+    first_comment_id: str | None,
+) -> None:
+    workbook = load_workbook(path, read_only=True, data_only=False)
+    try:
+        if workbook.sheetnames != [_LABELING_SHEET]:
+            raise OSError("评论标注 Excel 导出后 Sheet 结构校验失败")
+        sheet = workbook[_LABELING_SHEET]
+        header = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
+        if header != _LABELING_HEADERS:
+            raise OSError("评论标注 Excel 导出后表头校验失败")
+        sheet.calculate_dimension(force=True)  # type: ignore[call-arg]
+        if sheet.max_row != expected_rows + 1:
+            raise OSError("评论标注 Excel 导出后行数校验失败")
+        if first_comment_id is not None:
+            first_row_id = next(
+                sheet.iter_rows(
+                    min_row=2,
+                    max_row=2,
+                    min_col=3,
+                    max_col=3,
+                    values_only=True,
+                )
+            )[0]
+            if first_row_id != _safe_excel_value(first_comment_id):
+                raise OSError("评论标注 Excel 导出后首条评论 ID 校验失败")
     finally:
         workbook.close()
 

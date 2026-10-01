@@ -24,11 +24,19 @@ from .mappers import kuaishou as kuaishou_mapper
 from .mappers import weibo as weibo_mapper
 from .mappers import xiaohongshu as xiaohongshu_mapper
 from .mappers.common import TikHubMappingContext
-from .operations import bilibili, douyin, kuaishou, weibo, xiaohongshu
+from .operations import backup, bilibili, douyin, kuaishou, weibo, xiaohongshu
 
 TikHubPlatform = PlatformName
 TikHubBusinessOperation = Literal[
-    "keyword_search", "content_detail", "identity_resolution", "comments", "sub_comments"
+    "keyword_search",
+    "content_detail",
+    "identity_resolution",
+    "comments",
+    "sub_comments",
+    "account_search",
+    "account_info",
+    "account_notes",
+    "account_posts",
 ]
 _JSON_OBJECT_ADAPTER = TypeAdapter(JsonObject)
 
@@ -63,6 +71,10 @@ class TikHubPageAdvance:
 
     next_state: JsonObject | None
     stop_reason: str | None
+    # 某些 TikHub 抖音评论响应会错误地返回 has_more=0，但仍给出递增
+    # cursor。账号“全量评论”模式可以在总数未对齐时使用它做恢复探测；
+    # 普通调用方仍只看 next_state/should_continue，不会改变既有分页语义。
+    resume_state: JsonObject | None = None
 
     @property
     def should_continue(self) -> bool:
@@ -474,7 +486,7 @@ def build_comments_call(
         bilibili_request = bilibili.build_video_comments_request(
             **{id_type: lookup_value},
             sort_mode="latest",
-            next_offset=_int_state(paging, "next_offset", default=0),
+            next_offset=_bilibili_offset_state(paging, default=0),
         )
         return TikHubOperationCall(
             "bilibili",
@@ -564,7 +576,7 @@ def build_sub_comments_call(
         bilibili_request = bilibili.build_reply_detail_request(
             root=root_comment_id,
             **{id_type: lookup_value},
-            next_offset=_optional_int_state(paging, "next_offset"),
+            next_offset=_optional_bilibili_offset_state(paging),
         )
         return TikHubOperationCall(
             "bilibili",
@@ -587,6 +599,116 @@ def build_sub_comments_call(
         kuaishou_request.method,
         kuaishou_request.path,
         _json_object(kuaishou_request.params),
+        pagination_input=_json_object(paging),
+    )
+
+
+def build_douyin_web_comments_call(
+    *,
+    external_content_id: str,
+    state: dict[str, object] | None = None,
+    count: int = 50,
+) -> TikHubOperationCall:
+    """构造抖音 Web 一级评论补采调用，保留为独立 Provider Attempt。"""
+
+    paging = state or {}
+    request = backup.build_douyin_web_comments_backup_request(
+        aweme_id=external_content_id,
+        cursor=_int_state(paging, "cursor", default=0),
+        count=count,
+    )
+    return TikHubOperationCall(
+        "douyin",
+        "comments",
+        "fetch_video_comments_web",
+        request.method,
+        request.path,
+        _json_object(request.params),
+        pagination_input=_json_object(paging),
+    )
+
+
+def build_douyin_web_sub_comments_call(
+    *,
+    external_content_id: str,
+    root_comment_id: str,
+    state: dict[str, object] | None = None,
+    count: int = 100,
+) -> TikHubOperationCall:
+    """构造抖音 Web 二级回复补采调用，保留为独立 Provider Attempt。"""
+
+    paging = state or {}
+    request = backup.build_douyin_web_replies_backup_request(
+        item_id=external_content_id,
+        comment_id=root_comment_id,
+        cursor=_int_state(paging, "cursor", default=0),
+        count=count,
+    )
+    return TikHubOperationCall(
+        "douyin",
+        "sub_comments",
+        "fetch_video_comment_replies_web",
+        request.method,
+        request.path,
+        _json_object(request.params),
+        pagination_input=_json_object(paging),
+    )
+
+
+def build_kuaishou_web_comments_call(
+    *,
+    external_content_id: str,
+    alternate_ids: dict[str, str] | None = None,
+    state: dict[str, object] | None = None,
+) -> TikHubOperationCall:
+    """构造快手 Web 一级评论补采调用。"""
+    paging = state or {}
+    _, lookup_value = _provider_lookup_identity(
+        platform="kuaishou",
+        external_content_id=external_content_id,
+        alternate_ids=alternate_ids,
+    )
+    request = kuaishou.build_web_video_comments_request(
+        photo_id=lookup_value,
+        pcursor=_str_state(paging, "pcursor", default=""),
+    )
+    return TikHubOperationCall(
+        "kuaishou",
+        "comments",
+        "fetch_one_video_comment_web",
+        request.method,
+        request.path,
+        _json_object(request.params),
+        pagination_input=_json_object(paging),
+    )
+
+
+def build_kuaishou_web_sub_comments_call(
+    *,
+    external_content_id: str,
+    root_comment_id: str,
+    alternate_ids: dict[str, str] | None = None,
+    state: dict[str, object] | None = None,
+) -> TikHubOperationCall:
+    """构造快手 Web 二级回复补采调用。"""
+    paging = state or {}
+    _, lookup_value = _provider_lookup_identity(
+        platform="kuaishou",
+        external_content_id=external_content_id,
+        alternate_ids=alternate_ids,
+    )
+    request = kuaishou.build_web_video_sub_comments_request(
+        photo_id=lookup_value,
+        root_comment_id=root_comment_id,
+        pcursor=_str_state(paging, "pcursor", default=""),
+    )
+    return TikHubOperationCall(
+        "kuaishou",
+        "sub_comments",
+        "fetch_one_video_sub_comment_web",
+        request.method,
+        request.path,
+        _json_object(request.params),
         pagination_input=_json_object(paging),
     )
 
@@ -657,12 +779,25 @@ def _advance_xiaohongshu_comments(
 
 
 def _advance_douyin_comments(state: dict[str, object], body: dict[str, Any]) -> TikHubPageAdvance:
+    previous_cursor = _int_state(state, "cursor", default=0)
     result = douyin.DouyinCursorPagination.from_response(
-        previous_cursor=_int_state(state, "cursor", default=0),
+        previous_cursor=previous_cursor,
         body=body,
     )
+
     if not result.should_continue:
-        return TikHubPageAdvance(None, result.stop_reason)
+        resume_state = None
+        # TikHub 偶尔在空页上返回递增 cursor（甚至把 total 改成 cursor），
+        # 这不是可继续采集的有效分页。只有当前页确实返回评论时才允许
+        # Runner 做一次“提前结束”恢复探测，避免全量模式无限计费请求。
+        has_items = bool(douyin.extract_comment_items(body))
+        if (
+            result.stop_reason == "provider_exhausted"
+            and result.next_cursor > previous_cursor
+            and has_items
+        ):
+            resume_state = _json_object({"cursor": result.next_cursor})
+        return TikHubPageAdvance(None, result.stop_reason, resume_state)
     return TikHubPageAdvance(_json_object({"cursor": result.next_cursor}), None)
 
 
@@ -706,9 +841,14 @@ def _advance_bilibili_comments(state: dict[str, object], body: dict[str, Any]) -
         return TikHubPageAdvance(None, "provider_exhausted")
     pagination_reply = cursor.get("pagination_reply")
     returned = pagination_reply.get("next_offset") if isinstance(pagination_reply, dict) else None
-    next_offset = _nonnegative_integer(returned)
+    next_offset = _bilibili_offset_from_response(returned)
+    if isinstance(next_offset, str):
+        # App 评论接口把 next_offset 声明为整数，但部分响应的
+        # pagination_reply.next_offset 会混入 Web 的不透明 token。该 token 回传会
+        # 触发 422；同一 cursor.next 提供了 App 接口可用的整数续页游标。
+        next_offset = _nonnegative_integer(cursor.get("next"))
     result = bilibili.BilibiliCursorPagination.from_returned_cursor(
-        previous_cursor=_int_state(state, "next_offset", default=0),
+        previous_cursor=_bilibili_offset_state(state, default=0),
         returned_cursor=next_offset,
     )
     if not result.should_continue:
@@ -758,6 +898,19 @@ def extract_comment_items(
     if platform == "bilibili":
         return bilibili.extract_comment_items(body)
     return kuaishou.extract_comment_items(body)
+
+
+def extract_comment_counts(
+    platform: TikHubPlatform, body: dict[str, Any]
+) -> tuple[int | None, int | None]:
+    """提取 Provider 返回的全部评论数和一级评论数；未支持的平台返回未知。"""
+    if platform == "xiaohongshu":
+        return xiaohongshu.extract_comment_counts(body)
+    if platform == "douyin":
+        return douyin.extract_comment_counts(body)
+    if platform == "kuaishou":
+        return kuaishou.extract_comment_counts(body)
+    return None, None
 
 
 def extract_sub_comment_items(
@@ -892,6 +1045,40 @@ def _optional_int_state(state: dict[str, object], key: str) -> int | None:
     return _int_state(state, key, default=0)
 
 
+def _bilibili_offset_state(
+    state: dict[str, object],
+    *,
+    default: int | str,
+) -> int | str:
+    value = state.get("next_offset", default)
+    if isinstance(value, bool):
+        raise ValueError("TikHub pagination next_offset 必须是非负整数或非空字符串")
+    if isinstance(value, int):
+        if value < 0:
+            raise ValueError("TikHub pagination next_offset 不能小于 0")
+        return value
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    raise ValueError("TikHub pagination next_offset 必须是非负整数或非空字符串")
+
+
+def _optional_bilibili_offset_state(state: dict[str, object]) -> int | str | None:
+    if "next_offset" not in state or state["next_offset"] is None:
+        return None
+    return _bilibili_offset_state(state, default=0)
+
+
+def _bilibili_offset_from_response(value: object) -> int | str | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, str) and value.strip():
+        numeric = _nonnegative_integer(value)
+        return numeric if numeric is not None else value.strip()
+    return None
+
+
 def _str_state(state: dict[str, object], key: str, *, default: str) -> str:
     value = state.get(key, default)
     if not isinstance(value, str):
@@ -926,15 +1113,17 @@ def _nonnegative_integer(value: object) -> int | None:
 __all__ = [
     "TikHubOperationCall",
     "TikHubPageAdvance",
-    "TikHubPlatform",
     "advance_comments",
     "advance_search",
     "advance_sub_comments",
     "build_comments_call",
+    "build_kuaishou_web_comments_call",
+    "build_kuaishou_web_sub_comments_call",
     "build_detail_call",
     "build_search_call",
     "build_sub_comments_call",
     "extract_comment_items",
+    "extract_comment_counts",
     "extract_detail_items",
     "extract_search_items",
     "extract_sub_comment_items",

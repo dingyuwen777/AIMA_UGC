@@ -225,7 +225,7 @@ def _map_content_metrics(
     raw: dict[str, Any],
 ) -> tuple[CanonicalMetricsV1, tuple[str, ...]]:
     mapping = {
-        "like_count": ("liked_count", "like_count"),
+        "like_count": ("liked_count", "like_count", "likes"),
         "comment_count": ("comments_count", "comment_count"),
         "favorite_count": ("collected_count", "collect_count", "favorite_count"),
         "share_count": ("shared_count", "share_count"),

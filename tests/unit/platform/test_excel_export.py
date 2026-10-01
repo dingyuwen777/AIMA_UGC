@@ -25,6 +25,7 @@ from aima_ugc.contracts.export import (
     UnifiedDataExcelV1,
 )
 from aima_ugc.platform.export import (
+    export_comment_labeling_excel,
     export_unified_content_jsonl_to_excel,
     export_unified_data_excel,
     project_canonical_comment,
@@ -332,6 +333,65 @@ def test_shared_exporter_writes_provider_neutral_workbook_and_reopens(tmp_path: 
         assert comment_row[7].value == "'+formula-like comment"
         assert comment_row[8].value == "2026-08-18 13:30:00"
         assert comment_row[12].value == "raw/comments.json#item[0]"
+    finally:
+        workbook.close()
+
+
+def test_comment_labeling_export_matches_reference_article_sheet(tmp_path: Path) -> None:
+    output = tmp_path / "comments-for-labeling.xlsx"
+
+    summary = export_comment_labeling_excel((_export_record(),), output)
+
+    assert summary.output_path == output
+    assert summary.content_rows == 0
+    assert summary.label_rows == 0
+    assert summary.comment_rows == 1
+    workbook = load_workbook(output, data_only=False)
+    try:
+        assert workbook.sheetnames == ["文章"]
+        sheet = workbook["文章"]
+        assert sheet.freeze_panes == "A2"
+        assert sheet.auto_filter.ref == "A1:M2"
+        assert tuple(cell.value for cell in sheet[1]) == (
+            "序号",
+            "监测项名称",
+            "文章编号",
+            "标题",
+            "内文",
+            "媒体名称（中文）",
+            "版面",
+            "出版日期",
+            "媒体类型",
+            "作者",
+            "全文情感",
+            "原文链接",
+            "粉丝数",
+        )
+        row = sheet[2]
+        assert tuple(cell.value for cell in row) == (
+            1,
+            None,
+            "000000000000000001",
+            "'=dangerous title",
+            "'+formula-like comment",
+            "小红书",
+            "评论",
+            datetime(2026, 8, 18, 13, 30),
+            "一级",
+            "评论者",
+            None,
+            None,
+            1234,
+        )
+        assert row[2].number_format == "@"
+        assert row[7].number_format == "yyyy-mm-dd hh:mm:ss"
+        # 评论行必须保留自身文章编号，作品 URL 会令生产导入器将多条评论归并。
+        assert row[11].hyperlink is None
+        assert sheet["A1"].font.name == "微软雅黑"
+        assert sheet["A1"].font.sz == pytest.approx(10)
+        assert sheet["A1"].font.bold is True
+        assert sheet["A1"].fill.fgColor.rgb == "FFFFC000"
+        assert sheet.column_dimensions["E"].width == pytest.approx(60)
     finally:
         workbook.close()
 

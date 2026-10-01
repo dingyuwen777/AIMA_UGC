@@ -19,6 +19,7 @@ from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import CollectionDecisionV1
 from aima_ugc.contracts.export import UnifiedDataExcelCommentV1
 from aima_ugc.contracts.provider import assert_secret_free
+from aima_ugc.modules.collection.providers.transport import ProviderTransportFailure
 from aima_ugc.platform.time import beijing_now
 
 from .runner import (
@@ -609,6 +610,10 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
             target=None,
         )
 
+    def _strict_full_comment_mode(self) -> bool:
+        """小红书独立账号入口也要求 Provider 正常结束，保留原有导出模式。"""
+        return self.comment_mode == "all"
+
     def _fetch_replies(
         self,
         transport: TikHubHttpTransport,
@@ -629,6 +634,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
                 fetch_all=fetch_all,
             )
 
+        failures_before = len(self._comment_coverage_failures)
         request_no_before = self._request_no
         max_reply_pages = self.limits.max_reply_pages_per_root
         rows = super()._fetch_replies(
@@ -641,7 +647,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
 
         reply_pages_used = self._request_no - request_no_before
         warning: dict[str, object] | None = None
-        if reply_pages_used >= max_reply_pages:
+        if max_reply_pages is not None and reply_pages_used >= max_reply_pages:
             warning = {
                 "stage": "replies",
                 "external_content_id": content.external_content_id,
@@ -659,7 +665,20 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
                 "expected": expected,
                 "reason": "hard_page_limit_or_provider_shape",
             }
+        if warning is None and any(
+            failure.get("root_comment_id") == root.external_comment_id
+            for failure in self._comment_coverage_failures[failures_before:]
+        ):
+            warning = {
+                "stage": "replies",
+                "external_content_id": content.external_content_id,
+                "root_comment_id": root.external_comment_id,
+                "observed": len(rows),
+                "expected": expected,
+                "reason": "reply_pagination_incomplete",
+            }
         if warning is not None:
+            self._partial_content_ids.add(content.external_content_id)
             summary = self._current_account_summary()
             if summary is not None:
                 cast(list[object], summary["warnings"]).append(warning)
@@ -706,7 +725,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
         *,
         content_id: str,
         stage: Literal["detail", "comments", "replies"],
-        error: _TikHubHttpStatusError,
+        error: _TikHubHttpStatusError | ProviderTransportFailure,
     ) -> None:
         """同时记录运行级与账号级 HTTP 失败，并允许后续笔记继续执行。"""
         super()._record_content_http_failure(

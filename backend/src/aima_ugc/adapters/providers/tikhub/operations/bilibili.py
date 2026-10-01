@@ -13,6 +13,7 @@ _WEB_SEARCH_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_general_search"
 _WEB_DETAIL_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_one_video"
 _WEB_COMMENTS_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_video_comments"
 _WEB_REPLY_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_comment_reply"
+_USER_POSTS_V2_PATH = "/api/v1/bilibili/web/fetch_user_post_videos_v2"
 
 _SEARCH_ORDERS = {
     "general": 0,
@@ -67,7 +68,7 @@ class BilibiliSearchPagination:
 class BilibiliCursorPagination:
     """评论/回复处理调用方已可靠提取的 next_offset。"""
 
-    next_cursor: int
+    next_cursor: int | str
     should_continue: bool
     stop_reason: str | None = None
 
@@ -75,18 +76,41 @@ class BilibiliCursorPagination:
     def from_returned_cursor(
         cls,
         *,
-        previous_cursor: int,
-        returned_cursor: int | None,
+        previous_cursor: int | str,
+        returned_cursor: int | str | None,
     ) -> BilibiliCursorPagination:
-        if previous_cursor < 0:
-            raise ValueError("previous_cursor 不能小于 0")
+        previous = _pagination_cursor(previous_cursor, "previous_cursor")
         if returned_cursor is None:
             return cls(previous_cursor, False, "cursor_unavailable")
-        if returned_cursor < 0:
-            raise ValueError("returned_cursor 不能小于 0")
-        if returned_cursor <= previous_cursor:
+        returned = _pagination_cursor(returned_cursor, "returned_cursor")
+        if returned == previous or (
+            isinstance(previous, int)
+            and not isinstance(previous, bool)
+            and isinstance(returned, int)
+            and not isinstance(returned, bool)
+            and returned < previous
+        ):
             return cls(returned_cursor, False, "pagination_not_advanced")
         return cls(returned_cursor, True)
+
+
+@dataclass(frozen=True, slots=True)
+class BilibiliUserPostsPagination:
+    """用户作品 V2 按页码遍历，空 ``archives`` 表示已到最早作品。"""
+
+    next_page: int
+    should_continue: bool
+    stop_reason: str | None = None
+
+    @classmethod
+    def from_response(
+        cls, *, current_page: int, body: dict[str, Any]
+    ) -> BilibiliUserPostsPagination:
+        if current_page < 1:
+            raise ValueError("current_page 必须从 1 开始")
+        if not extract_user_post_items(body):
+            return cls(current_page, False, "empty_page")
+        return cls(current_page + 1, True)
 
 
 def build_search_request(
@@ -148,6 +172,22 @@ def build_web_search_candidate_request(
     )
 
 
+def build_user_posts_v2_request(
+    *, uid: str, page: int = 1, page_size: int = 100
+) -> BilibiliRequest:
+    """构造无分页上限的用户投稿视频 V2 请求。"""
+
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    if not 1 <= page_size <= 100:
+        raise ValueError("page_size 必须在 1 到 100 之间")
+    return BilibiliRequest(
+        method="GET",
+        path=_USER_POSTS_V2_PATH,
+        params={"uid": _required_id(uid, "uid"), "pn": page, "ps": page_size},
+    )
+
+
 def build_video_detail_request(
     *,
     av_id: str | None = None,
@@ -175,13 +215,13 @@ def build_video_comments_request(
     av_id: str | None = None,
     bv_id: str | None = None,
     sort_mode: str = "latest",
-    next_offset: int | None = 0,
+    next_offset: int | str | None = 0,
 ) -> BilibiliRequest:
     """构造 B站 App 一级评论请求；首屏明确发送 next_offset=0。"""
     params = _video_identity_params(av_id=av_id, bv_id=bv_id)
     params["mode"] = _choice(_COMMENT_SORT_MODES, sort_mode, "sort_mode")
     if next_offset is not None:
-        params["next_offset"] = _non_negative_int(next_offset, "next_offset")
+        params["next_offset"] = _pagination_cursor(next_offset, "next_offset")
     return BilibiliRequest(method="GET", path=_COMMENTS_PATH, params=params)
 
 
@@ -201,7 +241,7 @@ def build_reply_detail_request(
     root: str,
     av_id: str | None = None,
     bv_id: str | None = None,
-    next_offset: int | None = None,
+    next_offset: int | str | None = None,
 ) -> BilibiliRequest:
     """构造 B站 App 二级回复请求；不覆盖 Provider 默认 ps。"""
     params: dict[str, object] = {
@@ -209,7 +249,7 @@ def build_reply_detail_request(
         **_video_identity_params(av_id=av_id, bv_id=bv_id),
     }
     if next_offset is not None:
-        params["next_offset"] = _non_negative_int(next_offset, "next_offset")
+        params["next_offset"] = _pagination_cursor(next_offset, "next_offset")
     return BilibiliRequest(method="GET", path=_REPLY_PATH, params=params)
 
 
@@ -247,6 +287,19 @@ def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
     if provider_data is None or "aid" not in provider_data:
         raise ValueError("B站详情响应缺少 data.data/aid")
     return provider_data
+
+
+def extract_user_post_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从用户投稿视频 V2 的 ``data.data.archives`` 提取全部作品卡片。"""
+
+    provider_data = _provider_data(body)
+    if provider_data is None:
+        raise ValueError("B站账号作品响应缺少 data.data")
+    archives = provider_data.get("archives")
+    if not isinstance(archives, list):
+        raise ValueError("B站账号作品响应缺少 archives 列表")
+    # 保留坏项的位置，由账号执行器记录逐项失败；不能先过滤再误判空页。
+    return tuple(item if isinstance(item, dict) else {} for item in archives)
 
 
 def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
@@ -348,6 +401,16 @@ def _non_negative_int(value: int, field_name: str) -> int:
     return value
 
 
+def _pagination_cursor(value: int | str, field_name: str) -> int | str:
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} 必须是非负整数或非空字符串")
+    if isinstance(value, int):
+        return _non_negative_int(value, field_name)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    raise ValueError(f"{field_name} 必须是非负整数或非空字符串")
+
+
 def _string(value: object) -> str:
     if value is None:
         return ""
@@ -358,8 +421,10 @@ __all__ = [
     "BilibiliCursorPagination",
     "BilibiliRequest",
     "BilibiliSearchPagination",
+    "BilibiliUserPostsPagination",
     "build_reply_detail_request",
     "build_search_request",
+    "build_user_posts_v2_request",
     "build_video_comments_request",
     "build_video_detail_request",
     "build_web_reply_candidate_request",
@@ -370,4 +435,5 @@ __all__ = [
     "extract_detail_item",
     "extract_reply_detail",
     "extract_search_items",
+    "extract_user_post_items",
 ]

@@ -70,6 +70,40 @@ def test_real_search_wrapper_maps_observed_content_fields() -> None:
     assert result.source.provider_name == "tikhub"
 
 
+def test_user_posted_note_uses_create_time_for_published_at() -> None:
+    result = map_content(
+        {
+            "id": "note-account-1",
+            "type": "video",
+            "title": "账号笔记",
+            "desc": "账号采集正文",
+            "create_time": 1785920000000,
+            "user": {"userid": "user-1", "nickname": "脱敏用户"},
+        },
+        _context(operation="get_user_posted_notes"),
+        item_locator="account_notes.page[1].items[0]",
+    )
+
+    assert result.published_at == datetime.fromtimestamp(1785920000, tz=UTC)
+    assert "published_at" in result.observed_fields
+
+
+def test_user_posted_note_uses_likes_for_like_count() -> None:
+    result = map_content(
+        {
+            "id": "note-account-likes",
+            "type": "normal",
+            "likes": 789,
+            "user": {"userid": "user-1", "nickname": "脱敏用户"},
+        },
+        _context(operation="get_user_posted_notes"),
+        item_locator="account_notes.page[1].items[0]",
+    )
+
+    assert result.metrics.like_count == 789
+    assert "metrics.like_count" in result.observed_fields
+
+
 def test_user_posted_note_create_time_maps_published_at() -> None:
     """账号笔记列表使用 create_time 时仍应得到可用于日期过滤的发布时间。"""
     raw = {

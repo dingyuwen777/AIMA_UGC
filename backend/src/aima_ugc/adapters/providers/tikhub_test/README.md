@@ -32,6 +32,10 @@ backend/src/aima_ugc/adapters/providers/tikhub_test/
 ├─ .env.example
 ├─ README.md
 ├─ __init__.py
+├─ bilibili_accounts_test.py
+├─ douyin_accounts_test.py
+├─ kuaishou_accounts_test.py
+├─ weibo_accounts_test.py
 ├─ test.py
 ├─ xiaohongshu_accounts_test.py
 ├─ core/
@@ -65,7 +69,7 @@ backend/src/aima_ugc/adapters/providers/tikhub/
 
 - [`backend/src/aima_ugc/adapters/providers/tikhub_test/.env.example`](.env.example)
 
-为同目录下名为 .env 的本地环境变量文件。该文件由使用者自行创建，不属于 Git 仓库文件。
+为同目录的 `backend/src/aima_ugc/adapters/providers/tikhub_test/.env` 文件。
 
 当前示例：
 
@@ -75,7 +79,7 @@ TIKHUB_API_KEY=你的真实密钥
 TIKHUB_TIMEOUT_SECONDS=300
 ```
 
-.env 已被 Git 忽略。不要把真实 API Key 写进源码、README、Issue、日志或提交历史。
+`backend/src/aima_ugc/adapters/providers/tikhub_test/.env` 已被 Git 忽略。不要把真实 API Key 写进源码、README、Issue、日志或提交历史。
 
 生产 `TikHubHttpTransport` 当前允许的 HTTPS Host 以：
 
@@ -103,11 +107,134 @@ base_url 与当前调试 .env 一致
 数据库来源链却记成账号 B
 ```
 
-**小红书指定账号入口当前固定为纯文件模式，不开放 `write_to_database=True`。** 它不是正式 Collection Plan / Scheduler / 数据库账号采集能力。
+## 3.1 小红书指定账号历史采集
+
+小红书继续使用现有的 [xiaohongshu_accounts_test.py](xiaohongshu_accounts_test.py) 与独立账号执行器。
+账号解析、身份缓存、包含式日期和参数见下方“4.1.1 小红书指定账号按日期采集”；四个平台的新入口复用同一内容处理链。
+五个平台指定账号入口均固定为纯文件模式，不开放数据库写入或正式 Collection Plan/Scheduler 账号来源。
+
+## 3.2 抖音指定账号历史采集
+
+抖音指定账号采集入口是：
+
+- [`backend/src/aima_ugc/adapters/providers/tikhub_test/douyin_accounts_test.py`](douyin_accounts_test.py)
+
+先在脚本顶部填写 `ACCOUNTS`、`START_DATE` 和 `END_DATE`，再执行：
+
+```powershell
+uv run python backend/src/aima_ugc/adapters/providers/tikhub_test/douyin_accounts_test.py
+```
+
+账号可以填写一个或多个。可以直接填写抖音号 `unique_id`，程序会先调用
+`/api/v1/douyin/web/handler_user_profile_v2` 解析出作品接口要求的 `sec_uid`；
+如果你已经有长格式 `sec_uid`，也可以直接填写：
+
+```python
+ACCOUNTS = [
+    DouyinAccountTarget(
+        nickname="抖音官方账号",
+        unique_id="这里填写抖音号",
+        sec_uid=None,
+        uid=None,
+        homepage_url=None,
+    ),
+]
+```
+
+抖音脚本中的 `ACCOUNT_POSTS_PATH`、`ACCOUNT_POSTS_METHOD`、`ACCOUNT_ID_PARAM`、`ACCOUNT_CURSOR_PARAM`、`ACCOUNT_ITEMS_PATH`、`ACCOUNT_CURSOR_PATH`、`ACCOUNT_HAS_MORE_PATH`、`ACCOUNT_PROFILE_PATH` 和 `ACCOUNT_PROFILE_ID_PARAM` 都是可配置项；如果你的 TikHub 账号接口版本或响应字段不同，只修改这些配置即可。默认作品接口为 TikHub 文档中的 `/api/v1/douyin/app/v3/fetch_user_post_videos`，默认按 `data.aweme_list`、`data.max_cursor`、`data.has_more` 读取分页。
+
+日期按北京时间 `Asia/Shanghai` 解释，起止日期均包含。`COMMENT_MODE="all"` 且两个评论页数配置均为 `None` 时，会持续翻页直到 Provider 报告 `has_more=false` 或游标不再推进；不会把 `MAX_COMMENTS_PER_CONTENT`、`MAX_REPLIES_PER_ROOT` 当作全量采集目标。显式填写页数上限后，达到上限会在摘要中标记为 partial。
+
+抖音作品默认使用 App V3；可显式设置 ACCOUNT_POSTS_SOURCE="douplus"，请求失败后不会自动切换 family。
+
+抖音账号模式只输出一个 `文章` Sheet，格式与人工标注参考 Excel 一致。表头固定为：`序号`、`监测项名称`、`文章编号`、`标题`、`内文`、`媒体名称（中文）`、`版面`、`出版日期`、`媒体类型`、`作者`、`全文情感`、`原文链接`、`粉丝数`。每条一级评论和每条二级回复各占一行，`媒体名称（中文）` 为“抖音”，`版面` 为“评论”。
+
+脚本中还可以手动调整 `MAX_CONTENTS`、`MAX_ACCOUNT_POST_PAGES`、`MAX_COMMENTS_PER_CONTENT`、`MAX_COMMENT_PAGES_PER_CONTENT`、`MAX_REPLIES_PER_ROOT`、`MAX_REPLY_PAGES_PER_ROOT`、`FORCE_REFRESH` 和 `RUN_ID`。账号模式固定只写文件；运行摘要会保存到本次运行目录的 `run_summary.json`。
+
+## 3.3 快手指定账号历史采集
+
+快手指定账号采集入口是：
+
+- [`backend/src/aima_ugc/adapters/providers/tikhub_test/kuaishou_accounts_test.py`](kuaishou_accounts_test.py)
+
+先填写脚本顶部的 `ACCOUNTS`、`START_DATE` 和 `END_DATE`，再执行：
+
+```powershell
+uv run python backend/src/aima_ugc/adapters/providers/tikhub_test/kuaishou_accounts_test.py
+```
+
+账号可填写纯数字 `user_id`（推荐）、页面显示的 `kuaishou_id`（快手号）、主页 `eid`
+或完整的 `https://www.kuaishou.com/profile/<eid>` 地址。填写 `kuaishou_id` 时，程序会调用
+`/api/v1/kuaishou/app/search_user_v2` 并按快手号精确匹配；填写 `eid`/主页地址时会调用
+`/api/v1/kuaishou/app/fetch_one_user_v2` 解析纯数字 userId，再用
+`/api/v1/kuaishou/app/fetch_user_post_v2` 按 `pcursor` 遍历该账号作品。
+
+日期按北京时间解释，起止日均包含。默认 `COMMENT_MODE="all"`，账号作品、一级评论、
+二级回复的页数上限均为 `None`。每条范围内作品都会分别遍历快手 App 与 Web 的一级评论，
+并对每个有回复或回复数未知的一级评论分别遍历 App 与 Web 二级回复；最终按评论 ID 去重
+合并。只有双端都结束且已知评论/回复数量对齐时才标记完整。任何一端中途失败会保留已经
+采到的数据，并在 `run_summary.json` 标记 `partial`，入口脚本不会把它误报为全量成功。
+
+输出文件为 `kuaishou_comments_for_labeling.xlsx`，只包含 `文章` Sheet。每条一级评论和
+二级回复各占一行，表头与抖音人工标注 Excel 完全相同，包括 `媒体名称（中文）`、`标题`、
+`内文`、`作者`、`出版日期`、`原文链接`。
+
+## 3.4 微博指定账号历史采集
+
+微博指定账号采集入口是：
+
+- [`backend/src/aima_ugc/adapters/providers/tikhub_test/weibo_accounts_test.py`](weibo_accounts_test.py)
+
+先在脚本顶部填写 `ACCOUNTS`、`START_DATE` 和 `END_DATE`，再执行：
+
+```powershell
+uv run python backend/src/aima_ugc/adapters/providers/tikhub_test/weibo_accounts_test.py
+```
+
+每个账号推荐填写稳定的数字 `uid`；也可以填写 `nickname`（会通过用户搜索进行唯一精确
+匹配）或完整 `homepage_url`（从 URL 提取 UID）。脚本会通过
+`/api/v1/weibo/web_v2/fetch_user_posts` 的 `since_id` 分页遍历账号历史微博，按北京时间
+过滤日期，起止日均包含。账号作品、一级评论、二级回复的页数上限默认都是 `None`。
+
+默认 `COMMENT_MODE="all"`：一级评论持续按 App 接口返回的 `max_id` 翻页，二级回复持续按
+Web V2 接口返回的 `max_id` 翻页，直到 Provider 明确结束或游标不前进。评论和回复按稳定
+评论 ID 去重；任何未完成的内容会记录在 `run_summary.json`，入口脚本会报错，避免把不完整
+结果误当成“全部评论”。
+
+输出文件为 `weibo_comments_for_labeling.xlsx`，只包含 `文章` Sheet。每条一级评论和每条
+二级回复各占一行，格式与抖音、快手的人工标注 Excel 相同；微博没有单独标题时，`标题`
+会使用微博正文，便于关联评论来源。
+
+## 3.5 B站指定账号历史采集
+
+B站指定账号采集入口是：
+
+- [`backend/src/aima_ugc/adapters/providers/tikhub_test/bilibili_accounts_test.py`](bilibili_accounts_test.py)
+
+在脚本顶部填写 `ACCOUNTS`、`START_DATE` 和 `END_DATE`，再执行：
+
+```powershell
+uv run python backend/src/aima_ugc/adapters/providers/tikhub_test/bilibili_accounts_test.py
+```
+
+每个账号推荐填写个人空间 `space.bilibili.com/<uid>` 中的数字 `uid`；也可填写该完整主页
+链接。作品发现使用官方文档提供的 V2 分页接口
+`/api/v1/bilibili/web/fetch_user_post_videos_v2`，按页码遍历，空列表结束；本程序不靠排序假设提前停页。日期按
+北京时间解释，起止日均包含。
+
+默认 `COMMENT_MODE="all"`，且作品、一级评论、二级回复的页数上限均为 `None`。一级评论
+和二级回复都按 Provider `next_offset` 持续翻页并按评论 ID 去重；接口结束前不会标记完成。
+若已访问评论数少于视频详情声明的评论总数，运行摘要会标记 `partial`，入口脚本不会将结果
+误报为全部评论。
+
+输出文件为 `bilibili_comments_for_labeling.xlsx`，仅含 `文章` Sheet，格式与其他指定账号
+采集的评论标注 Excel 相同。
+
+**五个平台指定账号入口固定为纯文件模式，不开放 `write_to_database=True`。** 它不是正式 Collection Plan / Scheduler / 数据库账号采集能力。
 
 ## 3. 关键词怎么传
 
-关键词是本次人工调试参数，不放在本地 .env 环境变量文件中。
+关键词是本次人工调试参数，不放在 `backend/src/aima_ugc/adapters/providers/tikhub_test/.env`。
 
 单关键词：
 
@@ -286,7 +413,7 @@ max_comment_pages_per_content
 max_reply_pages_per_root
 ```
 
-作为异常响应或极端数据量下的技术硬保护。如果硬上限先于 Provider 耗尽触发，运行摘要不能把该结果视为完整。二级回复由于共享 Runner 不暴露最终 Provider 停止原因，账号 `all` 在**触达回复硬页数边界**时采取保守策略，标记账号为 `partial`，避免假完整。
+作为异常响应或极端数据量下的技术硬保护。如果硬上限先于 Provider 耗尽触发，运行摘要不能把该结果视为完整。共享 Runner 现在按 Provider 明确终止状态判断；小红书既有入口仍保持保守策略，账号 `all` 在**触达回复硬页数边界**时采取保守策略，标记账号为 `partial`，避免假完整。
 
 账号 Discovery 使用：
 
@@ -315,7 +442,6 @@ result = run_douyin(
 
 - [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../tikhub/capabilities.py)
 - [`backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py`](../tikhub/operations/douyin.py)
-
 ### 4.3 微博
 
 ```python
@@ -367,6 +493,10 @@ fetch_video_sub_comments
 ```
 
 Web 评论链只保留 `verified_backup` 证据，不自动 fallback。
+
+上面说明的是关键词搜索链。指定账号且 `COMMENT_MODE="all"` 时，为满足全量评论要求，
+调试执行器会显式遍历 App 与 Web 两套已验证评论接口并去重合并；这不会改变普通关键词
+搜索的正式主链行为。
 
 ## 5. 通用请求边界
 
@@ -803,6 +933,53 @@ Fake Transport 纵切 / PostgreSQL integration
 - 不把 Excel 当 Raw 或回灌格式；
 - 不实现自动 App/Web fallback；
 - 不把 `state.json` / `resolved_accounts.json` 当业务数据库；
-- 不提交真实的本地 .env 环境变量文件；
+- 不提交真实 `backend/src/aima_ugc/adapters/providers/tikhub_test/.env`；
 - 不把人工页数限制说成生产预算功能；
 - 不把指定账号人工文件入口直接描述成正式官号监控/调度能力。
+
+## PR #662 验收定义
+
+这些验收项承接项目 Owner 已确认的五平台稳定账号采集要求。
+
+### AC1
+
+五个平台的指定账号入口使用稳定账号身份发现作品；昵称只能精确且唯一地消歧，身份冲突、搜索未完成或 URL 与 ID 不一致时拒绝猜测。
+
+### AC2
+
+日期按北京时间解释并包含起止两日；作品分页不得因软目标或未经证明的排序假设提前结束。技术上限、缺失日期、映射失败、重复页或停滞游标必须留下未完成事实。
+
+### AC3
+
+账号 all 模式在已知正数评论/回复数量达到后仍跟随 Provider 分页，直至明确结束；硬上限、HTTP 错误和分页异常保留已成功数据并标记 partial。
+
+### AC4
+
+账号发现、作品、一级评论和二级回复均复用生产 Operation、account_runtime、共享 runtime、Mapper 和 Canonical；既有小红书入口及五平台关键词采集继续可用。
+
+### AC5
+
+单账号、作品或评论失败不影响其他账号、作品或根评论；Raw、Canonical JSONL、请求关联和 run_summary 可追溯，运行结果不得误报完整。
+
+### AC6
+
+共享 Excel 导出保持长 ID、公式防护、时间与文本语义，临时文件重开验证后原子发布；评论标注文件可被现有导入器解析且不得把多条评论合并为同一作品。
+
+### AC7
+
+付费真实 Probe 仅按本轮 Owner 授权在本机有界执行，使用生产 Transport/Operation、https://api.tikhub.io 和安全内存凭据；不打印或持久化 Secret，不自动跨 API family fallback。
+
+### AC8
+
+合并前，PR 基于最新 main，当前 Head 取得适用检查、五平台 FakeTransport 纵切、关键词回归和独立审查。
+合并后，以平台实际 PR/Commit/CI 证据完成 main-fresh、原生 Change Archive 与安全 cleanup；不在合并前宣称后续状态已完成。
+
+账号模式的身份冲突、缺失日期、映射错误、分页停滞及硬上限都会保留不完整事实；昵称查询必须精确且唯一。
+快手双源共用每篇作品/每条根评论的技术页数上限，不能对两个源分别重复使用同一上限。
+评论标注文件中“文章编号”是评论自身 ID，“原文链接”留空，以避免生产导入器从作品 URL 提取 ID 并将评论合并。
+完整作品关系与 Raw 来源继续保留在 Canonical JSONL 中。
+
+详情在追加 Canonical、调用入库 Owner 或进入 Excel 之前再次校验目标作品 ID 和账号作者；错误详情不会覆盖合法 Discovery。
+作品列表结构缺失不是正常空页；混合列表中的坏项保留原 Raw 定位并记录逐项失败，合法作品继续处理。
+快手同根评论只输出一次，后续 App/Web 来源新增或提高回复数量证据仍可触发回复展开；相同已展开信息不会无条件重复发送。
+小红书 all 的回复分页异常会保留 warning/partial，达到正数计数不能替代正常结束；抖音和 B站手工入口也会拒绝账号 partial 的全量完成提示，并保留结果文件。

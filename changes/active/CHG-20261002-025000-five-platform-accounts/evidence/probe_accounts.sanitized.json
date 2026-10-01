@@ -1,0 +1,1953 @@
+{
+  "schema_version": "pr662-account-probe/v1",
+  "base_url": "https://api.tikhub.io",
+  "request_limit": 25,
+  "previous_attempt_request_count": 11,
+  "previous_attempt_scope": "受限入口探测，脱敏断言编排失败，仅保留终端中请求数与状态事实，不宣称输出形状验收",
+  "actual_request_count": 23,
+  "date": "2026-10-02",
+  "scope": "真实公开入口、Production Operation/Transport/Mapper，单页、最多一篇作品；数量不证明全量",
+  "results": [
+    {
+      "platform": "douyin",
+      "status": "failed",
+      "requests": 4,
+      "contents": 1,
+      "roots": 18,
+      "replies": 0,
+      "account_status": [
+        "partial"
+      ],
+      "failure_types": [],
+      "error_type": null
+    },
+    {
+      "platform": "kuaishou",
+      "status": "failed",
+      "requests": 22,
+      "contents": 0,
+      "roots": 0,
+      "replies": 0,
+      "account_status": [
+        "partial"
+      ],
+      "failure_types": [],
+      "error_type": null
+    },
+    {
+      "platform": "weibo",
+      "status": "failed",
+      "requests": 3,
+      "contents": 1,
+      "roots": 0,
+      "replies": 0,
+      "account_status": [
+        "partial"
+      ],
+      "failure_types": [],
+      "error_type": null
+    },
+    {
+      "platform": "bilibili",
+      "status": "failed",
+      "requests": 1,
+      "contents": 0,
+      "roots": 0,
+      "replies": 0,
+      "account_status": [
+        "partial"
+      ],
+      "failure_types": [],
+      "error_type": null
+    },
+    {
+      "platform": "xiaohongshu",
+      "status": "completed_with_errors",
+      "requests": 24,
+      "contents": 0,
+      "roots": 0,
+      "replies": 0,
+      "account_status": [
+        "partial"
+      ],
+      "failure_types": [],
+      "error_type": null
+    }
+  ],
+  "records": [
+    {
+      "platform": "douyin",
+      "request_no": 12,
+      "method": "GET",
+      "path": "/api/v1/douyin/web/handler_user_profile_v2",
+      "params": {
+        "unique_id": "id-0001"
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.user_info",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.user_info.nickname",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.user_info.sec_uid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.user_info.unique_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "user_info": {
+            "nickname": "<redacted-string>",
+            "unique_id": "id-0001",
+            "sec_uid": "id-0004"
+          }
+        }
+      }
+    },
+    {
+      "platform": "douyin",
+      "request_no": 13,
+      "method": "GET",
+      "path": "/api/v1/douyin/app/v3/fetch_user_post_videos",
+      "params": {
+        "sec_user_id": "id-0004",
+        "max_cursor": 100002
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[]",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].author",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].author.nickname",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].author.sec_uid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].author.uid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].author.unique_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].aweme_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].caption",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].create_time",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].desc",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].statistics",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].statistics.aweme_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].statistics.comment_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].statistics.share_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].status",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_list[].status.aweme_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.has_more",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.max_cursor",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.sec_uid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.uid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "sec_uid": "id-0004",
+          "has_more": 1,
+          "uid": "id-0009",
+          "max_cursor": 100005,
+          "aweme_list": [
+            {
+              "caption": "<redacted-string>",
+              "create_time": 1720000000,
+              "desc": "<redacted-string>",
+              "aweme_id": "id-0020",
+              "statistics": {
+                "share_count": 0,
+                "comment_count": 18,
+                "aweme_id": "id-0020"
+              },
+              "author": {
+                "uid": "id-0009",
+                "sec_uid": "id-0004",
+                "nickname": "<redacted-string>",
+                "unique_id": "id-0001"
+              },
+              "status": {
+                "aweme_id": "id-0020"
+              }
+            },
+            {
+              "caption": "<redacted-string>",
+              "statistics": {
+                "comment_count": 0,
+                "share_count": 1,
+                "aweme_id": "id-0037"
+              },
+              "author": {
+                "uid": "id-0009",
+                "nickname": "<redacted-string>",
+                "unique_id": "id-0001",
+                "sec_uid": "id-0004"
+              },
+              "status": {
+                "aweme_id": "id-0037"
+              },
+              "aweme_id": "id-0037",
+              "desc": "<redacted-string>",
+              "create_time": 1720000000
+            },
+            {
+              "statistics": {
+                "comment_count": 11,
+                "share_count": 0,
+                "aweme_id": "id-0057"
+              },
+              "desc": "<redacted-string>",
+              "caption": "<redacted-string>",
+              "aweme_id": "id-0057",
+              "create_time": 1720000000,
+              "status": {
+                "aweme_id": "id-0057"
+              },
+              "author": {
+                "uid": "id-0009",
+                "nickname": "<redacted-string>",
+                "sec_uid": "id-0004",
+                "unique_id": "id-0001"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "platform": "douyin",
+      "request_no": 14,
+      "method": "GET",
+      "path": "/api/v1/douyin/app/v3/fetch_one_video_v3",
+      "params": {
+        "aweme_id": "id-0020"
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.author",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.author.create_time",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.author.nickname",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.author.sec_uid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.author.status",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.author.uid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.author.unique_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.aweme_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.caption",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.create_time",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.desc",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.statistics",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.statistics.aweme_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.statistics.comment_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.statistics.share_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.status",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.aweme_detail.status.aweme_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "aweme_detail": {
+            "statistics": {
+              "share_count": 0,
+              "comment_count": 18,
+              "aweme_id": "id-0020"
+            },
+            "aweme_id": "id-0020",
+            "status": {
+              "aweme_id": "id-0020"
+            },
+            "caption": "<redacted-string>",
+            "desc": "<redacted-string>",
+            "create_time": 1720000000,
+            "author": {
+              "status": 1,
+              "create_time": 1720000000,
+              "nickname": "<redacted-string>",
+              "unique_id": "id-0001",
+              "sec_uid": "id-0004",
+              "uid": "id-0009"
+            }
+          }
+        }
+      }
+    },
+    {
+      "platform": "douyin",
+      "request_no": 15,
+      "method": "GET",
+      "path": "/api/v1/douyin/app/v3/fetch_video_comments",
+      "params": {
+        "aweme_id": "id-0020",
+        "cursor": 100002
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.comments",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.data.comments[]",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.comments[].aweme_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.comments[].cid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.comments[].content_type",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.comments[].create_time",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.comments[].reply_comment",
+          "types": [
+            "null"
+          ]
+        },
+        {
+          "path": "$.data.comments[].reply_comment_total",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.comments[].reply_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.comments[].status",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.comments[].text",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.comments[].user",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.comments[].user.nickname",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.comments[].user.sec_uid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.comments[].user.uid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.comments[].user.unique_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.cursor",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.has_more",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.total",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "comments": [
+            {
+              "cid": "id-0081",
+              "text": "<redacted-string>",
+              "aweme_id": "id-0020",
+              "create_time": 1720000000,
+              "status": 1,
+              "user": {
+                "uid": "id-0082",
+                "nickname": "<redacted-string>",
+                "unique_id": "id-0083",
+                "sec_uid": "id-0084"
+              },
+              "reply_id": "id-0003",
+              "reply_comment": null,
+              "reply_comment_total": 0,
+              "content_type": 2
+            },
+            {
+              "cid": "id-0085",
+              "text": "<redacted-string>",
+              "aweme_id": "id-0020",
+              "create_time": 1720000000,
+              "status": 1,
+              "user": {
+                "uid": "id-0086",
+                "nickname": "<redacted-string>",
+                "unique_id": "id-0026",
+                "sec_uid": "id-0088"
+              },
+              "reply_id": "id-0003",
+              "reply_comment": null,
+              "reply_comment_total": 0,
+              "content_type": 2
+            },
+            {
+              "cid": "id-0089",
+              "text": "<redacted-string>",
+              "aweme_id": "id-0020",
+              "create_time": 1720000000,
+              "status": 1,
+              "user": {
+                "uid": "id-0090",
+                "nickname": "<redacted-string>",
+                "unique_id": "id-0026",
+                "sec_uid": "id-0092"
+              },
+              "reply_id": "id-0003",
+              "reply_comment": null,
+              "reply_comment_total": 0,
+              "content_type": 1
+            }
+          ],
+          "cursor": 100029,
+          "has_more": 0,
+          "total": 18
+        }
+      }
+    },
+    {
+      "platform": "kuaishou",
+      "request_no": 16,
+      "method": "GET",
+      "path": "/api/v1/kuaishou/app/fetch_user_post_v2",
+      "params": {
+        "user_id": "id-0095",
+        "pcursor": "id-0026",
+        "sort": "latest"
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.feeds",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.data.feeds[]",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].caption",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].comment_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].kwaiId",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].like_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].photo_id",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].share_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].time",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].timestamp",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].type",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].user_id",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].user_name",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.feeds[].view_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.pcursor",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.result",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "result": 1,
+          "feeds": [
+            {
+              "photo_id": 100031,
+              "comment_count": 1,
+              "timestamp": 1720000000,
+              "caption": "<redacted-string>",
+              "like_count": 1,
+              "kwaiId": "<redacted-string>",
+              "share_count": 1,
+              "user_name": "<redacted-string>",
+              "type": 1,
+              "view_count": 2599,
+              "time": "<redacted-string>",
+              "user_id": 100034
+            },
+            {
+              "photo_id": 100036,
+              "comment_count": 1,
+              "timestamp": 1720000000,
+              "caption": "<redacted-string>",
+              "like_count": 4,
+              "kwaiId": "<redacted-string>",
+              "share_count": 0,
+              "user_name": "<redacted-string>",
+              "type": 1,
+              "view_count": 2033,
+              "time": "<redacted-string>",
+              "user_id": 100034
+            },
+            {
+              "photo_id": 100037,
+              "comment_count": 44,
+              "timestamp": 1720000000,
+              "caption": "<redacted-string>",
+              "like_count": 1,
+              "kwaiId": "<redacted-string>",
+              "share_count": 2,
+              "user_name": "<redacted-string>",
+              "type": 1,
+              "view_count": 3005,
+              "time": "<redacted-string>",
+              "user_id": 100034
+            }
+          ],
+          "pcursor": "id-0120"
+        }
+      }
+    },
+    {
+      "platform": "kuaishou",
+      "request_no": 17,
+      "method": "GET",
+      "path": "/api/v1/kuaishou/app/fetch_one_video",
+      "params": {
+        "photo_id": "id-0122"
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.photos",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.data.photos[]",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.photos[].caption",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.photos[].comment_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.photos[].kwaiId",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.photos[].like_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.photos[].photo_id",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.photos[].share_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.photos[].time",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.photos[].timestamp",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.photos[].type",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.photos[].user_id",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.photos[].user_name",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.photos[].view_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.result",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "result": 1,
+          "photos": [
+            {
+              "user_id": 100034,
+              "caption": "<redacted-string>",
+              "type": 1,
+              "share_count": 1,
+              "comment_count": 1,
+              "like_count": 1,
+              "kwaiId": "<redacted-string>",
+              "view_count": 2599,
+              "time": "<redacted-string>",
+              "timestamp": 1720000000,
+              "user_name": "<redacted-string>",
+              "photo_id": 100031
+            }
+          ]
+        }
+      }
+    },
+    {
+      "platform": "weibo",
+      "request_no": 18,
+      "method": "GET",
+      "path": "/api/v1/weibo/web_v2/fetch_user_posts",
+      "params": {
+        "uid": "id-0129",
+        "page": 1,
+        "feature": 3
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.since_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.total",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "data": {
+            "since_id": "id-0026",
+            "total": -1
+          }
+        }
+      }
+    },
+    {
+      "platform": "weibo",
+      "request_no": 19,
+      "method": "GET",
+      "path": "/api/v1/weibo/app/fetch_status_detail",
+      "params": {
+        "status_id": "id-0131"
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.comments_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.created_at",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.id",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.idstr",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.mid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.text",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.title",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.title.text",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.user",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.user.created_at",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.user.id",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.user.idstr",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.user.name",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.user.screen_name",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.detailInfo.status.user.type",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "detailInfo": {
+            "status": {
+              "created_at": "<redacted-string>",
+              "id": 100040,
+              "idstr": "id-0131",
+              "mid": "id-0131",
+              "text": "<redacted-string>",
+              "user": {
+                "id": 100041,
+                "idstr": "id-0129",
+                "screen_name": "<redacted-string>",
+                "name": "<redacted-string>",
+                "created_at": "<redacted-string>",
+                "type": 1
+              },
+              "comments_count": 2,
+              "title": {
+                "text": "<redacted-string>"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "platform": "weibo",
+      "request_no": 20,
+      "method": "GET",
+      "path": "/api/v1/weibo/app/fetch_status_comments",
+      "params": {
+        "status_id": "id-0131",
+        "sort_type": 1
+      },
+      "http_status": 400,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.detail",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.detail.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.detail.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.detail.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "detail": {
+          "code": 400,
+          "message": "<redacted-string>",
+          "time": "<redacted-string>"
+        }
+      }
+    },
+    {
+      "platform": "bilibili",
+      "request_no": 21,
+      "method": "GET",
+      "path": "/api/v1/bilibili/web/fetch_user_post_videos_v2",
+      "params": {
+        "uid": "id-0236",
+        "pn": 1,
+        "ps": 100
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.archives",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.data.data.archives[]",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.archives[].bvid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.archives[].desc",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.archives[].pubdate",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data.archives[].stat",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.archives[].title",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.archives[].upMid",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data.page",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.page.num",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data.page.size",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data.page.total",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "code": 0,
+          "message": "<redacted-string>",
+          "data": {
+            "archives": [
+              {
+                "title": "<redacted-string>",
+                "pubdate": 1720000000,
+                "stat": {},
+                "bvid": "id-0238",
+                "desc": "<redacted-string>",
+                "upMid": 100002
+              },
+              {
+                "title": "<redacted-string>",
+                "pubdate": 1720000000,
+                "stat": {},
+                "bvid": "id-0239",
+                "desc": "<redacted-string>",
+                "upMid": 100002
+              },
+              {
+                "title": "<redacted-string>",
+                "pubdate": 1720000000,
+                "stat": {},
+                "bvid": "id-0240",
+                "desc": "<redacted-string>",
+                "upMid": 100002
+              }
+            ],
+            "page": {
+              "num": 1,
+              "size": 100,
+              "total": 315
+            }
+          }
+        }
+      }
+    },
+    {
+      "platform": "xiaohongshu",
+      "request_no": 22,
+      "method": "GET",
+      "path": "/api/v1/xiaohongshu/app_v2/search_users",
+      "params": {
+        "keyword": "49328786266",
+        "page": 1,
+        "source": "explore_feed"
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.users",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.data.data.users[]",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.users[].desc",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.users[].id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.users[].name",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.users[].red_id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.page",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.success",
+          "types": [
+            "boolean"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "success": true,
+          "data": {
+            "users": [
+              {
+                "id": "id-0243",
+                "desc": "id-0244",
+                "red_id": "id-0242",
+                "name": "<redacted-string>"
+              }
+            ]
+          },
+          "code": 0,
+          "page": 1
+        }
+      }
+    },
+    {
+      "platform": "xiaohongshu",
+      "request_no": 23,
+      "method": "GET",
+      "path": "/api/v1/xiaohongshu/app_v2/get_user_posted_notes",
+      "params": {
+        "user_id": "id-0243",
+        "cursor": "id-0026"
+      },
+      "http_status": 200,
+      "shape": [
+        {
+          "path": "$",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.code",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.has_more",
+          "types": [
+            "boolean"
+          ]
+        },
+        {
+          "path": "$.data.data.notes",
+          "types": [
+            "array"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[]",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].comments_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].create_time",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].cursor",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].desc",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].id",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].share_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].title",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].type",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].user",
+          "types": [
+            "object"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].user.nickname",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].user.userid",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.data.data.notes[].view_count",
+          "types": [
+            "integer"
+          ]
+        },
+        {
+          "path": "$.data.success",
+          "types": [
+            "boolean"
+          ]
+        },
+        {
+          "path": "$.message",
+          "types": [
+            "string"
+          ]
+        },
+        {
+          "path": "$.time",
+          "types": [
+            "string"
+          ]
+        }
+      ],
+      "response_excerpt": {
+        "code": 200,
+        "message": "<redacted-string>",
+        "time": "<redacted-string>",
+        "data": {
+          "success": true,
+          "data": {
+            "has_more": true,
+            "notes": [
+              {
+                "title": "<redacted-string>",
+                "create_time": 1720000000,
+                "comments_count": 224,
+                "cursor": "id-0261",
+                "type": "video",
+                "user": {
+                  "userid": "<redacted-string>",
+                  "nickname": "<redacted-string>"
+                },
+                "id": "id-0261",
+                "share_count": 98,
+                "view_count": 0,
+                "desc": "<redacted-string>"
+              },
+              {
+                "title": "<redacted-string>",
+                "create_time": 1720000000,
+                "comments_count": 730,
+                "cursor": "id-0263",
+                "type": "video",
+                "id": "id-0263",
+                "user": {
+                  "userid": "<redacted-string>",
+                  "nickname": "<redacted-string>"
+                },
+                "share_count": 3212,
+                "view_count": 0,
+                "desc": "<redacted-string>"
+              },
+              {
+                "title": "<redacted-string>",
+                "create_time": 1720000000,
+                "cursor": "id-0268",
+                "comments_count": 182,
+                "type": "normal",
+                "id": "id-0268",
+                "user": {
+                  "userid": "<redacted-string>",
+                  "nickname": "<redacted-string>"
+                },
+                "share_count": 14,
+                "view_count": 0,
+                "desc": "<redacted-string>"
+              }
+            ]
+          },
+          "code": 0
+        }
+      }
+    }
+  ],
+  "evidence_selection": "仅保留账号、作品、评论、身份、计数、时间与分页相关字段及原始观察类型；响应字符串/身份已脱敏，最多保留三项。不是完整 Raw。"
+}
