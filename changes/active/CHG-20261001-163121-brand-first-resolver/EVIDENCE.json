@@ -172,5 +172,32 @@
     "生产源摘要规范化CRLF为LF，对应本轮测试所用实现；仅测试文件随后统一了Ruff格式。",
     "原始失败记录保留；分套结果才代表与CI相同的空库边界。",
     "此证据不替代最终current-head/current-base Review及required CI。"
+  ],
+  "implementation_commit": "36f0f7f5edf7d8f898a957b275a6b59dcd6e8036",
+  "fullstack_records": [
+    {
+      "path": ".runtime/brand-fullstack/browser-final.xml",
+      "sha256": "346a9e03b7e3806e37df61706b9109e8caee24ea8e65776775a2b3e4bf453322",
+      "tests": 16,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-fullstack/browser-green.xml",
+      "sha256": "70ab82ee46f37e7113a7fef707ddd51f785bfec76bfe0a867585f3a64d4e6665",
+      "tests": 16,
+      "failures": 0,
+      "errors": 1,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-fullstack/browser-complete.xml",
+      "sha256": "7276f7cac8f6f96d1f21702ddb3425a38b0c4eda6bbe92dffb6dfae1543ba267",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
   ]
 }

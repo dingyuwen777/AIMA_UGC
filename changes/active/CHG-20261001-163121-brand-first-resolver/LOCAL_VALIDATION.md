@@ -2,6 +2,8 @@
 
 本记录对应 `feature/brand-first-resolver` 的实现工作树；开工治理提交为 `04cccef5b5038b03fafab437bc32343a03683342`、基线 main 为 `15dd366db6e1632535fadc615513636a4b22c639`。当前处于实现和 Repair 验证，尚未 Final Ready，不能把未提交工作树测试替代最终提交的 CI、Review 与 current-base 检查。后续冻结时记录生产源文件摘要并复核最终提交。
 
+实现检查点已保存并推送为 `36f0f7f5edf7d8f898a957b275a6b59dcd6e8036`。逐个读取该 HEAD 的18个生产 Git blob，全部与 EVIDENCE.json 的测试源码摘要一致。新增浏览器断言已在该提交的当前源码上完成最后全栈运行，以下记录据此更新；PR仍Draft，报告合入后再取得最终组合的Ready证据。
+
 ## 范围及隔离
 
 只修改 `E:/Desktop/AIMA_UGC`。`E:/work/03_Aima/code/AIMA_UGC`、它的进程、数据库和既有容器不参与验证。复用本任务创建的 PostgreSQL 18.4 容器 `31c4b9340204766d8e24ab9d916ed80a67285a48228335372d5c970f81c7bea2`，标签 `codex.goal=brand-first-20261001`，仅绑定 `127.0.0.1:55437`，上限 1 CPU/1 GiB。品牌测试库为 `aima_brand_test`；报告库 `aima_report_test` 未降级或删除。
@@ -46,6 +48,8 @@
 完整真实浏览器全栈通过 `.runtime/brand-fullstack-local.py` 执行，复用普通角色的独立 CI 测试库，API 55439、Vite 55440、本机 Fake LLM 8091；启动前检查端口空闲，不复用既有服务。Fake TikHub Worker 复用正式 Worker Registry 与 Mapper。
 
 首次浏览器记录有 7 个失败场景（截图/trace 保留在 `.runtime/brand-fullstack/browser-results`）。两项真实原因分别是：管理员旧 fixture 的品牌识别词不在内容中，依赖已取消的车型反推品牌；本地包装清库恢复投影为 pending，却没有复用生产启动的回填调度。更正 fixture 明确命中配置品牌，并由 `ensure_voice_plaza_projection_backfill_job` 创建正式可恢复 Job，在 ready 后启动浏览器，不直接改数据库状态或业务查询。第二次完整运行 `.runtime/brand-fullstack/browser-final.xml` 取得 **15 passed / 1 failed**，剩余失败为旧 import 来源显示断言“系统识别”，新版来源 alias_match 实际显示“词包 / 别名识别”。更新为批准的来源断言，并增加正式详情 API 的品牌及车型 alias_match、matched_text 校验；补充断言的一次辅助函数拼写错误已修正，最新运行结果尚待补齐。
+
+最终执行 `python .runtime/brand-fullstack-local.py`，使用同一正式API/Worker、专属普通角色库、Fake Provider和本机浏览器：`.runtime/brand-fullstack/browser-complete.xml` **16 passed / 0 failure / 0 skipped**，2.5分钟；`.runtime/brand-fullstack/browser-complete-exit.json` 的 returncode=0。其中管理员真实配置、导入、品牌/车型查询、详情实际持久证据和导出均通过。前两轮15/1以及初次7个失败记录继续保留；没有删除断言或增加超时预算。
 
 `EVIDENCE.json` 保存 18 个实际生产源文件的 LF 规范化 SHA-256（生产集合摘要 `56da1bcfb53377a043130cb772b9af76098a64e85cb450d3fca4709e9f895d39`）以及原始 XML 摘要和结果，包含初次失败；后续只有测试文件统一 Ruff 格式和补充实际来源断言，生产源保持相同。该证据只绑定本地实现，最终交付仍需 commit/base/Review/CI 新鲜证明。
 

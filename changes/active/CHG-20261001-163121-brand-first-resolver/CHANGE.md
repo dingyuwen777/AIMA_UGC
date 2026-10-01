@@ -132,12 +132,12 @@ data_changes:
 
 - [x] upstream_re_read：重新读取 Issue #685、引用会话已确认方案及用户数据库配置决定。
 - [x] change_coverage：按 AC1–AC20 重建当前实现单元，AC21 保留交付阶段责任。
-- [ ] reverse_audit：PG 管理员/Worker/Evidence/projection/查询已覆盖，完整真实浏览器旅程仍执行，完成后复核。
+- [x] reverse_audit：PG 管理员/Worker/Evidence/projection/查询与16项真实浏览器全栈均已覆盖；其中目录配置→品牌明确命中→车型→详情实际alias_match→查询/导出形成闭环。
 - [x] unresolved_cleared：当前实现要求的 not_satisfied 清零，无伪造延期或 N/A。
 
 # 完成证据与状态
 
-新实例已按当前秒级 ID 创建，并通过当前 canonical 新实例 Contract 校验。基线为 15dd366db6e1632535fadc615513636a4b22c639，早期 PR 为 #687，保持 Draft。已取得算法 10 failed/8 passed 的 Red、codec Red、较新 Replay Owner Red，以及 selected 冻结范围 2 failed 的 Red；相应修复已取得专项 Green。1753 项单元/Contract/API 回归通过，真实 PG 分套回归和完整跨组件验收尚在执行。Repair 独立审查 RV-BRAND-01–09 已关闭；最终 head/base 审查、required CI 和交付仍未完成，不声明 Ready。详细命令、环境、失败归因及证据见 LOCAL_VALIDATION.md。仅本开发目录与自有测试资源可写；运行目录和既有容器未操作。
+新实例已按当前秒级 ID 创建，并通过当前 canonical 新实例 Contract 校验。基线为 15dd366db6e1632535fadc615513636a4b22c639，早期 PR 为 #687，保持 Draft。已取得算法 10 failed/8 passed 的 Red、codec Red、较新 Replay Owner Red，以及 selected 冻结范围 2 failed 的 Red；相应修复已取得专项 Green。1753 项单元/Contract/API、581 项真实 PG 分套、45 项浏览器 Mock及16项真实全栈通过；生产源码摘要与实现提交36f0f7f5一致。Repair 独立审查 RV-BRAND-01–09 已关闭；报告合并后最终 head/base 审查、required CI 和交付仍未完成，不声明 Ready。详细命令、环境、失败归因及证据见 LOCAL_VALIDATION.md。仅本开发目录与自有测试资源可写；运行目录和既有容器未操作。
 
 ## 交付阶段与 Issue AC21
 
