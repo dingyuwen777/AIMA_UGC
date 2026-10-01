@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261001-163121-brand-first-resolver
 title: 数据库目录驱动的品牌先行多品牌多车型识别
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: feature/brand-first-resolver
 created: 2026-10-01
