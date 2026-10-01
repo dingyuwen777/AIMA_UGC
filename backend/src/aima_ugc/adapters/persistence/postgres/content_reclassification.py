@@ -13,6 +13,10 @@ from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import (
+    PostgresVehicleCatalogRepository,
+    automatic_vehicle_evidence_condition,
+)
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.vehicles.content_reclassification import (
     CONTENT_RECLASSIFICATION_JOB_MAX_ATTEMPTS,
@@ -205,6 +209,7 @@ class PostgresContentReclassificationRepository:
                 .where(*conditions)
                 .order_by(contents_table.c.id)
                 .limit(min(run.batch_size, remaining))
+                .with_for_update()
             ).mappings()
         )
         if not rows:
@@ -231,7 +236,11 @@ class PostgresContentReclassificationRepository:
                 content_vehicle_evidence_table.c.is_active.is_(True),
                 # alias_match 会由本次冻结目录重新计算，不能反向把旧目录命中
                 # 当作第一层既有车型事实继续传播。
-                content_vehicle_evidence_table.c.source != "alias_match",
+                ~automatic_vehicle_evidence_condition(
+                    include_import_text_matches=(
+                        run.catalog_snapshot.resolver_semantics == "brand_scoped_vehicle_v2"
+                    )
+                ),
             )
         )
         existing: dict[UUID, set[UUID]] = {item: set() for item in content_ids}
@@ -244,7 +253,7 @@ class PostgresContentReclassificationRepository:
             existing[content_id].add(vehicle_id)
             if cast(str, row.source) == "manual_review":
                 manual[content_id].add(vehicle_id)
-        locked_pairs = set(
+        locked_pair_rows = set(
             self._session.execute(
                 select(
                     content_vehicle_review_locks_table.c.content_id,
@@ -255,6 +264,23 @@ class PostgresContentReclassificationRepository:
                 )
             )
         )
+        locked_pairs = {
+            (cast(UUID, row.content_id), cast(int, row.content_version)) for row in locked_pair_rows
+        }
+        manual_brands: dict[tuple[UUID, int], tuple[UUID, ...]] = {}
+        if run.catalog_snapshot.resolver_semantics == "brand_scoped_vehicle_v2":
+            pairs = tuple(versions.items())
+            # 与 Replay/自动证据写入一致，先车型、后品牌，人工变更不能穿过本批计算。
+            locked_vehicles = PostgresVehicleCatalogRepository(
+                self._session
+            ).load_locked_manual_vehicle_ids_batch(pairs)
+            locked_pairs = set(locked_vehicles)
+            manual = {
+                item: set(locked_vehicles.get((item, versions[item]), ())) for item in content_ids
+            }
+            manual_brands = PostgresBrandVehicleRepository(
+                self._session
+            ).load_locked_manual_brand_ids_batch(pairs)
         return tuple(
             ContentReclassificationCandidate(
                 content_id=cast(UUID, row["id"]),
@@ -267,6 +293,7 @@ class PostgresContentReclassificationRepository:
                     if (row["id"], row["current_version"]) in locked_pairs
                     else None
                 ),
+                manual_brand_ids=manual_brands.get((row["id"], row["current_version"])),
             )
             for row in rows
         )

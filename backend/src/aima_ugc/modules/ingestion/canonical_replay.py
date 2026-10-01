@@ -11,6 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 from sqlalchemy.orm import Session
 
+from aima_ugc.modules.vehicles.content_reclassification import dump_catalog_snapshot
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord, JobRegistry
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 
@@ -139,10 +140,12 @@ class CanonicalReplayCounters:
 def dump_filter_snapshot(snapshot: BrandVehicleFilterSnapshot) -> dict[str, object]:
     """把冻结 Filter Snapshot 编码为 JSONB 安全结构。"""
 
-    return cast(
+    encoded = cast(
         dict[str, object],
         _FILTER_SNAPSHOT_ADAPTER.dump_python(snapshot, mode="json"),
     )
+    encoded["catalog"] = dump_catalog_snapshot(snapshot.catalog)
+    return encoded
 
 
 def load_filter_snapshot(value: object) -> BrandVehicleFilterSnapshot:

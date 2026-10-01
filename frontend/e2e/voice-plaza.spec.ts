@@ -114,6 +114,34 @@ const runningExport = {
   completed_at: null,
 }
 
+test('含竞品查询同时包含仅竞品和混合，仍可切换为仅竞品', async ({ page }) => {
+  await page.goto('/voice-plaza')
+  await page.locator('.field--competition summary').click()
+  await page.getByLabel('含竞品', { exact: true }).check()
+  const combined = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/contents'
+      && url.searchParams.get('competition_scopes') !== null
+  })
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  const scopes = new URL((await combined).url()).searchParams
+    .getAll('competition_scopes').flatMap((value) => value.split(',')).sort()
+  expect(scopes).toEqual(['competitor_only', 'mixed'])
+  await expect(page.locator('.field--competition summary')).toHaveText('含竞品')
+  if (!await page.getByLabel('自有与竞品混合', { exact: true }).isVisible()) {
+    await page.locator('.field--competition summary').click()
+  }
+  await page.getByLabel('自有与竞品混合', { exact: true }).uncheck()
+  const only = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/contents'
+      && url.searchParams.get('competition_scopes') === 'competitor_only'
+  })
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await only
+  await expect(page.locator('.field--competition summary')).toHaveText('仅竞品品牌')
+})
+
 test.beforeEach(async ({ page }) => {
   await stubVoicePlazaTaxonomy(page)
 

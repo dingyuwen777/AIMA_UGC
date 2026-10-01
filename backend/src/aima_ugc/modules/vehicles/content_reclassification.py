@@ -66,6 +66,7 @@ class ContentReclassificationCandidate:
     text: str | None
     existing_vehicle_ids: tuple[UUID, ...]
     manual_vehicle_ids: tuple[UUID, ...] | None
+    manual_brand_ids: tuple[UUID, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,10 +86,15 @@ class ReclassificationBatchCounters:
 def dump_catalog_snapshot(snapshot: BrandVehicleCatalogSnapshot) -> dict[str, object]:
     """把冻结目录编码为 JSONB 安全结构，不丢失 UUID 与时间语义。"""
 
-    return cast(
+    encoded = cast(
         dict[str, object],
         _CATALOG_SNAPSHOT_ADAPTER.dump_python(snapshot, mode="json"),
     )
+    # 历史快照未携带算法字段，恢复后仍保持原 JSON 身份与摘要。
+    if snapshot.resolver_semantics == "field_priority_v1":
+        encoded.pop("resolver_semantics", None)
+        encoded.pop("automatic_evidence_vehicle_ids", None)
+    return encoded
 
 
 def load_catalog_snapshot(value: object) -> BrandVehicleCatalogSnapshot:

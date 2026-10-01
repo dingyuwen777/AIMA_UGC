@@ -8,7 +8,7 @@ from itertools import batched
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import Table, delete, func, insert, select, tuple_, update
+from sqlalchemy import Table, delete, func, insert, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,7 @@ from aima_ugc.modules.content.tables import (
     content_versions_table,
     contents_table,
 )
+from aima_ugc.modules.ingestion.canonical_replay_tables import canonical_replay_all_requests_table
 
 from .content import (
     PostgresContentRepository,
@@ -65,6 +66,20 @@ _MULTI_VALUES_INSERT_ROWS = 500
 
 
 @dataclass(frozen=True, slots=True)
+class PostgresContentClassificationInput:
+    """已锁定的 Current 解析输入，不把旧 Raw 当作当前正文。"""
+
+    content_id: UUID
+    content_version: int
+    platform: str
+    external_content_id: str
+    title: str | None
+    text: str | None
+    replay_visibility_owner_id: UUID | None
+    latest_normal_filter_match_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
 class PostgresCompleteNewContentBatchItem:
     """Content Owner 集合路径成功创建的一条完整业务记录。"""
 
@@ -82,6 +97,8 @@ class PostgresCompleteExistingContentBatchItem:
     result: PostgresIngestionResult
     contribution_after: ContentContributionSnapshot
     used_scalar_fallback: bool = False
+    protected_by_later_write: bool = False
+    visibility_owner_before: UUID | None = None
 
 
 class PostgresCompleteContentRepository:
@@ -98,6 +115,59 @@ class PostgresCompleteContentRepository:
         self._replay_visibility_owner_id = replay_visibility_owner_id
         self._source_pair_transaction: tuple[object | None, object | None] | None = None
         self._validated_source_pairs: set[tuple[UUID, UUID]] = set()
+
+    def lock_current_classification_inputs(
+        self, *, identities: tuple[tuple[str, str], ...] = (), content_ids: tuple[UUID, ...] = ()
+    ) -> tuple[PostgresContentClassificationInput, ...]:
+        """在正常 Account→Content 入库之后稳定 Current；负向操作不触碰 Account。"""
+
+        conditions = []
+        if identities:
+            conditions.append(
+                tuple_(contents_table.c.platform, contents_table.c.external_content_id).in_(
+                    identities
+                )
+            )
+        if content_ids:
+            conditions.append(contents_table.c.id.in_(content_ids))
+        if not conditions:
+            return ()
+        return tuple(
+            PostgresContentClassificationInput(
+                content_id=cast(UUID, row["id"]),
+                content_version=cast(int, row["current_version"]),
+                platform=cast(str, row["platform"]),
+                external_content_id=cast(str, row["external_content_id"]),
+                title=cast(str | None, row["title"]),
+                text=cast(str | None, row["text"]),
+                replay_visibility_owner_id=cast(UUID | None, row["replay_visibility_owner_id"]),
+                latest_normal_filter_match_at=cast(
+                    datetime | None, row["latest_normal_filter_match_at"]
+                ),
+            )
+            for row in self._session.execute(
+                select(contents_table)
+                .where(or_(*conditions))
+                .order_by(contents_table.c.id)
+                .with_for_update()
+            ).mappings()
+        )
+
+    def claim_replay_evidence_changes(self, pairs: tuple[tuple[UUID, int], ...]) -> None:
+        """只认领已锁定 Current 的 Evidence 变化，版本和正文保持原值。"""
+
+        if not pairs:
+            return
+        if self._replay_visibility_owner_id is None:
+            raise ValueError("Evidence-only Replay 必须有全历史父请求身份")
+        changed = self._session.scalars(
+            update(contents_table)
+            .where(tuple_(contents_table.c.id, contents_table.c.current_version).in_(pairs))
+            .values(replay_visibility_owner_id=self._replay_visibility_owner_id)
+            .returning(contents_table.c.id)
+        ).all()
+        if len(changed) != len(set(pairs)):
+            raise RuntimeError("Evidence-only Replay Current version 已变化")
 
     def _require_source_pair(self, *, attempt_id: UUID, raw_id: UUID) -> None:
         """同一事务内只查验一次来源对；共享锁阻止事务内关系漂移。"""
@@ -339,6 +409,8 @@ class PostgresCompleteContentRepository:
     def ingest_contents_with_before_snapshots_batch(
         self,
         entries: tuple[tuple[CanonicalContentV1, ContentContributionSnapshot], ...],
+        *,
+        replay_accepted_before: datetime | None = None,
     ) -> tuple[PostgresCompleteExistingContentBatchItem, ...]:
         """批量复用 before、合并来源贡献与可见性写入，核心业务语义仍由 Owner 执行。"""
 
@@ -353,10 +425,54 @@ class PostgresCompleteContentRepository:
         source_pairs = {_source_ids(item) for item in observations}
         self._require_source_pairs(source_pairs)
         before_snapshots = tuple(item[1] for item in entries)
+        owner_before: dict[tuple[str, str], UUID | None] = {}
+        protected_indices: set[int] = set()
+        if replay_accepted_before is not None:
+            # 账号字段尚未更新；Content 行锁保证 before 与后续业务写入间没有外部插入。
+            locked = self._core.lock_ingestion_inputs(observations)
+            owner_before = {
+                identity: cast(UUID | None, row["replay_visibility_owner_id"])
+                for identity, row in locked.items()
+            }
+            owners = tuple({owner for owner in owner_before.values() if owner is not None})
+            owner_admissions: dict[UUID, datetime] = (
+                {
+                    cast(UUID, row.id): cast(datetime, row.accepted_before)
+                    for row in self._session.execute(
+                        select(
+                            canonical_replay_all_requests_table.c.id,
+                            canonical_replay_all_requests_table.c.accepted_before,
+                        ).where(canonical_replay_all_requests_table.c.id.in_(owners))
+                    )
+                }
+                if owners
+                else {}
+            )
+            before_snapshots = capture_content_contribution_snapshots_batch(
+                self._session, tuple((observation, None) for observation in observations)
+            )
+            entries = tuple(zip(observations, before_snapshots, strict=True))
+            for index, identity in enumerate(identities):
+                row = locked.get(identity)
+                if row is None:
+                    continue
+                normal_at = row["latest_normal_filter_match_at"]
+                owner = owner_before[identity]
+                if (normal_at is not None and normal_at > replay_accepted_before) or (
+                    owner is not None and owner_admissions[owner] > replay_accepted_before
+                ):
+                    protected_indices.add(index)
+            self._core.discard_unneeded_prepared_accounts(
+                tuple(
+                    item
+                    for index, item in enumerate(observations)
+                    if index not in protected_indices
+                )
+            )
         new_indices = tuple(
             index
             for index, (_observation, before) in enumerate(entries)
-            if before.content_id is None
+            if before.content_id is None and index not in protected_indices
         )
         new_observations = tuple(observations[index] for index in new_indices)
         new_core_items = self._core.ingest_new_contents_batch(
@@ -394,6 +510,7 @@ class PostgresCompleteContentRepository:
             index
             for index, (observation, before) in enumerate(entries)
             if before.content_id is not None
+            and index not in protected_indices
             and not (
                 "author.external_account_id" in observation.observed_fields
                 and before.content_fields.get("author.external_account_id") is not None
@@ -431,6 +548,7 @@ class PostgresCompleteContentRepository:
                 before=before,
                 result=replace(item.result, contribution_after=after),
                 contribution_after=after,
+                visibility_owner_before=owner_before.get(identities[index]),
             )
             for index, observation, before, item, after in zip(
                 existing_indices,
@@ -459,6 +577,21 @@ class PostgresCompleteContentRepository:
             }
         )
         completed_indices = set(completed)
+        for index in protected_indices:
+            before = before_snapshots[index]
+            if before.content_id is None or before.version_no is None:
+                raise ValueError("Replay 较新写入保护要求已存在的 Current")
+            completed[index] = PostgresCompleteExistingContentBatchItem(
+                observation=observations[index],
+                before=before,
+                result=PostgresIngestionResult(
+                    before.content_id, before.version_no, False, False, contribution_after=before
+                ),
+                contribution_after=before,
+                protected_by_later_write=True,
+                visibility_owner_before=owner_before.get(identities[index]),
+            )
+        completed_indices.update(protected_indices)
         fallback_indices = tuple(
             index for index in range(len(entries)) if index not in completed_indices
         )
@@ -477,6 +610,7 @@ class PostgresCompleteContentRepository:
                 result=replace(result, contribution_after=after),
                 contribution_after=after,
                 used_scalar_fallback=True,
+                visibility_owner_before=owner_before.get(identities[index]),
             )
         return tuple(completed[index] for index in range(len(entries)))
 

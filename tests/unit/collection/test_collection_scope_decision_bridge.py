@@ -25,6 +25,7 @@ from aima_ugc.modules.vehicles.brand_vehicle import (
     BrandAliasRecord,
     BrandRecord,
     BrandVehicleCatalogSnapshot,
+    BrandVehicleResolver,
 )
 
 _NOW = datetime(2026, 8, 18, 2, 0, tzinfo=UTC)
@@ -165,6 +166,7 @@ def test_bilibili_search_missing_comment_count_fetches_detail_before_incremental
     detail_content = _content(comment_count=7, comment_count_observed=True)
 
     executor = object.__new__(TikHubCollectionScopeExecutor)
+    executor._brand_vehicle_resolver = BrandVehicleResolver()
     writer = _Writer()
     executor._content_state = _StateReader()  # type: ignore[attr-defined]
     executor._content_writer = writer  # type: ignore[attr-defined]
@@ -229,6 +231,7 @@ def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion
         update={"text": "仍然无关"}
     )
     executor = object.__new__(TikHubCollectionScopeExecutor)
+    executor._brand_vehicle_resolver = BrandVehicleResolver()
     writer = _Writer()
     executor._content_writer = writer  # type: ignore[attr-defined]
     detail_candidate_id = uuid4()
@@ -282,6 +285,7 @@ def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
         update={"text": "爱玛最终详情"}
     )
     executor = object.__new__(TikHubCollectionScopeExecutor)
+    executor._brand_vehicle_resolver = BrandVehicleResolver()
     writer = _Writer()
     executor._content_writer = writer  # type: ignore[attr-defined]
     executor._content_state = _StateReader()  # type: ignore[attr-defined]

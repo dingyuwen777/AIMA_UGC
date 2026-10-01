@@ -1,0 +1,409 @@
+{
+  "generated_at": "2026-10-01T19:20:12.601751+08:00",
+  "implementation_parent": "04cccef5b5038b03fafab437bc32343a03683342",
+  "baseline": "15dd366db6e1632535fadc615513636a4b22c639",
+  "canonical_source": "041c9b60aae0f566553002794eb5fde4ed614c7f",
+  "production_source_manifest": [
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle.py",
+      "sha256_lf": "2217c2be9c99fb7363dccb2f884297d2b55dcfdf1b96010f9818bccb24af0be3"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/brand_vehicle_classification.py",
+      "sha256_lf": "678ed5ceae8905ef714f4fb6eb868fa86b90a65cf951a0fadd36e4f7b8fb2fb1"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/canonical_replay.py",
+      "sha256_lf": "dc6165d548a671358edbc3275c42edec92b1d9bcaf90c067278fcc07ca55e7d2"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py",
+      "sha256_lf": "7c8cc0386e0a3d5c1f9acebb3d8da466f66ba5b96e24f15855e1f2da3f77ca3f"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/content.py",
+      "sha256_lf": "72f4544f8cc017371d14ae04fbc5882eb77ff5982d463269f194eb57a5510d00"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py",
+      "sha256_lf": "7b70e11e9c3c66ef33e0e787d2ebf6c32adf19068b980d48eae2bf09505ded7a"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/content_reclassification.py",
+      "sha256_lf": "48c495366aa801a4a406a54df4f61ca3ba9ab4db99a25f417e10835a10700e23"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/content_rule_filter.py",
+      "sha256_lf": "c5474e32c1a20818d65c8959ae846b3533bb6e76b5fde06d969f3a510afe8f9a"
+    },
+    {
+      "path": "backend/src/aima_ugc/adapters/persistence/postgres/vehicles.py",
+      "sha256_lf": "42014ad3200c99a624f2a465aa9d632d807aedb21dd2a1ce55ae800e67aac50b"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/canonical_replay_worker.py",
+      "sha256_lf": "bce35d16fb070d817b225886659569d150a07af838511d6b9222177a36680839"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/collection_scope.py",
+      "sha256_lf": "1dbfb81ba22d3da3c210ff43cab852f45be541339576d7f52f3dab877555e304"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/content_reclassification_worker.py",
+      "sha256_lf": "22177dfb7b4a0bb4fba5712befc190efe443d5bb2e22ede38002cf35b909b7a4"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/historical_import_worker.py",
+      "sha256_lf": "be4babb934c7e0a9a0f1c0698f4fa20488ddd1f53f72ef8313275dbb6a67099b"
+    },
+    {
+      "path": "backend/src/aima_ugc/bootstrap/manual_ingestion.py",
+      "sha256_lf": "afe23a56a0b22c90d36588bfcc56ac32dbf6da8e769416b2e574ec3c3377de08"
+    },
+    {
+      "path": "backend/src/aima_ugc/modules/ingestion/canonical_replay.py",
+      "sha256_lf": "f419162b5c995867cc36adfabcda604c6a086ff3d3bd1d650cd1a948abaf7267"
+    },
+    {
+      "path": "backend/src/aima_ugc/modules/vehicles/brand_vehicle.py",
+      "sha256_lf": "5f2de4bbc5dc89b1bfe87769409b3c5c73f0bbdde185601d6caa90709415b707"
+    },
+    {
+      "path": "backend/src/aima_ugc/modules/vehicles/content_reclassification.py",
+      "sha256_lf": "dd8cbfa65d7dc8304e25cc3d27bb57e8a10c2e27d833a35fd11213fa04ea1f09"
+    },
+    {
+      "path": "frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue",
+      "sha256_lf": "913e09c4986f707fc4cd951521408dd1f64cb33f5a34b78e2c562f5dff1885e2"
+    }
+  ],
+  "production_source_manifest_sha256": "56da1bcfb53377a043130cb772b9af76098a64e85cb450d3fca4709e9f895d39",
+  "records": [
+    {
+      "path": ".runtime/brand-backend-frozen.xml",
+      "sha256": "828cf0c2db12648557a722fd98ada8096b112a7b1a9760886b2f7af51359075d",
+      "tests": 1781,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16
+    },
+    {
+      "path": ".runtime/brand-ci-platform.xml",
+      "sha256": "39e8a48abecc0cd90b1afe1cf11bf5c8583255400d79c730c537b1ef903a0bee",
+      "tests": 56,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-database.xml",
+      "sha256": "d781768909ba0dc13c9abd0ea40623dca9deba48b92b8a7fcf367e05562e217f",
+      "tests": 119,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-jobs.xml",
+      "sha256": "945c645c0dbc028db56e6abe83d879326fe5e081536962fa78a5ead15ed07e9c",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-collection.xml",
+      "sha256": "bb663a14399f3c232e68c3ae740819c26569d456eb5c7ca8411852fc950bc615",
+      "tests": 143,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-content.xml",
+      "sha256": "7505d50d673f9696ad2638998fa32ca49a365dd6ad56eebd7b29cef6abf314c0",
+      "tests": 127,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-ingestion.xml",
+      "sha256": "d9425418a2513eb57c2a5aaa6e80362f215f6b4d24fdb497739eb1291e1a3ffd",
+      "tests": 111,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-suite-vehicles.xml",
+      "sha256": "ea0d1915b1d8471ac8403b60144584a511c3ff8bb1e716ffaf3e39baa22eba7c",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-frozen-and-legacy.xml",
+      "sha256": "4717e2cf924588ddba96b9c5082eba7bb404da1c64a487ab6f8435ec31c194a2",
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-frozen-scope-red.xml",
+      "sha256": "389b9003b6578ea599c5aaa55c09712eb32e4d5cbf61cda18a01ae7fc4ab1404",
+      "tests": 2,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-all-postgres.xml",
+      "sha256": "d6a8086a6a11942e179ffcf3be351a1e737c3affa1849ea1e35036b5545a03d5",
+      "tests": 578,
+      "failures": 60,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "scope_notes": [
+    "生产源摘要规范化CRLF为LF，对应本轮测试所用实现；仅测试文件随后统一了Ruff格式。",
+    "原始失败记录保留；分套结果才代表与CI相同的空库边界。",
+    "此证据不替代最终current-head/current-base Review及required CI。"
+  ],
+  "implementation_commit": "36f0f7f5edf7d8f898a957b275a6b59dcd6e8036",
+  "fullstack_records": [
+    {
+      "path": ".runtime/brand-fullstack/browser-final.xml",
+      "sha256": "346a9e03b7e3806e37df61706b9109e8caee24ea8e65776775a2b3e4bf453322",
+      "tests": 16,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-fullstack/browser-green.xml",
+      "sha256": "70ab82ee46f37e7113a7fef707ddd51f785bfec76bfe0a867585f3a64d4e6665",
+      "tests": 16,
+      "failures": 0,
+      "errors": 1,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/brand-fullstack/browser-complete.xml",
+      "sha256": "7276f7cac8f6f96d1f21702ddb3425a38b0c4eda6bbe92dffb6dfae1543ba267",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "combined_validation": {
+    "generated_at": "2026-10-01T21:26:15.623893+08:00",
+    "implementation_commit": "143f5a0bca6b5be72d4f574367fe358c69db0c7c",
+    "baseline": "dd821ca86a64951d4f7add4d39b6129368aac18d",
+    "report_pr": "https://github.com/dingyuwen777/AIMA_UGC/pull/688",
+    "report_merge": "e69b3d3829e2feb13d7e590cfc535bde58e493d6",
+    "brand_production_sources_unchanged": true,
+    "records": [
+      {
+        "path": ".runtime/brand-combined-unit.xml",
+        "sha256": "eb0018e385a6590c9fa5869f0339a40d30bf83d46a94ee8bbf7d56c7f2ccce15",
+        "tests": 1810,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 16
+      },
+      {
+        "path": ".runtime/brand-combined-report.xml",
+        "sha256": "434bfbca7cfa206befcec7bd5816977331b79f02393529f370d98449920140be",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      {
+        "path": ".runtime/brand-combined-owner.xml",
+        "sha256": "e9475d794ad478f77d30495b128d3059f6994d291172eb6104b25580497e67f0",
+        "tests": 24,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": ".runtime/brand-combined-ci-targets.xml",
+        "sha256": "9977964a666e3026a702985ee11c67d398e843a2810dfa0c427ebe4fe5d94524",
+        "tests": 96,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": ".runtime/brand-fullstack-combined/browser-complete.xml",
+        "sha256": "f1568c429e233e74658eb171d7a79be30ae239b44e0e38f3b474492ea77d5673",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "logs": [
+      {
+        "path": ".runtime/brand-combined-ruff.log",
+        "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+      },
+      {
+        "path": ".runtime/brand-combined-format.log",
+        "sha256": "fb040d3a82925bd0f0593d3512a1ee9c5b5bab169b779ff1a1792cfcc908329a"
+      },
+      {
+        "path": ".runtime/brand-combined-mypy.log",
+        "sha256": "316673ba54684a6071a86c2c1566b81976670dc5c25f311e3c5953ad5b946c2a"
+      },
+      {
+        "path": ".runtime/brand-combined-contract.log",
+        "sha256": "9d84a28eda0c2b92dcad50a5b1b1e7c26d2268c6b7b5a53c267726b7e3f5a02c"
+      },
+      {
+        "path": ".runtime/brand-combined-docs.log",
+        "sha256": "4f683fa2a431e0ebf85f0f0db4d54a2bb8d9174bcf52343198b13b6c0250b48a"
+      },
+      {
+        "path": ".runtime/brand-combined-facts.log",
+        "sha256": "1893aeaefce78540430c3cc5f45a9f2359b5bd643aac937c6b13433df55598fc"
+      },
+      {
+        "path": ".runtime/brand-combined-owner-check.log",
+        "sha256": "7bd78b8cb798e991a60713d72457330f1528785fdfbcd4ec3845be865a05b67f"
+      },
+      {
+        "path": ".runtime/brand-combined-architecture.log",
+        "sha256": "34b7d261449ee2fa4439519b0596ac0ae096b5c3a5c61de0b75721ca5a2c22db"
+      },
+      {
+        "path": ".runtime/brand-combined-secret.log",
+        "sha256": "48e07b38901517057ef2e32163bdfb47adb999c588eca3d653f0232c96e37b6a"
+      },
+      {
+        "path": ".runtime/brand-combined-front-build.log",
+        "sha256": "53c8e3314039dbb21ef0da901e9b57c9a5584018cb758331f3e598fd8db8a7ea"
+      },
+      {
+        "path": ".runtime/brand-combined-front-unit.log",
+        "sha256": "dcacd5abc4a0b9d7a666d0191551c3a80ca6bc9836b8015683edb6f41dad6106"
+      },
+      {
+        "path": ".runtime/brand-combined-ci-targets.log",
+        "sha256": "acc9a7dba82e815194cd6f9693c76a6938d1c513b19dc6e13a261d67b04aabc4"
+      },
+      {
+        "path": ".runtime/brand-combined-unit.log",
+        "sha256": "52f78a79d9ecd2efb8fa1f4edffb6399d83f8d155ef264c7f1841ca267a9fb03"
+      },
+      {
+        "path": ".runtime/brand-combined-report.log",
+        "sha256": "b41a2d88bd358d4eca1a5ac86fe180e4aa4ac222a8fab5cd12400bea4b186bcf"
+      },
+      {
+        "path": ".runtime/brand-combined-owner.log",
+        "sha256": "9626273e0d71c88e59a2701d79d59c6bfa81b26808b0a6c5dc2a5afdcaf67a02"
+      },
+      {
+        "path": ".runtime/brand-combined-fullstack-wrapper.log",
+        "sha256": "66cc46d8edd0c34fb0103369eaa777a8735ed2454409d69e31d4a44cf08a5dc7"
+      }
+    ],
+    "pytest_summary": {
+      "backend_passed": 1782,
+      "backend_skipped": 16,
+      "subtests_passed": 12,
+      "report_passed": 9,
+      "report_browser_skipped": 1,
+      "owner_passed": 24,
+      "ci_selected_targets_passed": 96,
+      "fullstack_passed": 16
+    },
+    "scope_notes": [
+      "本组合基线已包含报告原生归档；测试只在自有隔离资源执行。",
+      "18个品牌生产Git blob与原实现36f0f7f5及原证据摘要一致。",
+      "当前CI选出的8个PG文件在同一pytest session实际运行96项，后续远程CI还运行全部分套。",
+      "pytest XML含12个subtests条目，summary通过数与XML总数分别保存。",
+      "组合提交后的远程CI和最终current-head/current-base Review另行持有，不能由本地结果冒充。"
+    ]
+  },
+  "ci_repair_validation": {
+    "parent_commit": "4b4e6b846a5e39ff9f701c57e47e67c47f5a3e83",
+    "baseline": "dd821ca86a64951d4f7add4d39b6129368aac18d",
+    "finding": "RV-BRAND-10",
+    "failed_run": 36869347726,
+    "failed_job": 110392868740,
+    "source_manifest": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "sha256_lf": "597e4b5d9706f5daa55c0bd44092ad1386c0da9041aa43ab0bd2c9019eb00cfe"
+      },
+      {
+        "path": "tests/unit/test_ci_test_impact_optimization.py",
+        "sha256_lf": "c271ff9682784b503e080d00854b9829da913bcd11107e47daaf02bf5aa38953"
+      }
+    ],
+    "records": [
+      {
+        "path": ".runtime/brand-ci-order-red.xml",
+        "sha256": "da9dd32e578322d8bb64ea23d04049b48b0963c0e856f90d0990de98f410ea22",
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": ".runtime/brand-ci-order-green.xml",
+        "sha256": "d6eeecf47535bd05f75fa0dc2fba797dd3c590b2cb3e2e247755605dc3352724",
+        "tests": 79,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": ".runtime/brand-ci-order-targets-green.xml",
+        "sha256": "d40bd8b12d4882696905c12a0e6dfa9fc04a6c65be0ba6263de8c1b5478407d6",
+        "tests": 96,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "logs": [
+      {
+        "path": ".runtime/brand-final-pg-ci.log",
+        "sha256": "b6635632b1c5605a5c610af9c08aedb2a81b61bff831bbcb77902cd56e60f44a"
+      },
+      {
+        "path": ".runtime/brand-migration-after-targets-red.log",
+        "sha256": "a953c2d3f259c99eae613c267fc67d310230e4dec14ac46656fc4fb3d17e9988"
+      },
+      {
+        "path": ".runtime/brand-migration-before-targets-green.log",
+        "sha256": "0069e4b0c64f3487715f118dd210ff4edaf3c959079911e6e5a3c0e1171cb085"
+      },
+      {
+        "path": ".runtime/brand-first-core-ci.log",
+        "sha256": "eed5b3d43b4ab1592e8989bff774681f246cbbdac7e72c3f9fc8cfadd0835370"
+      },
+      {
+        "path": ".runtime/brand-first-compose-ci.log",
+        "sha256": "26ec842aeb2f44ea0450d41c48f89b88646c2533236f1e7884e04d422de9d0b5"
+      }
+    ],
+    "scope_notes": [
+      "目标96项通过后旧Schema回退受revoked/revoking残留影响；本地专用库复现同CheckViolation/exit1。",
+      "修复仅移动原完整迁移probe到全部数据测试之前，不删除目标/套件或修改生产Migration/状态约束。",
+      "顺序回归1failed Red→相关79passed Green；空库14checkpoint/base→0078 probe exit0，紧接同8targets96passed/exit0。",
+      "原head的core1584/113/101及12subs、前端274/175Mock、实际全栈16、Compose、Tooling成功；该head整体CI仍为失败，不能用局部成功批准合并。",
+      "Compose在正式worker镜像内加载CJK常规/粗体并渲染含爱玛和续航的词云、Image.verify成功；不依赖runner字体。",
+      "修复后的新冻结head仍需完整required CI及Final Review。"
+    ]
+  }
+}

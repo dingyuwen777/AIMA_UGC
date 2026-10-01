@@ -2342,7 +2342,7 @@ def test_historical_stage3_freezes_catalog_and_preserves_manual_evidence(
             )
         assert len(vehicle_rows) == 1
         assert vehicle_rows[0]["vehicle_model_id"] == vehicle_id
-        assert vehicle_rows[0]["source"] == "import"
+        assert vehicle_rows[0]["source"] == "alias_match"
         assert vehicle_rows[0]["matched_text"] == "Q7"
         assert vehicle_rows[0]["catalog_version"] == frozen_catalog_version
         assert len(brand_rows) == 1

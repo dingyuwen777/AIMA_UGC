@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.modules.collection.tables import collection_plan_brands_table
 from aima_ugc.modules.vehicles.brand_vehicle import (
+    CURRENT_RESOLVER_SEMANTICS,
     BrandAliasRecord,
     BrandRecord,
     BrandRole,
@@ -165,6 +166,49 @@ class PostgresBrandVehicleRepository:
             ),
             {"lock_keys": lock_keys},
         )
+
+    def load_locked_manual_brand_ids_batch(
+        self, pairs: tuple[tuple[UUID, int], ...]
+    ) -> dict[tuple[UUID, int], tuple[UUID, ...]]:
+        """冻结人工品牌选择到当前事务；空选择与未锁定保持不同语义。"""
+
+        if not pairs:
+            return {}
+        self._lock_brand_review_writes(pairs)
+        locked = set(
+            self._session.execute(
+                select(
+                    content_brand_review_locks_table.c.content_id,
+                    content_brand_review_locks_table.c.content_version,
+                ).where(
+                    tuple_(
+                        content_brand_review_locks_table.c.content_id,
+                        content_brand_review_locks_table.c.content_version,
+                    ).in_(pairs),
+                    content_brand_review_locks_table.c.is_locked.is_(True),
+                )
+            )
+        )
+        selected: dict[tuple[UUID, int], set[UUID]] = {
+            (cast(UUID, row.content_id), cast(int, row.content_version)): set() for row in locked
+        }
+        if locked:
+            for row in self._session.execute(
+                select(
+                    content_brand_evidence_table.c.content_id,
+                    content_brand_evidence_table.c.content_version,
+                    content_brand_evidence_table.c.brand_id,
+                ).where(
+                    tuple_(
+                        content_brand_evidence_table.c.content_id,
+                        content_brand_evidence_table.c.content_version,
+                    ).in_(tuple(locked)),
+                    content_brand_evidence_table.c.is_active.is_(True),
+                    content_brand_evidence_table.c.source == "manual_review",
+                )
+            ):
+                selected[(row.content_id, row.content_version)].add(row.brand_id)
+        return {pair: tuple(sorted(ids, key=str)) for pair, ids in selected.items()}
 
     def create_brand(
         self,
@@ -593,7 +637,26 @@ class PostgresBrandVehicleRepository:
             vehicle_alias_rows = ()
         ambiguous_brand_aliases = self._ambiguous_active_brand_aliases()
         ambiguous_vehicle_aliases = self._ambiguous_active_vehicle_aliases()
+        cleanup_vehicle_ids: tuple[UUID, ...] = ()
+        if CURRENT_RESOLVER_SEMANTICS == "brand_scoped_vehicle_v2" and selected_ids:
+            # 在同一目录锁内冻结旧 Evidence 的清理身份，执行时不得再读 live 归属。
+            scoped_models = select(vehicle_models_table.c.id).where(
+                vehicle_models_table.c.brand_id.in_(selected_ids)
+            )
+            cleanup_vehicle_ids = tuple(
+                self._session.scalars(
+                    select(vehicle_models_table.c.id)
+                    .where(
+                        or_(
+                            vehicle_models_table.c.brand_id.in_(selected_ids),
+                            vehicle_models_table.c.merged_into_id.in_(scoped_models),
+                        )
+                    )
+                    .order_by(vehicle_models_table.c.id)
+                )
+            )
         return BrandVehicleCatalogSnapshot(
+            resolver_semantics=CURRENT_RESOLVER_SEMANTICS,
             catalog_version=catalog_version,
             filter_scope=scope,
             selected_brand_ids=selected_ids,
@@ -604,6 +667,7 @@ class PostgresBrandVehicleRepository:
             ambiguous_brand_aliases=ambiguous_brand_aliases,
             ambiguous_vehicle_aliases=ambiguous_vehicle_aliases,
             unresolved_active_vehicle_ids=self.unresolved_active_vehicle_ids(),
+            automatic_evidence_vehicle_ids=cleanup_vehicle_ids,
         )
 
     def _ambiguous_active_brand_aliases(self) -> tuple[str, ...]:

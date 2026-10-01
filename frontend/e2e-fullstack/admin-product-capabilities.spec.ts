@@ -107,7 +107,8 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
   expect(fixturePath, 'AIMA_ADMIN_PRODUCT_EXCEL_FIXTURE 必须指向车型验收 Fixture').toBeTruthy()
   const suffix = Date.now().toString()
   const brandName = `全栈品牌 ${suffix}`
-  const brandAlias = `全栈品牌${suffix}`
+  // 冻结品牌识别词必须真实出现在输入中，新任务不依赖车型反推品牌。
+  const brandAlias = '爱玛 U2'
   const displayName = `全栈车型 ${suffix}`
   const alias = '爱玛 U2 车型证据全栈导入'
 
@@ -217,7 +218,7 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
     .locator('article')
     .filter({ hasText: displayName })
   await expect(vehicleEvidence.locator('b').filter({ hasText: displayName })).toBeVisible()
-  await expect(vehicleEvidence).toContainText('系统识别')
+  await expect(vehicleEvidence).toContainText('词包 / 别名识别')
   await expect(vehicleEvidence).toContainText(`命中“${alias}”`)
   await expect(vehicleEvidence).not.toContainText('catalog v')
 
@@ -227,6 +228,20 @@ test('品牌与车型目录、品牌范围导入、声音广场筛选详情和�
     .locator('article')
     .filter({ hasText: brandName })
   await expect(brandEvidence).toContainText('自有')
+  await expect(brandEvidence).toContainText(`命中“${brandAlias}”`)
+  const contentId = await contentIdBySearch(request, vehicleContentTitle)
+  const classifiedResponse = await request.get(`/api/v1/contents/${contentId}`)
+  expect(classifiedResponse.status()).toBe(200)
+  const classified = await classifiedResponse.json() as {
+    brands: { id: string; evidences: { source: string; matched_text: string | null }[] }[]
+    vehicles: { vehicle_model_id: string; evidences: { source: string; matched_text: string | null }[] }[]
+  }
+  expect(classified.brands.find(item => item.id === brand.id)?.evidences).toEqual(
+    expect.arrayContaining([expect.objectContaining({ source: 'alias_match', matched_text: brandAlias })]),
+  )
+  expect(classified.vehicles.find(item => item.vehicle_model_id === vehicle!.id)?.evidences).toEqual(
+    expect.arrayContaining([expect.objectContaining({ source: 'alias_match', matched_text: alias })]),
+  )
   await detail.getByRole('button', { name: '关闭', exact: true }).click()
 
   await page.getByRole('button', { name: '导出记录', exact: true }).click()
