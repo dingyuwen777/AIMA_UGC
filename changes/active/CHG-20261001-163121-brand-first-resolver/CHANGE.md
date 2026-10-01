@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261001-163121-brand-first-resolver
 title: 数据库目录驱动的品牌先行多品牌多车型识别
 level: L3
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: feature/brand-first-resolver
 created: 2026-10-01
@@ -137,8 +137,10 @@ data_changes:
 
 # 完成证据与状态
 
-新实例已按当前秒级 ID 创建，并通过当前 canonical 新实例 Contract 校验。基线为 15dd366db6e1632535fadc615513636a4b22c639，早期 PR 为 #687，保持 Draft。已取得算法 10 failed/8 passed 的 Red、codec Red、较新 Replay Owner Red，以及 selected 冻结范围 2 failed 的 Red；相应修复已取得专项 Green。1753 项单元/Contract/API、581 项真实 PG 分套、45 项浏览器 Mock及16项真实全栈通过；生产源码摘要与实现提交36f0f7f5一致。Repair 独立审查 RV-BRAND-01–09 已关闭；报告合并后最终 head/base 审查、required CI 和交付仍未完成，不声明 Ready。详细命令、环境、失败归因及证据见 LOCAL_VALIDATION.md。仅本开发目录与自有测试资源可写；运行目录和既有容器未操作。
+新实例已通过当前canonical实例Contract校验。原基线15dd366、实现36f0f7f5的缺陷Red/Green和完整分套证据保持；本批已同步报告原生归档后的当前main `dd821ca86a64951d4f7add4d39b6129368aac18d`，组合实现检查点 `143f5a0bca6b5be72d4f574367fe358c69db0c7c`。18个品牌生产Git blob与原证据一致。当前组合1782项后端/16既有skip/12subtests、96项CI精确PG目标、24项品牌专项、报告PG9项/1 opt-in skip、16项真实全栈、前端274项与构建以及静态/Contract/文档检查通过。
+
+独立组合Repair复核RV-BRAND-01–09 closed，NO_FINDINGS_WITHIN_SCOPE，重读了上游完成定义，确认报告版本化Evidence消费者边界。当前进入ready_for_review；最终冻结head/current-base Review与required CI仍需live验证，通过之前不允许merge。详细命令、环境、原始失败、生产源码与XML摘要见LOCAL_VALIDATION.md和EVIDENCE.json。仅当前开发目录与自有测试资源可写，运行目录和既有容器未操作。
 
 ## 交付阶段与 Issue AC21
 
-#685 / AC21 保持未勾选：两批本地验证完成后，依次合并报告交付 PR、品牌识别 PR #687；第二批针对包含报告的最新 main 重新验证和审查。#686 的日期级新增 Active Change 被当前 canonical 新实例门禁拒绝，原报告分支/Change 身份与失败记录保持，报告将通过新的秒级交付 Change 和替代 PR 交付，不重命名历史身份。Delivery Agent 持有 merge/main-fresh/Closure，原生 automation 持有同 ID Change 归档。当前 delivery、main_fresh、change_archive、requirement_closure、end_to_end 均 incomplete，不伪造已执行状态。当前 Change 的 Ready 只证明实现单元，不等价于整个 Issue 完成。
+#685 / AC21保持未勾选：第一批报告PR #688已正常squash合并，原生Archive、main-fresh和Issue #684 Closure已完成；旧PR #686关闭为superseded，其分支/Change身份及失败记录保留。第二批PR #687按当前组合Ready门禁继续交付。Delivery Agent持有最终Review/CI、expected-head merge、main-fresh、Closure与cleanup，原生automation持有同ID Change归档。当前第二批delivery、main_fresh、change_archive、requirement_closure、end_to_end仍incomplete，不伪造已执行状态。当前Change的Ready准备不等价于整个Issue完成。

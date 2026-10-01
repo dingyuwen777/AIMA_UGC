@@ -199,5 +199,138 @@
       "errors": 0,
       "skipped": 0
     }
-  ]
+  ],
+  "combined_validation": {
+    "generated_at": "2026-10-01T21:26:15.623893+08:00",
+    "implementation_commit": "143f5a0bca6b5be72d4f574367fe358c69db0c7c",
+    "baseline": "dd821ca86a64951d4f7add4d39b6129368aac18d",
+    "report_pr": "https://github.com/dingyuwen777/AIMA_UGC/pull/688",
+    "report_merge": "e69b3d3829e2feb13d7e590cfc535bde58e493d6",
+    "brand_production_sources_unchanged": true,
+    "records": [
+      {
+        "path": ".runtime/brand-combined-unit.xml",
+        "sha256": "eb0018e385a6590c9fa5869f0339a40d30bf83d46a94ee8bbf7d56c7f2ccce15",
+        "tests": 1810,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 16
+      },
+      {
+        "path": ".runtime/brand-combined-report.xml",
+        "sha256": "434bfbca7cfa206befcec7bd5816977331b79f02393529f370d98449920140be",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      {
+        "path": ".runtime/brand-combined-owner.xml",
+        "sha256": "e9475d794ad478f77d30495b128d3059f6994d291172eb6104b25580497e67f0",
+        "tests": 24,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": ".runtime/brand-combined-ci-targets.xml",
+        "sha256": "9977964a666e3026a702985ee11c67d398e843a2810dfa0c427ebe4fe5d94524",
+        "tests": 96,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": ".runtime/brand-fullstack-combined/browser-complete.xml",
+        "sha256": "f1568c429e233e74658eb171d7a79be30ae239b44e0e38f3b474492ea77d5673",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "logs": [
+      {
+        "path": ".runtime/brand-combined-ruff.log",
+        "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+      },
+      {
+        "path": ".runtime/brand-combined-format.log",
+        "sha256": "fb040d3a82925bd0f0593d3512a1ee9c5b5bab169b779ff1a1792cfcc908329a"
+      },
+      {
+        "path": ".runtime/brand-combined-mypy.log",
+        "sha256": "316673ba54684a6071a86c2c1566b81976670dc5c25f311e3c5953ad5b946c2a"
+      },
+      {
+        "path": ".runtime/brand-combined-contract.log",
+        "sha256": "9d84a28eda0c2b92dcad50a5b1b1e7c26d2268c6b7b5a53c267726b7e3f5a02c"
+      },
+      {
+        "path": ".runtime/brand-combined-docs.log",
+        "sha256": "4f683fa2a431e0ebf85f0f0db4d54a2bb8d9174bcf52343198b13b6c0250b48a"
+      },
+      {
+        "path": ".runtime/brand-combined-facts.log",
+        "sha256": "1893aeaefce78540430c3cc5f45a9f2359b5bd643aac937c6b13433df55598fc"
+      },
+      {
+        "path": ".runtime/brand-combined-owner-check.log",
+        "sha256": "7bd78b8cb798e991a60713d72457330f1528785fdfbcd4ec3845be865a05b67f"
+      },
+      {
+        "path": ".runtime/brand-combined-architecture.log",
+        "sha256": "34b7d261449ee2fa4439519b0596ac0ae096b5c3a5c61de0b75721ca5a2c22db"
+      },
+      {
+        "path": ".runtime/brand-combined-secret.log",
+        "sha256": "48e07b38901517057ef2e32163bdfb47adb999c588eca3d653f0232c96e37b6a"
+      },
+      {
+        "path": ".runtime/brand-combined-front-build.log",
+        "sha256": "53c8e3314039dbb21ef0da901e9b57c9a5584018cb758331f3e598fd8db8a7ea"
+      },
+      {
+        "path": ".runtime/brand-combined-front-unit.log",
+        "sha256": "dcacd5abc4a0b9d7a666d0191551c3a80ca6bc9836b8015683edb6f41dad6106"
+      },
+      {
+        "path": ".runtime/brand-combined-ci-targets.log",
+        "sha256": "acc9a7dba82e815194cd6f9693c76a6938d1c513b19dc6e13a261d67b04aabc4"
+      },
+      {
+        "path": ".runtime/brand-combined-unit.log",
+        "sha256": "52f78a79d9ecd2efb8fa1f4edffb6399d83f8d155ef264c7f1841ca267a9fb03"
+      },
+      {
+        "path": ".runtime/brand-combined-report.log",
+        "sha256": "b41a2d88bd358d4eca1a5ac86fe180e4aa4ac222a8fab5cd12400bea4b186bcf"
+      },
+      {
+        "path": ".runtime/brand-combined-owner.log",
+        "sha256": "9626273e0d71c88e59a2701d79d59c6bfa81b26808b0a6c5dc2a5afdcaf67a02"
+      },
+      {
+        "path": ".runtime/brand-combined-fullstack-wrapper.log",
+        "sha256": "66cc46d8edd0c34fb0103369eaa777a8735ed2454409d69e31d4a44cf08a5dc7"
+      }
+    ],
+    "pytest_summary": {
+      "backend_passed": 1782,
+      "backend_skipped": 16,
+      "subtests_passed": 12,
+      "report_passed": 9,
+      "report_browser_skipped": 1,
+      "owner_passed": 24,
+      "ci_selected_targets_passed": 96,
+      "fullstack_passed": 16
+    },
+    "scope_notes": [
+      "本组合基线已包含报告原生归档；测试只在自有隔离资源执行。",
+      "18个品牌生产Git blob与原实现36f0f7f5及原证据摘要一致。",
+      "当前CI选出的8个PG文件在同一pytest session实际运行96项，后续远程CI还运行全部分套。",
+      "pytest XML含12个subtests条目，summary通过数与XML总数分别保存。",
+      "组合提交后的远程CI和最终current-head/current-base Review另行持有，不能由本地结果冒充。"
+    ]
+  }
 }
