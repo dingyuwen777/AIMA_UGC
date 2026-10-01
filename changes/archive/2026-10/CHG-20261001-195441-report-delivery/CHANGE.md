@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261001-195441-report-delivery
 title: 数据库报告功能远程交付与持续回归
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: feature/report-delivery
 created: 2026-10-01
