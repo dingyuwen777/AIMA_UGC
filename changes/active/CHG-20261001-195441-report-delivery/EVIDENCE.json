@@ -1,0 +1,89 @@
+{
+  "schema": "aima-local-validation/v1",
+  "base_revision": "15dd366db6e1632535fadc615513636a4b22c639",
+  "implementation_revision": "d1e09a8d8d81c01f43b70da327543dbd14b0e2d9",
+  "frozen_report_revision": "0fd93aec403049d490d58543cc6178d3fec14604",
+  "canonical_revision": "041c9b60aae0f566553002794eb5fde4ed614c7f",
+  "source_comparison": "all extant changed backend/frontend source, contracts and migration exactly equal frozen report git blobs; LF-normalized",
+  "sources_sha256": {
+    "backend/src/aima_ugc/adapters/feishu/report_publisher.py": "bd71759e7d68f5187066071198df0b59ac5b9d2d252b899154497181c8357ca3",
+    "backend/src/aima_ugc/adapters/persistence/postgres/artifact_metadata.py": "ed5fb2d975bfdb64311e9491153525608d70a5d53d94fd571693ff676d657e39",
+    "backend/src/aima_ugc/adapters/persistence/postgres/provider_lifecycle.py": "eb4aa0257b8f7866732a777618f6bdb912158a6bcbb65bb580d83c0ebff7eef1",
+    "backend/src/aima_ugc/adapters/persistence/postgres/report_runs.py": "d113f4d8d0cd3a67e5abda7ac7b3bb5d70af8317eca7f98c87ced94242373b86",
+    "backend/src/aima_ugc/adapters/persistence/postgres/reporting.py": "efcb6bd061c3d0cbd65b6d1c57d5329f68556efd8b3dc6847ecec32c11d79c3e",
+    "backend/src/aima_ugc/bootstrap/api.py": "ef867b00e039cbdcd507b29d4884acbc5a210c0f4d4cf1a39c9ddd1e8f82b2ac",
+    "backend/src/aima_ugc/bootstrap/feishu_bitable_mirror.py": "a016cd15a0977a3c4afb34ab45828d0e765c2d3b9aaeda718328fc0b7c9a7827",
+    "backend/src/aima_ugc/bootstrap/feishu_report_publication.py": "e8ad51984dcdb5d305c29b08c6c45bc76a7a04e795a697fb24ddde3a2a3817be",
+    "backend/src/aima_ugc/bootstrap/report_routes.py": "7c6e17b2928ba79ddf4bba363a37fae2db51901e43cd9847f39f37042173a9af",
+    "backend/src/aima_ugc/bootstrap/report_runs_http.py": "ef78e5c6ffb537100716e20d15d851f32b66cee3be11185bafcba97123a584b6",
+    "backend/src/aima_ugc/bootstrap/report_runs_worker.py": "81f5b57bf8662ec7db74dd849c7e1bb6c982a6bdf5af0bbee5d3a7a35d1b0058",
+    "backend/src/aima_ugc/bootstrap/representative_report_pipeline.py": "170e09aae10f8f91e9052920cee3e80edfd1f882b9c32bc3c1265dc792f3e187",
+    "backend/src/aima_ugc/bootstrap/representative_selection_publication.py": "40ba27d6d4fbdcc7ac7c9d1c1d6023fb075140ecc1b5498ba8804513bb992771",
+    "backend/src/aima_ugc/bootstrap/worker.py": "58c1579e6efef0cb7813fd38c1a42ded6a7fbd77c48d24cc9daacee47164a439",
+    "backend/src/aima_ugc/contracts/reports.py": "a283fe809311fb2d5551cfa91371ebdcead2281eac230b0bbc378c790c330e2d",
+    "backend/src/aima_ugc/database_schema.py": "4e92e5ccd708465889614c5bc8ff37ad8d2f42f176e0256352e2c4a4204284b9",
+    "backend/src/aima_ugc/modules/analysis/representative_advice.py": "80c0c502a9934e98f092fd563d8a0507e5cd4cd432917048543d4fa12aadad21",
+    "backend/src/aima_ugc/modules/analysis/representative_selection.py": "a6cb9f8dfd55f574cb4a0c89a8829df595f87773ec79d27a362298c7d0e17ea0",
+    "backend/src/aima_ugc/modules/reporting/README.md": "ca86fbc157f006a143c87e52ab4ca3416ae795d483ae5f0a51e26784cf5920e0",
+    "backend/src/aima_ugc/modules/reporting/report_jobs.py": "75ecfa689d468e713b2f0470eab7cb397498a2ada14ad275d8a7527026907e3b",
+    "backend/src/aima_ugc/modules/reporting/report_tables.py": "b6a3abf8f0828c8236632c6c6f893e0719958e46065187975589153648839fe9",
+    "backend/src/aima_ugc/platform/config/settings.py": "3fe5562916e49dbc956a2d6691718671719d38d4d2c742f9227d31f199d6ce08",
+    "backend/src/aima_ugc/platform/export/excel.py": "e35877ee553a16692a47854d5696f1f631817ade1be731b50c9a8ad5c4cc96be",
+    "backend/src/aima_ugc/platform/reporting/README.md": "aff3493ed9c9d046081b385c66ef7c45a212b3af8b9696fa40450adb65031298",
+    "backend/src/aima_ugc/platform/reporting/docx_package.py": "90e1356ef34053dbaeddea4e13bd5e1c0eeab87eaa4551f3c194200736de30a1",
+    "backend/src/aima_ugc/platform/reporting/excel_report.py": "5cc19c6d6878770049389d6d3c5936e8c25436c3ffbe12bcc1d1282aa53d55ae",
+    "contracts/openapi/openapi.json": "c7b1efdb3e67c0852eaaf151df3f585a78931243279bad4a78837ebdaa17c15f",
+    "frontend/src/features/admin-configuration/api.ts": "99c96b377b57d614d2b2a4a79183357205aa5476c4440a735b7f5614e83084a8",
+    "frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue": "6d196f6bbcfa03bea6073f84d199b8dc7c0e904465f4bf2171b6584472928544",
+    "frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/ReportGenerationPanel.vue": "1ecc8d51e412ade85ed8e2cc21b9b9dd13460e72b9293a4d0e2dc12be243cedf",
+    "frontend/src/generated/api/client.ts": "e743c19b0561b41acfece9d95b3fd5f929d8d6ee3cfa2be28a81de6c19fcd0b0",
+    "migrations/versions/20261001_0078_report_generation.py": "b3939be2bc262d33ddebf8367a3cda4278e604ac1cd706432d321c86472bfa45"
+  },
+  "xml_records": [
+    {
+      "path": ".runtime/report-delivery-backend-green.xml",
+      "sha256": "4715280eae4ef219f897a1e59f2a197c735f57609890537f703b89231dd1a934",
+      "tests": 1777,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16
+    },
+    {
+      "path": ".runtime/report-delivery-pg.xml",
+      "sha256": "a43926e62f8d73d8de70bb8910ebe111c94a816049a9f55a1d39cbba92bd4889",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    {
+      "path": ".runtime/report-delivery-registry.xml",
+      "sha256": "2c864b3f362fbfc53905e8b9f888f5adc7d753233a33e3b72dccccaafaae9790",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/report-delivery-navigation.xml",
+      "sha256": "502c5d2a51454456e8f5eb4dee41f388f0cfa74d7eb34fdc9d23aafac91c951c",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "checks": {
+    "frontend_unit": 274,
+    "report_browser": 38,
+    "mypy_files": 427,
+    "ruff_format_files": 868
+  },
+  "isolation": {
+    "host": "127.0.0.1",
+    "postgres_port": 55437,
+    "database": "aima_report_test",
+    "browser_port": 55438
+  },
+  "remaining": "current PR CI/Final Review/merge/main-fresh/native archive/Issue closure; no production deployment or online paid provider calls"
+}

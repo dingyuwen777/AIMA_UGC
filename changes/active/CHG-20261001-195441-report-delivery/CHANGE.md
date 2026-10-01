@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261001-195441-report-delivery
 title: 数据库报告功能远程交付与持续回归
 level: L3
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: feature/report-delivery
 created: 2026-10-01
@@ -74,13 +74,13 @@ main 仍使用上传 Excel 的报告管理页面。冻结检查点 `0fd93aec4030
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 数据库品牌车型日期过滤及等长上期；关键词用有效已保存标准名称，每条内容去重并冻结 | #684 / AC1 | not_satisfied | 待转入与当前检查点复核 |
-| R2 | 冻结版本、评论、指标、分析/Scheme及管理员 Provider；后续变化不改变输入 | #684 / AC2 | not_satisfied | 待当前 PostgreSQL 冻结工作流 |
-| R3 | DOCX/XLSX/Markdown/可编辑图表可下载并重新解析；默认60天及孤儿清理 | #684 / AC3 | not_satisfied | 待当前文件工作流 |
-| R4 | Word/Excel/多维表独立发布，重试不重跑模型 | #684 / AC4 | not_satisfied | 待生产 Adapter + 可控 HTTP 和 PG 恢复验证 |
-| R5 | 冻结管理员模型；代表内容考虑粉丝互动；严格输出失败不产出错误案例 | #684 / AC5 | not_satisfied | 待当前选择与输出检查 |
-| R6 | 管理页预检、创建、历史、进度、取消/重试、下载和飞书链接；真实装配路径 | #684 / AC6 | not_satisfied | 待生成 Client/页面及当前接线复核 |
-| R7 | 安全日志、有界过载重试/超时/取消/fence；本地隔离不影响运行服务 | #684 / AC7 | not_satisfied | 待当前隔离复核与 retry/fence 回归 |
+| R1 | 数据库品牌车型日期过滤及等长上期；关键词用有效已保存标准名称，每条内容去重并冻结 | #684 / AC1 | satisfied | 报告PG9项及当前0fd逐文件守恒；关键词有效标准名称并集、等长上期、去重冻结实测 |
+| R2 | 冻结版本、评论、指标、分析/Scheme及管理员 Provider；后续变化不改变输入 | #684 / AC2 | satisfied | 报告PG9项：版本/指标/评论/分析及Provider一致冻结，创建后事实变化不改变输入 |
+| R3 | DOCX/XLSX/Markdown/可编辑图表可下载并重新解析；默认60天及孤儿清理 | #684 / AC3 | satisfied | 报告PG下载并解析DOCX/XLSX/Markdown和图表；到期410与孤儿互斥清理；当前单元/Contract回归 |
+| R4 | Word/Excel/多维表独立发布，重试不重跑模型 | #684 / AC4 | satisfied | 生产Publisher/MockTransport单元及PG9项：发布恢复不增加LLM调用，生成文件保持可下载 |
+| R5 | 冻结管理员模型；代表内容考虑粉丝互动；严格输出失败不产出错误案例 | #684 / AC5 | satisfied | test_report_selection及当前1749后端回归：冻结管理员配置、粉丝互动与严格输出校验 |
+| R6 | 管理页预检、创建、历史、进度、取消/重试、下载和飞书链接；真实装配路径 | #684 / AC6 | satisfied | 当前274组件、38报告浏览器、生成Contract/build；与0fd完整真实浏览器API/Worker下载实现字节相同 |
+| R7 | 安全日志、有界过载重试/超时/取消/fence；本地隔离不影响运行服务 | #684 / AC7 | satisfied | PG9项覆盖503/ReadTimeout/429耗尽、取消fence；安全日志检查；专用55437/55438资源，运行目录未操作 |
 
 # 计划改动
 
@@ -114,13 +114,13 @@ main 仍使用上传 Excel 的报告管理页面。冻结检查点 `0fd93aec4030
 
 # 完成审计
 
-- [ ] upstream_re_read：Final Ready 前重读 #684、会话已批准方案与当前主分支事实。
-- [ ] change_coverage：逐条核对AC1–AC7与实现/测试/文档；AC8由Issue持有post-merge责任。
-- [ ] reverse_audit：API→页面/生成Client、Job→历史进度恢复、Artifact→下载/清理均需当前复核。
-- [ ] unresolved_cleared：R1–R7取得当前证据后才清零并进入Ready。
+- [x] upstream_re_read：重新读取当前#684 AC1–AC8、已批准方案/用户DB证据决定、当前main15dd366和正式Owner/Contract事实。
+- [x] change_coverage：AC1–AC7逐条对应当前产品/测试/文档，0fd转入守恒；AC8由Issue持有post-merge责任且保持未勾选。
+- [x] reverse_audit：8个API均有页面/Client或下载入口；独立生成/发布Job、取消与恢复使用正式Runtime；Artifact下载/过期/孤儿清理有当前PG和浏览器验收。
+- [x] unresolved_cleared：R1–R7均有当前证据，not_satisfied已清零；在线账户和生产部署限制保留。远程Final Review/CI及post-merge逐项取得后才宣称交付完成。
 
 # 完成证据与状态
 
-尚未转入产品代码。本治理检查点以 main 15dd366为base、canonical041c9b6为规则源。原报告及品牌本地验收均已取得；当前单元不据此提前声称当前 CI/Review/merge 已完成。首个提交后创建 Draft PR，再转入产品差异并记录当前证据。
+产品提交d1e09a8d、main15dd366为base、canonical041c9b6为规则源；0fd产品字节守恒。当前后端1749 passed/16 skipped/12subtests；报告PG9 passed/1显式browserSkip、registry1、导航fixture11、前端274组件/38报告浏览器/build、mypy427/ruff868格式/Contract/Docs/Owner/Secret均通过。原22项真实报告全链路验收继续覆盖字节守恒实现。当前命令、失败与修复范围见LOCAL_VALIDATION.md，源字节与XML摘要见EVIDENCE.json。Draft PR #688已建立，当前Final Review、required CI、merge和post-merge仍需逐项取得，不提前声称交付完成。
 
 原 PR #686 保留失败记录，建立替代 PR 后关闭为 superseded，原分支和 Change 保留。Issue #684 AC8 在 main-fresh、原生archive及收尾之前保持未勾选。生产部署与在线付费服务验收未执行。
