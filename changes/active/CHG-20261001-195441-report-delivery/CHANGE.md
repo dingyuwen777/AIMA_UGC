@@ -10,10 +10,29 @@ created: 2026-10-01
 updated: 2026-10-01
 completion_gate: required
 depends_on: []
-affected_areas: [reporting, administration, storage, analysis, quality]
-affected_paths: [backend/src/aima_ugc, frontend, migrations, tests, scripts/quality, .github/workflows/ci.yml, contracts/openapi, docs, AGENTS.md]
-contracts: [reports HTTP API, reporting generation/publication Job v1]
-data_changes: [report_runs, report_items, report_artifacts]
+affected_areas:
+  - reporting
+  - administration
+  - storage
+  - analysis
+  - quality
+affected_paths:
+  - backend/src/aima_ugc
+  - frontend
+  - migrations
+  - tests
+  - scripts/quality
+  - .github/workflows/ci.yml
+  - contracts/openapi
+  - docs
+  - AGENTS.md
+contracts:
+  - reports HTTP API
+  - reporting generation/publication Job v1
+data_changes:
+  - report_runs
+  - report_items
+  - report_artifacts
 ---
 
 # 变更摘要

@@ -31,3 +31,7 @@
 #686 CI失败保留：日期ID的新Active实例被当前Contract拒绝；registry精确预期遗漏两个新增Job；报告PG未执行。#688用新的真实交付单元与测试修正取得当前证据，不改旧身份或CI质量规则。
 
 真实LLM、TikHub和飞书没有调用；本地用生产Adapter与可控HTTP证明协议/恢复，不能证明账户额度、权限或生产吞吐。迁移0078仅在隔离库执行；默认60天配置随功能交付，生产部署/Release未执行。Issue#684 AC8仍持有合并、main-fresh、原生archive和closure责任。
+
+## 当前复核与就绪记录
+
+独立Repair Review重新读取上游、canonical远程源码和57个产品差异路径：无新blocking Finding，报告01–05关闭；确认原历史守恒、CI report PG全量/目标路径和guard。Completion gate最终150 gated、128 legacy、150 strict、errors=[]。canonical接受的inline YAML列表在项目轻量parser中不兼容，已改为现有block列表，产品未变。Final Review与required CI仍在合并前取得。
