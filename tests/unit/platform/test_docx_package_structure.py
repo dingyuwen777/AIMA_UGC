@@ -6,6 +6,7 @@ from io import BytesIO
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import pytest
 from aima_ugc.platform.reporting import convert_markdown_to_docx
 from aima_ugc.platform.reporting.docx_package import DocxBuilder, verify_docx
 from openpyxl import load_workbook
@@ -15,10 +16,47 @@ _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
+_DC = "http://purl.org/dc/elements/1.1/"
 
 _PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
 )
+
+
+@pytest.mark.parametrize(
+    ("heading", "expected_title"),
+    (
+        ("雅迪品牌舆情分析报告", "雅迪品牌舆情分析报告"),
+        ("品牌 A & B <旗舰>舆情分析报告", "品牌 A & B <旗舰>舆情分析报告"),
+        ("**爱玛**品牌舆情分析报告", "爱玛品牌舆情分析报告"),
+    ),
+)
+def test_word_metadata_uses_first_visible_report_heading(
+    tmp_path: Path, heading: str, expected_title: str
+) -> None:
+    markdown_path = tmp_path / "report.md"
+    output_path = tmp_path / "report.docx"
+    markdown_path.write_text(f"# {heading}\n\n正文\n\n# 参考资料\n", encoding="utf-8")
+
+    convert_markdown_to_docx(markdown_path, output_path)
+
+    with zipfile.ZipFile(output_path) as archive:
+        properties = ET.fromstring(archive.read("docProps/core.xml"))
+        document = ET.fromstring(archive.read("word/document.xml"))
+    assert properties.findtext(f"{{{_DC}}}title") == expected_title
+    first_paragraph = document.find(f"{{{_W}}}body/{{{_W}}}p")
+    assert first_paragraph is not None
+    assert "".join(node.text or "" for node in first_paragraph.iter(f"{{{_W}}}t")) == expected_title
+
+
+def test_word_metadata_without_report_heading_keeps_legacy_default(tmp_path: Path) -> None:
+    output_path = tmp_path / "report.docx"
+    builder = DocxBuilder()
+    builder.add_paragraph("旧入口无标题正文")
+    builder.save(output_path)
+    with zipfile.ZipFile(output_path) as archive:
+        properties = ET.fromstring(archive.read("docProps/core.xml"))
+    assert properties.findtext(f"{{{_DC}}}title") == "爱玛品牌舆情分析报告"
 
 
 def test_docx_line_break_is_nested_in_run(tmp_path: Path) -> None:

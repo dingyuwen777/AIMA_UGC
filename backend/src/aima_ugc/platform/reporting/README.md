@@ -4,6 +4,8 @@
 
 正式报告的范围、冻结依据、生成与独立发布 Job、文件下载和生命周期由 [backend/src/aima_ugc/modules/reporting/README.md](../../modules/reporting/README.md) 解释。数据库入口 `generate_dataset_report()` 先把冻结数据投影到内存 Workbook，再复用本目录的统计及渲染，不读写 Excel 输入文件。Word、Markdown、图表和词云继续消费同一统计上下文。
 
+Word 文件属性的标题取正文第一个一级标题的可见文本，与所选品牌对应；后续章节不覆盖它，Markdown 行内标记不进入属性。没有一级标题的旧调用继续使用原默认标题。
+
 它和 `modules/reporting/` 的正式 PostgreSQL Excel Export 不是同一件事：
 
 ```text

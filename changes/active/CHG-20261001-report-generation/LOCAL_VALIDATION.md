@@ -51,4 +51,15 @@
 
 独立只读Reviewer重新读取生产调用链、原始XML及具体断言，关闭了孤儿清理、飞书发送guard、旧GET覆盖、DryRun绕过和Provider并发删除共5项Finding。没有新的已知blocking代码Finding；这不替代R1的业务决定、完整Completion审计或正式CI。
 
-关键词来源尚缺正式决定：品牌/车型识别词命中证据与原采集关键词属于不同口径，当前数据库投影也没有旧Excel的同口径字段。因此没有静默补造关键词统计，也没有将这一要求标为延期或已满足。
+关键词来源尚缺正式决定。旧离线导入的 `RelevanceService.evaluate()` 只检查标题和正文，返回指定词包的标准名称；`UnifiedContentRecordV1.matched_keywords` 经打标写入 Excel。离线 Provider Probe 可使用搜索上下文，二者不能统一称为“原采集关键词”。正式数据库导出的 `UnifiedDataExcelContentV1.matched_keywords` 目前使用空默认值，没有投影同口径证据。历史 Campaign 的词包快照不等于全量内容的命中字段。采用现有品牌/车型证据或明确词包后保持原匹配规则会改变这一业务口径，因此再次列出准确选项，等待用户决定；没有补造统计、标为延期或宣称已满足。
+
+## 后续 Word 标题修复
+
+复核发现正文已按选择品牌生成标题，但 `docProps/core.xml` 仍固定“爱玛品牌舆情分析报告”。通过正式 Markdown→DOCX 入口先复现两个错误标题，再修复为第一个一级标题的可见文本，保留无标题旧入口的默认值，避免后续章节覆盖。XML 特殊字符经转义，Markdown 加粗标记不进入文件属性。
+
+- Red：`python .runtime/report-unit-validate.py tests/unit/platform/test_docx_package_structure.py -k metadata -q -p no:cacheprovider --basetemp=$env:TEMP/aima-report-word-metadata-red-20261001 --junitxml=.runtime/report-evidence/word-metadata-red.xml`，2 failed、3 passed、7 deselected；失败断言是实际品牌和特殊字符标题与固定“爱玛”不一致。此前沙箱临时目录 ACL 错误不作为此行为的 Red 证据。
+- Green：同一隔离 helper 执行 `test_docx_package_structure.py`、`test_offline_reporting.py`、`test_reporting_visual_fidelity.py`、`test_reporting_visuals.py`、`test_reporting_default_template.py`，`--basetemp=$env:TEMP/aima-report-word-metadata-green-20261001 --junitxml=.runtime/report-evidence/word-metadata-green.xml`，28 passed、2 skipped，exit 0；重新打开 ZIP 并解析正文和 core properties XML 核验。
+- 完整后端回归还发现既有时间协议测试直接无参数调用 `_core_props_xml()`；恢复其默认标题参数后继续验证，没有改动该测试断言。初次回归的1项兼容失败保留在 `backend-word-title-compat-red.xml`。
+- 最终完整后端回归：`python .runtime/report-unit-validate.py tests/unit tests/contracts tests/api -q -p no:cacheprovider --basetemp=$env:TEMP/aima-report-word-title-backend-final-20261001 --junitxml=.runtime/report-evidence/backend-word-title-final.xml`，1742 passed、16 skipped、12 subtests passed，exit 0，69.15秒。修复后 Ruff检查/格式检查、mypy受影响文件、文档链接/机器事实检查均 exit 0。
+- 本次只改变 Word 元数据，不修改数据库、Job、HTTP Contract、依赖或 Migration，也不启动服务或 Docker。先前完整工作流证据对应实现 checkpoint `568b6e9`；本次修复另有当前源码的局部回归，不能把旧工作流 XML 说成重新执行。
+- 独立只读复核重新解析 Red/Green 和最终完整回归 XML，确认首个可见标题、后续不覆盖、XML转义、旧无参数调用与UTC时间协议均成立，未发现新增 blocking Finding。当前源码清单核验50个文件与14个XML摘要，并通过 `validation_basis` 区分当前后端证据和既有 PG/前端证据。

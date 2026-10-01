@@ -54,7 +54,7 @@ data_changes:
 
 本轮未调用付费模型或写真实飞书；使用可控 HTTP 传输、生产 Adapter 与真实 PostgreSQL 验证。真实账户权限、模型额度和远端实际响应仍需在线验收，不能由本地测试证明。
 
-旧报告的命中关键词来自 Excel；当前数据库统一投影没有保存同口径字段。品牌/车型识别词证据与原采集关键词含义不同，已提请用户选择。该选择尚未得到回复，依赖它的关键词统计没有静默改换口径，R1 保持未满足。
+旧报告按 Excel 的“命中关键词”计数。已追溯离线导入入口：它使用指定词包匹配标题、正文，输出词包标准名称；离线 Provider Probe 也可从搜索上下文填充该字段，因此不能统一称为“原采集关键词”。当前正式数据库导出投影没有保存该字段；历史导入 Campaign 的词包快照也不能证明当前全部内容具有同一词包和对应命中记录。已提请用户决定采用现有品牌/车型命中证据，还是明确词包后保持旧离线匹配口径。尚未得到回复，依赖它的关键词统计没有静默改换口径，R1 保持未满足。
 
 # 目标、成功标准与非目标
 
@@ -82,7 +82,7 @@ ReportRun 保存品牌/车型/本期与相邻等长上期范围、安全 Provide
 | --- | --- | --- | --- | --- |
 | R1 | 数据库直接生成，品牌车型日期过滤，保持统计与上期比较（含命中关键词） | user:6abdb5d9-9c94-83e8-92dc-972cc3377249#数据 | not_satisfied | 数据库过滤、相邻等长上期、全量与真实用户分层统计已有工作流证据；关键词来源口径待用户决定 |
 | R2 | 冻结 Content/Version/评论/指标/分析身份及 Provider | user:6abdb5d9-9c94-83e8-92dc-972cc3377249#快照 | satisfied | tests/integration/reporting/test_database_reports.py：创建后改变实时数据仍使用冻结输入；正式 Contract/历史页显示当前选择模型与实际分析身份；仅报告引用的 Provider 禁止删除 |
-| R3 | DOCX/XLSX/Markdown/图表保存并下载，默认可配置60天清理 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249#文件与生命周期 | satisfied | 同一 PostgreSQL 工作流下载并重新解析 DOCX ZIP/Office 图表、统一数据 Excel；61 天到期返回410并清理；中途文件失败的一天孤儿窗口与已关联完整文件互斥 |
+| R3 | DOCX/XLSX/Markdown/图表保存并下载，默认可配置60天清理 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249#文件与生命周期 | satisfied | 同一 PostgreSQL 工作流下载并重新解析 DOCX ZIP/Office 图表、统一数据 Excel；61 天到期返回410并清理；中途文件失败的一天孤儿窗口与已关联完整文件互斥；Word属性标题跟随实际品牌标题，特殊字符与旧入口兼容有独立复现和回归证据 |
 | R4 | 独立发布 Word、Excel 图表及多维表；重试不重跑模型 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249#飞书 | satisfied | tests/unit/platform/test_report_publication_guards.py：生产 Publisher/外表/内嵌表 Adapter + MockTransport 验证上传、三 Client 守卫、读回错误；PG 工作流验证持久发布重试、文件仍可下载且 LLM 调用不增加；真实飞书在线验收未执行 |
 | R5 | 管理员 Provider、模型可追溯，粉丝和互动参与代表性选择，失败不产出错误案例 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249#AI | satisfied | tests/unit/analysis/test_report_selection.py；PG 工作流验证冻结当前粉丝数与管理员配置、严格模型输出及断点复用；前端生成依据显示配置修订和规则摘要 |
 | R6 | 预检、进度、历史、取消/重试、下载与飞书链接 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249#前端 | satisfied | frontend/e2e/admin-configuration-release2.spec.ts：迟到历史 GET 不覆盖创建，503 后继续轮询、生成下载、发布失败独立恢复；真实浏览器连接正式 API/Worker 下载 Word；tests/api/test_database_reports.py 验证8个入口权限 |
@@ -118,4 +118,4 @@ ReportRun 保存品牌/车型/本期与相邻等长上期范围、安全 Provide
 
 # 完成证据与状态
 
-保持 in_progress，未进入 Ready：R1 的关键词统计口径尚未决定。实现已在真实隔离 PostgreSQL、生产装配与可控外部 HTTP 传输下取得 21 项工作流通过证据；后端1738项、前端组件274项与浏览器174项通过，5项Review Finding均关闭。实际命令、迁移往返、验证范围和剩余限制见同目录 [LOCAL_VALIDATION.md](LOCAL_VALIDATION.md)。仅本地分支；不 push、不创建 PR、不 merge、不部署，也未执行运行数据库迁移。
+保持 in_progress，未进入 Ready：R1 的关键词统计口径尚未决定。实现 checkpoint 已在真实隔离 PostgreSQL、生产装配与可控外部 HTTP 传输下取得 21 项工作流通过证据；Word标题修复后的后端1742项通过，前端组件274项与浏览器174项通过，原5项Review Finding均关闭。实际命令、各验证对应的修订范围、迁移往返和剩余限制见同目录 [LOCAL_VALIDATION.md](LOCAL_VALIDATION.md)。仅本地分支；不 push、不创建 PR、不 merge、不部署，也未执行运行数据库迁移。

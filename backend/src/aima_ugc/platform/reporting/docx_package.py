@@ -101,6 +101,7 @@ class DocxBuilder:
         self.table_count = 0
         self.chart_count = 0
         self.image_count = 0
+        self._document_title: str | None = None
 
     def add_paragraph(
         self,
@@ -124,6 +125,11 @@ class DocxBuilder:
             if align is not None:
                 ET.SubElement(p_pr, f"{{{_W}}}jc", {f"{{{_W}}}val": align})
         self._add_inline_runs(paragraph, text, bold=bold, italic=italic, code=code)
+        if style == "Heading1" and self._document_title is None:
+            # 文件属性与正文标题保持一致，后续章节不能覆盖标题或保留 Markdown 标记。
+            title = "".join(node.text or "" for node in paragraph.iter(f"{{{_W}}}t")).strip()
+            if title:
+                self._document_title = title
 
     def add_separator(self) -> None:
         paragraph = ET.SubElement(self.body, f"{{{_W}}}p")
@@ -481,7 +487,10 @@ class DocxBuilder:
                     "[Content_Types].xml", _content_types_xml(self.chart_count, self.image_count)
                 )
                 archive.writestr("_rels/.rels", _root_rels_xml())
-                archive.writestr("docProps/core.xml", _core_props_xml())
+                archive.writestr(
+                    "docProps/core.xml",
+                    _core_props_xml(self._document_title or "爱玛品牌舆情分析报告"),
+                )
                 archive.writestr("docProps/app.xml", _app_props_xml())
                 archive.writestr("word/document.xml", _serialize_xml(self.document))
                 archive.writestr("word/styles.xml", _styles_xml())
@@ -1441,13 +1450,13 @@ def _styles_xml() -> str:
 </w:styles>"""
 
 
-def _core_props_xml() -> str:
+def _core_props_xml(title: str = "爱玛品牌舆情分析报告") -> str:
     """按 OOXML W3CDTF 约定把北京时间绝对时刻转换为 UTC `Z`。"""
     now = beijing_now().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="{_CP}" xmlns:dc="{_DC}"
                    xmlns:dcterms="{_DCTERMS}" xmlns:xsi="{_XSI}">
-  <dc:title>爱玛品牌舆情分析报告</dc:title>
+  <dc:title>{xml_escape(title)}</dc:title>
   <dc:creator>AIMA_UGC</dc:creator>
   <cp:lastModifiedBy>AIMA_UGC</cp:lastModifiedBy>
   <dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created>
