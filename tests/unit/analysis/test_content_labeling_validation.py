@@ -17,6 +17,22 @@ from aima_ugc.modules.analysis.content_labeling import (
 OBSERVED_AT = datetime(2026, 8, 18, 10, 0, tzinfo=UTC)
 
 
+def test_durable_retry_resumes_repair_or_judge_without_repeating_primary() -> None:
+    """持久恢复调用从上次校验错误继续修复，成功仍使用同一 Validator。"""
+
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    llm = FakeContentLabelingLLM(responses=[_valid_response(loader.load(), (1,))])
+    service = ContentLabelingService(prompt_loader=loader, llm=llm)
+    result = service.label_contents(
+        [_content("retry-item")],
+        max_validation_retries=0,
+        previous_validation_error_codes=("fabricated_evidence",),
+    )
+    assert result.items[0].analysis_status == "succeeded"
+    assert llm.calls[0].request_kind == "judge"
+    assert llm.calls[0].previous_validation_error_codes == ("fabricated_evidence",)
+
+
 def _content(external_content_id: str) -> CanonicalContentV1:
     return CanonicalContentV1(
         observed_fields=["title", "text"],
@@ -37,7 +53,6 @@ def _content(external_content_id: str) -> CanonicalContentV1:
 def _label_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
     primary = taxonomy.primary_labels[0]
     rules = taxonomy.semantic_rules
-    assert rules is not None
     source_type = rules.source_types[0]
     content_intent = rules.content_intents[0]
     return {
@@ -46,10 +61,8 @@ def _label_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
         "relevance_evidence": ["爱玛体验"],
         "source_type": source_type,
         "content_intent": content_intent,
-        "voice_type": rules.derive_voice_type(
-            source_type=source_type,
-            content_intent=content_intent,
-        ),
+        "real_user_qualified": False,
+        "voice_type": rules.ordinary_consumer_organic_voice_type_when_not_qualified,
         "voice_evidence": ["正文"],
         "sentiment": taxonomy.sentiments[0],
         "sentiment_evidence": ["正文"],
@@ -193,7 +206,7 @@ def test_item_order_mismatch_retries_the_whole_unresolved_batch() -> None:
     assert [item.item_no for item in fake.calls[1].items] == [1, 2]
 
 
-def test_irrelevant_results_remain_valid_outside_excel_complete_mode() -> None:
+def test_irrelevant_results_remain_valid_in_excel_complete_mode() -> None:
     loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
     taxonomy = loader.load()
     item = _label_item(taxonomy, item_no=1)
@@ -205,7 +218,11 @@ def test_irrelevant_results_remain_valid_outside_excel_complete_mode() -> None:
     )
     fake = FakeContentLabelingLLM(responses=[json.dumps({"items": [item]}, ensure_ascii=False)])
 
-    result = ContentLabelingService(prompt_loader=loader, llm=fake).label_contents(
+    result = ContentLabelingService(
+        prompt_loader=loader,
+        llm=fake,
+        force_excel_complete=True,
+    ).label_contents(
         [_content("unrelated-content")],
         max_validation_retries=0,
     )
@@ -215,25 +232,62 @@ def test_irrelevant_results_remain_valid_outside_excel_complete_mode() -> None:
     assert result.items[0].analysis.relevance == "irrelevant"
 
 
-def test_v46_prompt_asset_builds_taxonomy_without_python_voice_literals() -> None:
-    prompt_path = CONTENT_LABELING_PROMPT_PATH.with_name(
-        "content_labeling_v4.6_豆包零空白_发声类型闭环版 (1).md"
+def test_all_empty_input_accepts_only_the_protocol_sentinel() -> None:
+    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    item = {
+        "item_no": 1,
+        "relevance": "irrelevant",
+        "relevance_evidence": ["[EMPTY_INPUT]"],
+        "source_type": "ordinary_consumer",
+        "content_intent": "organic_experience",
+        "real_user_qualified": False,
+        "voice_type": "营销推广发声",
+        "voice_evidence": ["[EMPTY_INPUT]"],
+        "sentiment": None,
+        "sentiment_evidence": [],
+        "labels": [],
+        "decision_status": "clear",
+    }
+    fake = FakeContentLabelingLLM(responses=[json.dumps({"items": [item]}, ensure_ascii=False)])
+    empty_content = CanonicalContentV1(
+        observed_fields=[],
+        platform="xiaohongshu",
+        external_content_id="empty-input",
+        content_type="note",
+        observed_at=OBSERVED_AT,
+        source=CanonicalSourceV1(
+            provider_name="imports",
+            operation="excel_import",
+            observed_at=OBSERVED_AT,
+        ),
     )
+
+    result = ContentLabelingService(prompt_loader=loader, llm=fake).label_contents(
+        [empty_content],
+        max_validation_retries=0,
+    )
+
+    assert result.items[0].analysis_status == "succeeded"
+    assert fake.calls[0].model_payload()[0]["platform"] == "xiaohongshu"
+
+
+def test_current_prompt_asset_builds_taxonomy_without_python_voice_literals() -> None:
+    prompt_path = CONTENT_LABELING_PROMPT_PATH
     taxonomy = PromptTaxonomyLoader(prompt_path).load()
     rules = taxonomy.semantic_rules
 
-    assert taxonomy.output_protocol_version == "content-labeling.v4.6"
-    assert len(taxonomy.voice_types) == 3
-    assert rules is not None
+    assert taxonomy.output_protocol_version == "content-labeling.tables.v1"
+    assert taxonomy.voice_types == ("品牌官方发声", "真实用户发声", "营销推广发声")
     assert {
-        rules.ordinary_consumer_organic_voice_type,
-        rules.personal_transaction_voice_type,
-        rules.unknown_voice_type,
+        rules.ordinary_consumer_organic_voice_type_when_real_user_qualified,
+        rules.ordinary_consumer_organic_voice_type_when_not_qualified,
+        rules.ordinary_consumer_nonorganic_voice_type,
+        rules.irrelevant_nonofficial_voice_type,
         *rules.source_voice_types.values(),
     } <= set(taxonomy.voice_types)
 
 
-def test_excel_complete_fallback_keeps_unrecoverable_item_exportable() -> None:
+def test_invalid_response_is_not_replaced_by_an_excel_fallback() -> None:
     loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
     fake = FakeContentLabelingLLM(responses=["not-json"])
 
@@ -247,27 +301,23 @@ def test_excel_complete_fallback_keeps_unrecoverable_item_exportable() -> None:
     )
 
     item_result = result.items[0]
-    assert item_result.analysis_status == "succeeded"
-    assert item_result.analysis is not None
-    assert item_result.analysis.relevance == "relevant"
-    assert item_result.analysis.sentiment in loader.load().sentiments
-    assert item_result.analysis.labels
-    assert item_result.analysis.primary_label
-    assert item_result.analysis.secondary_label
+    assert item_result.analysis_status == "failed"
+    assert item_result.analysis is None
+    assert item_result.validation_error_codes == ("invalid_json",)
 
 
-def test_excel_complete_fallback_also_handles_terminal_provider_error() -> None:
+def test_terminal_provider_error_is_not_hidden_by_an_excel_fallback() -> None:
     loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
     fake = FakeContentLabelingLLM(responses=[])
 
-    result = ContentLabelingService(
-        prompt_loader=loader,
-        llm=fake,
-        force_excel_complete=True,
-    ).label_contents(
-        [_content("content-provider-error")],
-        max_validation_retries=4,
-    )
+    with pytest.raises(RuntimeError, match="没有剩余响应"):
+        ContentLabelingService(
+            prompt_loader=loader,
+            llm=fake,
+            force_excel_complete=True,
+        ).label_contents(
+            [_content("content-provider-error")],
+            max_validation_retries=4,
+        )
 
-    assert result.items[0].analysis_status == "succeeded"
     assert len(fake.calls) == 1

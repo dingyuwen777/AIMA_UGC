@@ -18,6 +18,7 @@ from aima_ugc.modules.collection.tables import (
     collection_plans_table,
     provider_requests_table,
 )
+from aima_ugc.modules.reporting.report_tables import report_runs_table
 from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
 from aima_ugc.modules.system.models import ProviderConfig, ProviderKind
 from aima_ugc.modules.system.tables import provider_configs_table
@@ -162,7 +163,7 @@ class PostgresProviderConfigLifecycleRepository:
         )
 
     def delete_blockers(self, provider_config_id: UUID) -> tuple[str, ...]:
-        """Provider 一旦进入 Plan、Provider Request 或 AI Run 历史就永久保留配置事实。"""
+        """Provider 一旦进入采集、AI 分析或报告历史就永久保留配置事实。"""
 
         row = (
             self._session.execute(
@@ -209,6 +210,19 @@ class PostgresProviderConfigLifecycleRepository:
             is not None
         ):
             blockers.append("AI 分析运行历史引用了该 Provider")
+        if (
+            self._session.scalar(
+                select(report_runs_table.c.id)
+                .where(
+                    report_runs_table.c.snapshot.contains(
+                        {"provider": {"provider_config_id": str(provider_config_id)}}
+                    )
+                )
+                .limit(1)
+            )
+            is not None
+        ):
+            blockers.append("报告历史引用了该 Provider")
         return tuple(dict.fromkeys(blockers))
 
     def delete_archived(self, provider_config_id: UUID) -> bool:

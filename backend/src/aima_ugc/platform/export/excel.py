@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 from openpyxl import Workbook, load_workbook
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.cell.cell import Cell
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.page import PageMargins
@@ -354,6 +355,7 @@ def export_unified_data_excel(
     content_columns: Iterable[str] | None = None,
     label_detail_columns: Iterable[str] | None = None,
     comment_columns: Iterable[str] | None = None,
+    keyword_basis: str | None = None,
 ) -> ExcelExportSummary:
     """使用 write-only Workbook 流式写出 UnifiedDataExcelV1 的受控展示视图。"""
 
@@ -383,13 +385,20 @@ def export_unified_data_excel(
     temp_path.unlink(missing_ok=True)
 
     workbook = Workbook(write_only=True)
+    workbook.properties.description = keyword_basis
     content_sheet = workbook.create_sheet(_CONTENT_SHEET)
     label_sheet = workbook.create_sheet(_LABEL_SHEET)
     comment_sheet = workbook.create_sheet(_COMMENT_SHEET)
     _configure_sheet(content_sheet, content_headers, _CONTENT_COLUMN_WIDTHS)
     _configure_sheet(label_sheet, label_headers, _LABEL_COLUMN_WIDTHS)
     _configure_sheet(comment_sheet, comment_headers, _COMMENT_COLUMN_WIDTHS)
-    content_sheet.append(_header_cells(content_sheet, content_headers))
+    header_cells = _header_cells(content_sheet, content_headers)
+    if keyword_basis is not None and "命中关键词" in content_headers:
+        # 在同一流式输出中解释字段来源，不重新载入整份明细或修改既有列结构。
+        header_cells[content_headers.index("命中关键词")].comment = Comment(
+            keyword_basis, "AIMA_UGC"
+        )
+    content_sheet.append(header_cells)
     label_sheet.append(_header_cells(label_sheet, label_headers))
     comment_sheet.append(_header_cells(comment_sheet, comment_headers))
 
@@ -637,6 +646,67 @@ def _labeling_datetime(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return value.astimezone(_BEIJING).replace(tzinfo=None)
+
+
+def build_unified_report_workbook(records: Iterable[UnifiedDataExcelV1]) -> Workbook:
+    """直接把 Dataset 投影到内存表，复用 Excel 字段语义而不读写输入文件。"""
+    workbook = Workbook()
+    if workbook.active is not None:
+        workbook.remove(workbook.active)
+    content_sheet = workbook.create_sheet(_CONTENT_SHEET)
+    label_sheet = workbook.create_sheet(_LABEL_SHEET)
+    comment_sheet = workbook.create_sheet(_COMMENT_SHEET)
+    content_sheet.append(_CONTENT_HEADERS)
+    label_sheet.append(_LABEL_HEADERS)
+    comment_sheet.append(_COMMENT_HEADERS)
+    content_indices = tuple(_CONTENT_HEADER_INDEX[name] for name in _CONTENT_HEADERS)
+    label_indices = tuple(_CONTENT_HEADER_INDEX[name] for name in _LABEL_HEADERS)
+    comment_indices = tuple(_COMMENT_HEADER_INDEX[name] for name in _COMMENT_HEADERS)
+    for record in records:
+        # 统计内部身份包含平台，避免不同平台相同外部 ID 互相覆盖发声范围。
+        # 实际交付的 Excel 仍由正式 exporter 输出原始外部 ID。
+        identity = f"{record.content.platform}:{record.content.external_content_id}"
+        record = record.model_copy(
+            update={
+                "content": record.content.model_copy(
+                    update={
+                        "external_content_id": identity,
+                    }
+                ),
+                "comments": tuple(
+                    comment.model_copy(update={"external_content_id": identity})
+                    for comment in record.comments
+                ),
+            }
+        )
+        content_sheet.append(
+            _content_cells(
+                content_sheet,
+                record.content,
+                True,
+                column_indices=content_indices,
+            )
+        )
+        for pair in _analysis_label_pairs(record.content.analysis):
+            label_sheet.append(
+                _label_detail_cells(
+                    label_sheet,
+                    record.content,
+                    pair,
+                    column_indices=label_indices,
+                )
+            )
+        for comment in record.comments:
+            comment_sheet.append(
+                _comment_cells(
+                    comment_sheet,
+                    record.content,
+                    comment,
+                    include_analysis=True,
+                    column_indices=comment_indices,
+                )
+            )
+    return workbook
 
 
 def _resolve_columns(

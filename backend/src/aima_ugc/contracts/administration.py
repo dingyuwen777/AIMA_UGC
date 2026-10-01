@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -245,22 +245,23 @@ class AnalysisSchemeDefinitionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt_template: str = Field(min_length=1, max_length=100_000)
-    sentiments: tuple[str, ...] = Field(min_length=1, max_length=50)
-    voice_types: tuple[str, ...] = Field(min_length=1, max_length=50)
-    labels: dict[str, tuple[str, ...]] = Field(min_length=1, max_length=100)
+    sentiments: tuple[str, ...] = Field(default=(), max_length=50)
+    voice_types: tuple[str, ...] = Field(default=(), max_length=50)
+    labels: dict[str, tuple[str, ...]] = Field(default_factory=dict, max_length=100)
+    compiled_snapshot: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def validate_definition(self) -> AnalysisSchemeDefinitionRequest:
-        """校验受控模板、显式未知值和无重复 Taxonomy。"""
+        """校验受控模板与结构化 Taxonomy 的通用完整性。"""
 
+        if "<!-- AIMA_TABLE: voice_types -->" in self.prompt_template:
+            return self
         if self.prompt_template.count(_TAXONOMY_PLACEHOLDER) != 1:
             raise ValueError("prompt_template 必须且只能包含一个 Taxonomy 占位符")
-        if "无法判断" not in self.sentiments or "无法判断" not in self.voice_types:
-            raise ValueError("情感和发声类型都必须显式包含“无法判断”")
         if "正面" not in self.sentiments:
             raise ValueError("情感必须显式包含“正面”，用于工作台正向率统一口径")
-        if self.labels.get("无法分类") != ("无法判断",):
-            raise ValueError("标签必须显式包含“无法分类 / 无法判断”")
+        if not self.voice_types or not self.labels:
+            raise ValueError("旧模板的发声类型和标签不能为空")
         if len(self.sentiments) != len(set(self.sentiments)):
             raise ValueError("sentiments 不能重复")
         if len(self.voice_types) != len(set(self.voice_types)):
@@ -377,6 +378,10 @@ class ProviderConfigCreateRequest(BaseModel):
             raise ValueError("api_key 不能为空")
         if self.provider_kind == "llm" and not self.model:
             raise ValueError("LLM Provider 必须配置 model")
+        if self.provider_kind == "llm" and self.model_fields_set.intersection(
+            {"timeout_seconds", "max_retries", "max_concurrency", "max_rps"}
+        ):
+            raise ValueError("LLM 执行参数由系统自动管理，不接受人工参数")
         if self.provider_kind == "collection" and self.model is not None:
             raise ValueError("采集 Provider 不使用 model")
         if self.provider_kind == "collection" and self.is_default:
@@ -426,6 +431,28 @@ class ProviderConfigUpdateRequest(BaseModel):
         return self
 
 
+class AdaptiveLLMCapacityResponse(BaseModel):
+    """系统自动学习的只读状态；P95 为有界延迟桶上界估计。"""
+
+    model_config = ConfigDict(extra="forbid")
+    state: str
+    current_concurrency: int = Field(ge=1, le=5_000)
+    last_safe_concurrency: int = Field(ge=0, le=5_000)
+    historical_safe_concurrency: int = Field(ge=0, le=5_000)
+    current_rps: float | None = Field(default=None, gt=0)
+    active_shards: int = Field(ge=0)
+    current_shard_size: int | None = Field(default=None, gt=0)
+    persisted_contents_per_second: float = Field(ge=0)
+    latency_p95_seconds: float = Field(ge=0)
+    http_429_ratio: float = Field(ge=0, le=1)
+    timeout_ratio: float = Field(ge=0, le=1)
+    transport_error_ratio: float = Field(ge=0, le=1)
+    validation_failure_ratio: float = Field(ge=0, le=1)
+    updated_at: datetime | None = None
+    last_adjusted_at: datetime | None = None
+    adjustment_reason: str
+
+
 class ProviderConfigResponse(BaseModel):
     """Provider 管理安全投影；绝不返回 API Key 或内部 secret_ref。"""
 
@@ -436,14 +463,15 @@ class ProviderConfigResponse(BaseModel):
     display_name: str
     base_url: str
     model: str | None = None
-    timeout_seconds: int = Field(gt=0)
-    max_retries: int = Field(ge=0)
-    max_concurrency: int = Field(gt=0)
+    timeout_seconds: int | None = Field(default=None, gt=0)
+    max_retries: int | None = Field(default=None, ge=0)
+    max_concurrency: int | None = Field(default=None, gt=0)
     max_rps: int | None = Field(default=None, gt=0)
     enabled: bool
     is_default: bool
     revision: int = Field(gt=0)
     secret_configured: bool
+    adaptive_capacity: AdaptiveLLMCapacityResponse | None = None
 
 
 class ProviderConfigListResponse(BaseModel):

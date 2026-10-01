@@ -7,8 +7,13 @@ from time import perf_counter
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_capacity import (
+    PostgresAnalysisCapacityRepository,
+)
 from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
     PostgresAnalysisSchemeRepository,
 )
@@ -19,6 +24,7 @@ from aima_ugc.adapters.persistence.postgres.system import (
 )
 from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.administration import (
+    AdaptiveLLMCapacityResponse,
     AnalysisSchemeCreateDraftRequest,
     AnalysisSchemeListResponse,
     AnalysisSchemePublishRequest,
@@ -44,7 +50,9 @@ from aima_ugc.modules.administration.http import (
     AdministrationConflict,
     AdministrationResourceNotFound,
 )
+from aima_ugc.modules.analysis.adaptive_capacity import CapacityState
 from aima_ugc.modules.analysis.schemes import AnalysisSchemeVersionRecord
+from aima_ugc.modules.analysis.tables import analysis_content_runs_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.system.models import AuditEvent, ProviderConfig
 from aima_ugc.modules.vehicles.models import VehicleAlias, VehicleModel
@@ -499,8 +507,10 @@ class PostgresAdministrationHttpService:
         try:
             with session.begin():
                 repository = PostgresAnalysisSchemeRepository(session)
-                version, created = repository.bootstrap_default(actor_ref="system:git-bootstrap")
-                if created:
+                version, bootstrap_changed = repository.bootstrap_default(
+                    actor_ref="system:git-bootstrap"
+                )
+                if bootstrap_changed:
                     _audit_system_scheme_bootstrap(session, version)
                 return AnalysisSchemeListResponse(
                     items=tuple(
@@ -525,7 +535,7 @@ class PostgresAdministrationHttpService:
                     provider_kind=provider_kind
                 )
                 return ProviderConfigListResponse(
-                    items=tuple(_provider_response(item) for item in configs)
+                    items=tuple(_provider_response(item, session) for item in configs)
                 )
         finally:
             session.close()
@@ -579,7 +589,7 @@ class PostgresAdministrationHttpService:
                     created,
                     secret_rotated=True,
                 )
-                return _provider_response(created)
+                return _provider_response(created, session)
         except IntegrityError as exc:
             raise AdministrationConflict from exc
         finally:
@@ -603,6 +613,10 @@ class PostgresAdministrationHttpService:
                 current = repository.get(provider_config_id)
                 if current is None:
                     raise AdministrationResourceNotFound
+                if current.provider_kind == "llm" and body.model_fields_set.intersection(
+                    {"timeout_seconds", "max_retries", "max_concurrency", "max_rps"}
+                ):
+                    raise AdministrationConflict("LLM 执行参数由系统自动管理，不接受人工参数")
                 if current.provider_kind == "llm" and not body.model:
                     raise AdministrationConflict("LLM Provider 必须配置 model")
                 if current.provider_kind == "collection" and body.model is not None:
@@ -629,10 +643,16 @@ class PostgresAdministrationHttpService:
                         base_url=body.base_url,
                         model=body.model,
                         secret_ref=secret_ref,
-                        timeout_seconds=body.timeout_seconds,
-                        max_retries=body.max_retries,
-                        max_concurrency=body.max_concurrency,
-                        max_rps=body.max_rps,
+                        timeout_seconds=current.timeout_seconds
+                        if current.provider_kind == "llm"
+                        else body.timeout_seconds,
+                        max_retries=current.max_retries
+                        if current.provider_kind == "llm"
+                        else body.max_retries,
+                        max_concurrency=current.max_concurrency
+                        if current.provider_kind == "llm"
+                        else body.max_concurrency,
+                        max_rps=current.max_rps if current.provider_kind == "llm" else body.max_rps,
                         enabled=body.enabled,
                         is_default=body.is_default,
                     )
@@ -646,7 +666,7 @@ class PostgresAdministrationHttpService:
                     updated,
                     secret_rotated=secret_rotated,
                 )
-                return _provider_response(updated)
+                return _provider_response(updated, session)
         except IntegrityError as exc:
             raise AdministrationConflict from exc
         finally:
@@ -719,7 +739,9 @@ def _vehicle_response(
     )
 
 
-def _provider_response(config: ProviderConfig) -> ProviderConfigResponse:
+def _provider_response(
+    config: ProviderConfig, session: Session | None = None
+) -> ProviderConfigResponse:
     """投影不包含 API Key 或内部 Secret 路径。"""
 
     return ProviderConfigResponse(
@@ -729,14 +751,67 @@ def _provider_response(config: ProviderConfig) -> ProviderConfigResponse:
         display_name=config.display_name,
         base_url=config.base_url,
         model=config.model,
-        timeout_seconds=config.timeout_seconds,
-        max_retries=config.max_retries,
-        max_concurrency=config.max_concurrency,
-        max_rps=config.max_rps,
+        timeout_seconds=config.timeout_seconds if config.provider_kind == "collection" else None,
+        max_retries=config.max_retries if config.provider_kind == "collection" else None,
+        max_concurrency=config.max_concurrency if config.provider_kind == "collection" else None,
+        max_rps=config.max_rps if config.provider_kind == "collection" else None,
         enabled=config.enabled,
         is_default=config.is_default,
         revision=config.revision,
         secret_configured=bool(config.secret_ref),
+        adaptive_capacity=_adaptive_capacity_response(config, session)
+        if config.provider_kind == "llm"
+        else None,
+    )
+
+
+def _adaptive_capacity_response(
+    config: ProviderConfig, session: Session | None
+) -> AdaptiveLLMCapacityResponse:
+    """读取当前 Profile 与真实活动 Run，不因为页面轮询修改学习状态。"""
+
+    profile = None
+    active_shards = 0
+    shard_size = None
+    if session is not None and config.model is not None:
+        repository = PostgresAnalysisCapacityRepository(session)
+        profile = repository.get(config.id, config.model)
+        active_shards = len(repository.active_shards(config.id, config.model))
+        shard_size = session.execute(
+            select(analysis_content_runs_table.c.shard_size)
+            .where(
+                analysis_content_runs_table.c.runtime_config_snapshot["provider_config_id"].astext
+                == str(config.id),
+                analysis_content_runs_table.c.model == config.model,
+                analysis_content_runs_table.c.status.in_(("queued", "running", "cancelling")),
+            )
+            .order_by(analysis_content_runs_table.c.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+    state = CapacityState(**profile["state"]) if profile is not None else CapacityState()
+    if profile is not None and profile["revision"] != config.revision:
+        state = state.warm_start()
+    return AdaptiveLLMCapacityResponse(
+        state="waiting_legacy"
+        if session is not None
+        and config.model is not None
+        and PostgresAnalysisCapacityRepository(session).legacy_jobs(config.id, config.model)
+        else state.phase,
+        current_concurrency=state.current,
+        last_safe_concurrency=state.last_safe,
+        historical_safe_concurrency=state.historical_safe,
+        current_rps=state.rps,
+        active_shards=active_shards,
+        current_shard_size=shard_size,
+        persisted_contents_per_second=state.throughput_ewma,
+        latency_p95_seconds=state.latency_p95,
+        http_429_ratio=state.rate_limit_ratio,
+        timeout_ratio=state.timeout_ratio,
+        transport_error_ratio=state.transport_error_ratio,
+        validation_failure_ratio=state.validation_failure_ratio,
+        updated_at=profile["updated_at"] if profile is not None else None,
+        last_adjusted_at=profile["last_adjusted_at"] if profile is not None else None,
+        adjustment_reason=state.last_adjustment_reason,
     )
 
 
@@ -845,14 +920,18 @@ def _audit_system_scheme_bootstrap(
     session: Any,
     version: AnalysisSchemeVersionRecord,
 ) -> None:
-    """首次数据库初始化同样属于配置写入，必须留下系统审计。"""
+    """数据库初始化或首次 Run 前基线刷新都必须留下系统审计。"""
 
     PostgresAuditRepository(session).append(
         AuditEvent(
             id=uuid4(),
             actor_kind="system",
             actor_ref="system:git-bootstrap",
-            event_type="analysis_scheme_bootstrapped",
+            event_type=(
+                "analysis_scheme_bootstrapped"
+                if version.version == 1
+                else "analysis_scheme_bootstrap_refreshed"
+            ),
             object_type="analysis_scheme_version",
             object_id=str(version.id),
             request_id=None,

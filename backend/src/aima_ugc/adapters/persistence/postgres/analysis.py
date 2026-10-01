@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
@@ -22,6 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.contracts.analysis import ContentLabelAnalysisV3
@@ -70,6 +72,10 @@ class AnalysisRunConfigurationChanged(RuntimeError):
     pass
 
 
+class _CancelJobsChanged(RuntimeError):
+    """取消认领锁期间有 Shard 刚投放，回退 savepoint 后重取完整锁集合。"""
+
+
 @dataclass(frozen=True, slots=True)
 class AnalysisPendingPage:
     """以扫描位置而非有效条数判断页尾，避免整页过期导致提前完成。"""
@@ -77,6 +83,20 @@ class AnalysisPendingPage:
     items: tuple[AnalysisWorkItem, ...]
     last_ordinal: int
     exhausted: bool
+
+
+def _retry_ready_condition() -> ColumnElement[bool]:
+    """分页取项和需求探测共用同一退避/提前恢复规则，避免两条查询漂移。"""
+    item = analysis_content_request_items_table
+    run = analysis_content_runs_table
+    return (
+        item.c.retry_not_before.is_(None)
+        | (item.c.retry_not_before <= func.clock_timestamp())
+        | (
+            (item.c.retry_kind == "transport")
+            & (item.c.last_retry_at < run.c.last_transport_success_at)
+        )
+    )
 
 
 class PostgresAnalysisRepository:
@@ -395,6 +415,8 @@ class PostgresAnalysisRepository:
         *,
         limit: int,
         after_ordinal: int = -1,
+        excluded_content_ids: Sequence[UUID] = (),
+        recovery: bool = False,
     ) -> AnalysisPendingPage:
         """按冻结 ordinal 前进；调用方在同一事务验证 Fence 后处理过期项。"""
 
@@ -421,6 +443,9 @@ class PostgresAnalysisRepository:
                     item.c.ordinal,
                     item.c.content_id,
                     item.c.content_version,
+                    item.c.retry_count,
+                    item.c.retry_kind,
+                    item.c.validation_error_codes,
                     content.c.current_version,
                     content.c.platform,
                     content.c.external_content_id,
@@ -462,8 +487,13 @@ class PostgresAnalysisRepository:
                     request.c.id == request_id,
                     item.c.status == "pending",
                     item.c.ordinal > after_ordinal,
+                    item.c.content_id.not_in(excluded_content_ids),
+                    _retry_ready_condition() if recovery else literal(True),
                 )
-                .order_by(item.c.ordinal)
+                .order_by(
+                    item.c.retry_kind.is_not(None).desc() if recovery else item.c.ordinal,
+                    item.c.ordinal,
+                )
                 .limit(limit)
             ).mappings()
         )
@@ -490,6 +520,27 @@ class PostgresAnalysisRepository:
                 continue
             work.append(_row_to_work_item(row))
         return AnalysisPendingPage(tuple(work), rows[-1]["ordinal"], len(rows) < limit)
+
+    def has_ready(self, request_id: UUID, *, excluded_content_ids: Sequence[UUID] = ()) -> bool:
+        """只探测未发送且已到重试时间的项，pending 在途和未提交结果不代表需求。"""
+        item = analysis_content_request_items_table
+        request = analysis_content_requests_table
+        run = analysis_content_runs_table
+        return (
+            self._session.scalar(
+                select(item.c.content_id)
+                .join(request, request.c.id == item.c.request_id)
+                .join(run, run.c.id == request.c.run_id)
+                .where(
+                    item.c.request_id == request_id,
+                    item.c.status == "pending",
+                    item.c.content_id.not_in(excluded_content_ids),
+                    _retry_ready_condition(),
+                )
+                .limit(1)
+            )
+            is not None
+        )
 
     def persist_success(
         self,
@@ -652,9 +703,10 @@ class PostgresAnalysisRepository:
         return counts
 
     def get_run(self, run_id: UUID, *, for_update: bool = False) -> RowMapping | None:
-        statement = select(analysis_content_runs_table).where(
-            analysis_content_runs_table.c.id == run_id
-        )
+        statement = select(
+            analysis_content_runs_table,
+            self._execution_settling().label("execution_settling"),
+        ).where(analysis_content_runs_table.c.id == run_id)
         if for_update:
             statement = statement.with_for_update()
         return self._session.execute(statement).mappings().one_or_none()
@@ -666,17 +718,43 @@ class PostgresAnalysisRepository:
         recent_ids = select(run.c.id).order_by(run.c.sequence_no.desc()).limit(limit)
         return tuple(
             self._session.execute(
-                select(run)
+                select(run, self._execution_settling().label("execution_settling"))
                 .where(
                     or_(
                         run.c.id.in_(recent_ids),
                         run.c.status.in_(
                             ("queued", "running", "cancelling"),
                         ),
+                        self._execution_settling(),
                     )
                 )
                 .order_by(run.c.sequence_no.desc())
             ).mappings()
+        )
+
+    @staticmethod
+    def _execution_settling() -> ColumnElement[bool]:
+        """直接查关联 Job 的存在性，列表无需加载全部 Shard 也能跟踪收尾。"""
+
+        run = analysis_content_runs_table
+        request = analysis_content_requests_table
+        job = jobs_table
+        return or_(
+            select(job.c.id)
+            .where(
+                job.c.id == run.c.planner_job_id,
+                job.c.status.in_(("queued", "running")),
+            )
+            .correlate(run)
+            .exists(),
+            select(request.c.id)
+            .join(job, job.c.id == request.c.job_id)
+            .where(
+                request.c.run_id == run.c.id,
+                job.c.status.in_(("queued", "running")),
+            )
+            .correlate(run)
+            .exists(),
         )
 
     def list_run_shards(self, run_id: UUID) -> tuple[RowMapping, ...]:
@@ -724,7 +802,9 @@ class PostgresAnalysisRepository:
         scheduled_count = sum(counts.values())
         unscheduled_count = max(cast(int, run["target_count"]) - scheduled_count, 0)
         if run["status"] == "failed":
-            counts["failed"] += unscheduled_count
+            # 父停止是权威终态；未收尾 Item 的内存/排队状态不泄漏为终态 pending。
+            counts["failed"] += unscheduled_count + counts["pending"]
+            counts["pending"] = 0
         elif run["cancel_requested_at"] is not None or run["status"] == "cancelled":
             counts["cancelled"] += unscheduled_count
         else:
@@ -742,7 +822,9 @@ class PostgresAnalysisRepository:
         )
 
     def request_run_cancel(self, run_id: UUID) -> None:
-        run = self.get_run(run_id, for_update=True)
+        """先锁关联 Job 再锁 Run，与 Worker/Planner/终态提交保持同一锁序。"""
+
+        run = self._lock_run_for_cancel(run_id)
         if run is None:
             raise AnalysisRequestNotFound
         if run["status"] not in {"queued", "running", "cancelling"}:
@@ -772,6 +854,48 @@ class PostgresAnalysisRepository:
         planner_job_id = cast(UUID, run["planner_job_id"])
         jobs.request_cancel(planner_job_id)
         self.refresh_run(run_id)
+
+    def _lock_run_for_cancel(self, run_id: UUID) -> RowMapping:
+        """Planner 与已知 Shard 先加锁；若临近终态新增 Shard，回退重取而不反向锁 Job。"""
+
+        while True:
+            try:
+                with self._session.begin_nested():
+                    run = self.get_run(run_id)
+                    if run is None:
+                        raise AnalysisRequestNotFound
+                    self._session.execute(
+                        select(jobs_table.c.id)
+                        .where(jobs_table.c.id == run["planner_job_id"])
+                        .with_for_update()
+                    ).all()
+                    ids = tuple(
+                        self._session.scalars(
+                            select(analysis_content_requests_table.c.job_id).where(
+                                analysis_content_requests_table.c.run_id == run_id
+                            )
+                        )
+                    )
+                    self._session.execute(
+                        select(jobs_table.c.id)
+                        .where(jobs_table.c.id.in_(ids))
+                        .order_by(jobs_table.c.id)
+                        .with_for_update()
+                    ).all()
+                    locked = self.get_run(run_id, for_update=True)
+                    current = set(
+                        self._session.scalars(
+                            select(analysis_content_requests_table.c.job_id).where(
+                                analysis_content_requests_table.c.run_id == run_id
+                            )
+                        )
+                    )
+                    if not current.issubset(ids):
+                        raise _CancelJobsChanged
+                    return cast(RowMapping, locked)
+            except _CancelJobsChanged:
+                # Savepoint rollback 释放本轮全部锁；不能持有 Run 再补锁新 Job。
+                continue
 
     def complete_request_terminal(
         self,
@@ -807,6 +931,12 @@ class PostgresAnalysisRepository:
         run = self.get_run(run_id, for_update=True)
         if run is None:
             raise AnalysisRequestNotFound
+        # 新协议系统停止是父事实，其他 Shard 收尾不能把它改回 running/partial_failed。
+        if run["status"] == "failed" and run["runtime_config_snapshot"].get("recovery_mode") in {
+            "recovery.v1",
+            "recovery.v2",
+        }:
+            return "failed"
         counts = self.run_stats(run_id)
         if counts["pending"]:
             status = "cancelling" if run["cancel_requested_at"] is not None else "running"
@@ -816,6 +946,13 @@ class PostgresAnalysisRepository:
             finished_at = beijing_now()
         elif counts["cancelled"]:
             status = "cancelled"
+            finished_at = beijing_now()
+        elif (
+            run["runtime_config_snapshot"].get("recovery_mode") == "recovery.v2"
+            and counts["succeeded"] != run["target_count"]
+        ):
+            # 执行结束不等于全部成功；过期版本保留stale事实，不能把旧内容结果写入新版本。
+            status = "partial_failed" if counts["succeeded"] else "failed"
             finished_at = beijing_now()
         else:
             status = "succeeded"
@@ -843,6 +980,11 @@ class PostgresAnalysisRepository:
             raise AnalysisRequestNotFound
         if job_status == "succeeded":
             return self.refresh_run(run_id)
+        if run["status"] == "failed" and run["runtime_config_snapshot"].get("recovery_mode") in {
+            "recovery.v1",
+            "recovery.v2",
+        }:
+            return "failed"
         status = "cancelled" if job_status == "cancelled" else "failed"
         now = beijing_now()
         self._session.execute(
@@ -924,6 +1066,11 @@ def _row_to_work_item(row: RowMapping) -> AnalysisWorkItem:
         content_id=cast(UUID, row["content_id"]),
         content_version=cast(int, row["content_version"]),
         content=content,
+        retry_count=cast(int, row.get("retry_count", 0)),
+        retry_kind=cast(str | None, row.get("retry_kind")),
+        previous_validation_error_codes=tuple(
+            cast(list[str], row.get("validation_error_codes", []))
+        ),
     )
 
 

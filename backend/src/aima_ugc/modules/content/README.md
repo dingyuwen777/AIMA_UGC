@@ -433,6 +433,8 @@ HTTP 热路径不会在每次请求中对这些大表重建全局窗口。`voice
 
 Brand 与 Vehicle 是两组独立 Evidence。列表返回当前 Content Version 的全部有效 Brand 及证据；Vehicle 仍按合并后的有效车型展示，并嵌套该车型当前目录中的 Brand 引用。`competition_scope` 不持久化，而是由命中 Brand 的 `owned / competitor / other` 角色集合派生；没有 Brand 时为 `none_detected`。`brand_ids`、`vehicle_model_ids` 和 `competition_scopes` 在同一查询内按 AND 组合，各自数组内部按 OR 匹配。List、Count、Analysis query target 与 Export query target 都复用这一过滤入口。
 
+声音广场“含竞品”组合 `competitor_only` 与 `mixed` 两个既有筛选值，包含仅竞品及自有与竞品同时命中的内容。“仅竞品品牌”仍只对应 `competitor_only`；不新增公共枚举或改变已有保存筛选语义。投影继续保存当前版本的全部有效品牌、车型 ID 集合，供同组 OR 查询使用。
+
 ### 当前 Analysis 状态
 
 ```text

@@ -10,7 +10,6 @@ from aima_ugc.contracts.http import (
     AnalysisContentRunResponse,
     AnalysisRunTargetSelection,
     ContentFilterSnapshot,
-    ContentTargetSelection,
 )
 from pydantic import ValidationError
 
@@ -33,21 +32,29 @@ def test_analysis_run_requires_an_explicit_preview_count_and_idempotency_key() -
     assert created.run_intent == "manual_reanalysis"
 
 
-def test_analysis_run_rejects_query_scope_until_capacity_is_approved() -> None:
-    query_targets = ContentTargetSelection(
+def test_analysis_run_accepts_query_scope_with_filter_snapshot() -> None:
+    """Query Scope 只提交稳定筛选快照，不向 HTTP Payload 搬运全量 Content ID。"""
+
+    query_targets = AnalysisRunTargetSelection(
         scope="query",
-        filters=ContentFilterSnapshot(platforms=("xiaohongshu",)),
+        filters=ContentFilterSnapshot(
+            platforms=("xiaohongshu",),
+            sentiment="负面",
+        ),
+    )
+    preview = AnalysisContentRunPreviewRequest(targets=query_targets)
+    created = AnalysisContentRunCreateRequest(
+        client_idempotency_key="query-run-approved",
+        targets=query_targets,
+        expected_target_count=12_856,
+        expected_configuration_hash="a" * 64,
     )
 
-    with pytest.raises(ValidationError):
-        AnalysisContentRunPreviewRequest(targets=query_targets)
-    with pytest.raises(ValidationError):
-        AnalysisContentRunCreateRequest(
-            client_idempotency_key="query-run-not-approved",
-            targets=query_targets,
-            expected_target_count=1,
-            expected_configuration_hash="a" * 64,
-        )
+    assert preview.targets.scope == "query"
+    assert preview.targets.filters is not None
+    assert preview.targets.filters.platforms == ("xiaohongshu",)
+    assert preview.targets.content_ids == ()
+    assert created.targets == query_targets
 
 
 def test_analysis_run_rejects_invalid_confirmation_and_duplicate_selected_ids() -> None:

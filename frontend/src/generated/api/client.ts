@@ -4,6 +4,59 @@
  * AIMA_UGC API
  * OpenAPI spec version: 0.1.0
  */
+/**
+ * 系统自动学习的只读状态；P95 为有界延迟桶上界估计。
+ */
+export interface AdaptiveLLMCapacityResponse {
+  /** @minimum 0 */
+  active_shards: number;
+  adjustment_reason: string;
+  /**
+     * @minimum 1
+     * @maximum 5000
+     */
+  current_concurrency: number;
+  current_rps?: number | null;
+  current_shard_size?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     */
+  historical_safe_concurrency: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  http_429_ratio: number;
+  last_adjusted_at?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     */
+  last_safe_concurrency: number;
+  /** @minimum 0 */
+  latency_p95_seconds: number;
+  /** @minimum 0 */
+  persisted_contents_per_second: number;
+  state: string;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  timeout_ratio: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  transport_error_ratio: number;
+  updated_at?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  validation_failure_ratio: number;
+}
+
 export type AnalysisContentRunCreateRequestRunIntent = typeof AnalysisContentRunCreateRequestRunIntent[keyof typeof AnalysisContentRunCreateRequestRunIntent];
 
 
@@ -12,20 +65,105 @@ export const AnalysisContentRunCreateRequestRunIntent = {
   manual_reanalysis: 'manual_reanalysis',
 } as const;
 
+export type ContentAnalysisStatus = typeof ContentAnalysisStatus[keyof typeof ContentAnalysisStatus];
+
+
+export const ContentAnalysisStatus = {
+  pending: 'pending',
+  completed: 'completed',
+  stale: 'stale',
+} as const;
+
+export type ContentFilterSnapshotCompetitionScopesItem = typeof ContentFilterSnapshotCompetitionScopesItem[keyof typeof ContentFilterSnapshotCompetitionScopesItem];
+
+
+export const ContentFilterSnapshotCompetitionScopesItem = {
+  owned_only: 'owned_only',
+  competitor_only: 'competitor_only',
+  mixed: 'mixed',
+  other_only: 'other_only',
+  none_detected: 'none_detected',
+} as const;
+
+export type PlatformName = typeof PlatformName[keyof typeof PlatformName];
+
+
+export const PlatformName = {
+  xiaohongshu: 'xiaohongshu',
+  douyin: 'douyin',
+  weibo: 'weibo',
+  bilibili: 'bilibili',
+  kuaishou: 'kuaishou',
+} as const;
+
+export type ContentRelevance = typeof ContentRelevance[keyof typeof ContentRelevance];
+
+
+export const ContentRelevance = {
+  relevant: 'relevant',
+  irrelevant: 'irrelevant',
+} as const;
+
+/**
+ * @minLength 1
+ * @maxLength 128
+ */
+export type ContentVoiceType = string;
+
+/**
+ * 可序列化并冻结到 Analysis/Export Request 的查询条件。
+ */
+export interface ContentFilterSnapshot {
+  analysis_status?: ContentAnalysisStatus | null;
+  /** @maxItems 100 */
+  brand_ids?: string[];
+  /** @maxItems 5 */
+  competition_scopes?: ContentFilterSnapshotCompetitionScopesItem[];
+  /** @maxItems 20 */
+  content_types?: string[];
+  /** @maxItems 5 */
+  platforms?: PlatformName[];
+  primary_label?: string | null;
+  /**
+     * @maxItems 100
+     * @items.minLength 1
+     * @items.maxLength 256
+     */
+  primary_labels?: string[];
+  published_from?: string | null;
+  published_to?: string | null;
+  relevance?: ContentRelevance | null;
+  search?: string | null;
+  secondary_label?: string | null;
+  /**
+     * @maxItems 200
+     * @items.minLength 1
+     * @items.maxLength 256
+     */
+  secondary_labels?: string[];
+  sentiment?: string | null;
+  source_identifier?: string | null;
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
+  voice_type?: ContentVoiceType | null;
+}
+
 export type AnalysisRunTargetSelectionScope = typeof AnalysisRunTargetSelectionScope[keyof typeof AnalysisRunTargetSelectionScope];
 
 
 export const AnalysisRunTargetSelectionScope = {
   selected: 'selected',
+  query: 'query',
   all: 'all',
 } as const;
 
 /**
- * Analysis Run 公开目标：显式选择或数据库当前全部 Content。
+ * Analysis Run 公开目标：显式选择、当前筛选结果或数据库当前全部 Content。
  */
 export interface AnalysisRunTargetSelection {
   /** @maxItems 1000 */
   content_ids?: string[];
+  filters?: ContentFilterSnapshot | null;
   scope?: AnalysisRunTargetSelectionScope;
 }
 
@@ -119,6 +257,8 @@ export interface AnalysisContentRunResponse {
   analysis_scheme_version_id?: string | null;
   created_at: string;
   error_code?: string | null;
+  /** 关联执行仍在排队或收尾，需继续刷新统计 */
+  execution_settling?: boolean;
   finished_at?: string | null;
   generation_config: AnalysisContentRunResponseGenerationConfig;
   generation_config_hash: string;
@@ -206,28 +346,25 @@ export interface AnalysisSchemeCopyRequest {
   name: string;
 }
 
+export type AnalysisSchemeDefinitionRequestCompiledSnapshot = { [key: string]: unknown } | null;
+
 export type AnalysisSchemeDefinitionRequestLabels = {[key: string]: string[]};
 
 /**
  * 一个原子 Analysis Scheme 的结构化定义。
  */
 export interface AnalysisSchemeDefinitionRequest {
-  labels: AnalysisSchemeDefinitionRequestLabels;
+  compiled_snapshot?: AnalysisSchemeDefinitionRequestCompiledSnapshot;
+  labels?: AnalysisSchemeDefinitionRequestLabels;
   /**
      * @minLength 1
      * @maxLength 100000
      */
   prompt_template: string;
-  /**
-     * @minItems 1
-     * @maxItems 50
-     */
-  sentiments: string[];
-  /**
-     * @minItems 1
-     * @maxItems 50
-     */
-  voice_types: string[];
+  /** @maxItems 50 */
+  sentiments?: string[];
+  /** @maxItems 50 */
+  voice_types?: string[];
 }
 
 /**
@@ -1412,29 +1549,6 @@ export interface ContentLabelPairResponse {
   secondary_label: string;
 }
 
-export type ContentRelevance = typeof ContentRelevance[keyof typeof ContentRelevance];
-
-
-export const ContentRelevance = {
-  relevant: 'relevant',
-  irrelevant: 'irrelevant',
-} as const;
-
-export type ContentAnalysisStatus = typeof ContentAnalysisStatus[keyof typeof ContentAnalysisStatus];
-
-
-export const ContentAnalysisStatus = {
-  pending: 'pending',
-  completed: 'completed',
-  stale: 'stale',
-} as const;
-
-/**
- * @minLength 1
- * @maxLength 128
- */
-export type ContentVoiceType = string;
-
 export interface ContentAnalysisResponse {
   analyzed_at?: string | null;
   labels?: ContentLabelPairResponse[];
@@ -1446,66 +1560,6 @@ export interface ContentAnalysisResponse {
   relevance?: ContentRelevance | null;
   sentiment?: string | null;
   status: ContentAnalysisStatus;
-  voice_type?: ContentVoiceType | null;
-}
-
-export type ContentFilterSnapshotCompetitionScopesItem = typeof ContentFilterSnapshotCompetitionScopesItem[keyof typeof ContentFilterSnapshotCompetitionScopesItem];
-
-
-export const ContentFilterSnapshotCompetitionScopesItem = {
-  owned_only: 'owned_only',
-  competitor_only: 'competitor_only',
-  mixed: 'mixed',
-  other_only: 'other_only',
-  none_detected: 'none_detected',
-} as const;
-
-export type PlatformName = typeof PlatformName[keyof typeof PlatformName];
-
-
-export const PlatformName = {
-  xiaohongshu: 'xiaohongshu',
-  douyin: 'douyin',
-  weibo: 'weibo',
-  bilibili: 'bilibili',
-  kuaishou: 'kuaishou',
-} as const;
-
-/**
- * 可序列化并冻结到 Analysis/Export Request 的查询条件。
- */
-export interface ContentFilterSnapshot {
-  analysis_status?: ContentAnalysisStatus | null;
-  /** @maxItems 100 */
-  brand_ids?: string[];
-  /** @maxItems 5 */
-  competition_scopes?: ContentFilterSnapshotCompetitionScopesItem[];
-  /** @maxItems 20 */
-  content_types?: string[];
-  /** @maxItems 5 */
-  platforms?: PlatformName[];
-  primary_label?: string | null;
-  /**
-     * @maxItems 100
-     * @items.minLength 1
-     * @items.maxLength 256
-     */
-  primary_labels?: string[];
-  published_from?: string | null;
-  published_to?: string | null;
-  relevance?: ContentRelevance | null;
-  search?: string | null;
-  secondary_label?: string | null;
-  /**
-     * @maxItems 200
-     * @items.minLength 1
-     * @items.maxLength 256
-     */
-  secondary_labels?: string[];
-  sentiment?: string | null;
-  source_identifier?: string | null;
-  /** @maxItems 100 */
-  vehicle_model_ids?: string[];
   voice_type?: ContentVoiceType | null;
 }
 
@@ -3010,15 +3064,14 @@ export const ProviderConfigResponseProviderKind = {
  * Provider 管理安全投影；绝不返回 API Key 或内部 secret_ref。
  */
 export interface ProviderConfigResponse {
+  adaptive_capacity?: AdaptiveLLMCapacityResponse | null;
   base_url: string;
   display_name: string;
   enabled: boolean;
   id: string;
   is_default: boolean;
-  /** @exclusiveMinimum 0 */
-  max_concurrency: number;
-  /** @minimum 0 */
-  max_retries: number;
+  max_concurrency?: number | null;
+  max_retries?: number | null;
   max_rps?: number | null;
   model?: string | null;
   provider: string;
@@ -3026,8 +3079,7 @@ export interface ProviderConfigResponse {
   /** @exclusiveMinimum 0 */
   revision: number;
   secret_configured: boolean;
-  /** @exclusiveMinimum 0 */
-  timeout_seconds: number;
+  timeout_seconds?: number | null;
 }
 
 /**
@@ -3129,6 +3181,159 @@ export const ReadinessResponseStatus = {
 export interface ReadinessResponse {
   checks: ReadinessChecks;
   status: ReadinessResponseStatus;
+}
+
+export type ReportAnalysisBasisResponsePeriod = typeof ReportAnalysisBasisResponsePeriod[keyof typeof ReportAnalysisBasisResponsePeriod];
+
+
+export const ReportAnalysisBasisResponsePeriod = {
+  current: 'current',
+  previous: 'previous',
+} as const;
+
+/**
+ * 按周期汇总实际采用的历史分析身份，不回显正文或模型输出。
+ */
+export interface ReportAnalysisBasisResponse {
+  content_count: number;
+  manual_override_count: number;
+  model: string;
+  period: ReportAnalysisBasisResponsePeriod;
+  prompt_sha256: string;
+  prompt_version: string;
+  provider: string;
+  scheme_version_id: string;
+  taxonomy_sha256: string;
+}
+
+/**
+ * 下载只使用报告内 Artifact 身份，不暴露存储路径。
+ */
+export interface ReportArtifactResponse {
+  artifact_id: string;
+  artifact_type: string;
+  byte_size: number;
+  content_type: string;
+  download_url: string;
+  filename: string;
+}
+
+export type ReportJobResponseStatus = typeof ReportJobResponseStatus[keyof typeof ReportJobResponseStatus];
+
+
+export const ReportJobResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+/**
+ * 暴露下一次计划领取时间，让过载重试有可见进度。
+ */
+export interface ReportJobResponse {
+  /** @minimum 0 */
+  attempt: number;
+  available_at: string;
+  cancel_requested: boolean;
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  id: string;
+  job_type: string;
+  /** @exclusiveMinimum 0 */
+  max_attempts: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  result?: ImportJobResultResponse | ContentAnalysisJobResultResponse | DataExportJobResultResponse | CanonicalReplayJobResultResponse | null;
+  started_at?: string | null;
+  status: ReportJobResponseStatus;
+  timeout_seconds: number;
+}
+
+export type ReportResponseStatus = typeof ReportResponseStatus[keyof typeof ReportResponseStatus];
+
+
+export const ReportResponseStatus = {
+  queued: 'queued',
+  generating: 'generating',
+  generated: 'generated',
+  published: 'published',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  expired: 'expired',
+} as const;
+
+/**
+ * 生成与发布分别展示 Job 状态，发布失败不影响已生成文件。
+ */
+export interface ReportResponse {
+  analysis_bases?: ReportAnalysisBasisResponse[];
+  brand_id: string;
+  completed_at: string | null;
+  content_count: number;
+  created_at: string;
+  editable_chart_sheet_url?: string | null;
+  end_date: string;
+  expires_at: string | null;
+  files?: ReportArtifactResponse[];
+  generation_job: ReportJobResponse;
+  id: string;
+  model: string;
+  name: string;
+  native_document_url?: string | null;
+  prompt_sha256: string;
+  prompt_version: string;
+  provider_config_id: string;
+  provider_revision: number;
+  publication_enabled: boolean;
+  publication_job?: ReportJobResponse | null;
+  representative_table_url?: string | null;
+  scheme_version_id: string;
+  selection_prompt_sha256: string;
+  start_date: string;
+  status: ReportResponseStatus;
+  taxonomy_sha256: string;
+  vehicle_model_ids: string[];
+}
+
+/**
+ * 按创建时间降序列出最近报告。
+ */
+export interface ReportListResponse {
+  items: ReportResponse[];
+}
+
+/**
+ * 实时预检只描述当前事实，创建时会再次检查并冻结。
+ */
+export interface ReportPreflightResponse {
+  analyzed_count: number;
+  comment_count: number;
+  content_count: number;
+  model: string | null;
+  previous_content_count: number;
+  prompt_version: string;
+  provider: string | null;
+  ready: boolean;
+  real_user_count: number;
+  taxonomy_sha256: string;
+  warnings?: string[];
+}
+
+/**
+ * 品牌、可选车型与包含首尾日期的北京时间报告范围。
+ */
+export interface ReportSubmitRequest {
+  brand_id: string;
+  end_date: string;
+  start_date: string;
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
 }
 
 /**
@@ -7812,6 +8017,264 @@ export const testProviderConfigConnection = async (providerConfigId: string, opt
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ProviderConnectionTestResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListReportsUrl = () => {
+
+
+
+
+  return `/api/v1/reports`
+}
+
+/**
+ * 历史列表。
+ * @summary List Reports
+ */
+export const listReports = async ( options?: RequestInit): Promise<ReportListResponse> => {
+
+  const res = await fetch(getListReportsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateReportUrl = () => {
+
+
+
+
+  return `/api/v1/reports`
+}
+
+/**
+ * 冻结并排队，外部调用由 Worker 完成。
+ * @summary Create
+ */
+export const createReport = async (reportSubmitRequest: ReportSubmitRequest, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getCreateReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reportSubmitRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getPreflightReportUrl = () => {
+
+
+
+
+  return `/api/v1/reports/preflight`
+}
+
+/**
+ * 实时预检。
+ * @summary Preflight
+ */
+export const preflightReport = async (reportSubmitRequest: ReportSubmitRequest, options?: RequestInit): Promise<ReportPreflightResponse> => {
+
+  const res = await fetch(getPreflightReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reportSubmitRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportPreflightResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetReportUrl = (reportId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}`
+}
+
+/**
+ * 报告详情。
+ * @summary Get
+ */
+export const getReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getGetReportUrl(reportId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getDownloadReportArtifactUrl = (reportId: string,
+    artifactId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}/artifacts/${artifactId}/download`
+}
+
+/**
+ * 所属校验与到期校验后流式下载。
+ * @summary Download
+ */
+export const downloadReportArtifact = async (reportId: string,
+    artifactId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getDownloadReportArtifactUrl(reportId,artifactId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
+export const getCancelReportUrl = (reportId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}/cancel`
+}
+
+/**
+ * 提交生成或发布任务的取消意图。
+ * @summary Cancel
+ */
+export const cancelReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getCancelReportUrl(reportId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getPublishReportUrl = (reportId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}/publish`
+}
+
+/**
+ * 独立发布或恢复失败发布。
+ * @summary Publish
+ */
+export const publishReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getPublishReportUrl(reportId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRetryReportUrl = (reportId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}/retry`
+}
+
+/**
+ * 恢复失败生成。
+ * @summary Retry
+ */
+export const retryReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getRetryReportUrl(reportId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
   return data
 }
 

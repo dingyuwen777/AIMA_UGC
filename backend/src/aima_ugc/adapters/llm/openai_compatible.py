@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import datetime
-from threading import Lock
+from threading import Event, Lock
 from time import monotonic
 from typing import Any, Self
 from urllib.parse import urlsplit
@@ -21,6 +21,7 @@ from aima_ugc.modules.analysis.content_labeling import (
 )
 from aima_ugc.platform.time import beijing_now
 
+from .capabilities import declared_concurrency
 from .pricing import (
     LLMCostCalculation,
     LLMModelPrice,
@@ -46,10 +47,12 @@ class OpenAICompatibleLLMError(RuntimeError):
         error_code: str,
         retryable: bool,
         status_code: int | None = None,
+        timeout_phase: str | None = None,
     ) -> None:
         self.error_code = error_code
         self.retryable = retryable
         self.status_code = status_code
+        self.timeout_phase = timeout_phase
         super().__init__(message)
 
 
@@ -69,6 +72,10 @@ class OpenAICompatibleContentLabelingLLM:
         client: httpx.Client | None = None,
         pricing_catalog: LLMPricingCatalog | None = None,
         request_audit: Callable[[LLMHTTPRequestAudit], None] | None = None,
+        on_request_started: Callable[[], None] | None = None,
+        before_request: Callable[[Event | None], None] | None = None,
+        on_request_finished: Callable[[], None] | None = None,
+        current_timeout_seconds: Callable[[], float] | None = None,
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
         normalized_base_url = _normalize_base_url(actual_base_url)
@@ -97,6 +104,10 @@ class OpenAICompatibleContentLabelingLLM:
         self._provider_name = actual_provider_name
         self._use_json_mode = use_json_mode
         self._request_audit = request_audit
+        self._on_request_started = on_request_started
+        self._before_request = before_request
+        self._on_request_finished = on_request_finished
+        self._current_timeout_seconds = current_timeout_seconds
         self._pricing_catalog = pricing_catalog
         self._pricing_unavailable_reason: str | None = None
         if pricing_catalog is None:
@@ -167,19 +178,12 @@ class OpenAICompatibleContentLabelingLLM:
         status: LLMHTTPRequestStatus = "network_error"
         status_code: int | None = None
         error_code: str | None = None
+        timeout_phase: str | None = None
+        rate_limit_kind: str | None = None
         usage = LLMTokenUsage(input_tokens=None, output_tokens=None)
         calculation: LLMCostCalculation | None = None
         cost_unavailable_reason = self._pricing_unavailable_reason
         price: LLMModelPrice | None = None
-        if self._pricing_catalog is not None and self._pricing_unavailable_reason is None:
-            try:
-                price = self._pricing_catalog.price_for(
-                    provider=self._provider_name,
-                    model=self._model,
-                    at=started_at,
-                )
-            except LLMPriceNotConfiguredError:
-                cost_unavailable_reason = "price_not_effective_at_request_time"
         body: dict[str, object] = {
             "model": self._model,
             "messages": [
@@ -191,6 +195,10 @@ class OpenAICompatibleContentLabelingLLM:
             body["response_format"] = {"type": "json_object"}
 
         ensure_labeling_running(request.stop_event)
+        if self._before_request is not None:
+            self._before_request(request.stop_event)
+            # 许可等待属于本地调度，审计与价格生效时间从实际发送阶段开始。
+            started_at = beijing_now()
         http_started = monotonic()
         with self._metrics_lock:
             self._http_requests += 1
@@ -198,6 +206,17 @@ class OpenAICompatibleContentLabelingLLM:
             self._http_peak = max(self._http_peak, self._http_active)
         try:
             try:
+                if self._on_request_started is not None:
+                    self._on_request_started()
+                if self._pricing_catalog is not None and self._pricing_unavailable_reason is None:
+                    try:
+                        price = self._pricing_catalog.price_for(
+                            provider=self._provider_name,
+                            model=self._model,
+                            at=started_at,
+                        )
+                    except LLMPriceNotConfiguredError:
+                        cost_unavailable_reason = "price_not_effective_at_request_time"
                 response = self._client.post(
                     "chat/completions",
                     headers={
@@ -207,24 +226,56 @@ class OpenAICompatibleContentLabelingLLM:
                         "User-Agent": "AIMA_UGC/1.0",
                     },
                     json=body,
+                    timeout=httpx.Timeout(
+                        read=self._current_timeout_seconds(), connect=10, write=30, pool=1
+                    )
+                    if self._current_timeout_seconds is not None
+                    else self._client.timeout,
                 )
             except httpx.HTTPError as exc:
+                timeout_phase = next(
+                    (
+                        phase
+                        for error_type, phase in (
+                            (httpx.ConnectTimeout, "connect"),
+                            (httpx.ReadTimeout, "read"),
+                            (httpx.WriteTimeout, "write"),
+                            (httpx.PoolTimeout, "pool"),
+                        )
+                        if isinstance(exc, error_type)
+                    ),
+                    None,
+                )
                 raise OpenAICompatibleLLMError(
                     "OpenAI-compatible LLM 网络请求失败",
-                    error_code="network_error",
+                    error_code="timeout"
+                    if isinstance(exc, httpx.TimeoutException)
+                    else "network_error",
                     retryable=True,
+                    timeout_phase=timeout_phase,
                 ) from exc
             finally:
+                if self._on_request_finished is not None:
+                    self._on_request_finished()
                 with self._metrics_lock:
                     self._http_active -= 1
                     self._http_seconds += monotonic() - http_started
 
             status_code = response.status_code
+            if status_code == 429:
+                # 当前响应的明确配额证据优先于模型声明；不记录响应正文或Secret。
+                if response.headers.get("x-ratelimit-remaining-requests") == "0":
+                    rate_limit_kind = "request_rate"
+                elif response.headers.get("x-ratelimit-remaining-tokens") == "0":
+                    rate_limit_kind = "token_rate"
+                elif declared_concurrency(str(self._client.base_url), self._model) is not None:
+                    rate_limit_kind = "concurrency"
             if status_code < 200 or status_code >= 300:
                 raise OpenAICompatibleLLMError(
                     f"OpenAI-compatible LLM 请求失败: HTTP {status_code}",
                     error_code=f"http_{status_code}",
-                    retryable=status_code in _RETRYABLE_HTTP_STATUS_CODES,
+                    retryable=status_code in _RETRYABLE_HTTP_STATUS_CODES
+                    or 500 <= status_code < 600,
                     status_code=status_code,
                 )
 
@@ -264,7 +315,7 @@ class OpenAICompatibleContentLabelingLLM:
             )
         except OpenAICompatibleLLMError as exc:
             error_code = exc.error_code
-            if exc.error_code == "network_error":
+            if exc.error_code in {"network_error", "timeout"}:
                 status = "network_error"
             elif exc.status_code is not None:
                 status = "http_error"
@@ -288,6 +339,8 @@ class OpenAICompatibleContentLabelingLLM:
                         price=price,
                         calculation=calculation,
                         cost_unavailable_reason=cost_unavailable_reason,
+                        timeout_phase=timeout_phase,
+                        rate_limit_kind=rate_limit_kind,
                     )
                 )
 
@@ -346,100 +399,29 @@ def resolve_openai_compatible_provider_name(
 
 
 def _user_message(request: ContentLabelingLLMRequest) -> str:
+    """构造模型用户消息，不允许调用入口覆盖唯一 Prompt 的业务协议。"""
+
     payload: dict[str, object] = {"items": request.model_payload()}
-    if request.require_excel_complete:
-        payload["excel_output_contract"] = (
-            "发声类型、情感标签、一级标签、二级标签四列永远不得为空，也不得出现“空白”占位值。"
-            "当前离线 Excel 持久化契约不接受 relevance=irrelevant；请输出 relevance=relevant，"
-            "并始终输出合法的 sentiment 和至少一个合法 labels 标签对；"
-            "禁止 null、空字符串、空数组、缺失 key 或“空白”占位值。"
-        )
     if request.previous_validation_error_codes:
         error_codes = tuple(request.previous_validation_error_codes)
         payload["previous_validation_error_codes"] = list(error_codes)
-        if request.require_excel_complete:
-            payload["validation_repair_rules"] = _validation_repair_rules(error_codes)
-        if request.request_kind == "judge" and request.require_excel_complete:
+        if request.request_kind == "judge":
             payload["decision_mode"] = "judge"
             payload["retry_instruction"] = (
-                "上一响应未通过本地校验。请只基于本次 items 的五个文本字段独立重新判断，"
-                "不要沿用上一结论；按 validation_repair_rules 修正后返回完整 JSON。"
-            )
-        elif request.request_kind == "judge":
-            payload["decision_mode"] = "judge"
-            payload["retry_instruction"] = (
-                "上一响应存在证据、主体、意图或发声类型歧义。"
-                "请只基于本次 items 的五个文本字段独立重新判断，"
-                "逐项引用原文证据；不要沿用上一结论。证据不足时使用显式未知值并返回 clear。"
-            )
-        elif request.require_excel_complete:
-            payload["retry_instruction"] = (
-                "上一响应未通过本地校验；仅修正列出的结构/标签错误，并重新返回整个当前批次。"
-                "必须严格执行 validation_repair_rules，不能输出 unknown、无法判断、其他或空白"
-                "占位值。"
+                "上一响应存在证据或分类协议错误。请只基于本次 items 的 platform 与五个文本字段"
+                "独立重新判断并逐项引用原文证据；按当前 Prompt 的保底规则收敛为 clear，"
+                "禁止 unknown、无法判断、needs_judge 或空白结果。"
             )
         else:
             payload["retry_instruction"] = (
                 "上一响应未通过本地校验；仅修正列出的结构/标签错误，并重新返回整个当前批次。"
+                "必须继续遵守当前 Prompt 的全部闭集、证据和零空白规则。"
             )
     return json.dumps(
         payload,
         ensure_ascii=False,
         separators=(",", ":"),
     )
-
-
-def _validation_repair_rules(error_codes: tuple[str, ...]) -> list[str]:
-    """把本地校验错误翻译成模型可执行的修复动作。"""
-
-    codes = set(error_codes)
-    rules = [
-        (
-            "最终 Excel 的发声类型、情感标签、一级标签、二级标签都必须是非空合法值，"
-            "不能出现 null、空数组、空字符串或“空白”。"
-        ),
-        (
-            "当前离线 Excel 契约要求 relevance=relevant；必须同时返回合法 sentiment "
-            "和至少一个合法 labels 标签对。"
-        ),
-    ]
-    if "unknown_sentiment" in codes or "missing_excel_sentiment" in codes:
-        rules.append(
-            "sentiment 只能逐字使用 Prompt Taxonomy 的四个值：正面、中性、负面、混合；"
-            "没有明确正负态度时使用中性，禁止输出未知、无法判断、无明显情绪或其他近义词。"
-        )
-    if "unknown_primary_label" in codes or "missing_excel_labels" in codes:
-        rules.append(
-            "primary_label 只能从 Prompt Taxonomy 的一级标签原样复制；"
-            "不确定时选择最接近的合法一级标签，"
-            "禁止自行创造其他、无法分类、无法判断或空标签。"
-        )
-    if "invalid_secondary_for_primary" in codes:
-        rules.append(
-            "secondary_label 必须从所选 primary_label 下面列出的二级标签原样复制，"
-            "不能把别的一级标签下的二级标签拼过来。"
-        )
-    if "fabricated_evidence" in codes or "missing_evidence" in codes:
-        rules.append(
-            "所有 evidence 必须是当前 item 的 title、text、author.display_name、author.bio 或 "
-            "author.verification_label 中连续出现的原文片段；不要总结、改写或补造证据。"
-        )
-    if "invalid_item_structure" in codes:
-        rules.append(
-            "必须返回完整 item 对象及所有协议要求的 key，不能只返回修正字段，也不能增加额外 key。"
-        )
-    if "irrelevant_not_exportable" in codes:
-        rules.append(
-            "不要返回 relevance=irrelevant；即使内容相关性弱，也要按现有 Taxonomy "
-            "选择最接近的合法情感和标签。"
-        )
-    if "blank_excel_voice_type_marker" in codes:
-        rules.append(
-            "voice_type 只能使用 Prompt Taxonomy 中的合法发声类型，禁止输出“空白”或未知值。"
-        )
-    if "blank_excel_label_marker" in codes:
-        rules.append("一级和二级标签都必须使用 Taxonomy 原名，禁止任何包含“空白”的值。")
-    return rules
 
 
 def _protocol_error(
@@ -544,6 +526,8 @@ def _request_audit_record(
     price: LLMModelPrice | None,
     calculation: LLMCostCalculation | None,
     cost_unavailable_reason: str | None,
+    timeout_phase: str | None = None,
+    rate_limit_kind: str | None = None,
 ) -> LLMHTTPRequestAudit:
     return LLMHTTPRequestAudit(
         http_request_id=http_request_id,
@@ -555,6 +539,8 @@ def _request_audit_record(
         status=status,
         status_code=status_code,
         error_code=error_code,
+        timeout_phase=timeout_phase,
+        rate_limit_kind=rate_limit_kind,
         input_tokens=usage.input_tokens,
         input_cache_hit_tokens=usage.input_cache_hit_tokens,
         input_cache_miss_tokens=usage.input_cache_miss_tokens,

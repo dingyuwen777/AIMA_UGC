@@ -263,7 +263,8 @@ class PostgresAnalysisSchemeLifecycleHttpService:
                 blockers = repository.delete_blockers(scheme_id)
                 if blockers:
                     raise AdministrationConflict("；".join(blockers))
-                if not repository.delete_archived(scheme_id):
+                deletion = repository.delete_archived(scheme_id)
+                if deletion is None:
                     raise AdministrationResourceNotFound
                 _audit(
                     session,
@@ -271,7 +272,7 @@ class PostgresAnalysisSchemeLifecycleHttpService:
                     request_id=request_id,
                     event_type="analysis_scheme_deleted",
                     object_id=str(scheme_id),
-                    detail={},
+                    detail={"deletion_mode": deletion.mode},
                 )
         finally:
             session.close()

@@ -12,11 +12,11 @@ import type {
 } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDateRange from '../../../../../shared/ui/AimaDateRange.vue'
+import AimaMultiSelect, { type AimaSelectOption } from '../../../../../shared/ui/AimaMultiSelect.vue'
 import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
 import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import {
   analysisStatusLabel,
-  contentTypeLabel,
   platformLabel,
   relevanceLabel,
 } from '../../../format'
@@ -25,7 +25,6 @@ import type { LegacyLabelCompatibility } from '../../../store'
 const props = withDefaults(defineProps<{
   search: string
   platform: '' | PlatformName
-  contentType: string
   analysisStatus: '' | ContentAnalysisStatus
   relevance: '' | ContentRelevance
   voiceType: string
@@ -53,7 +52,6 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'update:search': [value: string]
   'update:platform': [value: '' | PlatformName]
-  'update:contentType': [value: string]
   'update:analysisStatus': [value: '' | ContentAnalysisStatus]
   'update:relevance': [value: '' | ContentRelevance]
   'update:voiceType': [value: string]
@@ -73,6 +71,12 @@ const emit = defineEmits<{
 const labelOptionsDisabled = computed(() => props.filterOptionsLoading || !props.filterOptions)
 const secondaryOptionsDisabled = computed(
   () => labelOptionsDisabled.value || props.primaryLabels.length === 0,
+)
+const primaryLabelOptions = computed<AimaSelectOption[]>(() =>
+  (props.filterOptions?.labels ?? []).map((item) => ({
+    value: item.primary_label,
+    label: optionLabel(item.primary_label, item.source),
+  })),
 )
 const secondaryLabelOptions = computed(() => {
   const selectedPrimaryLabels = new Set(props.primaryLabels)
@@ -126,11 +130,28 @@ const competitionOptions: Array<{ value: ContentFilterSnapshotCompetitionScopesI
 ]
 const competitionLabel = computed(() => {
   if (!props.competitionScopes.length) return '全部竞争范围'
+  if (props.competitionScopes.length === 2 && includesCompetitors.value) return '含竞品'
   if (props.competitionScopes.length === 1) {
     return competitionOptions.find((item) => item.value === props.competitionScopes[0])?.label ?? '已选 1 项'
   }
   return `已选 ${props.competitionScopes.length} 项`
 })
+const includesCompetitors = computed(() =>
+  props.competitionScopes.includes('competitor_only') && props.competitionScopes.includes('mixed'),
+)
+
+/** 组合当前支持的两个范围，保留“仅竞品”独立选择和已有 API 语义。 */
+function toggleIncludesCompetitors(): void {
+  const next = new Set(props.competitionScopes)
+  if (includesCompetitors.value) {
+    next.delete('competitor_only')
+    next.delete('mixed')
+  } else {
+    next.add('competitor_only')
+    next.add('mixed')
+  }
+  emit('update:competitionScopes', [...next])
+}
 
 function optionLabel(value: string, source: 'active' | 'historical'): string {
   return source === 'historical' ? `${value}（历史数据）` : value
@@ -141,31 +162,30 @@ function value(event: Event): string {
   return (event.target as HTMLInputElement | HTMLSelectElement).value
 }
 
-/** 一级变化时同步剔除不再属于任何已选父级的二级值，隐藏值不能继续参与查询。 */
-function togglePrimaryLabel(primaryLabel: string): void {
-  const next = new Set(props.primaryLabels)
-  if (next.has(primaryLabel)) next.delete(primaryLabel)
-  else next.add(primaryLabel)
+/** 一级集合变化时同步剔除不再属于任何已选父级的二级值，隐藏值不能继续参与查询。 */
+function updatePrimaryLabels(primaryLabels: string[]): void {
+  const available = new Set((props.filterOptions?.labels ?? []).map((item) => item.primary_label))
+  const next = [...new Set(primaryLabels.filter((item) => available.has(item)))]
   const allowedSecondaryLabels = new Set(
     (props.filterOptions?.labels ?? [])
-      .filter((item) => next.has(item.primary_label))
+      .filter((item) => next.includes(item.primary_label))
       .flatMap((item) => item.secondary_labels.map((label) => label.value)),
   )
-  emit('update:primaryLabels', [...next])
+  emit('update:primaryLabels', next)
   emit(
     'update:secondaryLabels',
     props.secondaryLabels.filter((value) => allowedSecondaryLabels.has(value)),
   )
 }
 
-function toggleSecondaryLabel(secondaryLabel: string): void {
+/** 二级集合只接受当前一级选择允许的值，避免隐藏条件进入查询。 */
+function updateSecondaryLabels(secondaryLabels: string[]): void {
   if (secondaryOptionsDisabled.value) return
   const allowed = new Set(secondaryLabelOptions.value.map((item) => item.value))
-  if (!allowed.has(secondaryLabel)) return
-  const next = new Set(props.secondaryLabels)
-  if (next.has(secondaryLabel)) next.delete(secondaryLabel)
-  else next.add(secondaryLabel)
-  emit('update:secondaryLabels', [...next])
+  emit(
+    'update:secondaryLabels',
+    [...new Set(secondaryLabels.filter((item) => allowed.has(item)))],
+  )
 }
 
 function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): void {
@@ -254,7 +274,12 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
       />
       <div class="field field--competition">
         <span>竞争范围</span><details class="multi-select">
-          <summary>{{ competitionLabel }}</summary><label
+          <summary>{{ competitionLabel }}</summary>
+          <label><input
+            type="checkbox"
+            :checked="includesCompetitors"
+            @change="toggleIncludesCompetitors"
+          >含竞品</label><label
             v-for="item in competitionOptions"
             :key="item.value"
           ><input
@@ -274,63 +299,31 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
         :key="item.value"
         :value="item.value"
       >{{ optionLabel(item.value, item.source) }}</option></select></label>
-      <label class="field field--content-type"><span>内容类型</span><select
-        aria-label="内容类型"
-        :value="contentType"
-        :disabled="filterOptionsLoading || !filterOptions"
-        @change="emit('update:contentType', value($event))"
-      ><option value="">全部内容类型</option><option
-        v-for="item in filterOptions?.content_types ?? []"
-        :key="item"
-        :value="item"
-      >{{ contentTypeLabel(item) }}</option></select></label>
     </div>
 
     <div class="filter-row filter-row--tertiary">
-      <div class="field field--label">
-        <span>一级标签</span><details
-          class="multi-select"
-          :class="{ 'multi-select--disabled': labelOptionsDisabled }"
-          @click="labelOptionsDisabled && $event.preventDefault()"
-        >
-          <summary
-            aria-label="一级标签"
-            :aria-disabled="labelOptionsDisabled"
-          >
-            {{ primaryLabelSummary }}
-          </summary><label
-            v-for="item in filterOptions?.labels ?? []"
-            :key="item.primary_label"
-          ><input
-            type="checkbox"
-            :checked="primaryLabels.includes(item.primary_label)"
-            :disabled="labelOptionsDisabled"
-            @change="togglePrimaryLabel(item.primary_label)"
-          >{{ optionLabel(item.primary_label, item.source) }}</label>
-        </details>
-      </div>
-      <div class="field field--label">
-        <span>二级标签</span><details
-          class="multi-select"
-          :class="{ 'multi-select--disabled': secondaryOptionsDisabled }"
-          @click="secondaryOptionsDisabled && $event.preventDefault()"
-        >
-          <summary
-            aria-label="二级标签"
-            :aria-disabled="secondaryOptionsDisabled"
-          >
-            {{ secondaryLabelSummary }}
-          </summary><label
-            v-for="item in secondaryLabelOptions"
-            :key="item.value"
-          ><input
-            type="checkbox"
-            :checked="secondaryLabels.includes(item.value)"
-            :disabled="secondaryOptionsDisabled"
-            @change="toggleSecondaryLabel(item.value)"
-          >{{ item.label }}</label>
-        </details>
-      </div>
+      <AimaMultiSelect
+        class="field field--label"
+        appearance="field"
+        label="一级标签"
+        :model-value="primaryLabels"
+        :options="primaryLabelOptions"
+        :summary="primaryLabelSummary"
+        :disabled="labelOptionsDisabled"
+        :show-bulk-action="false"
+        @update:model-value="updatePrimaryLabels"
+      />
+      <AimaMultiSelect
+        class="field field--label"
+        appearance="field"
+        label="二级标签"
+        :model-value="secondaryLabels"
+        :options="secondaryLabelOptions"
+        :summary="secondaryLabelSummary"
+        :disabled="secondaryOptionsDisabled"
+        :show-bulk-action="false"
+        @update:model-value="updateSecondaryLabels"
+      />
     </div>
 
     <p
@@ -397,9 +390,6 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
 .multi-select label { display: flex; width: 100%; align-items: center; gap: 7px; padding: 8px 12px; border-inline: 1px solid var(--aima-border); background: #fff; }
 .multi-select label:last-child { border-bottom: 1px solid var(--aima-border); border-radius: 0 0 8px 8px; }
 .multi-select input { width: 14px; height: 14px; }
-.filter-row--tertiary .multi-select[open] { height: auto; max-height: 260px; overflow-y: auto; }
-.multi-select--disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); }
-.multi-select--disabled summary { cursor: not-allowed; }
 .filter-hint { display: none; margin: 0; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
 .legacy-label-warning { margin: 0; padding: 8px 10px; border-radius: 6px; color: var(--aima-text-muted); background: var(--aima-primary-soft); box-shadow: inset 0 0 0 1px var(--aima-border); font-size: 12px; line-height: 18px; }
 .filter-footer { display: flex; min-width: 0; min-height: 45px; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--aima-border); }

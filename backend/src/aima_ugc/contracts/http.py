@@ -1373,21 +1373,28 @@ AnalysisRunStatus = Literal[
 
 
 class AnalysisRunTargetSelection(BaseModel):
-    """Analysis Run 公开目标：显式选择或数据库当前全部 Content。"""
+    """Analysis Run 公开目标：显式选择、当前筛选结果或数据库当前全部 Content。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    scope: Literal["selected", "all"] = "selected"
+    scope: Literal["selected", "query", "all"] = "selected"
+    filters: ContentFilterSnapshot | None = None
     content_ids: tuple[UUID, ...] = Field(default=(), max_length=1000)
 
     @model_validator(mode="after")
     def validate_scope_and_content_ids(self) -> AnalysisRunTargetSelection:
+        """确保三种 Scope 的筛选快照和显式 ID 互斥且语义唯一。"""
+
         if len(self.content_ids) != len(set(self.content_ids)):
             raise ValueError("content_ids 不能重复")
-        if self.scope == "selected" and not self.content_ids:
-            raise ValueError("selected Scope 必须提供至少一个 content_id")
-        if self.scope == "all" and self.content_ids:
-            raise ValueError("all Scope 不能提交 content_ids")
+        if self.scope == "selected":
+            if not self.content_ids or self.filters is not None:
+                raise ValueError("selected Scope 必须且只能提供至少一个 content_id")
+        elif self.scope == "query":
+            if self.filters is None or self.content_ids:
+                raise ValueError("query Scope 必须且只能提供 filters")
+        elif self.content_ids or self.filters is not None:
+            raise ValueError("all Scope 不能提交 content_ids 或 filters")
         return self
 
 
@@ -1474,6 +1481,9 @@ class AnalysisContentRunResponse(BaseModel):
     generation_config_hash: str
     error_code: str | None = None
     stats: AnalysisContentRunStatsResponse = AnalysisContentRunStatsResponse()
+    execution_settling: bool = Field(
+        default=False, description="关联执行仍在排队或收尾，需继续刷新统计"
+    )
     shards: tuple[AnalysisContentRunShardResponse, ...] = ()
     created_at: datetime
     started_at: datetime | None = None

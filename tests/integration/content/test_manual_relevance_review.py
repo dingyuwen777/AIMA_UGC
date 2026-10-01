@@ -147,8 +147,8 @@ def _analysis_registry(runtime, response: str) -> JobRegistry:  # type: ignore[n
 def _irrelevant_response() -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"irrelevant",'
-        '"relevance_evidence":["爱玛"],"source_type":"media_org",'
-        '"content_intent":"news_information","voice_type":"媒体机构发声",'
+        '"relevance_evidence":["爱玛"],"source_type":"ordinary_consumer",'
+        '"content_intent":"commercial_sales","real_user_qualified":false,"voice_type":"营销推广发声",'
         '"voice_evidence":["爱玛"],"sentiment":null,"sentiment_evidence":[],'
         '"labels":[],"decision_status":"clear"}]}'
     )

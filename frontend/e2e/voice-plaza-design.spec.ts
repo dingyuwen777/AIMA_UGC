@@ -68,7 +68,7 @@ const normalRun = {
   target_count: 3,
   shard_count: 1,
   shard_size: 3,
-  prompt_version: 'content_labeling_v3',
+  prompt_version: 'content-labeling.v3.0',
   prompt_sha256: 'a'.repeat(64),
   taxonomy_sha256: 'b'.repeat(64),
   model_provider: 'openai-compatible',
@@ -216,7 +216,8 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
       const primaryWidths = await filter.locator('.filter-row--primary > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
       ;[352, 140, 150, 120, 130, 200].forEach((size, index) => expectNear(primaryWidths[index], size))
       const secondaryWidths = await filter.locator('.filter-row--secondary > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
-      ;[180, 180, 180, 160, 160].forEach((size, index) => expectNear(secondaryWidths[index], size))
+      expect(secondaryWidths).toHaveLength(4)
+      ;[180, 180, 180, 160].forEach((size, index) => expectNear(secondaryWidths[index], size))
     }
 
     if (width <= 1280) {
@@ -549,7 +550,7 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
         target_count: 1,
         shard_count: 1,
         shard_size: 1,
-        prompt_version: 'content_labeling_v3',
+        prompt_version: 'content-labeling.v3.0',
         prompt_sha256: 'a'.repeat(64),
         taxonomy_sha256: 'b'.repeat(64),
         model_provider: 'openai-compatible',

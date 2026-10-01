@@ -31,12 +31,14 @@ from aima_ugc.modules.content.tables import accounts_table, comments_table, cont
 from aima_ugc.modules.vehicles.brand_vehicle import (
     BrandVehicleCatalogSnapshot,
     BrandVehicleResolution,
+    BrandVehicleResolver,
 )
 from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 from aima_ugc.platform.time import beijing_now
 
 from .brand_vehicle import PostgresBrandVehicleRepository
+from .brand_vehicle_classification import resolve_current_brand_vehicle_batch
 from .candidates import PostgresCandidateRepository
 from .content import PostgresIngestionResult
 from .content_complete import PostgresCompleteContentRepository
@@ -183,6 +185,7 @@ class PostgresFencedCollectionIngestionWriter:
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
+        self._resolver = BrandVehicleResolver()
 
     def discover_candidate(
         self,
@@ -370,17 +373,39 @@ class PostgresFencedCollectionIngestionWriter:
                     )
                     if other_primary is not None or other_alias is not None:
                         raise CollectionContentIdentityConflictError("评论目标属于其他 Content")
-                content_service = ContentIngestionService(
-                    PostgresCompleteContentRepository(session)
-                )
+                content_repository = PostgresCompleteContentRepository(session)
+                content_service = ContentIngestionService(content_repository)
                 result = content_service.ingest_content(canonical)
                 if brand_vehicle_resolution is not None:
                     assert brand_vehicle_snapshot is not None
                     vehicle_repository = PostgresVehicleCatalogRepository(session)
+                    brand_repository = PostgresBrandVehicleRepository(session)
+                    v2 = brand_vehicle_snapshot.resolver_semantics == "brand_scoped_vehicle_v2"
+                    if v2 and not (result.version_created and result.version_no == 1):
+                        classifications = resolve_current_brand_vehicle_batch(
+                            snapshot=brand_vehicle_snapshot,
+                            inputs=content_repository.lock_current_classification_inputs(
+                                content_ids=(result.target_id,)
+                            ),
+                            vehicle_repository=vehicle_repository,
+                            brand_repository=brand_repository,
+                            resolver=self._resolver,
+                            review_carry=(
+                                (result.target_id, result.version_no - 1, result.version_no),
+                            )
+                            if result.version_created and result.version_no > 1
+                            else (),
+                        )
+                        brand_vehicle_resolution = classifications[
+                            (result.target_id, result.version_no)
+                        ]
+                    vehicle_evidence = []
                     for item in brand_vehicle_resolution.vehicle_evidence:
                         if item.source != "alias_match":
+                            if v2 and item.source == "manual_review":
+                                continue
                             raise ValueError("自动 Vehicle Evidence 只接受 alias_match")
-                        vehicle_repository.append_evidence(
+                        vehicle_evidence.append(
                             ContentVehicleEvidence(
                                 id=uuid4(),
                                 content_id=result.target_id,
@@ -396,10 +421,29 @@ class PostgresFencedCollectionIngestionWriter:
                                 created_at=beijing_now(),
                             )
                         )
-                    PostgresBrandVehicleRepository(session).replace_automatic_brand_evidence(
+                    if v2:
+                        vehicle_repository.converge_automatic_alias_evidence_for_replay(
+                            entries=(
+                                (result.target_id, result.version_no, tuple(vehicle_evidence)),
+                            ),
+                            source_pairs=((result.target_id, result.version_no),),
+                            replace_existing=brand_vehicle_snapshot.filter_scope == "all_active",
+                            include_import_text_matches=True,
+                            replace_vehicle_model_ids=(
+                                brand_vehicle_snapshot.automatic_evidence_vehicle_ids
+                            ),
+                        )
+                    else:
+                        for evidence in vehicle_evidence:
+                            vehicle_repository.append_evidence(evidence)
+                    brand_repository.replace_automatic_brand_evidence(
                         content_id=result.target_id,
                         content_version=result.version_no,
-                        evidence=brand_vehicle_resolution.brand_evidence,
+                        evidence=tuple(
+                            evidence
+                            for evidence in brand_vehicle_resolution.brand_evidence
+                            if evidence.source != "manual_review"
+                        ),
                         catalog_version=brand_vehicle_resolution.catalog_version,
                         catalog_snapshot=brand_vehicle_snapshot,
                     )

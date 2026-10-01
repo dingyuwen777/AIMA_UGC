@@ -154,14 +154,22 @@ class FeishuReportPublisher:
         *,
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        before_request: Callable[[], None] | None = None,
     ) -> None:
         self._config = config
+        self._owns_client = client is None
         self._client = client or httpx.Client(
             base_url="https://open.feishu.cn",
             timeout=config.timeout_seconds,
         )
         self._sleep = sleep
+        self._before_request = before_request
         self._tenant_access_token: str | None = None
+
+    def close(self) -> None:
+        """释放本实例创建的客户端，调用者注入的客户端由调用者管理。"""
+        if self._owns_client:
+            self._client.close()
 
     def publish(
         self,
@@ -174,6 +182,7 @@ class FeishuReportPublisher:
         embed_representative_bitable: bool = False,
         idempotency_key: str | None = None,
         checkpoint: FeishuPublicationCheckpointStore | None = None,
+        data_workbook_path: Path | None = None,
     ) -> FeishuPublicationSummary:
         """上传报告并按稳定身份恢复已确认的外部资源。"""
 
@@ -200,6 +209,18 @@ class FeishuReportPublisher:
             )
             _checkpoint_set(checkpoint, "word_file_token", word_file_token)
         sheet: _ImportResult | None = None
+        data_file_token: str | None = None
+        if data_workbook_path is not None:
+            source_data = _validate_upload_path(data_workbook_path, suffix=".xlsx")
+            data_file_token = _checkpoint_string(checkpoint, "data_file_token")
+            if data_file_token is None:
+                data_file_token = self._upload_file(
+                    file_name=f"{title}（报告数据下载）.xlsx",
+                    content=source_data.read_bytes(),
+                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    idempotency_source=f"{operation_key}:data",
+                )
+                _checkpoint_set(checkpoint, "data_file_token", data_file_token)
         if chart_workbook_path is not None:
             source_charts = _validate_upload_path(chart_workbook_path, suffix=".xlsx")
             chart_file_token = _checkpoint_string(checkpoint, "chart_file_token")
@@ -258,6 +279,17 @@ class FeishuReportPublisher:
             sheet_url=None if sheet is None else sheet.url,
             idempotency_source=operation_key,
         )
+
+        if data_file_token is not None and not _checkpoint_bool(checkpoint, "data_link_added"):
+            self._append_delivery_links(
+                document_token=native_document.token,
+                word_file_token=_checkpoint_string(checkpoint, "data_file_token")
+                or data_file_token,
+                sheet_url=None,
+                idempotency_source=f"{operation_key}:data-link",
+                file_label="报告 Excel 下载：",
+            )
+            _checkpoint_set(checkpoint, "data_link_added", True)
 
         return FeishuPublicationSummary(
             native_document_token=native_document.token,
@@ -1030,6 +1062,7 @@ class FeishuReportPublisher:
         word_file_token: str,
         sheet_url: str | None,
         idempotency_source: str,
+        file_label: str = "原始 Word 下载：",
     ) -> None:
         client_token = _stable_client_token(idempotency_source)
         children: list[dict[str, Any]] = [
@@ -1039,7 +1072,7 @@ class FeishuReportPublisher:
                     "elements": [
                         {
                             "text_run": {
-                                "content": "原始 Word 下载：",
+                                "content": file_label,
                                 "text_element_style": {},
                             }
                         },
@@ -1116,8 +1149,13 @@ class FeishuReportPublisher:
         **kwargs: Any,
     ) -> Mapping[str, Any]:
         headers = dict(kwargs.pop("headers", {}))
+        if self._before_request is not None:
+            self._before_request()
         if authenticated:
             headers["Authorization"] = f"Bearer {self._access_token()}"
+        # 获取 Token 自身也会发送请求，发送业务请求前须再次复核取消与 lease。
+        if self._before_request is not None:
+            self._before_request()
         try:
             response = self._client.request(method, path, headers=headers, **kwargs)
         except httpx.HTTPError as exc:

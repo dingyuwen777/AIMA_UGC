@@ -12,7 +12,8 @@ from time import perf_counter
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, insert, select, text
+from sqlalchemy import case, func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,9 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
 )
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
+from aima_ugc.adapters.persistence.postgres.brand_vehicle_classification import (
+    resolve_current_brand_vehicle_batch,
+)
 from aima_ugc.adapters.persistence.postgres.canonical_replay import (
     PostgresCanonicalReplayRepository,
     RevokedCanonicalReplaySource,
@@ -27,6 +31,7 @@ from aima_ugc.adapters.persistence.postgres.canonical_replay import (
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
     PostgresCompleteNewContentBatchItem,
+    PostgresContentClassificationInput,
 )
 from aima_ugc.adapters.persistence.postgres.content_contributions import (
     build_content_contribution_delta,
@@ -241,11 +246,14 @@ def _partition_resolved_batch(
     resolved: tuple[tuple[CanonicalContentV1, BrandVehicleResolution], ...],
     *,
     matched_target_rows: int,
+    raw_limit_rows: int | None = None,
 ) -> tuple[tuple[tuple[CanonicalContentV1, BrandVehicleResolution], ...], ...]:
     """把一次大扫描按命中数切成连续事务块，避免命中率突升制造超大数据库事务。"""
 
     if matched_target_rows < 1:
         raise ValueError("Replay matched target 必须为正整数")
+    if raw_limit_rows is not None and raw_limit_rows < 1:
+        raise ValueError("Replay raw limit 必须为正整数")
     if not resolved:
         return ()
     chunks: list[tuple[tuple[CanonicalContentV1, BrandVehicleResolution], ...]] = []
@@ -254,7 +262,9 @@ def _partition_resolved_batch(
     for index, (_content, resolution) in enumerate(resolved):
         if resolution.matched:
             matched += 1
-        if matched >= matched_target_rows:
+        if matched >= matched_target_rows or (
+            raw_limit_rows is not None and index + 1 - start >= raw_limit_rows
+        ):
             chunks.append(resolved[start : index + 1])
             start = index + 1
             matched = 0
@@ -292,6 +302,7 @@ class PostgresCanonicalReplayJobExecutor:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
+        self._current_resolver = BrandVehicleResolver()
         self.shard_coordinator: AdaptiveShardCoordinator | None = None
 
     def execute(
@@ -550,6 +561,12 @@ class PostgresCanonicalReplayJobExecutor:
                     resolved_chunks = _partition_resolved_batch(
                         resolved,
                         matched_target_rows=matched_target,
+                        raw_limit_rows=(
+                            1000
+                            if run.filter_snapshot.catalog.resolver_semantics
+                            == "brand_scoped_vehicle_v2"
+                            else None
+                        ),
                     )
                     chunk_start = 0
                     revoked_during_batch = False
@@ -1665,8 +1682,47 @@ class PostgresCanonicalReplayJobExecutor:
                 fallback_snapshot_ms = int((perf_counter() - fallback_snapshot_started) * 1000)
                 fallback_content_started = perf_counter()
                 fallback_items = content_repository.ingest_contents_with_before_snapshots_batch(
-                    tuple(zip(fallback_observations, before_snapshots, strict=True))
+                    tuple(zip(fallback_observations, before_snapshots, strict=True)),
+                    replay_accepted_before=(
+                        repository.all_request_admission_times((current.all_request_id,))[
+                            current.all_request_id
+                        ]
+                        if current.all_request_id is not None
+                        and run.filter_snapshot.catalog.resolver_semantics
+                        == "brand_scoped_vehicle_v2"
+                        else None
+                    ),
                 )
+                current_resolutions: dict[tuple[UUID, int], BrandVehicleResolution] = {}
+                if run.filter_snapshot.catalog.resolver_semantics == "brand_scoped_vehicle_v2":
+                    review_carry = tuple(
+                        (item.result.target_id, item.before.version_no, item.result.version_no)
+                        for item in fallback_items
+                        if item.before.version_no is not None
+                        and item.before.version_no != item.result.version_no
+                        and not item.protected_by_later_write
+                    )
+                    review_pairs = tuple(
+                        {
+                            (content_id, version)
+                            for content_id, source, target in review_carry
+                            for version in (source, target)
+                        }
+                    )
+                    vehicle_repository.load_locked_manual_vehicle_ids_batch(review_pairs)
+                    brand_repository.load_locked_manual_brand_ids_batch(review_pairs)
+                    vehicle_repository.carry_manual_review_batch(review_carry)
+                    brand_repository.carry_manual_brand_review_batch(review_carry)
+                    current_inputs = content_repository.lock_current_classification_inputs(
+                        content_ids=tuple(
+                            item.result.target_id
+                            for item in fallback_items
+                            if not item.protected_by_later_write
+                        )
+                    )
+                    current_resolutions = self._resolve_current_classifications(
+                        run, current_inputs, vehicle_repository, brand_repository
+                    )
                 fallback_content_ms = int((perf_counter() - fallback_content_started) * 1000)
                 scalar_fallback_count = sum(
                     1 for item in fallback_items if item.used_scalar_fallback
@@ -1681,7 +1737,12 @@ class PostgresCanonicalReplayJobExecutor:
                     fallback_pending,
                     strict=True,
                 ):
+                    if fallback_item.protected_by_later_write:
+                        continue
                     result = fallback_item.result
+                    resolution = current_resolutions.get(
+                        (result.target_id, result.version_no), resolution
+                    )
                     fallback_vehicle_entries.append(
                         (
                             result.target_id,
@@ -1702,11 +1763,20 @@ class PostgresCanonicalReplayJobExecutor:
                                     created_at=evidence_created_at,
                                 )
                                 for evidence in resolution.vehicle_evidence
+                                if evidence.source == "alias_match"
                             ),
                         )
                     )
                     fallback_brand_entries.append(
-                        (result.target_id, result.version_no, resolution.brand_evidence)
+                        (
+                            result.target_id,
+                            result.version_no,
+                            tuple(
+                                item
+                                for item in resolution.brand_evidence
+                                if item.source != "manual_review"
+                            ),
+                        )
                     )
                 selected_scope = run.filter_snapshot.catalog.filter_scope == "selected"
                 source_pairs = tuple(
@@ -1716,6 +1786,7 @@ class PostgresCanonicalReplayJobExecutor:
                         else None
                     )
                     for item in fallback_items
+                    if not item.protected_by_later_write
                 )
                 (
                     vehicle_before_by_pair,
@@ -1724,6 +1795,15 @@ class PostgresCanonicalReplayJobExecutor:
                     entries=tuple(fallback_vehicle_entries),
                     source_pairs=source_pairs,
                     replace_existing=not selected_scope,
+                    include_import_text_matches=(
+                        run.filter_snapshot.catalog.resolver_semantics == "brand_scoped_vehicle_v2"
+                    ),
+                    replace_vehicle_model_ids=(
+                        run.filter_snapshot.catalog.automatic_evidence_vehicle_ids
+                        if run.filter_snapshot.catalog.resolver_semantics
+                        == "brand_scoped_vehicle_v2"
+                        else None
+                    ),
                 )
                 (
                     brand_before_by_pair,
@@ -1735,6 +1815,22 @@ class PostgresCanonicalReplayJobExecutor:
                     preserve_unconfirmed=selected_scope,
                 )
                 fallback_evidence_ms = int((perf_counter() - fallback_evidence_started) * 1000)
+                protected_pairs = tuple(
+                    (item.result.target_id, item.result.version_no)
+                    for item in fallback_items
+                    if item.protected_by_later_write
+                )
+                if protected_pairs:
+                    protected_vehicles = vehicle_repository.snapshot_automatic_evidence_batch(
+                        pairs=protected_pairs
+                    )
+                    protected_brands = brand_repository.snapshot_automatic_brand_evidence_batch(
+                        pairs=protected_pairs
+                    )
+                    vehicle_before_by_pair.update(protected_vehicles)
+                    vehicle_after_by_pair.update(protected_vehicles)
+                    brand_before_by_pair.update(protected_brands)
+                    brand_after_by_pair.update(protected_brands)
                 fallback_ledger_started = perf_counter()
                 for fallback_item in fallback_items:
                     observation = fallback_item.observation
@@ -1756,6 +1852,20 @@ class PostgresCanonicalReplayJobExecutor:
                         else None
                     )
                     after_pair = (result.target_id, result.version_no)
+                    contribution_delta = build_content_contribution_delta(
+                        observation, before, fallback_item.contribution_after
+                    )
+                    if run.filter_snapshot.catalog.resolver_semantics == "brand_scoped_vehicle_v2":
+                        # 历史任一来源命中与当前 Evidence 分类分别持有。
+                        contribution_delta["resolver_outcome"] = "matched"
+                        if after_pair in current_resolutions:
+                            contribution_delta["classification_outcome"] = (
+                                "matched"
+                                if current_resolutions[after_pair].matched
+                                else "unmatched"
+                            )
+                        elif fallback_item.protected_by_later_write:
+                            contribution_delta["classification_preserved"] = True
                     ledger_rows.append(
                         {
                             "id": uuid4(),
@@ -1766,13 +1876,12 @@ class PostgresCanonicalReplayJobExecutor:
                             "raw_artifact_id": raw_id,
                             "version_before": before.version_no,
                             "version_after": result.version_no,
-                            "delta": build_content_contribution_delta(
-                                observation,
-                                before,
-                                fallback_item.contribution_after,
-                            ),
+                            "delta": contribution_delta,
                             "visibility_owner_before": (
-                                owner_before_by_content.get(before.content_id)
+                                fallback_item.visibility_owner_before
+                                if run.filter_snapshot.catalog.resolver_semantics
+                                == "brand_scoped_vehicle_v2"
+                                else owner_before_by_content.get(before.content_id)
                                 if before.content_id is not None
                                 else None
                             ),
@@ -1793,6 +1902,19 @@ class PostgresCanonicalReplayJobExecutor:
                         self._flush_ledger_rows(session, ledger_rows)
                 fallback_ledger_ms = int((perf_counter() - fallback_ledger_started) * 1000)
                 fallback_ms = int((perf_counter() - fallback_started) * 1000)
+                negative_content_ids = self._converge_unmatched_current(
+                    session,
+                    run=current,
+                    resolved=resolved,
+                    source_records=source_records,
+                    source_contexts=source_contexts,
+                    lineage_by_artifact=lineage_by_artifact,
+                    content_repository=content_repository,
+                    vehicle_repository=vehicle_repository,
+                    brand_repository=brand_repository,
+                    ledger_rows=ledger_rows,
+                    positive_identities=set(resolution_by_identity),
+                )
                 ledger_checkpoint_started = perf_counter()
                 self._flush_ledger_rows(session, ledger_rows)
                 counters = CanonicalReplayCounters(
@@ -1839,7 +1961,8 @@ class PostgresCanonicalReplayJobExecutor:
                 projection_content_count = flush_deferred_voice_plaza_projection(
                     session,
                     tuple(item.result.target_id for item in batch_created)
-                    + tuple(item.result.target_id for item in fallback_items),
+                    + tuple(item.result.target_id for item in fallback_items)
+                    + negative_content_ids,
                 )
                 projection_refresh_ms = int((perf_counter() - projection_started) * 1000)
         finally:
@@ -1859,6 +1982,11 @@ class PostgresCanonicalReplayJobExecutor:
             row_count=len(contents),
             raw_row_count=raw_row_count if raw_row_count is not None else len(contents),
             matched_count=matched,
+            resolver_semantics=run.filter_snapshot.catalog.resolver_semantics,
+            negative_convergence_count=len(negative_content_ids),
+            protected_by_later_write_count=sum(
+                item.protected_by_later_write for item in fallback_items
+            ),
             fast_created_count=fast_created_count,
             fallback_count=fallback_count,
             stable_author_count=stable_author_count,
@@ -1904,12 +2032,284 @@ class PostgresCanonicalReplayJobExecutor:
             batch_metrics["foreground_pressure_batches"] += int(workload_slot.foreground_pressure)
         return advanced
 
+    def _resolve_current_classifications(
+        self,
+        run: CanonicalReplayRunRecord,
+        inputs: tuple[PostgresContentClassificationInput, ...],
+        vehicle_repository: PostgresVehicleCatalogRepository,
+        brand_repository: PostgresBrandVehicleRepository,
+    ) -> dict[tuple[UUID, int], BrandVehicleResolution]:
+        """使用已稳定的 Current 与人工选择；预编译目录跨批次复用。"""
+
+        return resolve_current_brand_vehicle_batch(
+            snapshot=run.filter_snapshot.catalog,
+            inputs=inputs,
+            vehicle_repository=vehicle_repository,
+            brand_repository=brand_repository,
+            resolver=self._current_resolver,
+        )
+
+    def _converge_unmatched_current(
+        self,
+        session: Session,
+        *,
+        run: CanonicalReplayRunRecord,
+        resolved: tuple[tuple[CanonicalContentV1, BrandVehicleResolution], ...],
+        source_records: tuple[_ReplaySourceRecord, ...],
+        source_contexts: dict[UUID, _ImportLineageContext | None],
+        lineage_by_artifact: dict[UUID, dict[str, tuple[UUID, UUID]]],
+        content_repository: PostgresCompleteContentRepository,
+        vehicle_repository: PostgresVehicleCatalogRepository,
+        brand_repository: PostgresBrandVehicleRepository,
+        ledger_rows: list[dict[str, object]],
+        positive_identities: set[tuple[str, str]],
+    ) -> tuple[UUID, ...]:
+        """全目录负向扫描只更新已有 Current；不消费后续正向 Raw 的入库身份。"""
+
+        if (
+            run.all_request_id is None
+            or run.filter_snapshot.catalog.filter_scope == "selected"
+            or run.filter_snapshot.catalog.resolver_semantics != "brand_scoped_vehicle_v2"
+        ):
+            return ()
+        sources: dict[tuple[str, str], tuple[CanonicalContentV1, _ReplaySourceRecord]] = {
+            (content.platform, content.external_content_id): (content, source)
+            for (content, resolution), source in zip(resolved, source_records, strict=True)
+            if not resolution.matched
+            and (content.platform, content.external_content_id) not in positive_identities
+        }
+        inputs = content_repository.lock_current_classification_inputs(identities=tuple(sources))
+        replay_repository = PostgresCanonicalReplayRepository(session)
+        admission = replay_repository.all_request_admission_times(
+            tuple(
+                {
+                    run.all_request_id,
+                    *(
+                        item.replay_visibility_owner_id
+                        for item in inputs
+                        if item.replay_visibility_owner_id is not None
+                    ),
+                }
+            )
+        )
+        accepted_before = admission[run.all_request_id]
+        inputs = tuple(
+            item
+            for item in inputs
+            if (
+                item.latest_normal_filter_match_at is None
+                or item.latest_normal_filter_match_at <= accepted_before
+            )
+            and (
+                item.replay_visibility_owner_id is None
+                or admission[item.replay_visibility_owner_id] <= accepted_before
+            )
+        )
+        if not inputs:
+            return ()
+        resolutions = self._resolve_current_classifications(
+            run, inputs, vehicle_repository, brand_repository
+        )
+        observations = []
+        for item in inputs:
+            content, source = sources[(item.platform, item.external_content_id)]
+            observations.append(
+                self._content_with_lineage(
+                    session,
+                    content,
+                    selected=source.selected,
+                    lineage=source_contexts[source.selected.artifact_id],
+                    lineage_by_platform=lineage_by_artifact[source.selected.artifact_id],
+                )
+            )
+        frozen = capture_content_contribution_snapshots_batch(
+            session,
+            tuple(
+                (observation, item.content_id)
+                for observation, item in zip(observations, inputs, strict=True)
+            ),
+        )
+        pairs = tuple((item.content_id, item.content_version) for item in inputs)
+        now = beijing_now()
+        vehicle_entries = tuple(
+            (
+                item.content_id,
+                item.content_version,
+                tuple(
+                    ContentVehicleEvidence(
+                        id=uuid4(),
+                        content_id=item.content_id,
+                        content_version=item.content_version,
+                        vehicle_model_id=evidence.entity_id,
+                        source="alias_match",
+                        matched_text=evidence.matched_text,
+                        source_field=evidence.source_field,
+                        catalog_version=run.filter_snapshot.catalog.catalog_version,
+                        confidence=1.0,
+                        is_manual_locked=False,
+                        is_active=True,
+                        created_at=now,
+                    )
+                    for evidence in resolutions[
+                        (item.content_id, item.content_version)
+                    ].vehicle_evidence
+                    if evidence.source == "alias_match"
+                ),
+            )
+            for item in inputs
+        )
+        vehicle_before, vehicle_after = (
+            vehicle_repository.converge_automatic_alias_evidence_for_replay(
+                entries=vehicle_entries,
+                source_pairs=pairs,
+                replace_existing=True,
+                include_import_text_matches=True,
+            )
+        )
+        brand_before, brand_after = brand_repository.converge_automatic_brand_evidence_for_replay(
+            entries=tuple(
+                (
+                    item.content_id,
+                    item.content_version,
+                    tuple(
+                        evidence
+                        for evidence in resolutions[
+                            (item.content_id, item.content_version)
+                        ].brand_evidence
+                        if evidence.source != "manual_review"
+                    ),
+                )
+                for item in inputs
+            ),
+            source_pairs=pairs,
+            catalog_snapshot=run.filter_snapshot.catalog,
+            preserve_unconfirmed=False,
+        )
+        changed_pairs = []
+        for item, observation, before in zip(inputs, observations, frozen, strict=True):
+            pair = (item.content_id, item.content_version)
+            resolution = resolutions[pair]
+            if (
+                vehicle_before[pair] == vehicle_after[pair]
+                and brand_before[pair] == brand_after[pair]
+                and not resolution.matched
+            ):
+                continue
+            delta = build_content_contribution_delta(observation, before, before)
+            delta["resolver_outcome"] = "matched" if resolution.matched else "unmatched"
+            delta["replay_evidence_only"] = True
+            if (
+                observation.source.provider_attempt_id is None
+                or observation.source.raw_artifact_id is None
+            ):
+                raise ValueError("Replay 贡献账本要求 Attempt 与 Raw 来源")
+            changed_pairs.append(pair)
+            ledger_rows.append(
+                {
+                    "id": uuid4(),
+                    "all_request_id": run.all_request_id,
+                    "run_id": run.id,
+                    "content_id": item.content_id,
+                    "provider_attempt_id": UUID(observation.source.provider_attempt_id),
+                    "raw_artifact_id": observation.source.raw_artifact_id,
+                    "version_before": item.content_version,
+                    "version_after": item.content_version,
+                    "delta": delta,
+                    "visibility_owner_before": item.replay_visibility_owner_id,
+                    "vehicle_evidence_before": vehicle_before[pair],
+                    "vehicle_evidence_after": vehicle_after[pair],
+                    "brand_evidence_before": brand_before[pair],
+                    "brand_evidence_after": brand_after[pair],
+                    "created_at": now,
+                }
+            )
+        content_repository.claim_replay_evidence_changes(tuple(changed_pairs))
+        return tuple(item[0] for item in changed_pairs)
+
     @staticmethod
     def _flush_ledger_rows(session: Session, rows: list[dict[str, object]]) -> None:
         """账本 SQL 合批但保持有界内存，所有片段仍属于同一 checkpoint 事务。"""
 
         if rows:
-            session.execute(insert(canonical_replay_content_changes_table), rows)
+            table = canonical_replay_content_changes_table
+            statement = pg_insert(table)
+            incoming = statement.excluded
+            evidence_only = incoming.delta["replay_evidence_only"].astext == "true"
+            previous_evidence_only = table.c.delta["replay_evidence_only"].astext == "true"
+            continuous = func.coalesce(
+                (table.c.version_after == incoming.version_before)
+                & (table.c.vehicle_evidence_after == incoming.vehicle_evidence_before)
+                & (table.c.brand_evidence_after == incoming.brand_evidence_before)
+                & (incoming.visibility_owner_before == incoming.all_request_id),
+                False,
+            )
+            matched_outcome = case(
+                (
+                    (
+                        table.c.delta["replay_evidence_only"].astext.is_distinct_from("true")
+                        | (table.c.delta["resolver_outcome"].astext == "matched")
+                        | incoming.delta["replay_evidence_only"].astext.is_distinct_from("true")
+                        | (incoming.delta["resolver_outcome"].astext == "matched")
+                    ),
+                    "matched",
+                ),
+                else_="unmatched",
+            )
+            # 只有 owner、版本和 Evidence 连续才折叠；外部写入后的新段单独可撤回。
+            upsert = statement.on_conflict_do_update(
+                constraint="uq_canonical_replay_content_changes_run_content",
+                set_={
+                    "version_after": incoming.version_after,
+                    "version_before": case(
+                        (continuous, table.c.version_before), else_=incoming.version_before
+                    ),
+                    "visibility_owner_before": case(
+                        (continuous, table.c.visibility_owner_before),
+                        else_=incoming.visibility_owner_before,
+                    ),
+                    "vehicle_evidence_before": case(
+                        (continuous, table.c.vehicle_evidence_before),
+                        else_=incoming.vehicle_evidence_before,
+                    ),
+                    "brand_evidence_before": case(
+                        (continuous, table.c.brand_evidence_before),
+                        else_=incoming.brand_evidence_before,
+                    ),
+                    "created_at": case((continuous, table.c.created_at), else_=incoming.created_at),
+                    "vehicle_evidence_after": incoming.vehicle_evidence_after,
+                    "brand_evidence_after": incoming.brand_evidence_after,
+                    "delta": case(
+                        (
+                            evidence_only & continuous,
+                            table.c.delta.op("||")(
+                                func.jsonb_build_object(
+                                    "resolver_outcome",
+                                    matched_outcome,
+                                    "classification_outcome",
+                                    incoming.delta["resolver_outcome"],
+                                )
+                            ),
+                        ),
+                        else_=incoming.delta.op("||")(
+                            func.jsonb_build_object("resolver_outcome", matched_outcome)
+                        ),
+                    ),
+                    "provider_attempt_id": case(
+                        (evidence_only & continuous, table.c.provider_attempt_id),
+                        else_=incoming.provider_attempt_id,
+                    ),
+                    "raw_artifact_id": case(
+                        (evidence_only & continuous, table.c.raw_artifact_id),
+                        else_=incoming.raw_artifact_id,
+                    ),
+                },
+                where=(table.c.all_request_id == incoming.all_request_id)
+                & table.c.reverted_at.is_(None)
+                & (evidence_only | previous_evidence_only),
+            ).returning(table.c.id)
+            applied = session.scalars(upsert, rows).all()
+            if len(applied) != len(rows):
+                raise ValueError("Replay 同一 Run 重复提交非 Evidence-only 内容贡献")
             rows.clear()
 
     def _load_import_lineage_context(

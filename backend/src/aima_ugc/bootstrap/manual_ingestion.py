@@ -16,6 +16,9 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
 from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
+from aima_ugc.adapters.persistence.postgres.brand_vehicle_classification import (
+    resolve_current_brand_vehicle_batch,
+)
 from aima_ugc.adapters.persistence.postgres.content import PostgresIngestionResult
 from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
@@ -321,7 +324,8 @@ def ingest_unified_content_batch(
 
     if input_artifact.sha256 is None:
         raise RuntimeError("File Import 输入 Artifact 缺少 SHA-256")
-    content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
+    content_repository = PostgresCompleteContentRepository(session)
+    content_service = ContentIngestionService(content_repository)
     lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
     rows_ingested = 0
     request_count = 0
@@ -380,6 +384,8 @@ def ingest_unified_content_batch(
                     raise ValueError("过滤后 Content 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
                 pending.append((content.model_copy(update={"source": source}), resolution))
             rows_ingested += _ingest_import_content_batch(
+                content_repository=content_repository,
+                resolver=resolver,
                 content_service=content_service,
                 vehicle_repository=vehicle_repository,
                 brand_repository=brand_repository,
@@ -420,6 +426,8 @@ def _ingest_import_content_batch(
     brand_repository: PostgresBrandVehicleRepository,
     pending: tuple[tuple[CanonicalContentV1, BrandVehicleResolution | None], ...],
     filter_snapshot: BrandVehicleFilterSnapshot | None,
+    content_repository: PostgresCompleteContentRepository,
+    resolver: BrandVehicleResolver | None,
 ) -> int:
     """集合写安全新 Content/Evidence，既有或竞争行保持正式兼容语义。"""
 
@@ -428,11 +436,35 @@ def _ingest_import_content_batch(
     results = content_service.ingest_contents_batch(tuple(item[0] for item in pending))
     if filter_snapshot is None:
         return len(results)
+    v2 = filter_snapshot.catalog.resolver_semantics == "brand_scoped_vehicle_v2"
+    current_resolutions = (
+        resolve_current_brand_vehicle_batch(
+            snapshot=filter_snapshot.catalog,
+            inputs=content_repository.lock_current_classification_inputs(
+                content_ids=tuple(
+                    result.target_id
+                    for result in results
+                    if not (result.version_created and result.version_no == 1)
+                )
+            ),
+            vehicle_repository=vehicle_repository,
+            brand_repository=brand_repository,
+            resolver=resolver or BrandVehicleResolver(filter_snapshot.catalog),
+            review_carry=tuple(
+                (result.target_id, result.version_no - 1, result.version_no)
+                for result in results
+                if result.version_created and result.version_no > 1
+            ),
+        )
+        if v2
+        else {}
+    )
     created_at = beijing_now()
     initial_vehicle_entries = []
     initial_brand_entries = []
     existing_entries = []
     for (_content, resolution), result in zip(pending, results, strict=True):
+        resolution = current_resolutions.get((result.target_id, result.version_no), resolution)
         if resolution is None:
             raise RuntimeError("Brand/Vehicle Snapshot 存在时批量结果缺少解析证据")
         vehicle_evidence = tuple(
@@ -441,7 +473,7 @@ def _ingest_import_content_batch(
                 content_id=result.target_id,
                 content_version=result.version_no,
                 vehicle_model_id=evidence.entity_id,
-                source="import",
+                source="alias_match" if v2 else "import",
                 matched_text=evidence.matched_text,
                 source_field=evidence.source_field,
                 catalog_version=filter_snapshot.catalog.catalog_version,
@@ -451,30 +483,66 @@ def _ingest_import_content_batch(
                 created_at=created_at,
             )
             for evidence in resolution.vehicle_evidence
+            if evidence.source == "alias_match"
         )
         entry = (result.target_id, result.version_no, vehicle_evidence)
         if result.version_created and result.version_no == 1:
             initial_vehicle_entries.append(entry)
             initial_brand_entries.append(
-                (result.target_id, result.version_no, resolution.brand_evidence)
+                (
+                    result.target_id,
+                    result.version_no,
+                    tuple(
+                        evidence
+                        for evidence in resolution.brand_evidence
+                        if evidence.source != "manual_review"
+                    ),
+                )
             )
         else:
             existing_entries.append((result, resolution, vehicle_evidence))
-    vehicle_repository.append_initial_import_evidence_batch(entries=tuple(initial_vehicle_entries))
+    if v2:
+        vehicle_repository.append_initial_automatic_alias_evidence_batch(
+            entries=tuple(initial_vehicle_entries)
+        )
+        vehicle_repository.converge_automatic_alias_evidence_for_replay(
+            entries=tuple(
+                (result.target_id, result.version_no, vehicle_evidence)
+                for result, _, vehicle_evidence in existing_entries
+            ),
+            source_pairs=tuple(
+                (result.target_id, result.version_no) for result, _, _ in existing_entries
+            ),
+            replace_existing=filter_snapshot.catalog.filter_scope == "all_active",
+            include_import_text_matches=True,
+            replace_vehicle_model_ids=filter_snapshot.catalog.automatic_evidence_vehicle_ids,
+        )
+    else:
+        vehicle_repository.append_initial_import_evidence_batch(
+            entries=tuple(initial_vehicle_entries)
+        )
+        vehicle_repository.append_import_evidence_batch(
+            entries=tuple(
+                (result.target_id, result.version_no, vehicle_evidence)
+                for result, _, vehicle_evidence in existing_entries
+            )
+        )
     brand_repository.append_initial_automatic_brand_evidence_batch(
         entries=tuple(initial_brand_entries),
         catalog_snapshot=filter_snapshot.catalog,
         return_snapshots=False,
     )
-    vehicle_repository.append_import_evidence_batch(
-        entries=tuple(
-            (result.target_id, result.version_no, vehicle_evidence)
-            for result, _resolution, vehicle_evidence in existing_entries
-        )
-    )
     brand_repository.replace_automatic_brand_evidence_batch(
         entries=tuple(
-            (result.target_id, result.version_no, resolution.brand_evidence)
+            (
+                result.target_id,
+                result.version_no,
+                tuple(
+                    evidence
+                    for evidence in resolution.brand_evidence
+                    if evidence.source != "manual_review"
+                ),
+            )
             for result, resolution, _vehicle_evidence in existing_entries
         ),
         catalog_snapshot=filter_snapshot.catalog,

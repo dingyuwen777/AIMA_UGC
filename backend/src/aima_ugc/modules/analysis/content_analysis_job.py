@@ -21,20 +21,67 @@ CONTENT_ANALYSIS_PLAN_JOB_PAYLOAD_VERSION = "analysis.content-run-plan.v1"
 CONTENT_ANALYSIS_PLAN_JOB_TIMEOUT_SECONDS = 1800
 CONTENT_ANALYSIS_PLAN_JOB_MAX_ATTEMPTS = 3
 
-_ANALYSIS_ALL_SCOPE_MARKER_KEY = "__analysis_scope"
+_ANALYSIS_SCOPE_MARKER_KEY = "__analysis_scope"
 _ANALYSIS_ALL_SCOPE_MARKER_VALUE = "all"
+_ANALYSIS_QUERY_SCOPE_MARKER_VALUE = "query"
+_ANALYSIS_QUERY_FILTERS_KEY = "filters"
+_ANALYSIS_QUERY_TARGET_FINGERPRINT_KEY = "target_fingerprint"
 
 
 def analysis_all_scope_filter_snapshot() -> dict[str, object]:
     """返回只供 Analysis Run 持久化使用的公开 all Scope 内部标记。"""
 
-    return {_ANALYSIS_ALL_SCOPE_MARKER_KEY: _ANALYSIS_ALL_SCOPE_MARKER_VALUE}
+    return {_ANALYSIS_SCOPE_MARKER_KEY: _ANALYSIS_ALL_SCOPE_MARKER_VALUE}
 
 
 def is_analysis_all_scope_filter_snapshot(value: object) -> bool:
     """只识别新 all Run 的专用标记，不重解释历史空 query 快照。"""
 
     return value == analysis_all_scope_filter_snapshot()
+
+
+def analysis_query_scope_filter_snapshot(
+    filters: dict[str, object],
+    *,
+    target_fingerprint: str,
+) -> dict[str, object]:
+    """为新 query Run 持久化确认时筛选事实与目标集合指纹。"""
+
+    return {
+        _ANALYSIS_SCOPE_MARKER_KEY: _ANALYSIS_QUERY_SCOPE_MARKER_VALUE,
+        _ANALYSIS_QUERY_FILTERS_KEY: filters,
+        _ANALYSIS_QUERY_TARGET_FINGERPRINT_KEY: target_fingerprint,
+    }
+
+
+def analysis_query_filters_from_snapshot(value: object) -> dict[str, object]:
+    """恢复新包装 query 或历史直接 Filter Snapshot，保持旧 Run 可执行。"""
+
+    if (
+        isinstance(value, dict)
+        and value.get(_ANALYSIS_SCOPE_MARKER_KEY) == _ANALYSIS_QUERY_SCOPE_MARKER_VALUE
+    ):
+        filters = value.get(_ANALYSIS_QUERY_FILTERS_KEY)
+        if not isinstance(filters, dict):
+            raise ValueError("Analysis Query Run 缺少合法 filters 快照")
+        return filters
+    if isinstance(value, dict):
+        return value
+    raise ValueError("Analysis Query Run filter_snapshot 非法")
+
+
+def analysis_query_target_fingerprint_from_snapshot(value: object) -> str | None:
+    """读取新 query Run 的确认时目标指纹；历史 Run 没有该字段时返回 None。"""
+
+    if (
+        isinstance(value, dict)
+        and value.get(_ANALYSIS_SCOPE_MARKER_KEY) == _ANALYSIS_QUERY_SCOPE_MARKER_VALUE
+    ):
+        fingerprint = value.get(_ANALYSIS_QUERY_TARGET_FINGERPRINT_KEY)
+        if isinstance(fingerprint, str) and len(fingerprint) == 64:
+            return fingerprint
+        raise ValueError("Analysis Query Run 缺少合法 target_fingerprint")
+    return None
 
 
 class ContentAnalysisJobPayload(BaseModel):

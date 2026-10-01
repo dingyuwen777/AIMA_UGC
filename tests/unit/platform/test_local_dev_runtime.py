@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -299,6 +300,16 @@ def test_frontend_dependency_fingerprint_detects_lock_change(tmp_path: Path) -> 
 
     assert frontend_dependencies_stale(paths, frontend) is True
     record_frontend_lock_fingerprint(paths, frontend)
+    assert frontend_dependencies_stale(paths, frontend) is True
+
+    executable_dir = frontend / "node_modules" / ".bin"
+    executable_dir.mkdir()
+    other_platform_vite = executable_dir / ("vite" if os.name == "nt" else "vite.cmd")
+    other_platform_vite.write_text("", encoding="utf-8")
+    assert frontend_dependencies_stale(paths, frontend) is True
+
+    vite = executable_dir / ("vite.cmd" if os.name == "nt" else "vite")
+    vite.write_text("", encoding="utf-8")
     assert frontend_dependencies_stale(paths, frontend) is False
 
     lock.write_text('{"lockfileVersion":3,"changed":true}\n', encoding="utf-8")

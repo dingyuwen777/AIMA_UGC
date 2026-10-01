@@ -199,7 +199,7 @@ def _irrelevant_response() -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"irrelevant",'
         '"relevance_evidence":["固定测试内容"],"source_type":"ordinary_consumer",'
-        '"content_intent":"organic_experience","voice_type":"真实用户发声",'
+        '"content_intent":"organic_experience","real_user_qualified":false,"voice_type":"营销推广发声",'
         '"voice_evidence":["固定测试内容"],"sentiment":null,'
         '"sentiment_evidence":[],"labels":[],"decision_status":"clear"}]}'
     )
@@ -211,7 +211,7 @@ def _relevant_response() -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"relevant",'
         '"relevance_evidence":["固定测试内容"],"source_type":"ordinary_consumer",'
-        '"content_intent":"organic_experience","voice_type":"真实用户发声",'
+        '"content_intent":"organic_experience","real_user_qualified":true,"voice_type":"真实用户发声",'
         '"voice_evidence":["固定测试内容"],"sentiment":"负面",'
         '"sentiment_evidence":["固定测试内容"],"labels":[{"primary_label":"骑行性能",'
         '"secondary_label":"舒适性","evidence":["固定测试内容"]}],'

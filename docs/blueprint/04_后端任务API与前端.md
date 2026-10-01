@@ -109,12 +109,14 @@ Pydantic
 | Replay | Replay Request / Run / Reversal | Planner / Replay / Shard / Reversal Job |
 | Content | Content / Comment / Filter / Manual Review | 主要是 Query；部分人工动作短事务 |
 | Analysis | Scheme / Run / Result / Manual Override | Planner / Label Shard Job |
-| Reporting | Export Request / Artifact | Export Job |
+| Reporting | Export Request / ReportRun / 冻结报告数据 / Artifact | Export Job；报告生成与飞书发布各自独立 Job，发布失败不影响文件下载。机制见 [backend/src/aima_ugc/modules/reporting/README.md](../../backend/src/aima_ugc/modules/reporting/README.md) |
 | Administration | Provider / Brand / Vehicle / Scheme / Audit | 多为配置短事务 |
 | Identity | Connector / Principal / Session | 登录、登出和授权边界 |
 | Workbench | 声音流 / 品牌用户心智 / UGC 趋势 / 用户布局 | 从 Content/Analysis/Identity 读取当前口径，只有用户布局属于 Workbench 写事实 |
 
 调用者需要精确 Path 时直接查 [contracts/openapi/openapi.json](../../contracts/openapi/openapi.json)，不要从 Blueprint 复制 URL。
+
+管理员数据库报告的关键词采用已保存的有效品牌、车型命中证据，标准名称与结果在创建时冻结；每条内容内去重，按报告全量内容计数和计算占比。该业务口径与旧离线词包或采集搜索上下文区分，具体机制由 Reporting 模块说明维护。
 
 ## 6. 采集运行中心为什么是 Read Model
 

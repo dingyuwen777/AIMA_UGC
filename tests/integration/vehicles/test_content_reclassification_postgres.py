@@ -36,7 +36,7 @@ from aima_ugc.modules.vehicles.tables import (
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, JobRegistry, LeaseLostError
 from aima_ugc.platform.time import beijing_now
-from sqlalchemy import insert, select, text
+from sqlalchemy import insert, select, text, update
 from sqlalchemy.orm import Session
 
 type _Fixture = tuple[
@@ -172,7 +172,7 @@ def _enqueue_fixture(runtime: PlatformRuntime) -> _Fixture:
                 content_ids[5],
                 external_id="reclass-vehicle-word-boundary",
                 title="O",
-                body="没有品牌时由完整车型词回推品牌",
+                body="没有品牌时禁止仅凭车型词回推品牌",
             )
             brand_repository.replace_manual_brand_evidence(
                 content_id=content_ids[2],
@@ -325,8 +325,8 @@ def test_reclassification_job_uses_frozen_snapshot_preserves_locks_and_current(r
             assert job.progress == 100
             assert run.catalog_snapshot.catalog_version == frozen_version
             assert run.processed_count == 6
-            assert run.matched_count == 6
-            assert run.unmatched_count == 0
+            assert run.matched_count == 4
+            assert run.unmatched_count == 2
             assert run.checkpoint_content_id == max(content_ids)
             assert run.brand_locked_count == 1
             assert run.vehicle_locked_count == 1
@@ -366,27 +366,65 @@ def test_reclassification_job_uses_frozen_snapshot_preserves_locks_and_current(r
         session.close()
 
     assert (content_ids[0], aima_id, "alias_match", None, False) in brand_rows
-    assert (content_ids[1], aima_id, "vehicle_match", vehicle_id, False) in brand_rows
+    assert not any(row[0] == content_ids[1] for row in brand_rows)
     assert (content_ids[2], competitor_id, "manual_review", None, True) in brand_rows
     assert not any(row[0] == content_ids[2] and row[1] == aima_id for row in brand_rows)
     assert (content_ids[3], aima_id, "vehicle_match", vehicle_id, False) in brand_rows
     assert (content_ids[4], aima_id, "alias_match", None, False) in brand_rows
     assert not any(row[0] == content_ids[4] and row[1] == competitor_id for row in brand_rows)
-    assert (
-        content_ids[5],
-        competitor_id,
-        "vehicle_match",
-        competitor_vehicle_id,
-        False,
-    ) in brand_rows
-    assert (content_ids[1], vehicle_id, "alias_match") in vehicle_rows
+    assert not any(row[0] == content_ids[5] for row in brand_rows)
+    assert not any(row[0] == content_ids[1] for row in vehicle_rows)
     assert not any(row[0] == content_ids[0] for row in vehicle_rows)
     assert not any(row[0] == content_ids[2] for row in vehicle_rows)
     assert (content_ids[3], vehicle_id, "import") in vehicle_rows
     assert not any(row[0] == content_ids[4] for row in vehicle_rows)
-    assert (content_ids[5], competitor_vehicle_id, "alias_match") in vehicle_rows
+    assert not any(row[0] == content_ids[5] for row in vehicle_rows)
     assert current_rows[content_ids[0]] == (1, "爱玛新品发布", "普通正文")
     assert current_rows[content_ids[2]] == (1, "爱玛露娜Air", "人工结论必须优先")
+
+
+def test_reclassification_manual_brand_limits_automatic_vehicle_scope(runtime) -> None:  # type: ignore[no-untyped-def]
+    """单独锁定品牌也必须限制自动车型，不能只保护品牌证据写入。"""
+
+    _, _, _, competitor_id, _, _, content_ids, _ = _enqueue_fixture(runtime)
+    with runtime.database.new_session() as session, session.begin():
+        session.execute(
+            update(contents_table)
+            .where(contents_table.c.id == content_ids[0])
+            .values(title="爱玛露娜Air")
+        )
+        PostgresBrandVehicleRepository(session).replace_manual_brand_evidence(
+            content_id=content_ids[0],
+            content_version=1,
+            brand_ids=(competitor_id,),
+            unlock_existing=False,
+            actor_ref="manual-scope",
+        )
+    registry = JobRegistry()
+    register_content_reclassification_job(
+        registry,
+        ContentReclassificationJobHandler(PostgresContentReclassificationJobExecutor(runtime)),
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=registry,
+        worker_id="manual-brand-scope",
+        lease_seconds=30,
+        retry_delay_seconds=0,
+    )
+    assert worker.run_once()
+    with runtime.database.engine.connect() as connection:
+        assert (
+            tuple(
+                connection.scalars(
+                    select(content_vehicle_evidence_table.c.vehicle_model_id).where(
+                        content_vehicle_evidence_table.c.content_id == content_ids[0],
+                        content_vehicle_evidence_table.c.is_active.is_(True),
+                    )
+                )
+            )
+            == ()
+        )
 
 
 def test_reclassification_checkpoint_rejects_stale_fence_atomically(runtime) -> None:  # type: ignore[no-untyped-def]

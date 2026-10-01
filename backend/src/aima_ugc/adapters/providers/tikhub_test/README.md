@@ -983,3 +983,39 @@ Fake Transport 纵切 / PostgreSQL integration
 - 不提交真实 [`backend/src/aima_ugc/adapters/providers/tikhub_test/.env`](.env)；
 - 不把人工页数限制说成生产预算功能；
 - 不把指定账号人工文件入口直接描述成正式官号监控/调度能力。
+
+## PR #662 验收定义
+
+这些验收项承接项目 Owner 已确认的五平台稳定账号采集要求。
+
+### AC1
+
+五个平台的指定账号入口使用稳定账号身份发现作品；昵称只能精确且唯一地消歧，身份冲突、搜索未完成或 URL 与 ID 不一致时拒绝猜测。
+
+### AC2
+
+日期按北京时间解释并包含起止两日；作品分页不得因软目标或未经证明的排序假设提前结束。技术上限、缺失日期、映射失败、重复页或停滞游标必须留下未完成事实。
+
+### AC3
+
+账号 all 模式在已知正数评论/回复数量达到后仍跟随 Provider 分页，直至明确结束；硬上限、HTTP 错误和分页异常保留已成功数据并标记 partial。
+
+### AC4
+
+账号发现、作品、一级评论和二级回复均复用生产 Operation、account_runtime、共享 runtime、Mapper 和 Canonical；既有小红书入口及五平台关键词采集继续可用。
+
+### AC5
+
+单账号、作品或评论失败不影响其他账号、作品或根评论；Raw、Canonical JSONL、请求关联和 run_summary 可追溯，运行结果不得误报完整。
+
+### AC6
+
+共享 Excel 导出保持长 ID、公式防护、时间与文本语义，临时文件重开验证后原子发布；评论标注文件可被现有导入器解析且不得把多条评论合并为同一作品。
+
+### AC7
+
+付费真实 Probe 仅按本轮 Owner 授权在本机有界执行，使用生产 Transport/Operation、https://api.tikhub.io 和安全内存凭据；不打印或持久化 Secret，不自动跨 API family fallback。
+
+### AC8
+
+PR 基于最新 main，当前 Head 取得适用检查、五平台 FakeTransport 纵切、关键词回归和独立审查；按受保护合并、main-fresh、原生 Change Archive 与安全 cleanup 完成交付。

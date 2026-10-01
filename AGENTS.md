@@ -118,6 +118,10 @@
 4. 宿主已验证可自动完成 Draft → Ready 时使用 Draft PR；否则创建普通 PR，并明确“逻辑未就绪”，所有 Ready 门禁完成前禁止 merge；
 5. 保持 `Issue ↔ Change ↔ branch ↔ PR` 稳定关联。PR 使用 `Requirement-Source:`，只有当前 PR 完成整个 Issue 时才使用关闭关键字；
 6. 当前宿主没有相应外部写权限时，在依赖该权限的动作前停止并报告，不用远程空分支、口头关联或本地副本冒充已建立追溯链。
+7. 开发与 Repair 阶段优先保持 Draft，并用 `python scripts/dev/validate_changed.py --base <当前目标分支>` 复用 CI 的 [`scripts/quality/classify_ci_scope.py`](scripts/quality/classify_ci_scope.py) 生成 changed-scope preflight；项目不得再维护第二套 Backend/Frontend/PostgreSQL/Full-stack impact mapping。
+8. Draft 阶段不因为与当前任务无关的 main 前进、Change Archive 提交或其他独立任务机械反复同步 base；只有当前依赖/Contract/共享文件发生真实冲突时提前同步。进入 Final Ready 前统一恢复最新 main、处理真实冲突并重新运行受影响 preflight/Review。
+9. 正式 commit 应是可独立理解和审查的实现 checkpoint。临时 Workflow/CI、debug instrumentation、formatter/generated 中间态、为取得 Red/差异而暂移 Change/Requirement/config 等没有独立交付、回滚、bisect 或审计价值的过程状态默认不提交；可复现 Red、Migration、审计 Evidence 或独立纵向切片除外。
+10. 正常 merge 不依赖 Ruleset bypass。merge 前重新确认 live Requirement、reviewed/current head、current base、required checks 与 blocking Findings；base 漂移会改变待合入组合时，返回 Draft 同步最新 main 并重新取得 Final current-head/current-base Evidence，不用 merge 后 main CI 替代预合并门禁。
 
 ### 正式单元完成定义追溯门禁
 
@@ -350,7 +354,7 @@ PostgreSQL
 
 生成目录禁止手工修改。Contract 删除字段、改名、改类型、改语义、可选变必填、改默认排序或错误都按破坏性变化处理。
 
-AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；运行时唯一业务事实源是数据库中唯一 active Analysis Scheme Version，[`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md) 只负责新空库 bootstrap/灾备基线，V3 Prompt 只保留既有 Scheme 输出协议兼容。Prompt 模板、`relevance` 规则、内部 `source_type/content_intent`、情感、`voice_type`、证据规则、标签和 Validator 所需 Taxonomy/语义映射必须作为同一 Scheme Version 原子发布或回滚；升级代码不得自动覆盖现有数据库 active Version。
+AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；运行时唯一业务事实源是数据库中唯一 active Analysis Scheme Version。[`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md) 是唯一内容打标 Markdown 编辑源及空库 bootstrap/灾备基线。分类、主体、意图、发声组合规则和标签由标记表格确定，机器快照由生产 Compiler 自动生成，禁止手工维护第二份 JSON 或分类映射。文档修订号只在开头声明，与 Markdown 格式、模型输出协议独立；普通规则修改不升级输出 Contract。完整 Prompt、Taxonomy、语义规则及双 Hash 作为同一 Scheme Version 原子发布或回滚。新格式按准入布尔字段和表格组合校验发声类型；AI 结果、筛选及分类统计直接使用该版本输出的发声类型、情感和标签实际值。历史已支持的 legacy v3.0 快照按旧协议恢复，不用当前编译器重解释，也不因本次变更要求删除历史数据。纯 Git lineage 默认 Scheme 允许后续预览/创建 Run 时追加并激活新 Git Version，已有历史 Run 不阻塞；旧 Run 保持冻结。出现其他未删除 Scheme、任何人工 Version 或显式历史回滚后停止自动刷新，不覆盖管理员配置。
 
 ## 9. Job、Scheduler 与 Provider 恢复
 
@@ -366,6 +370,8 @@ ingestion.data-import-revocation.v1
 analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
+reporting.report-generation.v1
+reporting.report-publication.v1
 vehicles.content-reclassification.v1
 ingestion.canonical-replay.v1
 ingestion.canonical-replay-cancellation.v1

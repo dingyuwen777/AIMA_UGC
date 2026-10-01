@@ -52,10 +52,13 @@ def _valid_response(loader: PromptTaxonomyLoader | None = None) -> str:
                     "item_no": 1,
                     "relevance": "relevant",
                     "relevance_evidence": ["爱玛"],
-                    "source_type": "unknown",
-                    "content_intent": "unknown",
-                    "voice_type": taxonomy.semantic_rules.unknown_voice_type,
-                    "voice_evidence": [],
+                    "source_type": "ordinary_consumer",
+                    "content_intent": "organic_inquiry",
+                    "real_user_qualified": False,
+                    "voice_type": (
+                        taxonomy.semantic_rules.ordinary_consumer_organic_voice_type_when_not_qualified
+                    ),
+                    "voice_evidence": ["正文"],
                     "sentiment": taxonomy.sentiments[0],
                     "sentiment_evidence": ["正文"],
                     "labels": [

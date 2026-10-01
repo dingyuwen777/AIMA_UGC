@@ -1,6 +1,141 @@
 {
   "components": {
     "schemas": {
+      "AdaptiveLLMCapacityResponse": {
+        "additionalProperties": false,
+        "description": "系统自动学习的只读状态；P95 为有界延迟桶上界估计。",
+        "properties": {
+          "active_shards": {
+            "minimum": 0.0,
+            "title": "Active Shards",
+            "type": "integer"
+          },
+          "adjustment_reason": {
+            "title": "Adjustment Reason",
+            "type": "string"
+          },
+          "current_concurrency": {
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Current Concurrency",
+            "type": "integer"
+          },
+          "current_rps": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Rps"
+          },
+          "current_shard_size": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Shard Size"
+          },
+          "historical_safe_concurrency": {
+            "maximum": 5000.0,
+            "minimum": 0.0,
+            "title": "Historical Safe Concurrency",
+            "type": "integer"
+          },
+          "http_429_ratio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Http 429 Ratio",
+            "type": "number"
+          },
+          "last_adjusted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Adjusted At"
+          },
+          "last_safe_concurrency": {
+            "maximum": 5000.0,
+            "minimum": 0.0,
+            "title": "Last Safe Concurrency",
+            "type": "integer"
+          },
+          "latency_p95_seconds": {
+            "minimum": 0.0,
+            "title": "Latency P95 Seconds",
+            "type": "number"
+          },
+          "persisted_contents_per_second": {
+            "minimum": 0.0,
+            "title": "Persisted Contents Per Second",
+            "type": "number"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "timeout_ratio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Timeout Ratio",
+            "type": "number"
+          },
+          "transport_error_ratio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Transport Error Ratio",
+            "type": "number"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "validation_failure_ratio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Validation Failure Ratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "state",
+          "current_concurrency",
+          "last_safe_concurrency",
+          "historical_safe_concurrency",
+          "active_shards",
+          "persisted_contents_per_second",
+          "latency_p95_seconds",
+          "http_429_ratio",
+          "timeout_ratio",
+          "transport_error_ratio",
+          "validation_failure_ratio",
+          "adjustment_reason"
+        ],
+        "title": "AdaptiveLLMCapacityResponse",
+        "type": "object"
+      },
       "AnalysisContentRunCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -236,6 +371,12 @@
               }
             ],
             "title": "Error Code"
+          },
+          "execution_settling": {
+            "default": false,
+            "description": "关联执行仍在排队或收尾，需继续刷新统计",
+            "title": "Execution Settling",
+            "type": "boolean"
           },
           "finished_at": {
             "anyOf": [
@@ -510,7 +651,7 @@
       },
       "AnalysisRunTargetSelection": {
         "additionalProperties": false,
-        "description": "Analysis Run 公开目标：显式选择或数据库当前全部 Content。",
+        "description": "Analysis Run 公开目标：显式选择、当前筛选结果或数据库当前全部 Content。",
         "properties": {
           "content_ids": {
             "default": [],
@@ -522,10 +663,21 @@
             "title": "Content Ids",
             "type": "array"
           },
+          "filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentFilterSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "scope": {
             "default": "selected",
             "enum": [
               "selected",
+              "query",
               "all"
             ],
             "title": "Scope",
@@ -583,6 +735,18 @@
         "additionalProperties": false,
         "description": "一个原子 Analysis Scheme 的结构化定义。",
         "properties": {
+          "compiled_snapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compiled Snapshot"
+          },
           "labels": {
             "additionalProperties": {
               "items": {
@@ -591,7 +755,6 @@
               "type": "array"
             },
             "maxProperties": 100,
-            "minProperties": 1,
             "title": "Labels",
             "type": "object"
           },
@@ -602,29 +765,26 @@
             "type": "string"
           },
           "sentiments": {
+            "default": [],
             "items": {
               "type": "string"
             },
             "maxItems": 50,
-            "minItems": 1,
             "title": "Sentiments",
             "type": "array"
           },
           "voice_types": {
+            "default": [],
             "items": {
               "type": "string"
             },
             "maxItems": 50,
-            "minItems": 1,
             "title": "Voice Types",
             "type": "array"
           }
         },
         "required": [
-          "prompt_template",
-          "sentiments",
-          "voice_types",
-          "labels"
+          "prompt_template"
         ],
         "title": "AnalysisSchemeDefinitionRequest",
         "type": "object"
@@ -9076,6 +9236,16 @@
         "additionalProperties": false,
         "description": "Provider 管理安全投影；绝不返回 API Key 或内部 secret_ref。",
         "properties": {
+          "adaptive_capacity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdaptiveLLMCapacityResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "base_url": {
             "title": "Base Url",
             "type": "string"
@@ -9098,14 +9268,28 @@
             "type": "boolean"
           },
           "max_concurrency": {
-            "exclusiveMinimum": 0.0,
-            "title": "Max Concurrency",
-            "type": "integer"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Concurrency"
           },
           "max_retries": {
-            "minimum": 0.0,
-            "title": "Max Retries",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Retries"
           },
           "max_rps": {
             "anyOf": [
@@ -9152,9 +9336,16 @@
             "type": "boolean"
           },
           "timeout_seconds": {
-            "exclusiveMinimum": 0.0,
-            "title": "Timeout Seconds",
-            "type": "integer"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout Seconds"
           }
         },
         "required": [
@@ -9163,9 +9354,6 @@
           "provider",
           "display_name",
           "base_url",
-          "timeout_seconds",
-          "max_retries",
-          "max_concurrency",
           "enabled",
           "is_default",
           "revision",
@@ -9358,6 +9546,578 @@
           "checks"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "ReportAnalysisBasisResponse": {
+        "description": "按周期汇总实际采用的历史分析身份，不回显正文或模型输出。",
+        "properties": {
+          "content_count": {
+            "title": "Content Count",
+            "type": "integer"
+          },
+          "manual_override_count": {
+            "title": "Manual Override Count",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "period": {
+            "enum": [
+              "current",
+              "previous"
+            ],
+            "title": "Period",
+            "type": "string"
+          },
+          "prompt_sha256": {
+            "title": "Prompt Sha256",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "scheme_version_id": {
+            "format": "uuid",
+            "title": "Scheme Version Id",
+            "type": "string"
+          },
+          "taxonomy_sha256": {
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "scheme_version_id",
+          "prompt_version",
+          "prompt_sha256",
+          "taxonomy_sha256",
+          "provider",
+          "model",
+          "content_count",
+          "manual_override_count"
+        ],
+        "title": "ReportAnalysisBasisResponse",
+        "type": "object"
+      },
+      "ReportArtifactResponse": {
+        "description": "下载只使用报告内 Artifact 身份，不暴露存储路径。",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_type": {
+            "title": "Artifact Type",
+            "type": "string"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "artifact_type",
+          "filename",
+          "content_type",
+          "byte_size",
+          "download_url"
+        ],
+        "title": "ReportArtifactResponse",
+        "type": "object"
+      },
+      "ReportJobResponse": {
+        "additionalProperties": false,
+        "description": "暴露下一次计划领取时间，让过载重试有可见进度。",
+        "properties": {
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "available_at": {
+            "format": "date-time",
+            "title": "Available At",
+            "type": "string"
+          },
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_type": {
+            "title": "Job Type",
+            "type": "string"
+          },
+          "max_attempts": {
+            "exclusiveMinimum": 0.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "progress": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "integer"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportJobResultResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ContentAnalysisJobResultResponse"
+              },
+              {
+                "$ref": "#/components/schemas/DataExportJobResultResponse"
+              },
+              {
+                "$ref": "#/components/schemas/CanonicalReplayJobResultResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "title": "Timeout Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "job_type",
+          "status",
+          "attempt",
+          "max_attempts",
+          "progress",
+          "created_at",
+          "available_at",
+          "timeout_seconds",
+          "cancel_requested"
+        ],
+        "title": "ReportJobResponse",
+        "type": "object"
+      },
+      "ReportListResponse": {
+        "description": "按创建时间降序列出最近报告。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReportListResponse",
+        "type": "object"
+      },
+      "ReportPreflightResponse": {
+        "description": "实时预检只描述当前事实，创建时会再次检查并冻结。",
+        "properties": {
+          "analyzed_count": {
+            "title": "Analyzed Count",
+            "type": "integer"
+          },
+          "comment_count": {
+            "title": "Comment Count",
+            "type": "integer"
+          },
+          "content_count": {
+            "title": "Content Count",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "previous_content_count": {
+            "title": "Previous Content Count",
+            "type": "integer"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "real_user_count": {
+            "title": "Real User Count",
+            "type": "integer"
+          },
+          "taxonomy_sha256": {
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "content_count",
+          "previous_content_count",
+          "analyzed_count",
+          "real_user_count",
+          "comment_count",
+          "model",
+          "provider",
+          "prompt_version",
+          "taxonomy_sha256",
+          "ready"
+        ],
+        "title": "ReportPreflightResponse",
+        "type": "object"
+      },
+      "ReportResponse": {
+        "description": "生成与发布分别展示 Job 状态，发布失败不影响已生成文件。",
+        "properties": {
+          "analysis_bases": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReportAnalysisBasisResponse"
+            },
+            "title": "Analysis Bases",
+            "type": "array"
+          },
+          "brand_id": {
+            "format": "uuid",
+            "title": "Brand Id",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "content_count": {
+            "title": "Content Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "editable_chart_sheet_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Editable Chart Sheet Url"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "files": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReportArtifactResponse"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "generation_job": {
+            "$ref": "#/components/schemas/ReportJobResponse"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "native_document_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Document Url"
+          },
+          "prompt_sha256": {
+            "title": "Prompt Sha256",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "provider_config_id": {
+            "format": "uuid",
+            "title": "Provider Config Id",
+            "type": "string"
+          },
+          "provider_revision": {
+            "title": "Provider Revision",
+            "type": "integer"
+          },
+          "publication_enabled": {
+            "title": "Publication Enabled",
+            "type": "boolean"
+          },
+          "publication_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportJobResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "representative_table_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Representative Table Url"
+          },
+          "scheme_version_id": {
+            "format": "uuid",
+            "title": "Scheme Version Id",
+            "type": "string"
+          },
+          "selection_prompt_sha256": {
+            "title": "Selection Prompt Sha256",
+            "type": "string"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "generating",
+              "generated",
+              "published",
+              "failed",
+              "cancelled",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "taxonomy_sha256": {
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          },
+          "vehicle_model_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Vehicle Model Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "brand_id",
+          "vehicle_model_ids",
+          "start_date",
+          "end_date",
+          "status",
+          "generation_job",
+          "created_at",
+          "completed_at",
+          "expires_at",
+          "model",
+          "prompt_version",
+          "provider_config_id",
+          "provider_revision",
+          "scheme_version_id",
+          "prompt_sha256",
+          "taxonomy_sha256",
+          "selection_prompt_sha256",
+          "content_count",
+          "publication_enabled"
+        ],
+        "title": "ReportResponse",
+        "type": "object"
+      },
+      "ReportSubmitRequest": {
+        "additionalProperties": false,
+        "description": "品牌、可选车型与包含首尾日期的北京时间报告范围。",
+        "properties": {
+          "brand_id": {
+            "format": "uuid",
+            "title": "Brand Id",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Vehicle Model Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "brand_id",
+          "start_date",
+          "end_date"
+        ],
+        "title": "ReportSubmitRequest",
         "type": "object"
       },
       "ResourceDeleteEligibilityResponse": {
@@ -19588,6 +20348,743 @@
         "tags": [
           "administration",
           "provider-configs"
+        ]
+      }
+    },
+    "/api/v1/reports": {
+      "get": {
+        "description": "历史列表。",
+        "operationId": "listReports",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Reports",
+        "tags": [
+          "reports"
+        ]
+      },
+      "post": {
+        "description": "冻结并排队，外部调用由 Worker 完成。",
+        "operationId": "createReport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/preflight": {
+      "post": {
+        "description": "实时预检。",
+        "operationId": "preflightReport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPreflightResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Preflight",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}": {
+      "get": {
+        "description": "报告详情。",
+        "operationId": "getReport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}/artifacts/{artifact_id}/download": {
+      "get": {
+        "description": "所属校验与到期校验后流式下载。",
+        "operationId": "downloadReportArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Download",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}/cancel": {
+      "post": {
+        "description": "提交生成或发布任务的取消意图。",
+        "operationId": "cancelReport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Cancel",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}/publish": {
+      "post": {
+        "description": "独立发布或恢复失败发布。",
+        "operationId": "publishReport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Publish",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}/retry": {
+      "post": {
+        "description": "恢复失败生成。",
+        "operationId": "retryReport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Retry",
+        "tags": [
+          "reports"
         ]
       }
     },

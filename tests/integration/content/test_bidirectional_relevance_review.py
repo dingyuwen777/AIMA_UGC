@@ -114,7 +114,7 @@ def _analysis_registry(runtime) -> JobRegistry:  # type: ignore[no-untyped-def]
             responses=[
                 '{"items":[{"item_no":1,"relevance":"relevant",'
                 '"relevance_evidence":["爱玛"],"source_type":"ordinary_consumer",'
-                '"content_intent":"organic_experience","voice_type":"真实用户发声",'
+                '"content_intent":"organic_experience","real_user_qualified":true,"voice_type":"真实用户发声",'
                 '"voice_evidence":["爱玛"],"sentiment":"中性",'
                 '"sentiment_evidence":["爱玛"],"labels":[{"primary_label":"骑行性能",'
                 '"secondary_label":"舒适性","evidence":["爱玛"]}],'

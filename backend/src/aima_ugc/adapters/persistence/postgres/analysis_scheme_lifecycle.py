@@ -1,10 +1,10 @@
-"""Analysis Scheme 复制辅助、归档、恢复与条件删除的 Analysis Owner Repository。"""
+"""Analysis Scheme 复制辅助、归档、恢复与删除的 Analysis Owner Repository。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID
 
 from sqlalchemy import delete, func, select, update
@@ -30,19 +30,32 @@ class ArchivedAnalysisSchemeRecord:
     archived_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class AnalysisSchemeDeletionResult:
+    """记录管理视图删除采用的持久化模式。"""
+
+    id: UUID
+    mode: Literal["hard_deleted", "history_preserved"]
+
+
 class PostgresAnalysisSchemeLifecycleRepository:
-    """Analysis Scheme 聚合生命周期；历史 Run 只用于删除资格守卫。"""
+    """Analysis Scheme 聚合生命周期；删除管理资源时保留必要历史快照。"""
 
     def __init__(self, session: Session) -> None:
+        """绑定调用方拥有的生命周期事务。"""
+
         self._session = session
 
     def get_for_update(self, scheme_id: UUID) -> RowMapping | None:
-        """锁定 Scheme 父事实。"""
+        """锁定仍可由管理员管理的 Scheme 父事实。"""
 
         return (
             self._session.execute(
                 select(analysis_schemes_table)
-                .where(analysis_schemes_table.c.id == scheme_id)
+                .where(
+                    analysis_schemes_table.c.id == scheme_id,
+                    analysis_schemes_table.c.deleted_at.is_(None),
+                )
                 .with_for_update()
             )
             .mappings()
@@ -61,14 +74,17 @@ class PostgresAnalysisSchemeLifecycleRepository:
         return cast(UUID | None, value)
 
     def archive_blockers(self, scheme_id: UUID) -> tuple[str, ...]:
-        """当前唯一 active Scheme 不能直接归档，避免让 AI 能力失去正式配置。"""
+        """当前唯一 active Scheme 不能直接归档，已删除资源视为不存在。"""
 
         row = (
             self._session.execute(
                 select(
                     analysis_schemes_table.c.is_active,
                     analysis_schemes_table.c.archived_at,
-                ).where(analysis_schemes_table.c.id == scheme_id)
+                ).where(
+                    analysis_schemes_table.c.id == scheme_id,
+                    analysis_schemes_table.c.deleted_at.is_(None),
+                )
             )
             .mappings()
             .one_or_none()
@@ -94,6 +110,7 @@ class PostgresAnalysisSchemeLifecycleRepository:
                 analysis_schemes_table.c.id == scheme_id,
                 analysis_schemes_table.c.is_active.is_(False),
                 analysis_schemes_table.c.archived_at.is_(None),
+                analysis_schemes_table.c.deleted_at.is_(None),
             )
             .values(archived_at=archived_at, updated_at=func.clock_timestamp())
             .returning(analysis_schemes_table.c.id)
@@ -101,13 +118,14 @@ class PostgresAnalysisSchemeLifecycleRepository:
         return archived == scheme_id
 
     def restore(self, scheme_id: UUID) -> bool:
-        """恢复归档 Scheme；保持非 active，必须通过正式发布/回滚再生效。"""
+        """恢复未删除的归档 Scheme；保持非 active，必须通过正式发布/回滚再生效。"""
 
         restored = self._session.execute(
             update(analysis_schemes_table)
             .where(
                 analysis_schemes_table.c.id == scheme_id,
                 analysis_schemes_table.c.archived_at.is_not(None),
+                analysis_schemes_table.c.deleted_at.is_(None),
             )
             .values(archived_at=None, is_active=False, updated_at=func.clock_timestamp())
             .returning(analysis_schemes_table.c.id)
@@ -115,13 +133,18 @@ class PostgresAnalysisSchemeLifecycleRepository:
         return restored == scheme_id
 
     def list_archived(self) -> tuple[ArchivedAnalysisSchemeRecord, ...]:
+        """仅返回仍可恢复或删除的归档 Scheme。"""
+
         rows = self._session.execute(
             select(
                 analysis_schemes_table.c.id,
                 analysis_schemes_table.c.name,
                 analysis_schemes_table.c.archived_at,
             )
-            .where(analysis_schemes_table.c.archived_at.is_not(None))
+            .where(
+                analysis_schemes_table.c.archived_at.is_not(None),
+                analysis_schemes_table.c.deleted_at.is_(None),
+            )
             .order_by(analysis_schemes_table.c.archived_at.desc(), analysis_schemes_table.c.id)
         ).mappings()
         return tuple(
@@ -134,14 +157,17 @@ class PostgresAnalysisSchemeLifecycleRepository:
         )
 
     def delete_blockers(self, scheme_id: UUID) -> tuple[str, ...]:
-        """只有从未发布、从未进入 Analysis Run 历史的归档 Scheme 才能硬删。"""
+        """归档且非 active 的可管理 Scheme 均允许从管理视图删除。"""
 
         row = (
             self._session.execute(
                 select(
                     analysis_schemes_table.c.is_active,
                     analysis_schemes_table.c.archived_at,
-                ).where(analysis_schemes_table.c.id == scheme_id)
+                ).where(
+                    analysis_schemes_table.c.id == scheme_id,
+                    analysis_schemes_table.c.deleted_at.is_(None),
+                )
             )
             .mappings()
             .one_or_none()
@@ -150,10 +176,15 @@ class PostgresAnalysisSchemeLifecycleRepository:
             return ("资源不存在",)
         blockers: list[str] = []
         if row["archived_at"] is None:
-            blockers.append("请先归档分析方案再执行永久删除")
+            blockers.append("请先归档分析方案再执行删除")
         if bool(row["is_active"]):
-            blockers.append("当前生效的分析方案不能永久删除")
-        if (
+            blockers.append("当前生效的分析方案不能删除")
+        return tuple(dict.fromkeys(blockers))
+
+    def _has_published_history(self, scheme_id: UUID) -> bool:
+        """判断 Scheme 是否曾经发布，用于决定是否必须保留版本快照。"""
+
+        return (
             self._session.scalar(
                 select(analysis_scheme_versions_table.c.id)
                 .where(
@@ -163,9 +194,12 @@ class PostgresAnalysisSchemeLifecycleRepository:
                 .limit(1)
             )
             is not None
-        ):
-            blockers.append("该分析方案已有发布历史，只允许归档")
-        if (
+        )
+
+    def _has_run_history(self, scheme_id: UUID) -> bool:
+        """判断是否存在 Analysis Run 直接引用该 Scheme 的任一 Version。"""
+
+        return (
             self._session.scalar(
                 select(analysis_content_runs_table.c.id)
                 .join(
@@ -177,26 +211,50 @@ class PostgresAnalysisSchemeLifecycleRepository:
                 .limit(1)
             )
             is not None
-        ):
-            blockers.append("AI 分析运行历史引用了该方案，只允许归档")
-        return tuple(dict.fromkeys(blockers))
+        )
 
-    def delete_archived(self, scheme_id: UUID) -> bool:
-        """永久删除从未发布/使用的归档 Scheme 与其纯草稿历史。"""
+    def delete_archived(self, scheme_id: UUID) -> AnalysisSchemeDeletionResult | None:
+        """删除归档资源；纯草稿物理删除，历史规则仅从管理视图移除。"""
 
         archived = self._session.scalar(
             select(analysis_schemes_table.c.id)
             .where(
                 analysis_schemes_table.c.id == scheme_id,
                 analysis_schemes_table.c.archived_at.is_not(None),
+                analysis_schemes_table.c.deleted_at.is_(None),
             )
             .with_for_update()
         )
         if archived is None:
-            return False
+            return None
+
         blockers = self.delete_blockers(scheme_id)
         if blockers:
             raise RuntimeError("；".join(blockers))
+
+        preserve_history = self._has_published_history(scheme_id) or self._has_run_history(
+            scheme_id
+        )
+        if preserve_history:
+            deleted_id = self._session.execute(
+                update(analysis_schemes_table)
+                .where(
+                    analysis_schemes_table.c.id == scheme_id,
+                    analysis_schemes_table.c.is_active.is_(False),
+                    analysis_schemes_table.c.archived_at.is_not(None),
+                    analysis_schemes_table.c.deleted_at.is_(None),
+                )
+                .values(
+                    active_version_id=None,
+                    deleted_at=func.clock_timestamp(),
+                    updated_at=func.clock_timestamp(),
+                )
+                .returning(analysis_schemes_table.c.id)
+            ).scalar_one_or_none()
+            if deleted_id is None:
+                return None
+            return AnalysisSchemeDeletionResult(id=scheme_id, mode="history_preserved")
+
         self._session.execute(
             update(analysis_schemes_table)
             .where(analysis_schemes_table.c.id == scheme_id)
@@ -207,18 +265,22 @@ class PostgresAnalysisSchemeLifecycleRepository:
                 analysis_scheme_versions_table.c.scheme_id == scheme_id
             )
         )
-        deleted = self._session.execute(
+        deleted_id = self._session.execute(
             delete(analysis_schemes_table)
             .where(
                 analysis_schemes_table.c.id == scheme_id,
                 analysis_schemes_table.c.archived_at.is_not(None),
+                analysis_schemes_table.c.deleted_at.is_(None),
             )
             .returning(analysis_schemes_table.c.id)
         ).scalar_one_or_none()
-        return deleted == scheme_id
+        if deleted_id is None:
+            return None
+        return AnalysisSchemeDeletionResult(id=scheme_id, mode="hard_deleted")
 
 
 __all__ = [
+    "AnalysisSchemeDeletionResult",
     "ArchivedAnalysisSchemeRecord",
     "PostgresAnalysisSchemeLifecycleRepository",
 ]

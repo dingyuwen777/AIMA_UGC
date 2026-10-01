@@ -12,14 +12,24 @@ async function renderLlmPanel(): Promise<string> {
 }
 
 describe('LLM provider concurrency configuration', () => {
-  it('keeps concurrency and rate controls while hiding implementation terminology', async () => {
+  it('shows automatic LLM execution status without manual execution controls', async () => {
     const html = await renderLlmPanel()
 
-    expect(html).toContain('同时请求数上限')
-    expect(html).toContain('max="5000"')
-    expect(html).toContain('每秒请求启动上限')
-    expect(html).toContain('自动安排任务分片')
-    expect(html).toContain('结果校验失败重试次数')
+    expect(html).toContain('自动执行状态')
+    expect(html).toContain('成功入库速度')
+    expect(html).not.toContain('同时请求数上限')
+    expect(html).not.toContain('每秒请求启动上限')
+    expect(html).not.toContain('结果校验失败重试次数')
     expect(html).not.toContain('Shard Size')
+  })
+
+  it('preserves collection execution controls', async () => {
+    const html = await renderToString(createSSRApp({
+      render: () => h(ProviderConfigurationPanel, { providerKind: 'collection' }),
+    }))
+    expect(html).toContain('同时请求数上限')
+    expect(html).toContain('每秒请求启动上限')
+    expect(html).toContain('请求失败重试次数')
+    expect(html).not.toContain('自动执行状态')
   })
 })

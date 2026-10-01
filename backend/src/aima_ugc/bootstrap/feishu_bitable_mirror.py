@@ -19,7 +19,8 @@ from aima_ugc.adapters.persistence.postgres.feishu_bitable_mirrors import (
     FeishuBitableMirrorRecord,
     PostgresFeishuBitableMirrorRepository,
 )
-from aima_ugc.platform.jobs.models import LeaseLostError
+from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.platform.jobs.models import JobExecutionFence, LeaseLostError
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.security import read_secret_file
 from aima_ugc.platform.time import beijing_now
@@ -111,7 +112,9 @@ def register_feishu_bitable_mirror(
     summary: FeishuSyncSummary,
     *,
     publication_job_id: UUID | None,
+    fence: JobExecutionFence | None = None,
 ) -> FeishuBitableMirrorRecord:
+    """登记可恢复的报告多维表镜像，持久报告任务提交前必须复核当前 fence。"""
     required = {
         "document_token": summary.mirror_document_token,
         "document_url": summary.mirror_document_url,
@@ -126,6 +129,8 @@ def register_feishu_bitable_mirror(
     session = runtime.database.new_session()
     try:
         with session.begin():
+            if fence is not None:
+                PostgresJobRepository(session).lock_current_execution(fence)
             return PostgresFeishuBitableMirrorRepository(session).register(
                 publication_job_id=publication_job_id,
                 document_token=str(required["document_token"]),

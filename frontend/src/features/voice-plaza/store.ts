@@ -63,10 +63,11 @@ export interface CommentReplyState {
   totalCount: number
 }
 
+type AnalysisScope = 'selected' | 'query' | 'all'
+
 export interface VoicePlazaFilters {
   search: string
   platform: '' | PlatformName
-  contentType: string
   analysisStatus: '' | ContentAnalysisStatus
   relevance: '' | ContentRelevance
   voiceType: string
@@ -84,7 +85,6 @@ export interface VoicePlazaFilters {
 const EMPTY_FILTERS: VoicePlazaFilters = {
   search: '',
   platform: '',
-  contentType: '',
   analysisStatus: '',
   relevance: '',
   voiceType: '',
@@ -223,7 +223,6 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     const filters: VoicePlazaFilters = {
       search: stringValue('search'),
       platform,
-      contentType: stringValue('contentType'),
       analysisStatus,
       relevance,
       voiceType: stringValue('voiceType'),
@@ -266,12 +265,15 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
             secondaryLabels: [...filters.secondaryLabels],
           }
         : null
-    return {
+    const restored: PersistedVoicePlazaSearch = {
       filters,
       sortBy: record.sortBy === 'follower_count' ? 'follower_count' : 'published_at',
       sortDirection: record.sortDirection === 'asc' ? 'asc' : 'desc',
       legacyLabelCompatibility,
     }
+    // 已移除的筛选不再恢复，也从旧会话记录中清理，避免后续版本继续传播。
+    if ('contentType' in values) sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify(restored))
+    return restored
   } catch {
     return fallback
   }
@@ -343,6 +345,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const error = ref<string | null>(null)
   const listError = ref<string | null>(null)
   let analysisDraft: {
+    scope: AnalysisScope
     targets: AnalysisRunTargetSelection
     clientIdempotencyKey: string
   } | null = null
@@ -391,7 +394,6 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     return {
       search: appliedFilters.search.trim() || undefined,
       platforms: appliedFilters.platform ? [appliedFilters.platform] : undefined,
-      content_types: appliedFilters.contentType ? [appliedFilters.contentType] : undefined,
       analysis_status: appliedFilters.analysisStatus || undefined,
       relevance: appliedFilters.relevance || undefined,
       voice_type: appliedFilters.voiceType.trim() || undefined,
@@ -494,10 +496,11 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       : { scope, content_ids: [...selectedIds.value] }
   }
 
-  function analysisTargetSelection(scope: 'selected' | 'all'): AnalysisRunTargetSelection {
-    return scope === 'all'
-      ? { scope: 'all' }
-      : { scope: 'selected', content_ids: [...selectedIds.value] }
+  /** Analysis 与列表/Count/Export 共用同一已应用筛选快照；排序和分页不进入目标身份。 */
+  function analysisTargetSelection(scope: AnalysisScope): AnalysisRunTargetSelection {
+    if (scope === 'all') return { scope: 'all' }
+    if (scope === 'query') return { scope: 'query', filters: filterSnapshot() }
+    return { scope: 'selected', content_ids: [...selectedIds.value] }
   }
 
   async function refresh(silent = false): Promise<void> {
@@ -926,7 +929,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   async function previewAnalysis(
-    scope: 'selected' | 'all',
+    scope: AnalysisScope,
   ): Promise<AnalysisContentRunPreviewResponse | null> {
     const revision = ++analysisPreviewRevision
     analysisDraft = null
@@ -949,6 +952,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       const preview = await previewAnalysisRun({ targets })
       if (revision !== analysisPreviewRevision) return null
       analysisDraft = {
+        scope,
         targets,
         clientIdempotencyKey: createClientIdempotencyKey(),
       }
@@ -964,24 +968,36 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
+  /** 确认创建 Run；409 表示确认基线已失效，自动刷新 Preview 但不自动扩大任务。 */
   async function confirmAnalysis(): Promise<number | null> {
     if (!analysisDraft || !analysisPreview.value || previewingAnalysis.value || submittingAnalysis.value) return null
+    const draft = analysisDraft
+    const preview = analysisPreview.value
     submittingAnalysis.value = true
     error.value = null
     try {
       const created = await submitAnalysisRun({
-        client_idempotency_key: analysisDraft.clientIdempotencyKey,
-        expected_configuration_hash: analysisPreview.value.configuration_hash,
-        expected_target_count: analysisPreview.value.target_count,
+        client_idempotency_key: draft.clientIdempotencyKey,
+        expected_configuration_hash: preview.configuration_hash,
+        expected_target_count: preview.target_count,
         run_intent: 'manual_reanalysis',
-        targets: analysisDraft.targets,
+        targets: draft.targets,
       })
       await refreshAnalysisRuns(true)
       analysisDraft = null
       analysisPreview.value = null
       return created.target_count
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (analysisDraft !== draft) return null
+      const message = errorMessage(reason)
+      if (reason instanceof VoicePlazaApiError && reason.status === 409) {
+        const refreshed = await previewAnalysis(draft.scope)
+        error.value = refreshed
+          ? `${message} 已重新预览，请确认最新数量后再次提交。`
+          : error.value || message
+      } else {
+        error.value = message
+      }
       return null
     } finally {
       submittingAnalysis.value = false

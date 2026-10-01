@@ -344,7 +344,7 @@ Excel Mapper
 → CanonicalArtifactReader 完整性预检
 → Campaign/Batch 冻结 BrandVehicleFilterSnapshot
 → Brand/Vehicle Alias 解析
-→ 命中所选 Brand，或命中归属于所选 Brand 的 Vehicle
+→ 完整命中配置 Brand，再匹配这些 Brand 下的 Vehicle
 → Dedup
 → Content Owner
 ```
@@ -358,6 +358,8 @@ Vehicle → Brand 归属
 ```
 
 创建时提交 `brand_ids`；空集合表示冻结全部 active Brand。Worker 不在执行中途读取变化后的实时目录，过滤和 Evidence 写入都使用同一冻结 Snapshot。单文件 Batch 和 Campaign Chunk Item 各自只允许绑定一件 Canonical Artifact；Job 重试先恢复并完整校验已有 Artifact。Campaign Chunk Job 只接受 `ingestion.historical-import-chunk.v2` 与当前 Pure Canonical 格式；旧 outcome Chunk / v1 Payload 不保留兼容，Migration 发现仍活跃或可重试存量时失败关闭。
+
+新目录显式冻结 `brand_scoped_vehicle_v2`，所有可用文本字段完整扫描，车型只来自已确认或人工锁定品牌。单字车型需要原文 12 字符以内的唯一局部品牌，共享别名歧义保持未命中。旧目录缺少语义字段时继续 `field_priority_v1`，保留原摘要与任务行为。Raw 决定历史来源命中，Current 和人工选择决定当前自动 Evidence；正负向重筛、较新写入保护与撤回基线见 [统一入库实现](../../../../../docs/appendix/08_数据入口与统一入库实现.md)。
 
 AI `relevance = relevant/irrelevant` 属于 Analysis Domain，导入不会自动创建 AI Job。
 

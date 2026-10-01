@@ -27,7 +27,6 @@ analysis_schemes_table = Table(
     Column("is_active", Boolean(), nullable=False, server_default=text("false")),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
-    UniqueConstraint("name"),
     CheckConstraint("char_length(name) > 0", name="name_nonempty"),
     info={"owner": "analysis"},
 )

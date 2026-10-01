@@ -681,9 +681,9 @@ test('opens the active analysis rule instead of a newer draft', async ({ page })
 
 
 test('provider advanced rate limit saves a numeric value and can be cleared', async ({ page }) => {
-  await openProvider(page)
-  let saved = provider(1)
-  await page.route('**/provider-configs?provider_kind=llm', async (route) => json(route, { items: [saved, provider(2)] }))
+  await openProvider(page, 'TikHub')
+  let saved = provider(1, 'collection')
+  await page.route('**/provider-configs?provider_kind=collection', async (route) => json(route, { items: [saved, provider(2, 'collection')] }))
   const bodies: unknown[] = []
   await page.route(`**/provider-configs/${saved.id}`, async (route) => {
     if (route.request().method() !== 'PUT') return route.fallback()
@@ -704,6 +704,37 @@ test('provider advanced rate limit saves a numeric value and can be cleared', as
   await page.getByRole('button', { name: '保存并生效', exact: true }).click()
   await expect(page.getByRole('button', { name: '测试连接', exact: true })).toBeEnabled()
   expect(bodies[1]).toMatchObject({ max_rps: null })
+})
+
+test('AI 容量只读自动刷新且不覆盖草稿，保存不提交人工执行字段', async ({ page }) => {
+  await openProvider(page)
+  let current = 10
+  let saved = provider(1)
+  await page.route('**/provider-configs?provider_kind=llm', async (route) => json(route, { items: [{ ...saved,
+    timeout_seconds: null, max_retries: null, max_concurrency: null,
+    adaptive_capacity: { state: 'exploring', current_concurrency: current, last_safe_concurrency: 10,
+      historical_safe_concurrency: 10, current_rps: null, active_shards: 1, current_shard_size: 600,
+      persisted_contents_per_second: 2, latency_p95_seconds: 5, http_429_ratio: 0, timeout_ratio: 0,
+      transport_error_ratio: 0, validation_failure_ratio: 0, adjustment_reason: 'cold_start' },
+  }, provider(2)] }))
+  let body: Record<string, unknown> | undefined
+  await page.route(`**/provider-configs/${saved.id}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    body = route.request().postDataJSON()
+    saved = { ...saved, ...body, revision: 2 }
+    await json(route, saved)
+  })
+  const capacity = page.getByRole('region', { name: '自动执行状态' })
+  await expect(capacity.getByText('10', { exact: true })).toBeVisible({ timeout: 5000 })
+  await page.getByLabel('配置名称', { exact: true }).fill('保留未保存草稿')
+  current = 20
+  await expect(capacity.getByText('20', { exact: true })).toBeVisible({ timeout: 5000 })
+  await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('保留未保存草稿')
+  await expect(page.getByText('高级设置', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '保存并生效', exact: true }).click()
+  await expect(page.getByText('配置已保存；新任务将使用新配置，正在运行的任务不受影响。', { exact: true })).toBeVisible()
+  expect(body?.display_name).toBe('保留未保存草稿')
+  for (const key of ['max_concurrency', 'max_rps', 'timeout_seconds', 'max_retries']) expect(body).not.toHaveProperty(key)
 })
 
 
@@ -937,8 +968,11 @@ test('guards an edited analysis-rule copy name before switching tabs', async ({ 
   await expect(copyName).toHaveValue('未保存的规则副本名称')
 })
 
-test('guards unsaved analysis-rule and report-strategy inputs before switching tabs', async ({ page }) => {
+test('guards unsaved analysis-rule and report-generation inputs before switching tabs', async ({ page }) => {
   await mockAdmin(page)
+  await page.route('**/api/v1/reports', async (route) => {
+    await route.fulfill({ json: { items: [] } })
+  })
   await page.goto('/admin/configuration')
 
   await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
@@ -952,8 +986,8 @@ test('guards unsaved analysis-rule and report-strategy inputs before switching t
   await page.getByRole('button', { name: '操作记录', exact: true }).click()
   await dialog.getByRole('button', { name: '放弃修改并切换', exact: true }).click()
 
-  await page.getByRole('button', { name: '报告策略', exact: true }).click()
-  const startDate = page.getByLabel('开始日期', { exact: true })
+  await page.getByRole('button', { name: '报告生成', exact: true }).click()
+  const startDate = page.getByLabel('报告开始日期', { exact: true })
   await startDate.fill('2026-09-01')
   await page.getByRole('button', { name: '操作记录', exact: true }).click()
   dialog = page.getByRole('dialog', { name: '放弃未保存的修改' })

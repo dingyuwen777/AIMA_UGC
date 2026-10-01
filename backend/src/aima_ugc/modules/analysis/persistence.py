@@ -103,6 +103,9 @@ class AnalysisWorkItem:
     content_id: UUID
     content_version: int
     content: CanonicalContentV1
+    retry_count: int = 0
+    retry_kind: str | None = None
+    previous_validation_error_codes: tuple[str, ...] = ()
 
 
 __all__ = [

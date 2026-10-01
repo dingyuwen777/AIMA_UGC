@@ -48,6 +48,8 @@ class LLMHTTPRequestAudit:
     cost_amount: Decimal | None = None
     cost_currency: str | None = None
     cost_unavailable_reason: str | None = None
+    timeout_phase: str | None = None
+    rate_limit_kind: str | None = None
 
     def to_payload(self) -> dict[str, object]:
         return {
@@ -61,6 +63,8 @@ class LLMHTTPRequestAudit:
             "status": self.status,
             "status_code": self.status_code,
             "error_code": self.error_code,
+            "timeout_phase": self.timeout_phase,
+            "rate_limit_kind": self.rate_limit_kind,
             "usage": {
                 "input_tokens": self.input_tokens,
                 "input_cache_hit_tokens": self.input_cache_hit_tokens,

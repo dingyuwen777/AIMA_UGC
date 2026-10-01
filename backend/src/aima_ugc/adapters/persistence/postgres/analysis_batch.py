@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import bindparam, func, insert, select, update
+from sqlalchemy import bindparam, func, insert, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -95,6 +95,31 @@ class PostgresAnalysisBatchRepository:
             item.work_item for item in failures
         )
         self._verify_request_jobs(work_items, job_id=job.id)
+        pending = set(
+            self._session.execute(
+                select(
+                    analysis_content_request_items_table.c.request_id,
+                    analysis_content_request_items_table.c.content_id,
+                ).where(
+                    tuple_(
+                        analysis_content_request_items_table.c.request_id,
+                        analysis_content_request_items_table.c.content_id,
+                    ).in_(tuple({(item.request_id, item.content_id) for item in work_items})),
+                    analysis_content_request_items_table.c.status == "pending",
+                )
+            ).tuples()
+        )
+        # 接管/重复回调不得再次贡献已经提交的成功吞吐。
+        successes = tuple(
+            item
+            for item in successes
+            if (item.work_item.request_id, item.work_item.content_id) in pending
+        )
+        failures = tuple(
+            item
+            for item in failures
+            if (item.work_item.request_id, item.work_item.content_id) in pending
+        )
 
         current_versions = self._current_versions(
             tuple(item.work_item.content_id for item in successes)
@@ -181,6 +206,22 @@ class PostgresAnalysisBatchRepository:
         for status, count in rows:
             counts[cast(str, status)] = cast(int, count)
         return counts
+
+    def has_pending(self, request_id: UUID) -> bool:
+        """轮询就绪队列只检查是否仍有工作，避免每 250ms 聚合整个 Shard。"""
+
+        item = analysis_content_request_items_table
+        return (
+            self._session.scalar(
+                select(item.c.content_id)
+                .where(
+                    item.c.request_id == request_id,
+                    item.c.status == "pending",
+                )
+                .limit(1)
+            )
+            is not None
+        )
 
     def _verify_request_jobs(
         self,
@@ -425,11 +466,18 @@ class PostgresAnalysisBatchRepository:
             .where(
                 analysis_content_request_items_table.c.request_id == bindparam("p_request_id"),
                 analysis_content_request_items_table.c.content_id == bindparam("p_content_id"),
+                analysis_content_request_items_table.c.status == "pending",
             )
             .values(
                 status="succeeded",
                 analysis_result_id=bindparam("p_result_id"),
                 error_code=None,
+                retry_kind=None,
+                retry_count=0,
+                retry_not_before=None,
+                last_retry_at=None,
+                validation_failure_started_at=None,
+                validation_error_codes=[],
             )
         )
         self._session.execute(statement, list(rows))

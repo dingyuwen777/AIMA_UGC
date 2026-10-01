@@ -1,4 +1,4 @@
-"""Analysis Scheme PostgreSQL Repository 与 Git Prompt 一次性 bootstrap。"""
+"""Analysis Scheme PostgreSQL Repository 与 Git Prompt 版本化 bootstrap。"""
 
 from __future__ import annotations
 
@@ -65,18 +65,33 @@ class PostgresAnalysisSchemeRepository:
     def bootstrap_default(
         self, *, actor_ref: str = "system"
     ) -> tuple[AnalysisSchemeVersionRecord, bool]:
-        """数据库为空时从 Git Prompt 建立唯一 bootstrap 发布版。"""
+        """建立或刷新纯 Git-managed 默认 Scheme；人工配置存在时不自动覆盖。"""
 
         _lock_scheme_registry(self._session)
-        active = self.get_active_version()
-        if active is not None:
-            return active, False
-        existing = self._session.scalar(select(func.count()).select_from(analysis_schemes_table))
-        if int(existing or 0) > 0:
-            raise RuntimeError("Analysis Scheme 存在但没有 active version")
         prompt_text = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
         definition = bootstrap_definition_from_prompt(prompt_text)
         compiled = compile_analysis_scheme(definition)
+
+        active = self.get_active_version()
+        if active is not None:
+            refreshed = self._refresh_git_managed_bootstrap(
+                active,
+                definition=compiled.definition,
+                compiled_prompt=compiled.prompt_text,
+                prompt_sha256=compiled.prompt_sha256,
+                taxonomy_sha256=compiled.taxonomy_sha256,
+                actor_ref=actor_ref,
+            )
+            return (refreshed, True) if refreshed is not None else (active, False)
+
+        existing = self._session.scalar(
+            select(func.count())
+            .select_from(analysis_schemes_table)
+            .where(analysis_schemes_table.c.deleted_at.is_(None))
+        )
+        if int(existing or 0) > 0:
+            raise RuntimeError("Analysis Scheme 存在但没有 active version")
+
         now = beijing_now()
         scheme_id, version_id = uuid4(), uuid4()
         self._session.execute(
@@ -86,6 +101,7 @@ class PostgresAnalysisSchemeRepository:
                 active_version_id=None,
                 is_active=False,
                 archived_at=None,
+                deleted_at=None,
                 created_at=now,
                 updated_at=now,
             )
@@ -99,7 +115,7 @@ class PostgresAnalysisSchemeRepository:
                     version=1,
                     status="published",
                     description="由 Git Prompt bootstrap 的首个生产 Scheme",
-                    definition=definition.model_dump(mode="json"),
+                    definition=compiled.definition.model_dump(mode="json"),
                     compiled_prompt=compiled.prompt_text,
                     prompt_sha256=compiled.prompt_sha256,
                     taxonomy_sha256=compiled.taxonomy_sha256,
@@ -119,6 +135,109 @@ class PostgresAnalysisSchemeRepository:
         )
         return _version_from_row(row), True
 
+    def _refresh_git_managed_bootstrap(
+        self,
+        active: AnalysisSchemeVersionRecord,
+        *,
+        definition: AnalysisSchemeDefinitionRequest,
+        compiled_prompt: str,
+        prompt_sha256: str,
+        taxonomy_sha256: str,
+        actor_ref: str,
+    ) -> AnalysisSchemeVersionRecord | None:
+        """纯 Git-managed lineage 变化时追加发布新 Version，并保留历史 Run 绑定。"""
+
+        if (
+            active.prompt_sha256 == prompt_sha256
+            and active.taxonomy_sha256 == taxonomy_sha256
+            and active.compiled_prompt == compiled_prompt
+        ):
+            return None
+        if active.status != "published":
+            return None
+
+        scheme_row = (
+            self._session.execute(
+                select(
+                    analysis_schemes_table.c.name,
+                    analysis_schemes_table.c.archived_at,
+                    analysis_schemes_table.c.deleted_at,
+                ).where(analysis_schemes_table.c.id == active.scheme_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if (
+            scheme_row is None
+            or scheme_row["name"] != "默认内容舆情分析方案"
+            or scheme_row["archived_at"] is not None
+            or scheme_row["deleted_at"] is not None
+        ):
+            return None
+
+        live_scheme_count = int(
+            self._session.scalar(
+                select(func.count())
+                .select_from(analysis_schemes_table)
+                .where(analysis_schemes_table.c.deleted_at.is_(None))
+            )
+            or 0
+        )
+        if live_scheme_count != 1:
+            return None
+
+        version_rows = tuple(
+            self._session.execute(
+                select(
+                    analysis_scheme_versions_table.c.version,
+                    analysis_scheme_versions_table.c.created_by,
+                ).where(analysis_scheme_versions_table.c.scheme_id == active.scheme_id)
+            ).mappings()
+        )
+        git_actors = {"system", "system:git-bootstrap"}
+        if not version_rows or any(row["created_by"] not in git_actors for row in version_rows):
+            return None
+
+        latest_version = max(int(row["version"]) for row in version_rows)
+        if active.version != latest_version:
+            return None
+        next_version = latest_version + 1
+        now = beijing_now()
+        self._session.execute(
+            update(analysis_scheme_versions_table)
+            .where(analysis_scheme_versions_table.c.id == active.id)
+            .values(status="retired")
+        )
+        row = (
+            self._session.execute(
+                insert(analysis_scheme_versions_table)
+                .values(
+                    id=uuid4(),
+                    scheme_id=active.scheme_id,
+                    version=next_version,
+                    status="published",
+                    description="由 Git Prompt 自动刷新生产 Scheme",
+                    definition=definition.model_dump(mode="json"),
+                    compiled_prompt=compiled_prompt,
+                    prompt_sha256=prompt_sha256,
+                    taxonomy_sha256=taxonomy_sha256,
+                    created_by=actor_ref,
+                    created_at=now,
+                    published_at=now,
+                )
+                .returning(analysis_scheme_versions_table)
+            )
+            .mappings()
+            .one()
+        )
+        refreshed = _version_from_row(row)
+        self._session.execute(
+            update(analysis_schemes_table)
+            .where(analysis_schemes_table.c.id == active.scheme_id)
+            .values(active_version_id=refreshed.id, is_active=True, updated_at=now)
+        )
+        return refreshed
+
     def create_draft(
         self,
         *,
@@ -134,7 +253,10 @@ class PostgresAnalysisSchemeRepository:
         scheme = (
             self._session.execute(
                 select(analysis_schemes_table)
-                .where(analysis_schemes_table.c.name == name)
+                .where(
+                    analysis_schemes_table.c.name == name,
+                    analysis_schemes_table.c.deleted_at.is_(None),
+                )
                 .with_for_update()
             )
             .mappings()
@@ -150,6 +272,7 @@ class PostgresAnalysisSchemeRepository:
                     active_version_id=None,
                     is_active=False,
                     archived_at=None,
+                    deleted_at=None,
                     created_at=now,
                     updated_at=now,
                 )
@@ -174,7 +297,7 @@ class PostgresAnalysisSchemeRepository:
                     version=version,
                     status="draft",
                     description=description,
-                    definition=definition.model_dump(mode="json"),
+                    definition=compiled.definition.model_dump(mode="json"),
                     compiled_prompt=compiled.prompt_text,
                     prompt_sha256=compiled.prompt_sha256,
                     taxonomy_sha256=compiled.taxonomy_sha256,
@@ -213,6 +336,7 @@ class PostgresAnalysisSchemeRepository:
                     analysis_scheme_versions_table.c.version == expected_version,
                     analysis_scheme_versions_table.c.status == "draft",
                     analysis_schemes_table.c.archived_at.is_(None),
+                    analysis_schemes_table.c.deleted_at.is_(None),
                 )
                 .with_for_update()
             )
@@ -249,7 +373,7 @@ class PostgresAnalysisSchemeRepository:
                     version=next_version,
                     status="draft",
                     description=description,
-                    definition=definition.model_dump(mode="json"),
+                    definition=compiled.definition.model_dump(mode="json"),
                     compiled_prompt=compiled.prompt_text,
                     prompt_sha256=compiled.prompt_sha256,
                     taxonomy_sha256=compiled.taxonomy_sha256,
@@ -288,6 +412,7 @@ class PostgresAnalysisSchemeRepository:
                     analysis_scheme_versions_table.c.id == version_id,
                     analysis_scheme_versions_table.c.version == expected_version,
                     analysis_schemes_table.c.archived_at.is_(None),
+                    analysis_schemes_table.c.deleted_at.is_(None),
                 )
                 .with_for_update()
             )
@@ -349,6 +474,7 @@ class PostgresAnalysisSchemeRepository:
                 .where(
                     analysis_schemes_table.c.is_active.is_(True),
                     analysis_schemes_table.c.archived_at.is_(None),
+                    analysis_schemes_table.c.deleted_at.is_(None),
                 )
             )
             .mappings()
@@ -364,7 +490,10 @@ class PostgresAnalysisSchemeRepository:
         schemes = tuple(
             self._session.execute(
                 select(analysis_schemes_table)
-                .where(analysis_schemes_table.c.archived_at.is_(None))
+                .where(
+                    analysis_schemes_table.c.archived_at.is_(None),
+                    analysis_schemes_table.c.deleted_at.is_(None),
+                )
                 .order_by(
                     analysis_schemes_table.c.is_active.desc(),
                     analysis_schemes_table.c.name,

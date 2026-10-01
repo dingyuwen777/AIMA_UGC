@@ -90,6 +90,48 @@ def test_reporting_change_marks_font_evidence_required() -> None:
     assert requirements.report_font_required is True
 
 
+def test_report_postgres_workflow_is_a_selected_ci_target() -> None:
+    requirements = _requirements("tests/integration/reporting/test_database_reports.py")
+
+    assert requirements.postgres_required is True
+    assert requirements.postgres_targets == (
+        "tests/integration/reporting/test_database_reports.py",
+    )
+
+
+def test_full_postgres_evidence_includes_report_workflows() -> None:
+    assert "reporting" in SCRIPT["ALL_POSTGRES_SUITES"]
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "if selected reporting; then" in workflow
+    assert "AIMA_REPORT_TEST_DATABASE=1 uv run pytest tests/integration/reporting -q" in workflow
+    postgres_step = workflow.split('if [[ -n "${POSTGRES_TARGETS}" ]]; then', 1)[1]
+    assert (
+        'AIMA_REPORT_TEST_DATABASE=1 uv run pytest "${targets[@]}" -q'
+        in (postgres_step.split("fi", 1)[0])
+    )
+
+
+def test_postgres_report_rendering_has_its_own_cjk_font_dependency() -> None:
+    """PG 在独立 runner 渲染真实文件，不能借用 core Job 安装的字体。"""
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    postgres_job = workflow.split("  postgres-integration:", 1)[1].split("\n  real-fullstack:", 1)[
+        0
+    ]
+    font_step = postgres_job.split("- name: Install report integration CJK font", 1)[1]
+    font_step = font_step.split("- name:", 1)[0]
+    assert "fonts-noto-cjk" in font_step
+    assert "report_font_required == 'true'" in font_step
+    assert "' all '" in font_step
+    assert "' reporting '" in font_step
+    assert postgres_job.index("Install report integration CJK font") < postgres_job.index(
+        "Selected PostgreSQL integration evidence"
+    )
+    targeted = _requirements("tests/integration/reporting/test_database_reports.py")
+    full = _requirements(".github/workflows/ci.yml")
+    assert targeted.report_font_required is True
+    assert full.report_font_required is True
+
+
 def test_http_producer_change_requires_contract_drift_and_real_cross_component_proof() -> None:
     requirements = _requirements("backend/src/aima_ugc/entrypoints/api_main.py")
 
@@ -434,3 +476,100 @@ def test_github_output_exposes_each_required_layer_and_selected_suites(tmp_path:
     assert values["report_font_required"] == "false"
     assert values["fullstack_specs"] == "excel-import.spec.ts stage12-historical-analysis.spec.ts"
     assert values["changed_count"] == "1"
+
+
+def test_known_backend_and_frontend_paths_select_targeted_development_evidence() -> None:
+    """高频功能路径优先选择直接测试目标，共享/未知边界继续 fail closed。"""
+    analysis = _requirements("backend/src/aima_ugc/modules/analysis/content_analysis_job.py")
+    voice = _requirements("frontend/src/features/voice-plaza/store.ts")
+    workbench = _requirements("frontend/src/features/workbench/components/WorkbenchFilters.vue")
+    unknown_backend = _requirements("backend/src/aima_ugc/bootstrap/unclassified_worker.py")
+    ci_self = _requirements(".github/workflows/ci.yml")
+
+    assert analysis.backend_targets == (
+        "tests/api/test_analysis_all_scope.py",
+        "tests/api/test_analysis_runtime_capability.py",
+        "tests/api/test_analysis_taxonomy.py",
+        "tests/unit/analysis",
+        "tests/unit/content/test_stage12_analysis_planner.py",
+    )
+    assert voice.frontend_unit_targets == (
+        "frontend/tests/analysis-all-scope.spec.ts",
+        "frontend/tests/voice-plaza-design.spec.ts",
+        "frontend/tests/voice-plaza-media-preview.spec.ts",
+        "frontend/tests/voice-plaza.spec.ts",
+    )
+    assert voice.frontend_e2e_specs == (
+        "frontend/e2e/voice-plaza-design.spec.ts",
+        "frontend/e2e/voice-plaza-media-carousel.spec.ts",
+        "frontend/e2e/voice-plaza-review-regressions.spec.ts",
+        "frontend/e2e/voice-plaza.spec.ts",
+    )
+    assert workbench.frontend_unit_targets == ("frontend/tests/workbench.spec.ts",)
+    assert workbench.frontend_e2e_specs == ("frontend/e2e/workbench.spec.ts",)
+    assert unknown_backend.backend_targets == ("all",)
+    shared_platform = _requirements("backend/src/aima_ugc/platform/time.py")
+    shared_ui = _requirements("frontend/src/shared/ui/AimaMultiSelect.vue")
+    assert shared_platform.backend_targets == ("all",)
+    assert shared_ui.frontend_unit_targets == ("all",)
+    assert shared_ui.frontend_e2e_specs == ("all",)
+    assert ci_self.backend_targets == ("all",)
+    assert ci_self.frontend_unit_targets == ("all",)
+    assert ci_self.frontend_e2e_specs == ("all",)
+
+
+def test_github_output_exposes_backend_and_frontend_selected_targets(tmp_path: Path) -> None:
+    """CI Plan 必须把同一 classifier 的 Backend/Frontend 选择传给后续并行 Job。"""
+    output = tmp_path / "github-output"
+    requirements = _requirements("frontend/src/features/workbench/components/WorkbenchFilters.vue")
+
+    WRITE_GITHUB_OUTPUT(output, requirements, changed_count=1)
+
+    values = dict(
+        line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines() if line
+    )
+    assert values["backend_targets"] == ""
+    assert values["frontend_unit_targets"] == "frontend/tests/workbench.spec.ts"
+    assert values["frontend_e2e_specs"] == "frontend/e2e/workbench.spec.ts"
+
+
+def test_known_backend_domains_include_direct_api_evidence_without_global_api_suite() -> None:
+    """高频 Backend Owner 的 API Evidence 与 Unit 一起由 classifier 精确选择。"""
+    collection = _requirements("backend/src/aima_ugc/modules/collection/service.py")
+    ingestion = _requirements("backend/src/aima_ugc/modules/ingestion/imports.py")
+    vehicles = _requirements("backend/src/aima_ugc/modules/vehicles/service.py")
+
+    assert "tests/api/test_stage8e_collection_runs.py" in collection.backend_targets
+    assert "tests/api/test_stage8f_collection_strategy.py" in collection.backend_targets
+    assert "tests/api/test_stage12_historical_imports.py" in ingestion.backend_targets
+    assert "tests/api/test_stage8b_imports.py" in ingestion.backend_targets
+    assert "tests/api/test_stage8c_import_batches.py" in ingestion.backend_targets
+    assert vehicles.backend_targets == (
+        "tests/api/test_brand_vehicle_stage2_contract.py",
+        "tests/unit/vehicles",
+    )
+
+
+def test_selected_backend_and_frontend_targets_exist() -> None:
+    """精准 selector 只能引用仓库中真实存在的测试资产。"""
+    representative = (
+        _requirements("backend/src/aima_ugc/modules/analysis/content_analysis_job.py"),
+        _requirements("backend/src/aima_ugc/modules/collection/service.py"),
+        _requirements("backend/src/aima_ugc/modules/content/service.py"),
+        _requirements("backend/src/aima_ugc/modules/ingestion/imports.py"),
+        _requirements("backend/src/aima_ugc/modules/vehicles/service.py"),
+        _requirements("frontend/src/features/voice-plaza/store.ts"),
+        _requirements("frontend/src/features/workbench/components/WorkbenchFilters.vue"),
+        _requirements("frontend/src/features/admin-configuration/store.ts"),
+        _requirements("frontend/src/features/task-center/store.ts"),
+        _requirements("frontend/src/features/collection-strategy/store.ts"),
+        _requirements("frontend/src/features/collection-runtime/store.ts"),
+    )
+    for requirements in representative:
+        for target in (
+            *requirements.backend_targets,
+            *requirements.frontend_unit_targets,
+            *requirements.frontend_e2e_specs,
+        ):
+            if target != "all":
+                assert (ROOT / target).exists(), target

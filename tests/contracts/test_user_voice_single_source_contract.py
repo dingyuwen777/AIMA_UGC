@@ -8,12 +8,25 @@ from aima_ugc.contracts.http import (
 )
 from aima_ugc.modules.analysis import (
     CONTENT_LABELING_PROMPT_PATH,
-    CONTENT_LABELING_PROMPT_POINTER_PATH,
     PROMPT_VERSION,
+    PromptTaxonomyLoader,
 )
 from pydantic import ValidationError
 
 ANALYZED_AT = datetime(2026, 8, 21, 13, 35, tzinfo=UTC)
+
+
+def test_production_prompt_directory_has_one_content_labeling_asset() -> None:
+    """生产目录只保留唯一打标 Prompt，并继续保留代表内容筛选 Prompt。"""
+
+    prompt_directory = CONTENT_LABELING_PROMPT_PATH.parent
+
+    assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling.md"
+    assert sorted(path.name for path in prompt_directory.glob("content_labeling*")) == [
+        "content_labeling.md"
+    ]
+    assert not (prompt_directory / "jingpin_shaixuan.md").exists()
+    assert (prompt_directory / "zhengfu_shaixuan.md").is_file()
 
 
 def _completed_http_analysis(**overrides: object) -> dict[str, object]:
@@ -66,23 +79,25 @@ def test_excel_analysis_uses_voice_type_as_the_only_user_voice_fact() -> None:
 
 
 def test_bootstrap_prompt_separates_source_intent_and_evidence_without_parallel_flag() -> None:
-    prompt_suffix = CONTENT_LABELING_PROMPT_PATH.stem.removeprefix("content_labeling_")
-    assert PROMPT_VERSION == f"content-labeling.{prompt_suffix}"
-    assert (
-        CONTENT_LABELING_PROMPT_POINTER_PATH.read_text(encoding="utf-8").strip()
-        == CONTENT_LABELING_PROMPT_PATH.name
-    )
+    taxonomy = PromptTaxonomyLoader().load()
+    assert PROMPT_VERSION == "content-labeling.v4.0"
+    assert taxonomy.prompt_version == PROMPT_VERSION
+    assert taxonomy.output_protocol_version == "content-labeling.tables.v1"
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     assert "is_user_voice" not in prompt
     assert "source_type" in prompt
     assert "content_intent" in prompt
     assert "voice_evidence" in prompt
-    assert "个人交易发声" in prompt
-    assert "作者展示名" in prompt
-    assert "公开简介" in prompt
-    assert "认证文案" in prompt
-    assert "标题" in prompt
-    assert "正文" in prompt
-    assert "证据不足" in prompt
-    assert "无法判断" in prompt
+    assert taxonomy.voice_types == ("品牌官方发声", "真实用户发声", "营销推广发声")
+    assert "real_user_qualified" in prompt
+    for input_field in (
+        "platform",
+        "title",
+        "text",
+        "author.display_name",
+        "author.bio",
+        "author.verification_label",
+    ):
+        assert input_field in prompt
+    assert "无法判断" not in taxonomy.voice_types

@@ -9,7 +9,6 @@ on:
       - main
     types:
       - opened
-      - synchronize
       - reopened
       - edited
       - ready_for_review
@@ -23,13 +22,12 @@ permissions:
   checks: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && 'metadata' || 'full' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  quality-core:
-    name: Requirement Traceability and Completion Audit
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+  ci-plan:
+    name: CI Plan
     runs-on: ubuntu-24.04
     outputs:
       profile: ${{ steps.classify.outputs.profile }}
@@ -39,14 +37,17 @@ jobs:
       frontend_required: ${{ steps.classify.outputs.frontend_required }}
       contract_required: ${{ steps.classify.outputs.contract_required }}
       postgres_required: ${{ steps.classify.outputs.postgres_required }}
+      postgres_targets: ${{ steps.classify.outputs.postgres_targets }}
       postgres_suites: ${{ steps.classify.outputs.postgres_suites }}
       fullstack_required: ${{ steps.classify.outputs.fullstack_required }}
+      fullstack_specs: ${{ steps.classify.outputs.fullstack_specs }}
       stack_smoke_required: ${{ steps.classify.outputs.stack_smoke_required }}
       report_font_required: ${{ steps.classify.outputs.report_font_required }}
       frontend_audit_required: ${{ steps.classify.outputs.frontend_audit_required }}
       package_required: ${{ steps.classify.outputs.package_required }}
-      postgres_targets: ${{ steps.classify.outputs.postgres_targets }}
-      fullstack_specs: ${{ steps.classify.outputs.fullstack_specs }}
+      backend_targets: ${{ steps.classify.outputs.backend_targets }}
+      frontend_unit_targets: ${{ steps.classify.outputs.frontend_unit_targets }}
+      frontend_e2e_specs: ${{ steps.classify.outputs.frontend_e2e_specs }}
       changed_count: ${{ steps.classify.outputs.changed_count }}
       evidence_reused: ${{ steps.reuse.outputs.reusable }}
     steps:
@@ -56,15 +57,14 @@ jobs:
           fetch-depth: 0
 
       - name: Validate bootstrap-compatible CI control scripts
-        if: >-
-          github.event_name != 'push' &&
-          (github.event_name != 'pull_request' || github.event.action != 'edited')
+        if: github.event_name != 'push'
         shell: bash
         run: |
           set -euo pipefail
           python3 -m py_compile \
             scripts/quality/resolve_main_evidence.py \
-            scripts/quality/classify_ci_scope.py
+            scripts/quality/classify_ci_scope.py \
+            scripts/dev/validate_changed.py
 
       - name: Resolve reusable PR evidence on main
         id: reuse
@@ -109,6 +109,9 @@ jobs:
               echo "frontend_required=false"
               echo "contract_required=false"
               echo "postgres_required=false"
+              echo "backend_targets="
+              echo "frontend_unit_targets="
+              echo "frontend_e2e_specs="
               echo "postgres_targets="
               echo "postgres_suites="
               echo "fullstack_required=false"
@@ -132,6 +135,9 @@ jobs:
               echo "frontend_required=false"
               echo "contract_required=false"
               echo "postgres_required=false"
+              echo "backend_targets="
+              echo "frontend_unit_targets="
+              echo "frontend_e2e_specs="
               echo "postgres_targets="
               echo "postgres_suites="
               echo "fullstack_required=false"
@@ -158,6 +164,33 @@ jobs:
             --head "${HEAD_SHA}" \
             --github-output "${GITHUB_OUTPUT}"
 
+
+
+  quality-core:
+    name: Requirement Traceability and Completion Audit
+    if: always()
+    needs: ci-plan
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Block Draft required evidence
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
+        shell: bash
+        run: |
+          echo "Draft PR does not produce merge-ready required evidence. Mark it ready for review to run final CI." >&2
+          exit 1
+
+      - name: Block failed CI Plan
+        if: needs.ci-plan.result != 'success'
+        shell: bash
+        run: |
+          echo "CI Plan failed; required evidence remains fail-closed." >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
       - name: Verify PR Requirement Source
         if: github.event_name == 'pull_request'
         env:
@@ -177,16 +210,38 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh api -H "Accept: application/vnd.github+json" \
-            "/repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100" \
-            > "${RUNNER_TEMP}/metadata-baseline-checks.json"
-          python3 - "${RUNNER_TEMP}/metadata-baseline-checks.json" <<'PY'
+          checks_file="${RUNNER_TEMP}/metadata-baseline-checks.json"
+          runs_file="${RUNNER_TEMP}/metadata-baseline-runs.json"
+          for attempt in $(seq 1 360); do
+            gh api -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100" \
+              > "${checks_file}"
+            gh api -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&event=pull_request&per_page=100" \
+              > "${runs_file}"
+            set +e
+            python3 - "${checks_file}" "${runs_file}" "${GITHUB_RUN_ID}" <<'PY'
           import json
           import sys
           from pathlib import Path
 
+          checks = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          runs = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          current_run_id = int(sys.argv[3])
+
+          active_other_ci = [
+              run
+              for run in runs.get("workflow_runs", [])
+              if run.get("name") == "CI"
+              and int(run.get("id", 0)) != current_run_id
+              and run.get("status") != "completed"
+          ]
+          if active_other_ci:
+              print("Same-SHA full CI is still running; metadata gate waits for its baseline.")
+              raise SystemExit(75)
+
           required = {"CI Gate", "Compose Golden Path"}
-          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          payload = checks
           latest: dict[str, tuple[str, str | None, str | None]] = {}
           for check in payload.get("check_runs", []):
               name = check.get("name")
@@ -197,21 +252,44 @@ jobs:
               if previous is None or timestamp > previous[0]:
                   latest[name] = (timestamp, check.get("status"), check.get("conclusion"))
 
+          waiting: list[str] = []
           failures: list[str] = []
           for name in sorted(required):
               if name not in latest:
-                  failures.append(f"{name}: missing")
+                  waiting.append(f"{name}: missing")
                   continue
               _, status, conclusion = latest[name]
-              if status != "completed" or conclusion != "success":
-                  failures.append(f"{name}: status={status}, conclusion={conclusion}")
+              if status != "completed":
+                  waiting.append(f"{name}: status={status}")
+              elif conclusion != "success":
+                  failures.append(f"{name}: conclusion={conclusion}")
+
           if failures:
               raise SystemExit(
-                  "Metadata edit requires an already-green full evidence baseline on the same SHA:\n- "
+                  "Metadata edit requires a green full evidence baseline on the same SHA:\n- "
                   + "\n- ".join(failures)
               )
+          if waiting:
+              print("Waiting for same-SHA full evidence baseline:\n- " + "\n- ".join(waiting))
+              raise SystemExit(75)
           print("Metadata edit baseline is green for the current SHA.")
           PY
+            baseline_status=$?
+            set -e
+            case "${baseline_status}" in
+              0)
+                exit 0
+                ;;
+              75)
+                sleep 5
+                ;;
+              *)
+                exit "${baseline_status}"
+                ;;
+            esac
+          done
+          echo "Timed out waiting for same-SHA full evidence baseline." >&2
+          exit 1
 
       - name: Verify AIMA project governance wiring
         if: github.event_name != 'pull_request' || github.event.action != 'edited'
@@ -250,20 +328,20 @@ jobs:
       - name: Setup Python
         if: >-
           (github.event_name != 'pull_request' || github.event.action != 'edited') &&
-          (steps.classify.outputs.backend_required == 'true' || steps.classify.outputs.repository_quality_required == 'true')
+          (needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true')
         uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.14.7
 
       - name: Cache uv downloads
-        if: steps.classify.outputs.backend_required == 'true' || steps.classify.outputs.repository_quality_required == 'true'
+        if: needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ hashFiles('.uv-version', 'uv.lock') }}
 
       - name: Setup Node
-        if: steps.classify.outputs.frontend_required == 'true'
+        if: needs.ci-plan.outputs.frontend_required == 'true'
         uses: actions/setup-node@v6.4.0
         with:
           node-version: 24.19.0
@@ -271,7 +349,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install report validation CJK font
-        if: steps.classify.outputs.backend_required == 'true'
+        if: >-
+          needs.ci-plan.outputs.backend_required == 'true' &&
+          (needs.ci-plan.outputs.backend_targets == 'all' ||
+           needs.ci-plan.outputs.report_font_required == 'true')
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
@@ -280,8 +361,8 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.action != 'edited'
         shell: bash
         env:
-          PYTHON_REQUIRED: ${{ steps.classify.outputs.backend_required == 'true' || steps.classify.outputs.repository_quality_required == 'true' }}
-          FRONTEND_REQUIRED: ${{ steps.classify.outputs.frontend_required }}
+          PYTHON_REQUIRED: ${{ needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true' }}
+          FRONTEND_REQUIRED: ${{ needs.ci-plan.outputs.frontend_required }}
         run: |
           set -euo pipefail
           if [[ "${PYTHON_REQUIRED}" == "true" ]]; then
@@ -293,7 +374,7 @@ jobs:
           fi
 
       - name: Install frozen Python environment
-        if: steps.classify.outputs.backend_required == 'true' || steps.classify.outputs.repository_quality_required == 'true'
+        if: needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -305,7 +386,7 @@ jobs:
           uv run python -c "import aima_ugc"
 
       - name: Repository quality static and targeted regression
-        if: steps.classify.outputs.repository_quality_required == 'true' && steps.classify.outputs.backend_required != 'true'
+        if: needs.ci-plan.outputs.repository_quality_required == 'true' && needs.ci-plan.outputs.backend_required != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -323,18 +404,18 @@ jobs:
             -q
 
       - name: Install locked frontend environment
-        if: steps.classify.outputs.frontend_required == 'true'
+        if: needs.ci-plan.outputs.frontend_required == 'true'
         run: npm ci --prefix frontend
 
       - name: Audit frontend dependencies
-        if: steps.classify.outputs.frontend_audit_required == 'true'
+        if: needs.ci-plan.outputs.frontend_audit_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
           npm --prefix frontend audit --audit-level=high
 
       - name: Source API and frontend startup smoke
-        if: steps.classify.outputs.stack_smoke_required == 'true'
+        if: needs.ci-plan.outputs.stack_smoke_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -359,7 +440,7 @@ jobs:
           fi
 
       - name: Verify generated contracts and client
-        if: steps.classify.outputs.contract_required == 'true'
+        if: needs.ci-plan.outputs.contract_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -373,7 +454,7 @@ jobs:
           uv run python scripts/contracts/check_compatibility.py
 
       - name: Python format, lint and type gates
-        if: steps.classify.outputs.backend_required == 'true'
+        if: needs.ci-plan.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -382,16 +463,26 @@ jobs:
           uv run mypy backend/src
 
       - name: Unit, Contract and API tests
-        if: steps.classify.outputs.backend_required == 'true'
+        if: needs.ci-plan.outputs.backend_required == 'true'
         shell: bash
+        env:
+          BACKEND_TARGETS: ${{ needs.ci-plan.outputs.backend_targets }}
         run: |
           set -euo pipefail
-          uv run pytest tests/unit -q
-          uv run pytest tests/contracts -q
-          uv run pytest tests/api -q
+          if [[ " ${BACKEND_TARGETS} " == *" all "* ]]; then
+            uv run pytest tests/unit -q
+            uv run pytest tests/contracts -q
+            uv run pytest tests/api -q
+          elif [[ -n "${BACKEND_TARGETS}" ]]; then
+            read -r -a targets <<< "${BACKEND_TARGETS}"
+            uv run pytest "${targets[@]}" -q
+          else
+            echo "backend_required=true without selected targets" >&2
+            exit 1
+          fi
 
       - name: Architecture and ownership gates
-        if: steps.classify.outputs.backend_required == 'true'
+        if: needs.ci-plan.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -399,7 +490,7 @@ jobs:
           uv run python scripts/quality/check_table_ownership.py
 
       - name: Build and verify Wheel
-        if: steps.classify.outputs.package_required == 'true'
+        if: needs.ci-plan.outputs.package_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -409,20 +500,42 @@ jobs:
           .wheel-venv/bin/python -c "import aima_ugc; print(aima_ugc.__version__)"
 
       - name: Frontend unit, build and Browser Mock Acceptance
-        if: steps.classify.outputs.frontend_required == 'true'
+        if: needs.ci-plan.outputs.frontend_required == 'true'
         shell: bash
+        env:
+          FRONTEND_UNIT_TARGETS: ${{ needs.ci-plan.outputs.frontend_unit_targets }}
+          FRONTEND_E2E_SPECS: ${{ needs.ci-plan.outputs.frontend_e2e_specs }}
         run: |
           set -euo pipefail
           npm --prefix frontend run lint
-          npm --prefix frontend run test -- --run
+          if [[ " ${FRONTEND_UNIT_TARGETS} " == *" all "* ]]; then
+            npm --prefix frontend run test -- --run
+          elif [[ -n "${FRONTEND_UNIT_TARGETS}" ]]; then
+            read -r -a unit_targets <<< "${FRONTEND_UNIT_TARGETS}"
+            for index in "${!unit_targets[@]}"; do
+              unit_targets[${index}]="${unit_targets[${index}]#frontend/}"
+            done
+            npm --prefix frontend exec -- vitest run "${unit_targets[@]}"
+          fi
           npm --prefix frontend run build
           npm --prefix frontend exec -- playwright --version
-          npm --prefix frontend run test:e2e
+          if [[ " ${FRONTEND_E2E_SPECS} " == *" all "* ]]; then
+            npm --prefix frontend run test:e2e
+          elif [[ -n "${FRONTEND_E2E_SPECS}" ]]; then
+            read -r -a e2e_specs <<< "${FRONTEND_E2E_SPECS}"
+            for index in "${!e2e_specs[@]}"; do
+              e2e_specs[${index}]="${e2e_specs[${index}]#frontend/}"
+            done
+            npm --prefix frontend exec -- playwright test "${e2e_specs[@]}"
+          fi
 
   postgres-integration:
     name: PostgreSQL Integration
-    needs: quality-core
-    if: needs.quality-core.outputs.postgres_required == 'true'
+    needs: ci-plan
+    if: >-
+      needs.ci-plan.result == 'success' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      needs.ci-plan.outputs.postgres_required == 'true'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -447,8 +560,8 @@ jobs:
       AIMA_DB_NAME: aima_ugc
       AIMA_DB_USER: aima_ugc
       AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
-      POSTGRES_TARGETS: ${{ needs.quality-core.outputs.postgres_targets }}
-      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}
+      POSTGRES_TARGETS: ${{ needs.ci-plan.outputs.postgres_targets }}
+      POSTGRES_SUITES: ${{ needs.ci-plan.outputs.postgres_suites }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -483,6 +596,14 @@ jobs:
           uv run alembic upgrade head
           uv run alembic current
           uv run alembic check
+      - name: Install report integration CJK font
+        if: >-
+          needs.ci-plan.outputs.report_font_required == 'true' ||
+          contains(format(' {0} ', needs.ci-plan.outputs.postgres_suites), ' all ') ||
+          contains(format(' {0} ', needs.ci-plan.outputs.postgres_suites), ' reporting ')
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - name: Selected PostgreSQL integration evidence
         shell: bash
         run: |
@@ -492,12 +613,13 @@ jobs:
             [[ " ${POSTGRES_SUITES} " == *" all "* || " ${POSTGRES_SUITES} " == *" ${suite} "* ]]
           }
 
-          if [[ -n "${POSTGRES_TARGETS}" ]]; then
-            read -r -a targets <<< "${POSTGRES_TARGETS}"
-            uv run pytest "${targets[@]}" -q
-          fi
+          # 回退旧Schema的兼容探测要求空库，必须先于会留下当前业务状态的测试。
           if selected migration; then
             uv run python tests/integration/database/verify_migration_compatibility.py
+          fi
+          if [[ -n "${POSTGRES_TARGETS}" ]]; then
+            read -r -a targets <<< "${POSTGRES_TARGETS}"
+            AIMA_REPORT_TEST_DATABASE=1 uv run pytest "${targets[@]}" -q
           fi
           if selected platform; then
             uv run pytest tests/integration/platform -q
@@ -531,21 +653,24 @@ jobs:
           if selected content; then uv run pytest tests/integration/content -q; fi
           if selected ingestion; then uv run pytest tests/integration/ingestion -q; fi
           if selected vehicles; then uv run pytest tests/integration/vehicles -q; fi
+          if selected reporting; then AIMA_REPORT_TEST_DATABASE=1 uv run pytest tests/integration/reporting -q; fi
 
   real-fullstack:
     name: Real Full-stack Golden Path
-    needs: quality-core
-    if: needs.quality-core.outputs.fullstack_required == 'true'
+    needs: ci-plan
+    if: >-
+      needs.ci-plan.result == 'success' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      needs.ci-plan.outputs.fullstack_required == 'true'
     uses: ./.github/workflows/fullstack.yml
     with:
-      specs: ${{ needs.quality-core.outputs.fullstack_specs }}
+      specs: ${{ needs.ci-plan.outputs.fullstack_specs }}
 
   ci-gate:
     name: CI Gate
-    if: >-
-      always() &&
-      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: always()
     needs:
+      - ci-plan
       - quality-core
       - postgres-integration
       - real-fullstack
@@ -554,13 +679,15 @@ jobs:
       - name: Verify required CI layers
         shell: bash
         env:
+          PLAN_RESULT: ${{ needs.ci-plan.result }}
           CORE_RESULT: ${{ needs.quality-core.result }}
-          POSTGRES_REQUIRED: ${{ needs.quality-core.outputs.postgres_required }}
+          POSTGRES_REQUIRED: ${{ needs.ci-plan.outputs.postgres_required }}
           POSTGRES_INTEGRATION_RESULT: ${{ needs.postgres-integration.result }}
-          FULLSTACK_REQUIRED: ${{ needs.quality-core.outputs.fullstack_required }}
+          FULLSTACK_REQUIRED: ${{ needs.ci-plan.outputs.fullstack_required }}
           FULLSTACK_RESULT: ${{ needs.real-fullstack.result }}
         run: |
           set -euo pipefail
+          test "${PLAN_RESULT}" = "success"
           test "${CORE_RESULT}" = "success"
           require_or_skip() {
             local required="$1"; local result="$2"; local label="$3"

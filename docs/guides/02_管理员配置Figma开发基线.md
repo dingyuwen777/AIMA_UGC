@@ -39,9 +39,9 @@ AI 分析规则
 报告策略
 ```
 
-“报告策略”选择本期/上期 `.xlsx`、填写报告日期范围并执行本地格式与日期校验；提交后调用管理员双文件上传接口，轮询持久 Report Job，并展示排队、生成、失败和成功结果。开发环境默认 Dry Run，会执行报告和代表性内容生成但不写飞书，成功态不会生成假链接。
+报告能力按用户确认的数据库报告方案实施为“报告生成”：选择品牌、可选车型与日期，预检后创建冻结报告，展示生成/发布两个独立任务及文件下载。旧 Figma 报告上传表单不再作为该能力的输入依据；其余管理员设计基线继续生效。当前产品流程见 [docs/product/02_当前产品能力与用户流程.md](../product/02_当前产品能力与用户流程.md)。
 
-当前 Word 报告继续沿用既有报告 Renderer；管理员 Job 在 Worker 内复用 `generate_report.py --publish-all` 的等价编排，并通过 generated client 对应的 API 返回安全结果。该页面使用自己的发布 Job 查询，不把飞书链接或 Secret 写入前端，不得用前端延时或永久 Mock 冒充。
+当前 Word 报告继续沿用既有统计与 Renderer；管理员页面通过 generated client 查询持久报告事实，显示后端返回的真实文件和飞书链接。默认 Dry Run 关闭真实发布，生成与下载可独立完成。页面不得用延时或永久 Mock 冒充任务结果。
 
 ## 3. 当前代码 Owner
 
@@ -51,7 +51,7 @@ AI 分析规则
 - 品牌与车型页面私有实现 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/CatalogConfigurationPanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/CatalogConfigurationPanel.vue)；
 - AI 分析规则页面私有实现 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AnalysisSchemePanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AnalysisSchemePanel.vue)；
 - 操作记录页面私有实现 → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AuditPanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/AuditPanel.vue)；
-- 报告策略页面私有 Feature Owner → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/ReportStrategyPanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/ReportStrategyPanel.vue)；
+- 报告生成页面私有 Feature Owner → [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/ReportGenerationPanel.vue`](../../frontend/src/features/admin-configuration/pages/AdminConfigurationPage/components/ReportGenerationPanel.vue)；
 - Provider 配置唯一业务 Owner → [`frontend/src/features/admin-configuration/components/ProviderConfigurationPanel.vue`](../../frontend/src/features/admin-configuration/components/ProviderConfigurationPanel.vue)；
 - 结构化标签唯一编辑 Owner → [`frontend/src/features/admin-configuration/components/AnalysisLabelsEditor.vue`](../../frontend/src/features/admin-configuration/components/AnalysisLabelsEditor.vue)；
 - Feature API → [`frontend/src/features/admin-configuration/api.ts`](../../frontend/src/features/admin-configuration/api.ts)；
@@ -102,11 +102,11 @@ AI 模型与 TikHub 继续复用同一个 Provider 配置业务 Owner：
 - 不新增当前 Contract 不支持的全库搜索；
 - 当前 offset pagination 继续沿用正式 API。
 
-### 报告策略
+### 报告生成
 
-- 浏览器负责验证文件扩展名与日期范围；后端上传链路继续校验 XLSX ZIP 结构、资源限制和 Artifact 完整性；
-- 主操作调用真实管理员上传接口并创建持久 Report Job，不在任务中心写入假任务；
-- Dry Run 成功时只展示真实生成摘要，不构造飞书文档或多维表格链接；关闭 Dry Run 后，页面只展示后端返回的真实链接；
+- 浏览器验证品牌和日期范围；后端再次校验车型归属及可见内容，原子冻结报告并创建任务；
+- 主操作使用数据库报告接口，生成成功后下载文件；飞书发布单独发起并保持失败恢复；
+- Dry Run 下禁用真实发布，不构造飞书文档或多维表格链接；关闭 Dry Run 后，只展示后端返回的真实链接；
 - 失败状态、重试语义和飞书同步结果由 Job/Worker 与页面轮询共同表达，不能用前端延时冒充。
 
 ## 5. 响应式与宽表格

@@ -36,6 +36,7 @@ const schemes = ref<AnalysisSchemeResponse[]>([])
 const archivedSchemes = ref<ResourceLifecycleResponse[]>([])
 const selectedSchemeVersionId = ref('')
 const archivedSchemeLoading = ref(false)
+const archivedSchemesLoaded = ref(false)
 const schemeLabelsValid = ref(true)
 const schemeCopyName = ref('')
 const schemeCopyEditing = ref(false)
@@ -52,6 +53,29 @@ const schemeDraft = reactive({
   sentiments: '',
   labelsJson: '{}',
 })
+const markdownEditorMode = ref(false)
+const markdownEditing = computed(() => markdownEditorMode.value)
+
+/** 导入文档只改编辑区，仍需保存草稿并通过后端编译后才能发布。 */
+async function importMarkdown(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    if (!file.name.toLowerCase().endsWith('.md')) throw new Error('请选择 Markdown 文件。')
+    if (file.size > 200_000) throw new Error('提示词文件不能超过 200 KB。')
+    const text = await file.text()
+    if (!text.includes('<!-- AIMA_TABLE: voice_types -->')) throw new Error('文档缺少发声类型定义表，请使用当前 Markdown 格式。')
+    markdownEditorMode.value = true
+    schemeDraft.promptTemplate = text
+    error.value = null
+    showNotice('文档已载入编辑区。保存草稿后可查看编译出的分类和标签，发布后新任务生效。')
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : apiErrorMessage(reason)
+  } finally {
+    input.value = ''
+  }
+}
 
 const selectedSchemeVersion = computed(() => {
   for (const scheme of schemes.value) {
@@ -67,10 +91,15 @@ const navigationDirty = computed(() => {
   if (!selected) return false
   const defaultCopyName = `${selected.scheme.name} 副本`
   if (schemeCopyEditing.value && schemeCopyName.value.trim() !== defaultCopyName) return true
-  if (!schemeLabelsValid.value) return true
+  if (!markdownEditing.value && !schemeLabelsValid.value) return true
   try {
     const definition = schemeDefinition()
     const saved = selected.version.definition
+    if (markdownEditing.value) {
+      return schemeDraft.schemeName !== selected.scheme.name
+        || schemeDraft.description !== selected.version.description
+        || schemeDraft.promptTemplate !== saved.prompt_template
+    }
     return schemeDraft.schemeName !== selected.scheme.name
       || schemeDraft.description !== selected.version.description
       || definition.prompt_template !== saved.prompt_template
@@ -126,6 +155,7 @@ async function loadArchivedSchemes(): Promise<void> {
   error.value = null
   try {
     archivedSchemes.value = (await fetchArchivedSchemes()).items
+    archivedSchemesLoaded.value = true
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -169,18 +199,20 @@ function syncSchemeDraft(
   scheme: AnalysisSchemeResponse,
   version: AnalysisSchemeResponse['versions'][number],
 ): void {
+  markdownEditorMode.value = version.definition.prompt_template.includes('<!-- AIMA_TABLE: voice_types -->')
   Object.assign(schemeDraft, {
     schemeName: scheme.name,
     description: version.description,
     promptTemplate: version.definition.prompt_template,
-    voiceTypes: version.definition.voice_types.join('\n'),
-    sentiments: version.definition.sentiments.join('\n'),
+    voiceTypes: (version.definition.voice_types ?? []).join('\n'),
+    sentiments: (version.definition.sentiments ?? []).join('\n'),
     labelsJson: JSON.stringify(version.definition.labels, null, 2),
   })
 }
 
 /** 结构化页面输入转换成正式 Scheme Definition。 */
 function schemeDefinition(): AnalysisSchemeDefinitionRequest {
+  if (markdownEditing.value) return { prompt_template: schemeDraft.promptTemplate }
   return {
     prompt_template: schemeDraft.promptTemplate,
     voice_types: splitLines(schemeDraft.voiceTypes),
@@ -191,11 +223,12 @@ function schemeDefinition(): AnalysisSchemeDefinitionRequest {
 
 /** 前端只执行与后端一致的最小发布资格预检。 */
 function validateSchemeDefinition(definition: AnalysisSchemeDefinitionRequest): void {
+  if (markdownEditing.value) return
   if (!schemeLabelsValid.value) throw new Error('请先修正结构化标签规则。')
   if (!definition.prompt_template.includes('{{AIMA_TAXONOMY_JSON}}')) {
     throw new Error('提示词模板必须包含标签规则占位符 {{AIMA_TAXONOMY_JSON}}。')
   }
-  if (!definition.voice_types.length || !definition.sentiments.length || !Object.keys(definition.labels).length) {
+  if (!definition.voice_types?.length || !definition.sentiments?.length || !Object.keys(definition.labels ?? {}).length) {
     throw new Error('发声类型、情感和标签都不能为空。')
   }
 }
@@ -304,7 +337,7 @@ async function restoreArchivedAnalysisScheme(item: ResourceLifecycleResponse): P
   }
 }
 
-/** 永久删除前先读取后端资格，历史规则不能被页面强行删除。 */
+/** 删除已归档规则；服务端决定物理删除还是保留历史分析所需快照。 */
 async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Promise<void> {
   saving.value = true
   error.value = null
@@ -312,13 +345,13 @@ async function deleteArchivedAnalysisScheme(item: ResourceLifecycleResponse): Pr
   try {
     const eligibility = await fetchSchemeDeleteEligibility(item.id)
     if (!eligibility.eligible) {
-      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析规则已有发布或运行历史，只能保留归档记录。'
+      error.value = (eligibility.blocking_reasons ?? []).join('；') || '该分析规则当前不能删除。'
       return
     }
-    if (!window.confirm(`确认永久删除已归档 AI 分析规则“${item.name}”吗？只有从未发布、从未被分析任务使用的纯草稿规则才允许删除。`)) return
+    if (!window.confirm(`确认删除已归档 AI 分析规则“${item.name}”吗？删除后将从配置管理中移除且无法恢复；若存在历史分析，系统会保留必要的版本快照。`)) return
     await deleteArchivedScheme(item.id)
     await loadArchivedSchemes()
-    showNotice('未发布且未使用的归档 AI 分析规则已永久删除。')
+    showNotice('AI 分析规则已从配置管理中删除；历史分析所需版本快照不会被破坏。')
   } catch (reason) {
     error.value = apiErrorMessage(reason)
   } finally {
@@ -397,21 +430,33 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
     >
       <section class="card scheme-history">
         <h2>版本历史</h2>
-        <template
+        <details
           v-for="scheme in schemes"
           :key="scheme.id"
+          class="scheme-group"
+          :open="scheme.id === selectedSchemeVersion?.scheme.id"
         >
-          <button
-            v-for="version in scheme.versions"
-            :key="version.id"
-            type="button"
-            :class="{ active: selectedSchemeVersionId === version.id }"
-            @click="selectSchemeVersion(version.id)"
-          >
-            <strong>版本 {{ version.version }} · {{ schemeVersionStateLabel(scheme, version) }}</strong>
-            <span>{{ formatDateTime(version.created_at) }}</span>
-          </button>
-        </template>
+          <summary>
+            <span>
+              <strong>{{ scheme.name }}</strong>
+              <small>{{ scheme.versions.length }} 个版本</small>
+            </span>
+            <small v-if="scheme.is_active">当前方案</small>
+          </summary>
+          <div class="scheme-version-list">
+            <button
+              v-for="version in scheme.versions"
+              :key="version.id"
+              type="button"
+              class="scheme-version-button"
+              :class="{ active: selectedSchemeVersionId === version.id }"
+              @click="selectSchemeVersion(version.id)"
+            >
+              <strong>版本 {{ version.version }} · {{ schemeVersionStateLabel(scheme, version) }}</strong>
+              <span>{{ formatDateTime(version.created_at) }}</span>
+            </button>
+          </div>
+        </details>
 
         <div class="publish-policy">
           <strong>发布策略</strong>
@@ -424,7 +469,13 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
           class="archived-schemes"
           @toggle="onArchivedSchemesToggle"
         >
-          <summary>已归档规则</summary>
+          <summary>
+            <span>已归档规则</span>
+            <small v-if="archivedSchemesLoaded">{{ archivedSchemes.length }} 项</small>
+          </summary>
+          <p class="archived-scheme-help">
+            归档规则不会参与新任务；不再需要时可删除。历史分析所需的不可变版本快照会由服务端继续保留。
+          </p>
           <div
             v-if="archivedSchemeLoading"
             class="archived-scheme-state"
@@ -461,7 +512,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
               :disabled="saving"
               @click="deleteArchivedAnalysisScheme(item)"
             >
-              永久删除
+              删除
             </AimaButton>
           </div>
         </details>
@@ -476,7 +527,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
                 · {{ schemeVersionStateLabel(selectedSchemeVersion.scheme, selectedSchemeVersion.version) }}
               </template>
             </h2>
-            <p>按业务含义维护发声类型、情感和标签；修改后先生成草稿。</p>
+            <p>在 Markdown 文档中维护判断标准和分类表；保存草稿后查看编译结果，再发布生效。</p>
           </div>
           <div
             v-if="selectedSchemeVersion"
@@ -541,14 +592,33 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
           说明
           <input v-model="schemeDraft.description">
         </label>
-        <label>
+        <label class="markdown-import">
+          导入提示词文档
+          <input
+            type="file"
+            accept=".md,text/markdown"
+            @change="importMarkdown"
+          >
+          <small>导入不会立即生效；分类、组合规则和标签在同一文档中维护。</small>
+        </label>
+        <label v-if="markdownEditing">
+          提示词 Markdown
+          <textarea
+            v-model="schemeDraft.promptTemplate"
+            rows="24"
+            spellcheck="false"
+            class="markdown-source"
+          />
+          <small>保存时由后端校验表格、重复分类、标签父子关系和组合覆盖；错误会定位到文档行。</small>
+        </label>
+        <label v-if="!markdownEditing">
           发声类型
           <textarea
             v-model="schemeDraft.voiceTypes"
             rows="4"
           />
         </label>
-        <label>
+        <label v-if="!markdownEditing">
           情感
           <textarea
             v-model="schemeDraft.sentiments"
@@ -557,11 +627,27 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
         </label>
 
         <AnalysisLabelsEditor
+          v-if="!markdownEditing"
           v-model="schemeDraft.labelsJson"
           @validity="schemeLabelsValid = $event"
         />
 
-        <details class="advanced-editor">
+        <details
+          v-if="markdownEditing"
+          class="advanced-editor"
+        >
+          <summary>已保存草稿的编译结果（只读）</summary>
+          <p>当前编辑尚未保存时，下方仍显示原版本结果；保存成功后刷新。</p>
+          <div class="technical-note taxonomy-preview">
+            <strong>发声类型</strong><pre>{{ schemeDraft.voiceTypes }}</pre>
+            <strong>情感</strong><pre>{{ schemeDraft.sentiments }}</pre>
+            <strong>标签</strong><pre>{{ schemeDraft.labelsJson }}</pre>
+          </div>
+        </details>
+        <details
+          v-else
+          class="advanced-editor"
+        >
           <summary>高级规则编辑</summary>
           <p>这里只维护提示词与查看机器结构；业务标签请在上方结构化编辑器修改。</p>
           <div class="advanced-editor__fields">
@@ -592,7 +678,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
 
         <div class="actions">
           <AimaButton
-            :disabled="saving || !schemeLabelsValid"
+            :disabled="saving || (!markdownEditing && !schemeLabelsValid)"
             @click="saveSchemeDraft"
           >
             {{ selectedSchemeVersion?.version.status === 'draft' ? '保存草稿' : '基于此版本新建草稿' }}
@@ -628,14 +714,24 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
 .scheme-history { display: grid; align-content: start; gap: 10px; }
 h2, p { margin: 0; }
 h2 { color: var(--aima-text); font-size: 16px; font-weight: 500; line-height: 24px; }
-.scheme-history > button { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid var(--aima-border); border-radius: 6px; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; text-align: left; }
-.scheme-history > button.active { border-color: var(--aima-primary); color: var(--aima-primary); background: var(--aima-primary-soft); }
-.scheme-history > button strong { font-size: 12px; }
-.scheme-history > button span { color: var(--aima-text-disabled); font-size: 9px; }
+.scheme-group { overflow: hidden; border: 1px solid var(--aima-border); border-radius: 7px; background: var(--aima-surface); }
+.scheme-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; cursor: pointer; color: var(--aima-text-secondary); font-size: 10px; list-style-position: inside; }
+.scheme-group > summary span { min-width: 0; }
+.scheme-group > summary strong,
+.scheme-group > summary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scheme-group > summary strong { color: var(--aima-text); font-size: 11px; }
+.scheme-group > summary small { color: var(--aima-text-disabled); font-size: 9px; }
+.scheme-version-list { display: grid; gap: 6px; padding: 0 8px 8px; }
+.scheme-version-button { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--aima-border); border-radius: 6px; color: var(--aima-text-secondary); background: var(--aima-surface); cursor: pointer; text-align: left; }
+.scheme-version-button.active { border-color: var(--aima-primary); color: var(--aima-primary); background: var(--aima-primary-soft); }
+.scheme-version-button strong { font-size: 11px; }
+.scheme-version-button span { color: var(--aima-text-disabled); font-size: 9px; }
 .publish-policy { display: grid; gap: 4px; margin-top: 8px; color: var(--aima-text-disabled); font-size: 10px; line-height: 16px; }
 .publish-policy strong { margin-bottom: 4px; color: var(--aima-text); font-size: 12px; }
 .archived-schemes { margin-top: 8px; border-top: 1px solid var(--aima-border); padding-top: 10px; }
-.archived-schemes summary { cursor: pointer; color: var(--aima-text-secondary); font-size: 11px; font-weight: 600; }
+.archived-schemes > summary { display: flex; justify-content: space-between; gap: 8px; cursor: pointer; color: var(--aima-text-secondary); font-size: 11px; font-weight: 600; }
+.archived-schemes > summary small { color: var(--aima-text-disabled); font-size: 9px; font-weight: 400; }
+.archived-scheme-help { margin-top: 8px; color: var(--aima-text-muted); font-size: 9px; line-height: 14px; }
 .archived-scheme-state { padding: 10px 0; color: var(--aima-text-muted); font-size: 10px; }
 .archived-scheme-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; padding: 8px 0; border-top: 1px solid var(--aima-border); }
 .archived-scheme-row strong,
@@ -653,6 +749,7 @@ h2 { color: var(--aima-text); font-size: 16px; font-weight: 500; line-height: 24
 input, textarea { width: 100%; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--aima-border-strong); border-radius: 8px; outline: none; color: var(--aima-text); background: var(--aima-surface); font: inherit; font-size: 13px; line-height: 20px; }
 input { height: 40px; }
 textarea { min-height: 88px; resize: vertical; }
+.markdown-source { min-height: 400px; font-family: monospace; white-space: pre; overflow-x: auto; }
 input:focus, textarea:focus { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-primary-soft); }
 input:read-only { color: var(--aima-text-disabled); background: var(--aima-color-bg-disabled, #f2f5f7); }
 .scheme-copy-editor { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--aima-border); border-radius: 8px; background: #fbfcfe; }

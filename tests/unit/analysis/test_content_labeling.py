@@ -25,8 +25,16 @@ from aima_ugc.modules.analysis.content_labeling import (
     PromptTaxonomyLoader,
     RuntimeTaxonomyValidator,
 )
+from aima_ugc.modules.analysis.schemes import (
+    bootstrap_definition_from_prompt,
+    compile_analysis_scheme,
+)
 
 OBSERVED_AT = datetime(2026, 8, 18, 10, 0, tzinfo=UTC)
+# 旧 JSON 镜像规则必须仍能恢复历史版本；新表格编译另有独立验收。
+CURRENT_PROMPT_PATH = (
+    Path(__file__).resolve().parents[2] / "fixtures/analysis/content_labeling_legacy_v3.md"
+)
 
 
 def _analysis_docs() -> str:
@@ -38,7 +46,7 @@ def _prompt_with_taxonomy_mutation(
     tmp_path: Path,
     mutate: Callable[[dict[str, Any]], None],
 ) -> Path:
-    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    prompt = CURRENT_PROMPT_PATH.read_text(encoding="utf-8")
     match = re.search(
         r"(<!-- AIMA_TAXONOMY_START -->\s*```json\s*)(.*?)(\s*```\s*<!-- AIMA_TAXONOMY_END -->)",
         prompt,
@@ -49,7 +57,22 @@ def _prompt_with_taxonomy_mutation(
     mutate(payload)
     replacement = json.dumps(payload, ensure_ascii=False, indent=2)
     mutated = prompt[: match.start(2)] + replacement + prompt[match.end(2) :]
-    path = tmp_path / "content_labeling_v1.md"
+    path = tmp_path / "mutated_scheme.md"
+    path.write_text(mutated, encoding="utf-8")
+    return path
+
+
+def _prompt_with_human_labels_mutation(
+    tmp_path: Path,
+    mutate: Callable[[str], str],
+) -> Path:
+    """只修改人类可读标签区，模拟直接编辑 Git Markdown 而不手工同步机器 JSON。"""
+
+    prompt = CURRENT_PROMPT_PATH.read_text(encoding="utf-8")
+    before_rules, marker, after_rules = prompt.partition("### 标签规则")
+    assert marker
+    mutated = mutate(before_rules) + marker + after_rules
+    path = tmp_path / "mutated_human_labels.md"
     path.write_text(mutated, encoding="utf-8")
     return path
 
@@ -58,15 +81,17 @@ def _valid_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
     primary = taxonomy.primary_labels[0]
     secondary = taxonomy.labels[primary][0]
     sentiment = taxonomy.sentiments[0]
-    assert taxonomy.semantic_rules is not None
     return {
         "item_no": item_no,
         "relevance": "relevant",
         "relevance_evidence": ["爱玛体验"],
-        "source_type": "unknown",
-        "content_intent": "unknown",
-        "voice_type": taxonomy.semantic_rules.unknown_voice_type,
-        "voice_evidence": [],
+        "source_type": "ordinary_consumer",
+        "content_intent": "organic_inquiry",
+        "real_user_qualified": False,
+        "voice_type": (
+            taxonomy.semantic_rules.ordinary_consumer_organic_voice_type_when_not_qualified
+        ),
+        "voice_evidence": ["正文"],
         "sentiment": sentiment,
         "sentiment_evidence": ["正文"],
         "labels": [
@@ -143,11 +168,41 @@ def test_prompt_taxonomy_has_expected_baseline_and_documented_bootstrap_source()
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
     docs = _analysis_docs()
 
-    assert len(taxonomy.primary_labels) == 10
-    assert len(taxonomy.all_secondary_labels) == 40
-    assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md" in docs
+    assert taxonomy.prompt_version == "content-labeling.v4.0"
+    assert taxonomy.output_protocol_version == "content-labeling.tables.v1"
+    assert taxonomy.voice_types == ("品牌官方发声", "真实用户发声", "营销推广发声")
+    assert taxonomy.sentiments == ("正面", "中性", "负面", "混合")
+    assert len(taxonomy.primary_labels) == 9
+    assert len(taxonomy.all_secondary_labels) == 39
+    assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md" in docs
     assert "active Analysis Scheme Version" in docs
     assert "bootstrap/灾备基线" in docs
+
+
+def test_current_scheme_compiles_back_to_the_exact_git_prompt() -> None:
+    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    definition = bootstrap_definition_from_prompt(prompt)
+    compiled = compile_analysis_scheme(definition)
+
+    assert compiled.prompt_text == prompt
+    assert compiled.to_prompt_taxonomy().output_protocol_version == "content-labeling.tables.v1"
+
+
+@pytest.mark.parametrize(
+    "obsolete_version",
+    [
+        "content-labeling.v3",
+        "content-labeling.v4",
+        "content-labeling.v4.5",
+        "content-labeling.v4.6",
+    ],
+)
+def test_obsolete_prompt_versions_fail_closed(obsolete_version: str) -> None:
+    prompt = CURRENT_PROMPT_PATH.read_text(encoding="utf-8")
+    obsolete = prompt.replace("content-labeling.v3.0", obsolete_version)
+
+    with pytest.raises(PromptTaxonomyError, match="不受支持"):
+        PromptTaxonomyLoader.load_text(obsolete)
 
 
 def test_production_python_does_not_copy_concrete_taxonomy_labels() -> None:
@@ -170,33 +225,63 @@ def test_prompt_contains_required_human_judgment_sections() -> None:
 
     assert "## 情感判断标准" in prompt
     assert "## 一级/二级标签判断标准" in prompt
+    assert "## 发声类型判断标准" in prompt
+    assert "## 返回前自检" in prompt
+    assert "### 信息不足时的完备归类" in prompt
+    assert "| 发声类型 | 核心定义 | 判断边界 |" in prompt
+    assert "### 语义相关性示例" in prompt
+    assert "| 情感 | 核心定义 | 判断说明 |" in prompt
+    assert "### 情感判断示例" in prompt
     assert "### 一级/二级标签高混淆场景" in prompt
     assert "### 一级/二级标签示例" in prompt
-    assert "典型表达只作理解辅助" in prompt
 
 
 def test_prompt_taxonomy_changes_are_runtime_driven_without_python_changes(tmp_path: Path) -> None:
-    original = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    original = PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
 
-    def add_label(payload: dict[str, Any]) -> None:
-        payload["labels"]["临时测试一级"] = ["临时测试二级"]
+    def add_label(human_section: str) -> str:
+        return human_section + "### 临时测试一级\n\n- 临时测试二级\n\n"
 
-    changed = PromptTaxonomyLoader(_prompt_with_taxonomy_mutation(tmp_path, add_label)).load()
+    changed = PromptTaxonomyLoader(_prompt_with_human_labels_mutation(tmp_path, add_label)).load()
 
     assert changed.primary_labels == (*original.primary_labels, "临时测试一级")
     assert changed.labels["临时测试一级"] == ("临时测试二级",)
+    assert '"临时测试一级"' in changed.prompt_text
+    assert "AIMA_LABEL_GUIDE_START" not in changed.prompt_text
     assert changed.taxonomy_sha256 != original.taxonomy_sha256
 
 
+def test_machine_label_mirror_does_not_override_git_markdown_label_source(tmp_path: Path) -> None:
+    """只改机器 JSON 的 labels 不得形成第二套标签事实。"""
+
+    original = PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
+
+    def add_machine_only_label(payload: dict[str, Any]) -> None:
+        payload["labels"]["机器镜像假标签"] = ["不会生效"]
+
+    changed = PromptTaxonomyLoader(
+        _prompt_with_taxonomy_mutation(tmp_path, add_machine_only_label)
+    ).load()
+
+    assert dict(changed.labels) == dict(original.labels)
+    assert "机器镜像假标签" not in changed.prompt_text
+    assert changed.taxonomy_sha256 == original.taxonomy_sha256
+    assert changed.prompt_sha256 == original.prompt_sha256
+
+
 def test_removed_prompt_label_is_immediately_rejected_by_runtime_validator(tmp_path: Path) -> None:
-    original = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    original = PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
     primary = original.primary_labels[0]
     removed_secondary = original.labels[primary][0]
 
-    def remove_label(payload: dict[str, Any]) -> None:
-        payload["labels"][primary].remove(removed_secondary)
+    def remove_label(human_section: str) -> str:
+        target = f"- {removed_secondary}\n"
+        assert target in human_section
+        return human_section.replace(target, "", 1)
 
-    changed = PromptTaxonomyLoader(_prompt_with_taxonomy_mutation(tmp_path, remove_label)).load()
+    changed = PromptTaxonomyLoader(
+        _prompt_with_human_labels_mutation(tmp_path, remove_label)
+    ).load()
     validator = RuntimeTaxonomyValidator(changed)
 
     with pytest.raises(ContentLabelingValidationError) as exc_info:
@@ -231,19 +316,34 @@ def test_invalid_prompt_taxonomy_fails_before_llm_call(
     tmp_path: Path,
     failure_kind: str,
 ) -> None:
-    PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    current = PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
 
-    def mutate(payload: dict[str, Any]) -> None:
-        if failure_kind == "duplicate_sentiment":
+    if failure_kind == "duplicate_sentiment":
+
+        def mutate_machine(payload: dict[str, Any]) -> None:
             payload["sentiments"].append(payload["sentiments"][0])
-        elif failure_kind == "duplicate_secondary":
-            first_primary, second_primary = list(payload["labels"])[:2]
-            payload["labels"][second_primary].append(payload["labels"][first_primary][0])
-        else:
-            first_primary = next(iter(payload["labels"]))
-            payload["labels"][first_primary][0] = ""
 
-    loader = PromptTaxonomyLoader(_prompt_with_taxonomy_mutation(tmp_path, mutate))
+        path = _prompt_with_taxonomy_mutation(tmp_path, mutate_machine)
+    else:
+        first_primary, second_primary = current.primary_labels[:2]
+        first_secondary = current.labels[first_primary][0]
+
+        def mutate_human(human_section: str) -> str:
+            if failure_kind == "duplicate_secondary":
+                anchor = f"### {second_primary}\n\n"
+                assert anchor in human_section
+                return human_section.replace(
+                    anchor,
+                    anchor + f"- {first_secondary}\n",
+                    1,
+                )
+            target = f"- {first_secondary}\n"
+            assert target in human_section
+            return human_section.replace(target, "- \n", 1)
+
+        path = _prompt_with_human_labels_mutation(tmp_path, mutate_human)
+
+    loader = PromptTaxonomyLoader(path)
     fake = FakeContentLabelingLLM(responses=["{}"])
     service = ContentLabelingService(prompt_loader=loader, llm=fake)
 
@@ -257,7 +357,7 @@ def test_invalid_prompt_taxonomy_fails_before_llm_call(
 
 
 def test_invalid_taxonomy_json_is_rejected(tmp_path: Path) -> None:
-    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    prompt = CURRENT_PROMPT_PATH.read_text(encoding="utf-8")
     match = re.search(
         r"(<!-- AIMA_TAXONOMY_START -->\s*```json\s*)(.*?)(\s*```\s*<!-- AIMA_TAXONOMY_END -->)",
         prompt,
@@ -265,7 +365,7 @@ def test_invalid_taxonomy_json_is_rejected(tmp_path: Path) -> None:
     )
     assert match is not None
     broken = prompt[: match.start(2)] + "{not-json}" + prompt[match.end(2) :]
-    path = tmp_path / "content_labeling_v1.md"
+    path = tmp_path / "mutated_scheme.md"
     path.write_text(broken, encoding="utf-8")
 
     with pytest.raises(PromptTaxonomyError):
@@ -295,6 +395,7 @@ def test_model_request_only_contains_approved_business_fields_and_fills_missing_
     assert fake.calls[0].model_payload() == [
         {
             "item_no": 1,
+            "platform": "xiaohongshu",
             "title": "",
             "text": "",
             "author": {"display_name": "", "bio": "", "verification_label": ""},
@@ -303,7 +404,6 @@ def test_model_request_only_contains_approved_business_fields_and_fills_missing_
     serialized = json.dumps(fake.calls[0].model_payload(), ensure_ascii=False)
     for forbidden in (
         "secret-content-id",
-        "xiaohongshu",
         "imports",
         "source.xlsx",
         "sheet=文章;row=2",
@@ -315,19 +415,19 @@ def test_model_request_only_contains_approved_business_fields_and_fills_missing_
 
 
 def test_prompt_and_taxonomy_hashes_change_at_the_correct_boundary(tmp_path: Path) -> None:
-    original = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    original = PromptTaxonomyLoader(CURRENT_PROMPT_PATH).load()
     text_only_path = tmp_path / "text-only.md"
     text_only_path.write_text(
-        CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8") + "\n<!-- text-only-change -->\n",
+        CURRENT_PROMPT_PATH.read_text(encoding="utf-8") + "\n<!-- text-only-change -->\n",
         encoding="utf-8",
     )
     text_only = PromptTaxonomyLoader(text_only_path).load()
 
-    def add_label(payload: dict[str, Any]) -> None:
-        payload["labels"]["临时Hash一级"] = ["临时Hash二级"]
+    def add_label(human_section: str) -> str:
+        return human_section + "### 临时Hash一级\n\n- 临时Hash二级\n\n"
 
     taxonomy_changed = PromptTaxonomyLoader(
-        _prompt_with_taxonomy_mutation(tmp_path, add_label)
+        _prompt_with_human_labels_mutation(tmp_path, add_label)
     ).load()
 
     assert text_only.prompt_sha256 != original.prompt_sha256

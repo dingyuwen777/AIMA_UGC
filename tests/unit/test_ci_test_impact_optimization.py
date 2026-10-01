@@ -102,8 +102,17 @@ def test_unknown_persistence_and_ci_self_fail_closed() -> None:
     assert ci_self.fullstack_specs == ("all",)
 
 
-def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install() -> None:
-    """完整后端单测所需字体留在 Core，PostgreSQL Job 不重复安装。"""
+def test_empty_database_migration_probe_precedes_data_writing_postgres_targets() -> None:
+    """旧版本回退只验证空库；业务目标测试会留下旧Schema不接受的新状态。"""
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    postgres_step = workflow.split("      - name: Selected PostgreSQL integration evidence", 1)[1]
+    migration_probe = "uv run python tests/integration/database/verify_migration_compatibility.py"
+    data_writing_targets = 'AIMA_REPORT_TEST_DATABASE=1 uv run pytest "${targets[@]}" -q'
+    assert postgres_step.index(migration_probe) < postgres_step.index(data_writing_targets)
+
+
+def test_ci_workflow_uses_selected_postgres_suites_and_conditional_report_font() -> None:
+    """非报告PG仍保持轻量，真实报告渲染必须在自己的runner准备字体。"""
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "postgres_suites" in text
@@ -113,48 +122,49 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     assert "Repository quality static and targeted regression" in text
 
     postgres_job = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
-    assert "fonts-noto-cjk" not in postgres_job
-    assert (
-        "      POSTGRES_SUITES: ${{ needs.quality-core.outputs.postgres_suites }}\n" in postgres_job
+    font_step = _section(
+        postgres_job,
+        "      - name: Install report integration CJK font\n",
+        "      - name: Selected PostgreSQL integration evidence\n",
     )
+    assert "        if: >-\n" in font_step
+    assert "report_font_required == 'true'" in font_step
+    assert "' all '" in font_step
+    assert "' reporting '" in font_step
+    assert "fonts-noto-cjk" in font_step
+    non_report = CLASSIFY_REQUIREMENTS(("backend/src/aima_ugc/modules/collection/tables.py",))
+    assert non_report.report_font_required is False
+    assert non_report.postgres_suites == ("collection",)
+    assert "      POSTGRES_SUITES: ${{ needs.ci-plan.outputs.postgres_suites }}\n" in postgres_job
     assert "uv run pytest tests/integration/vehicles -q" in postgres_job
 
-    assert (
-        "      - name: Install report validation CJK font\n"
-        "        if: steps.classify.outputs.backend_required == 'true'\n" in text
-    )
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    assert "      - name: Install report validation CJK font\n" in core
 
 
-def test_draft_prs_are_skipped_at_job_level_instead_of_failed_inside_ci() -> None:
+def test_draft_pr_required_contexts_fail_closed_without_running_full_ci() -> None:
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
 
-    assert (
-        "  quality-core:\n"
-        "    name: Requirement Traceability and Completion Audit\n"
-        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
-        in text
-    )
-    assert (
-        "  ci-gate:\n"
-        "    name: CI Gate\n"
-        "    if: >-\n"
-        "      always() &&\n"
-        "      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)\n"
-        in text
-    )
-    assert "Defer full CI while PR is Draft" not in text
+    assert "      - name: Block Draft required evidence\n" in core
+    assert "github.event.pull_request.draft == true" in core
+    assert core.index("Block Draft required evidence") < core.index("      - name: Checkout")
+    assert "  ci-gate:\n    name: CI Gate\n    if: always()\n" in text
+    assert "github.event.pull_request.draft == false" not in core
+    postgres = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
+    fullstack = _section(text, "  real-fullstack:\n", "  ci-gate:\n")
+    assert "github.event.pull_request.draft == false" in postgres
+    assert "github.event.pull_request.draft == false" in fullstack
 
 
-def test_runtime_draft_pr_is_skipped_before_allocating_compose_work() -> None:
+def test_runtime_draft_pr_fails_closed_before_compose_setup() -> None:
     text = (ROOT / ".github" / "workflows" / "runtime.yml").read_text(encoding="utf-8")
+    job = text.split("  compose-golden-path:\n", 1)[1]
 
-    assert (
-        "  compose-golden-path:\n"
-        "    name: Compose Golden Path\n"
-        "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false\n"
-        in text
-    )
-    assert "Defer Runtime Acceptance while PR is Draft" not in text
+    assert "      - name: Block Draft required evidence\n" in job
+    assert "github.event.pull_request.draft == true" in job
+    assert job.index("Block Draft required evidence") < job.index("      - name: Checkout")
+    assert "github.event.pull_request.draft == false" not in job
 
 
 def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
@@ -167,7 +177,6 @@ def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
         "      - main\n"
         "    types:\n"
         "      - opened\n"
-        "      - synchronize\n"
         "      - reopened\n"
         "      - ready_for_review\n"
         "    paths:\n"

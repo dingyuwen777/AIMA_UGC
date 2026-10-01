@@ -11,6 +11,7 @@ import pytest
 from aima_ugc.bootstrap import content_http
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.contracts.http import AnalysisContentRunCreateRequest, AnalysisRunTargetSelection
+from aima_ugc.modules.analysis.adaptive_capacity import CapacityState
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 
 
@@ -64,8 +65,17 @@ class _AuditRepository:
         del event
 
 
+@pytest.mark.parametrize(
+    ("targets", "idempotency_key"),
+    (
+        (AnalysisRunTargetSelection(content_ids=(uuid4(),)), "stage12-async-selected"),
+        (AnalysisRunTargetSelection(scope="all"), "stage12-async-all"),
+    ),
+)
 def test_new_analysis_run_defers_target_freeze_to_planner(
     monkeypatch: pytest.MonkeyPatch,
+    targets: AnalysisRunTargetSelection,
+    idempotency_key: str,
 ) -> None:
     """新版创建请求必须保持短事务，不在 HTTP 内扫描或冻结全部目标。"""
 
@@ -92,6 +102,8 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         "max_rps": None,
         "extra_config": {},
         "revision": 1,
+        "capacity_mode": "adaptive.v2",
+        "recovery_mode": "recovery.v2",
     }
     configuration_hash = content_http._analysis_configuration_hash(
         prompt_version=identity.prompt_version,
@@ -107,6 +119,11 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
     monkeypatch.setattr(content_http, "PostgresAuditRepository", _AuditRepository)
     monkeypatch.setattr(
         content_http,
+        "PostgresAnalysisCapacityRepository",
+        lambda _: SimpleNamespace(ensure=lambda *args, **kwargs: CapacityState()),
+    )
+    monkeypatch.setattr(
+        content_http,
         "current_analysis_generation_config",
         lambda: (generation_config, generation_hash),
     )
@@ -115,31 +132,43 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         settings=SimpleNamespace(),
     )
     service = PostgresContentHttpService(runtime)  # type: ignore[arg-type]
-    monkeypatch.setattr(
-        service,
-        "_load_active_analysis_configuration",
-        lambda: SimpleNamespace(
+
+    def load_active_configuration(
+        *,
+        refresh_unused_git_bootstrap: bool = False,
+    ) -> SimpleNamespace:
+        assert refresh_unused_git_bootstrap is True
+        return SimpleNamespace(
             identity=identity,
             llm_provider=SimpleNamespace(
                 id=provider_config_id,
+                base_url="https://provider.example/v1",
+                model="fake-model",
+                revision=1,
                 max_concurrency=5,
                 max_rps=None,
                 safe_runtime_snapshot=lambda: runtime_config_snapshot,
             ),
             scheme=SimpleNamespace(id=uuid4()),
             taxonomy=SimpleNamespace(prompt_text="frozen-prompt"),
-        ),
+        )
+
+    monkeypatch.setattr(
+        service,
+        "_load_active_analysis_configuration",
+        load_active_configuration,
     )
 
-    def reject_http_target_scan(session: object, targets: object) -> Any:
-        del session, targets
-        raise AssertionError("新版 Analysis Run 不得在 HTTP 请求内扫描目标")
+    def reject_http_target_scan(*args: object, **kwargs: object) -> Any:
+        del args, kwargs
+        raise AssertionError("selected/all Analysis Run 创建不得在 HTTP 请求内扫描目标")
 
     monkeypatch.setattr(service, "_analysis_target_statement", reject_http_target_scan)
+    monkeypatch.setattr(service, "_analysis_target_count", reject_http_target_scan)
     response = service.create_analysis_run(
         AnalysisContentRunCreateRequest(
-            client_idempotency_key="stage12-async-plan",
-            targets=AnalysisRunTargetSelection(content_ids=(uuid4(),)),
+            client_idempotency_key=idempotency_key,
+            targets=targets,
             expected_target_count=1,
             expected_configuration_hash=configuration_hash,
             run_intent="manual_reanalysis",

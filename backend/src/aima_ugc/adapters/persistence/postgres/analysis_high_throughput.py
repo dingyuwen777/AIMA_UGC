@@ -5,17 +5,20 @@ from __future__ import annotations
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from aima_ugc.adapters.persistence.postgres.analysis import (
     AnalysisRequestNotFound,
     PostgresAnalysisRepository,
 )
+from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.modules.analysis.recovery import RECOVERY_MODE
 from aima_ugc.modules.analysis.tables import (
     analysis_content_request_items_table,
     analysis_content_requests_table,
     analysis_content_run_targets_table,
 )
+from aima_ugc.platform.jobs import JobRecord
 from aima_ugc.platform.jobs.tables import jobs_table
 
 
@@ -40,7 +43,7 @@ class PostgresHighThroughputAnalysisRepository(PostgresAnalysisRepository):
         run = self.get_run(run_id)
         if run is None:
             raise AnalysisRequestNotFound
-        if run["cancel_requested_at"] is not None:
+        if run["cancel_requested_at"] is not None or run["status"] not in {"queued", "running"}:
             return ()
         scheduled_count = cast(
             int,
@@ -124,12 +127,81 @@ class PostgresHighThroughputAnalysisRepository(PostgresAnalysisRepository):
 
         unscheduled_count = max(cast(int, run["target_count"]) - scheduled_count, 0)
         if run["status"] == "failed":
-            counts["failed"] += unscheduled_count
+            counts["failed"] += unscheduled_count + counts["pending"]
+            counts["pending"] = 0
         elif run["cancel_requested_at"] is not None or run["status"] == "cancelled":
             counts["cancelled"] += unscheduled_count
         else:
             counts["pending"] += unscheduled_count
         return counts
+
+    def is_current_request_job(self, request_id: UUID, job_id: UUID) -> bool:
+        """旧执行周期的迟到回调不能终结已经交给后继 Job 的 Request。"""
+        return (
+            self._session.scalar(
+                select(analysis_content_requests_table.c.job_id).where(
+                    analysis_content_requests_table.c.id == request_id
+                )
+            )
+            == job_id
+        )
+
+    def continue_timed_out_request(self, *, request_id: UUID, job: JobRecord) -> UUID | None:
+        """v2 的未完成内容在有限执行周期耗尽后持久续接，不延长 Deadline 或重置失败审计。
+
+        调用方持有旧 Job 终态事务，依次锁 Run、创建标准 Job、切换同一 Request。
+        新 Job 和断点身份同事务提交，旧 Fence 永久失权；取消/真实系统故障不续接。
+        """
+        if job.status != "failed" or job.error_code != "attempt_timeout":
+            return None
+        run_id = self._session.scalar(
+            select(analysis_content_requests_table.c.run_id).where(
+                analysis_content_requests_table.c.id == request_id
+            )
+        )
+        if run_id is None:
+            raise AnalysisRequestNotFound
+        run = self.get_run(run_id, for_update=True)
+        if (
+            run is None
+            or run["status"] not in {"queued", "running"}
+            or run["cancel_requested_at"] is not None
+            or run["runtime_config_snapshot"].get("recovery_mode") != RECOVERY_MODE
+            or not self.is_current_request_job(request_id, job.id)
+        ):
+            return None
+        if (
+            self._session.scalar(
+                select(analysis_content_request_items_table.c.content_id)
+                .where(
+                    analysis_content_request_items_table.c.request_id == request_id,
+                    analysis_content_request_items_table.c.status == "pending",
+                )
+                .limit(1)
+            )
+            is None
+        ):
+            return None
+        successor = PostgresJobRepository(self._session).enqueue(
+            job_type=job.job_type,
+            payload_version=job.payload_version,
+            payload=job.payload,
+            internal_idempotency_key=f"content-analysis-continuation:{request_id}:{job.id}",
+            request_id=job.request_id,
+            priority=job.priority,
+            max_attempts=job.max_attempts,
+            timeout_seconds=job.timeout_seconds,
+        )
+        self._session.execute(
+            update(analysis_content_requests_table)
+            .where(
+                analysis_content_requests_table.c.id == request_id,
+                analysis_content_requests_table.c.job_id == job.id,
+            )
+            .values(job_id=successor.id)
+        )
+        self.refresh_run(run_id)
+        return successor.id
 
 
 def _optional_result_count(result: dict[object, object], key: str) -> int | None:

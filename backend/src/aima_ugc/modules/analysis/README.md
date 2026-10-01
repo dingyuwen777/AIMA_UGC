@@ -5,7 +5,7 @@
 它回答的是：
 
 ```text
-这条内容与爱玛是否真正相关？
+这条内容是否真正讨论电动车行业（包括爱玛与竞品）？
 是谁在发声？
 情感是什么？
 属于哪些一级/二级舆情标签？
@@ -36,7 +36,7 @@ sentiment
 labels[]
 ```
 
-默认 V4 模型协议在持久化前还要求内部 `source_type / content_intent`、各维度原文证据和 `decision_status`。这些字段只用于本地语义一致性校验与条件 Judge，不扩展 `ContentLabelAnalysisV3`、HTTP 或数据库结果结构。
+当前表格格式在持久化前要求内部 `source_type / content_intent / real_user_qualified`、各维度原文证据和 `decision_status`。它们供闭集、真实用户准入、表格组合及证据校验；对外结果仍是 V3。内部准入布尔字段不写入业务结果。
 
 约束：
 
@@ -52,53 +52,26 @@ relevance = irrelevant
 
 历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容，不再作为新写入格式。
 
-当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，运行时唯一机器事实来自 Analysis Run 冻结的 Scheme Version；当前结果继续以字符串 `voice_type` 保存，由 `RuntimeTaxonomyValidator` 对冻结 Taxonomy 严格校验 membership。V4 单列普通消费者个人车辆处置，避免把交易帖计入真实用户。
-
-真实用户发声唯一业务判断：
-
-```text
-voice_type == "真实用户发声"
-```
-
-不要再增加 `is_user_voice`/`is_real_user_voice` 平行字段。
+当前发声类型、情感、标签和判断标准直接维护在唯一 Markdown 中。程序直接校验、保存和查询文档中的实际分类值，不维护分类名称到另一套含义的映射。新增或改名发声类型时同时维护引用它的组合规则、正文及示例；新增或改名情感、标签时同步正文及示例。编译器拒绝重复名称、缺失引用、未覆盖组合和过期 JSON 示例，不会丢弃用户的判断说明。
 
 ---
 
 ## 2. Analysis Scheme 与 Git bootstrap
 
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_bootstrap.txt`](prompts/content_labeling_bootstrap.txt)：新空库 bootstrap 的显式版本中立指针，当前选择 V4。
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v4.md`](prompts/content_labeling_v4.md)：当前新空库 bootstrap/灾备资产。
-- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](prompts/content_labeling_v3.md)：既有 active Scheme 输出协议兼容基线，不再作为默认文件。
-- [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
-- [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
+唯一编辑源是 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md)。[`backend/src/aima_ugc/modules/analysis/markdown_prompt.py`](markdown_prompt.py) 从六张定义表生成分类、父子关系和组合规则；自然语言指南与表格原样组成完整模型 Prompt。机器快照保存在 Scheme Definition 中，由 [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) 管理双 Hash 和版本恢复。编译格式、输出协议与文档开头的内容修订号独立，改规则不要求每次升级程序。
 
-空数据库第一次读取 Analysis 配置时，会解析受限指针，把其明确选择的版本化 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。指针只允许引用同目录 `content_labeling_vN.md`，不会因目录里新增实验文件而自动切换。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。代码升级不会覆盖已有数据库 active Version；要在既有环境启用新原则，必须通过管理员配置创建并原子发布完整 Scheme。
+维护操作：
 
-一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；编译后再计算 `prompt_sha256 / taxonomy_sha256`。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
+1. 在 Markdown 中修改说明、发声类型、情感、两级标签或组合规则，同步正文与示例中的分类名称。保留六张定义表的标记和表头，说明单元格里的竖线写成 `\|`。
+2. 在仓库根执行 `uv run python scripts/dev/compile_content_labeling.py`；可加 `--input <文件>` 和 `--output <生成 JSON>`。脚本复用生产编译器，不连接数据库或模型。生成 JSON 是校验产物，不是另一个编辑源。
+3. 管理员配置中心导入 `.md` 或直接编辑完整 Markdown，保存草稿。服务端编译成功后回显只读分类和标签；错误保留当前生效版本。
+4. 显式发布草稿后，仅后续新建 Run 使用新版本。运行中和历史 Run 使用创建时冻结的文本、编译快照及 Hash；回滚恢复完整历史版本。
 
-相关代码：
+Git 基线由首次配置读取建立 published/active Version。后续预览/创建 Run 仅对纯系统 Git lineage 的默认 Scheme 自动追加并激活新 Git Version；历史 Run 不阻塞刷新。出现其他未删除 Scheme、任何人工 Version 或显式回滚后，管理员发布成为生效路径，Git 文件修改不覆盖人工配置。
 
-- [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py)：解析并校验 sentiments / voice_types / labels 机器 Taxonomy JSON；V4 还校验内部主体/意图到发声类型的机器语义映射，计算 `taxonomy_sha256`。
-- [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)：编译受控模板并核对数据库快照 Hash。
-- [`backend/src/aima_ugc/bootstrap/analysis_identity.py`](../../bootstrap/analysis_identity.py)：读取/初始化 active Version 并形成运行身份。
+新格式无需 Taxonomy 占位符或手工机器 JSON。已经保存的 legacy v3.0 Version 保留旧编译及校验协议，按版本快照恢复；不把任意旧 Prompt 版本视为兼容。新格式恢复只读取已保存快照，禁止用最新 Markdown 或最新编译器重解释历史。`prompt_sha256` 标识完整文本，`taxonomy_sha256` 标识分类、组合和展示顺序；只调整自然语言解释可以只改变 Prompt Hash。
 
-Python、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonomy 列表。
-
-Analysis Scheme 聚合支持复制、归档、恢复和条件永久删除，但不改变既有 Version 状态机：当前 active Scheme 不能归档；恢复后仍保持非 active；曾发布或进入 Analysis Run 历史的 Scheme 只允许归档；只有从未发布、从未使用的纯草稿 Scheme 才能在归档后永久删除。管理员页面以结构化发声类型、情感和标签编辑为主路径，Prompt 只在高级设置维护。
-
-修改情感、发声类型、一级/二级标签、判断边界或学习示例时：
-
-```text
-管理员配置中心创建/保存完整 Scheme 草稿
-→ 编译/Validator tests
-→ 原子发布并写 audit_events
-→ 只影响之后新建的 Analysis Run
-→ 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
-```
-
-V4 的 Taxonomy 与机器语义映射必须同时合法；映射引用已删除的发声类型时在模型调用前 fail closed。`source_type/content_intent` 是当前输出协议的内部闭集，不是新的业务持久字段。
-
-`prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。
+Scheme 复制、归档、恢复、条件删除继续复用既有生命周期；删除管理目录中的历史 Scheme 不删除已被 Run 引用的 Version。格式或结构输出协议变更属于代码变更，普通分类修改则通过相同发布链路生效。
 
 声音广场人工纠正通过 `GET /api/v1/content-analysis-taxonomy` 读取 active Scheme 的安全只读投影；筛选下拉通过 `GET /api/v1/content-filter-options` 读取 active 分类与当前可见历史值的合并目录。历史值只用于检索，不进入 active Taxonomy。生产装配在 [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)，Response 机器事实在 [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)。接口不返回 Prompt 正文、自然语言规则、模型配置或 Secret；加载失败时返回统一 `503`，前端不会退回平行业务枚举。
 
@@ -108,9 +81,10 @@ V4 的 Taxonomy 与机器语义映射必须同时合法；映射引用已删除�
 
 ## 3. 模型实际看到什么
 
-`ContentLabelingService` 只把允许字段投影给模型：
+`ContentLabelingService` 按冻结格式投影模型字段。当前只发送：
 
 ```text
+platform
 title
 text
 author.display_name
@@ -118,10 +92,11 @@ author.bio
 author.verification_label
 ```
 
+正式高并发路径为一条内容一个请求。`item_no` 只用于请求内输入输出配对，通常为 1；每个请求的 system 消息携带整个冻结 Prompt，user 消息携带 `{"items":[单条输入]}`。多个请求并发运行，不把多条帖子合成一个分析请求。`platform` 用于平台加作者名的官号白名单精确匹配，也参与内容输入 Hash；普通 evidence 仍只能来自其余五个文本字段，不能把平台名当证据。
+
 不会发送：
 
 - Content UUID；
-- platform；
 - Provider 私有字段；
 - URL；
 - 点赞/评论数；
@@ -130,7 +105,7 @@ author.verification_label
 - 源 Excel 情感；
 - 其他未批准元数据。
 
-五个字段全部作为不可信待分析数据处理；其中出现的提示、命令、URL 或“忽略规则”文字不得改变系统 Prompt 或输出协议。
+发给模型的字段全部作为不可信待分析数据处理；其中出现的提示、命令、URL 或“忽略规则”文字不得改变系统 Prompt 或输出协议。
 
 这样可以降低 token、减少无关信息干扰，并让 `input_hash` 和隐私边界可审计。
 
@@ -173,9 +148,9 @@ ContentLabelingLLMResponse
 ### 公共有界并发与自动 Shard
 
 - [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py)：Offline / Formal 共用首批并发、bounded in-flight、`FIRST_COMPLETED`、停止调度和 backpressure。
-- [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py)：根据 Run 冻结 Provider `max_concurrency / max_rps` 自动计算 Shard Size。
+- [`backend/src/aima_ugc/modules/analysis/adaptive_capacity.py`](adaptive_capacity.py)：新 Run 从成功入库速度派生 Shard Size；[`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) 保留历史固定 Snapshot 的算法。
 
-当前数据库 Provider 的默认计算规则：
+历史固定协议的计算规则：
 
 ```text
 shard_size = clamp(min(max_concurrency × 20, max_rps × 900 秒〔仅配置 max_rps 时〕), 20, 50_000)
@@ -190,9 +165,9 @@ max_concurrency = 1000, max_rps = 1    → shard_size = 900
 max_concurrency = 250,  max_rps = 5    → shard_size = 4,500
 ```
 
-Shard Size 是 Worker 内部调度参数，不在管理员界面单独配置。未配置 `max_rps` 时仍以 20 个并发波次为基线；配置 `max_rps` 时再用 900 秒物理 Attempt 启动预算收紧，低于 `analysis.content-label.v1` 的 1800 秒 Job timeout，为 Retry、数据库批量提交、Heartbeat 和取消留出余量。异常高重试仍可能触发 Job timeout，因此该预算不是吞吐承诺。计算结果在创建 Run 时写入 `analysis_content_runs.shard_size`，以后修改 Provider 不改变已创建 Run。
+新 Run 的每片大小按历史成功吞吐、所需分片数和约 300 秒目标耗时派生，限制在 200–50,000 条，创建时写入 `analysis_content_runs.shard_size`。并发和资源边界见[共享自适应容量](#14-共享自适应容量)。冻结范围之后不随学习变化；`analysis.content-label.v1` 的 1800 秒 Attempt Deadline 仍是执行硬边界，恢复等待不能无限续期。
 
-环境配置与数据库配置都使用同一自动分片公式和并发执行器。旧静态 `AIMA_ANALYSIS_RUN_SHARD_SIZE` / `AIMA_ANALYSIS_BATCH_SIZE` 已移除；环境配置的容量来自 `AIMA_LLM_MAX_CONNECTIONS`。
+环境与数据库配置的新 Run 都使用同一自适应策略和并发执行器；环境里的旧人工执行值只供历史固定 Snapshot 兼容。旧静态 `AIMA_ANALYSIS_RUN_SHARD_SIZE` / `AIMA_ANALYSIS_BATCH_SIZE` 已移除。
 
 ### 正式 Job
 
@@ -253,17 +228,17 @@ analysis.content-label.v1
 
 ```text
 管理员 Provider 配置
-→ Base URL / Model / API Key / max_concurrency / max_rps / timeout / Validation Retry
+→ Base URL / Model / API Key；LLM 执行参数由系统管理
 → 新 Run 读取并冻结安全 Provider Snapshot
 
 POST /api/v1/analysis/content-runs/preview
 → 预检目标数
-→ 根据 Provider max_concurrency 计算 shard_size
+→ 根据当前学习状态估计 shard_size；学习漂移不改变确认 hash
 → 返回目标数、Shard 数、Scheme/Prompt/Taxonomy/Model/配置身份
 
 POST /api/v1/analysis/content-runs
 → 短事务创建 analysis_content_runs + Planner Job
-→ 冻结同一 Provider Snapshot 与计算后的 shard_size
+→ 冻结连接身份、按历史派生的 timeout 和 shard_size
 
 Planner
 → selected/query 集合式冻结
@@ -275,11 +250,11 @@ Analysis Shard Worker
 → 加载 Run 冻结 Provider/Scheme
 → 校验 Prompt/Taxonomy/Provider/Model 身份
 → 本地预检后首批并发，不串行等待第一条
-→ bounded concurrency，最大 in-flight = Provider.max_concurrency
+→ 每秒刷新同 Provider/Model 跨 Run 的共享容量，分配有界本地目标
 → 每条 Content 独立 ContentLabelingService 调用
-→ max_rps 对每个物理 HTTP Attempt 生效
+→ 动态 RPS 保护对每个物理 HTTP Attempt（含 Retry）生效
 → Transport Retry 仅重发当前 Content 的物理请求
-→ Validation Retry 仍由 ContentLabelingService 处理当前 Content
+→ Validation Retry 的单轮推理复用 ContentLabelingService，正式恢复由持久 Item ready-at 调度
 → 结构/Taxonomy 错误进入 repair；证据伪造、主体/意图/发声矛盾或 needs_judge 才进入条件 Judge
 → 已成功 Content 不随另一条复判而重发
 → 完成结果有界缓冲
@@ -369,18 +344,18 @@ HTTP 已成功
 → ContentLabelingService 对当前 Content 重新推理
 ```
 
-管理员 Provider 的 `max_retries` 当前表示每条 Content 的 **Validation Retry** 轮数上限。
+新正式 Run 的 Validation Retry 没有固定轮数上限；每轮只处理 unresolved Item。历史 Run 的冻结 `max_retries` 和离线入口的显式上限继续有效。正式持久健康窗口和停止边界见[失败恢复](#15-正式-run-失败恢复)。
 
-V4 的 Validation Attempt 记录 `request_kind=primary/repair/judge`。Judge 不读取上一响应全文，只收到当前 unresolved item、稳定错误码和五个原始文本字段，并独立重新判断；同一轮同时出现结构错误与语义歧义时按 item 拆成 repair/judge 请求，每条 Content 仍只消耗一轮重试。没有触发语义/证据歧义的清晰内容保持单次调用。
+当前格式的 Validation Attempt 记录 `request_kind=primary/repair/judge`。Judge 不读取上一响应全文，只收到当前 unresolved item、稳定错误码、`platform` 与五个原始文本字段，并独立重新判断；同一轮同时出现结构错误与证据/协议问题时按 item 拆成 repair/judge 请求，每条 Content 仍只消耗一轮重试。没有触发校验错误的清晰内容保持单次调用。
 
 ### Transport Retry
 
 ```text
-连接/超时/408/429/部分 5xx
+连接/超时/408/429/5xx
 → RetryingContentLabelingLLM
 ```
 
-Base Adapter 一次 `complete()` 最多一次物理 HTTP 发送。Transport Retry 是显式 wrapper 的新物理 Attempt，不与 Validation Retry 共用计数器。
+Base Adapter 一次 `complete()` 最多一次物理 HTTP 发送。Transport Retry 是显式 wrapper 的新物理 Attempt，每次逻辑调用最多四次重试（连同首次最多五次发送），不与 Validation Retry 共用计数器。新正式 Run 耗尽后仍 pending，按持久恢复协议重新探活；历史固定/离线协议继续遵守原终态边界。
 
 ### max_rps
 
@@ -468,10 +443,10 @@ Dry Run 会在输入 Excel 同目录生成带时间戳的运行目录，包含�
 | --- | --- |
 | 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 管理员 Analysis Scheme 草稿 → 校验 → 发布；Git Prompt 只在要改变新环境 bootstrap 基线时同步 |
 | 改 Scheme 编译、发布或回滚 | [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) + Administration Service/Repository + Migration/API/审计/Integration tests |
-| 改 V4 内部输出协议或 Judge 路由 | Prompt + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + V3 兼容/离线回归 |
+| 改当前表格输出协议或 Judge 路由 | [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md`](prompts/content_labeling.md) + [`backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py`](prompt_taxonomy.py) + [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + LLM Adapter + 当前格式/离线回归 |
 | 改持久化 `ContentLabelAnalysisV3` 结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
-| 改模型/Base URL/API Key/模型并发/RPS | 管理员 Provider 配置 + [`backend/src/aima_ugc/contracts/administration.py`](../../contracts/administration.py) + [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) + `adapters/llm` |
-| 改自动 Shard 策略 | [`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) + Preview/Create + Planner tests |
+| 改模型/Base URL/API Key | 管理员 Provider 配置 + [`backend/src/aima_ugc/contracts/administration.py`](../../contracts/administration.py) + [`backend/src/aima_ugc/bootstrap/runtime_config.py`](../../bootstrap/runtime_config.py) |
+| 改容量/Shard/Timeout 策略 | [`backend/src/aima_ugc/modules/analysis/adaptive_capacity.py`](adaptive_capacity.py) + Capacity Repository + Preview/Create + Worker/Planner tests；[`backend/src/aima_ugc/modules/analysis/sharding.py`](sharding.py) 保留历史固定策略验证 |
 | 改网络 Retry | [`backend/src/aima_ugc/adapters/llm/retrying.py`](../../adapters/llm/retrying.py) + [`backend/src/aima_ugc/adapters/llm/rate_limited.py`](../../adapters/llm/rate_limited.py) + audit/retry tests |
 | 改 Validation Retry | [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + Analysis tests |
 | 改正式 LLM 并发 | [`backend/src/aima_ugc/modules/analysis/concurrent_labeling.py`](concurrent_labeling.py) + [`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py) |
@@ -491,7 +466,7 @@ analysis_content_runs / planner Job
 → worker-*.log
 → analysis_content_run_targets 连续 ordinal
 → analysis_content_requests / Shard jobs
-→ Provider snapshot max_concurrency / max_rps
+→ analysis_llm_capacity_profiles + Run 冻结 timeout/shard_size
 → analysis_content_request_items
 ```
 
@@ -500,9 +475,9 @@ analysis_content_runs / planner Job
 按顺序检查：
 
 ```text
-Run runtime_config_snapshot.max_concurrency
+Profile current / last_safe / reason
 → 实际 peak in-flight / Provider latency
-→ max_rps 是否主动限速
+→ 共享 RPS 是否主动限速，历史固定 Run 是否尚未排空
 → Transport/Validation Retry 数
 → PostgreSQL batch flush 延迟
 → Worker 是否持续有可处理 Shard
@@ -519,7 +494,7 @@ Job error / Request Item error_code
 → Batch Repository / Fence / Content Version
 ```
 
-并发阶段单条可识别 Transport 错误只终结对应 Content，不把整个大 Shard 重新请求。
+新正式 Run 的临时 Transport 错误进入持久 pending；系统硬错误或连续五分钟真实网络不可用停止父 Run。格式错误持续修复，429、HTTP 错误响应和本地等待不计断网。历史固定 Run 保留单条 Transport 耗尽终结对应 Content 的行为；已成功内容始终不重发。
 
 ### 页面提示 LLM Runtime 未配置
 
@@ -542,7 +517,7 @@ SQL 排障见：
 
 ---
 
-## 12. Analysis Run 的 selected / all 范围
+## 12. Analysis Run 的 selected / query / all 范围
 
 声音广场正式 Run 的公共 Scope：
 
@@ -550,15 +525,24 @@ SQL 排障见：
 selected
 → 1—1000 个显式 Content ID
 
+query
+→ 当前已经应用的 ContentFilterSnapshot 命中全集
+→ 不受声音广场分页、已加载条数或列表排序影响
+→ HTTP 只提交筛选快照，不提交全量 Content ID
+
 all
 → 数据库当前全部 Content Current
 → 不受声音广场当前筛选或已加载分页影响
 → HTTP 请求不携带全量 Content ID
 ```
 
-`all` 在 HTTP Contract 中是独立语义；服务端持久化时复用既有 `analysis_content_runs.scope = query`，并保存内部 all 快照标记。Planner 按稳定 Content UUID keyset、连续 `target_ordinal` 分批冻结 `content_id + current_version`。
+`query` 和 `all` 在数据库都复用既有 `analysis_content_runs.scope = query`；`all` 继续用专用内部快照标记区分。Planner 对二者都按稳定 Content UUID keyset、连续 `target_ordinal` 分批冻结 `content_id + current_version`，全部冻结后才调度 Shard。
 
-所有配置来源的 Provider 下，Shard Size 不由用户配置，而由 Run 创建时冻结的 `max_concurrency` 自动推导；`analysis_content_runs.shard_size` 保存最终值，后续 Provider 修改不影响旧 Run。环境配置同样遵守上述规则。
+Query Preview 返回服务端权威目标数；用户确认 Create 时，服务端在一个 PostgreSQL Statement Snapshot 内重新统计并对 `content_id + current_version` 目标全集计算双 64-bit 聚合集合指纹，再把该指纹与筛选快照一起冻结到 Run。若 Preview 后数量已经变化，Create 返回 `content_analysis_target_changed`，前端重新 Preview 后必须由用户再次确认。Planner 虽然跨短事务分批读取，但结束时会对已冻结 Target 再计算同一集合指纹；数量相同但成员发生替换也会 fail closed，不会启动 Shard。历史没有指纹的 query Run 保持原数量核对兼容语义。
+
+因此新 query Run 不需要跨全部批次持有长事务或单一 MVCC Snapshot，同时仍能证明 Planner 最终冻结集合与确认 Create 时集合一致；确认完成后的后续内容或 Analysis 变化不会改写已冻结目标。
+
+新 Run 使用 `adaptive.v2`：Shard size 从历史成功入库速率与约 300 秒目标时长推导，并在 Create 冻结。没有历史时使用内部冷启动估计；运行中不修改已有 `shard_size` 或 `shard_no × shard_size` 范围。环境配置与数据库配置走同一规则；历史 Run 保留自己的快照。
 
 ---
 
@@ -572,4 +556,42 @@ all
 - Monitoring/Alert/VOC/Ticket 业务域。
 - 已人工复核的 Gold Set 与量化准确率门禁；当前没有依据调整模型、thinking 或生成参数。
 
-当前高吞吐实现仍使用同一个 PostgreSQL durable Job Runtime。1000 并发的代码容量由 Provider 配置、HTTP 连接池和 bounded executor 支持；某台真实服务器/模型部署是否能稳定跑满 1000，必须由对应部署环境的 CPU、内存、网络、Provider/GPU 与 PostgreSQL 压测证明，不能从 CI Runner 的线程测试推断。
+当前高吞吐实现仍使用同一个 PostgreSQL durable Job Runtime。实际可用容量受 Worker、数据库和服务商限制，精确上限由下节实现维护。Simulator 只证明控制算法，不能证明实际模型或服务器的吞吐收益。
+
+## 14. 共享自适应容量
+
+规则在 [`backend/src/aima_ugc/modules/analysis/adaptive_capacity.py`](adaptive_capacity.py)，单表 Owner 在 [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_capacity.py`](../../adapters/persistence/postgres/analysis_capacity.py)，Worker 装配在 [`backend/src/aima_ugc/bootstrap/analysis_capacity.py`](../../bootstrap/analysis_capacity.py)。`analysis_llm_capacity_profiles` 按 Provider Config UUID + Model 保存当前 C、已确认/历史安全容量、拥塞上界、从属 RPS、吞吐/延迟、冷却和有限收敛状态。Revision 或 Prompt 变化保守热启动，旧身份反馈不覆盖新状态。端点从官方切换为未知时清除旧声明；切换到已核验端点时，新发容量受当前声明上界约束，旧在途预留仍排空。
+
+控制器从有界初值指数探索，稳定后周期重探。已核验的官方端点/精确模型声明用于初值和上界，代理或未知模型继续从响应反馈学习；声明不等于账号实时可用额度。单次超时或低负载尾部不缩容，连续服务拥塞或并发 429 才退避；请求速率 429 优先收紧 RPS，未知 429 同时保守保护发送速率。健康恢复按经过秒数控制，不再等待三个随 P95 延长的窗口。当前阶段未完成的请求不作为该阶段容量证明；本地瓶颈也不写成模型 unsafe。成功吞吐无提升时仍保留平台判定与有限收敛。
+
+控制版本3以同一档位的跨窗累计成功数/墙钟时间判断吞吐，结合已学习延迟和样本量形成证据块，连续两个不足收益的证据块才回退；单窗峰值不作基线。稀疏格式修复不重置升档，较多格式失败暂停探测但仍逐条严格修复。明确请求数/token的429响应优先于模型并发声明。具体形成条件与安全诊断字段见[AI实现专题](../../../../../docs/appendix/07_AI舆情打标与分析实现.md)。旧控制器升级只清除搜索证明，保留未过期物理/RPS预留，不需要新增Migration。
+
+有效 Lease/Deadline 的运行分片跨 Run 共享整数份额，余数按稳定 Job ID 分配，允许零份额和尾部借出不用的额度。Profile 行锁原子预留，每秒刷新，本地许可约束每次物理发送及 Retry。C 与 RPS 在同一准入点都允许立即发送才占位，等待许可不预先消费发送时隙，也不计入物理在途。降档保留旧占用直到排空，退出仅删除本 Fence；崩溃/换 Fence 的旧占用到期后回收。HTTP 超时后上游是否还在执行未知，不能保证服务端绝无重叠。新 Run 每片物理上限 1024、全局保护上限 5000；实际值还受目标数和资源限制，不预建全部线程。历史 v1 保留 256 的冻结上限，固定 Run 保留原参数，新协议等待同 Provider/Model 的历史固定工作排空，终态回调唤醒待执行 Run。
+
+HTTP 线程只更新有界计数、延迟桶和实际在途积分，调度线程持有 Job Fence 后合并共享墙钟窗。最短两秒且需足够结果，首批仍未完成时不误判健康；Profile 行锁保证同窗只推进一次，并发 Shard 不重复累计墙钟时间。阶段序号隔离旧请求反馈，最后一片退出清空不足窗的尾部和空闲分母。P95 是固定桶上界估计。成功吞吐只计事务提交后的新增 succeeded；stale、失败、取消和重复回调不计成功。物理 Attempt 与逻辑结果分母独立，pending 重试不能算成功。
+
+容量学习需要未发送且当前可发送的工作，以及足以覆盖当前探测档位的实际占用。数据库 pending 中的在途请求、未提交结果和未来退避项都不当作新增需求；即使部分分片仍报告需求，明显未装满目标的共享窗口也不能更新吞吐基线或模型 unsafe。退避资格与实际取项使用同一查询规则。父 Run 已因最后一批结果变为终态时，分片先检查自身是否还有 pending，再判断探活资格，避免已完成的 Worker 等待到 Deadline。
+
+Job 投放复用 `runtime.job_window()`，结合 Provider 需求、全局投放量、DB 连接余量与剩余分片；有后续分片时保留一个有界衔接位置，旧片等待慢尾请求时，新片可借用实际释放的共享许可，不提高 HTTP 总上限。每片 HTTP 许可再读取有效 CPU、实时可用内存、CPU 压力和结果事务吞吐，保留其他进程的内存余量；资源入口在 [`backend/src/aima_ugc/platform/capacity.py`](../../platform/capacity.py)。本地瓶颈按当前分片应得份额判断，不能把正常跨片分配误认为模型能力不足。零 DB 余量时保留一片持久 Job，压力恢复后仍可领取。
+
+Windows 原生运行读取系统 CPU 差值与实时可用内存；Linux 容器优先按 cgroup v1/v2 的使用时间除以有效 CPU 核配额计算压力，避免宿主空闲掩盖容器饱和。配额变化、计数回退或缺失时先重建基线，不沿用旧压力或伪造零负载。更多核数和可用内存提供更大的探索空间，是否真正升档仍由模型响应、成功入库吞吐和压力护栏决定。同一代码不按操作系统设置固定机器档位。
+
+正式进程池入口在 [`backend/src/aima_ugc/entrypoints/worker_main.py`](../../entrypoints/worker_main.py)。父进程分配稳定 Lease 身份并传给子进程，扩容和空闲缩容都按该身份匹配数据库 Lease；启动包装层 PID 和实际解释器 PID 只用于进程控制及诊断。`capacity.worker_process_spawned` 与 `worker.started` 可用同一 `worker_id` 对齐，分别查看启动 PID 和实际 `process_pid`。这样 Windows 虚拟环境启动器与 Linux 直接解释器都能准确计数忙碌 Worker。
+
+v2 在创建时保存初始 Read Timeout：冷启动 120 秒，历史延迟可派生更短等待；运行中仅对下一次请求按成功 P95/真实 Read 或 Write 超时下界有界延长，最多 180 秒。Connect/Pool 超时另记阶段，不用于延长模型等待。历史 v1 的 Timeout 保持冻结。没有改变 thinking、reasoning effort、输出长度或 Prompt。代码回退到仅支持 v1 的版本前须排空 v2 Run，并按回滚流程重建派生 Profile JSON；不删除业务结果。
+
+`analysis.capacity_window` 输出真实 `average_in_flight`、报告/接受的需求、当前阶段样本、成功吞吐、CPU 压力来源、限流分类和剩余冷却秒数；`analysis.capacity_adjusted` 记录目标与实际本地上限；执行收尾记录 HTTP 峰值和数据库/控制耗时。请求错误日志区分 Connect/Read/Write/Pool，不记录 Prompt 或响应正文。
+
+LLM 管理 Create/Update 拒绝显式 timeout/retry/concurrency/RPS；这些字段只继续服务 Collection。LLM 页面每 3 秒读取安全只读投影，轮询不覆盖未保存草稿。学习不改变模型、Prompt、Taxonomy、生成参数或 Job timeout；新 Run 的 Primary/Repair/Judge 与持久恢复配合，详见下节。
+
+## 15. 正式 Run 失败恢复
+
+新 Run 在创建时冻结 `recovery.v2`：格式、字段、Taxonomy 和证据校验失败持续重试，没有五分钟截止；只有真实网络失败观测跨越五分钟且没有任何 HTTP 响应才停止。历史 `recovery.v1` 保持原冻结语义，旧失败 Item 不自动重新排队。详细计时、探活与兼容边界由[AI 实现专题](../../../../../docs/appendix/07_AI舆情打标与分析实现.md#295-正式-run-持久恢复)解释。机器入口为 [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_recovery.py`](../../adapters/persistence/postgres/analysis_recovery.py)、[`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py) 和现有 Run/Request Item 表。
+
+新任务只有成功数等于目标数才显示成功；打标期间内容版本变化产生的stale保留原事实，任务显示partial_failed/failed，不把旧标签写入新版本。pending和未投放内容继续推进，余额/鉴权等硬错误及手动取消仍显式停止。
+
+退避项留在 PostgreSQL，只有 ready-at 到期才进入有界执行器；取消、Fence 与 Deadline 在等待期间仍持续检查。逻辑 Retry 不消耗新的 Job attempt；进程失权由原 Job 接管恢复。每次 Attempt 仍限 1800 秒、每个 Job 仍限三次；v2 周期因 Deadline 耗尽且仍有 pending 时，正式终态回调同事务创建后继 Job 并绑定原 Request。成功项、Item 身份和断点保留，旧 Fence/旧回调不能写后继结果，取消和终态 Run 不续接。恢复回归见 [`tests/integration/content/test_analysis_retry_recovery.py`](../../../../../tests/integration/content/test_analysis_retry_recovery.py)。
+
+容量预留使用实际 HTTP 在途数，等待 Future 只表示待处理需求；没有 ready 或已派发工作时不保留最低一个份额。空闲份额连同余数可借给 ready 分片，旧 Fence 的未知占用继续保护。C 调整或 RPS 收紧切换发送阶段，迟到旧错误保留原始日志但不反复压低新容量；观察窗日志以 `control_*` 显示实际参与决策的错误数。
+
+同一预留还保存本 Fence 的派生 RPS，Feedback 在同事务取得 C/RPS 后一次安装到本地联合准入。零 ready 分片归还未来发送速率；其他分片按实际可发送份额借额，不按活动 Job 数均分，也不按本机 C 占全局 C 的比例损失速率。所有新分配扣除 peer 尚未归还的旧承诺；需求恢复或全局降档通过后续刷新收敛，不能把其他进程旧许可当成已经归还。旧记录缺失 RPS 或旧 Fence 未过期时保守保护，控制版本升级保留原有承诺。每秒批量短事务，无逐 HTTP 数据库写入。

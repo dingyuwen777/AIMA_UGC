@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import AppShell from '../../../../app/layouts/AppShell.vue'
 import {
@@ -31,6 +31,7 @@ import VoicePlazaTable from './components/VoicePlazaTable.vue'
 const store = useVoicePlazaStore()
 const taskCenter = useTaskCenterStore()
 const route = useRoute()
+const router = useRouter()
 const analysisOpen = ref(false)
 const exportOpen = ref(false)
 const { message: notice, show: showNotice } = useTransientNotice()
@@ -83,6 +84,13 @@ function routeValues(value: unknown): string[] {
 
 /** 从真实可表达的声音广场筛选字段恢复工作台深链，不解析未知参数。 */
 function hydrateRouteFilters(): void {
+  // 旧链接的内容类型已退出本页面筛选，保留其他深链条件并清理 URL。
+  const query = { ...route.query }
+  const removed = ['contentType', 'content_type', 'content_types']
+  if (removed.some((key) => key in query)) {
+    removed.forEach((key) => { delete query[key] })
+    void router.replace({ query })
+  }
   const deepLinkKeys = [
     'source_identifier', 'sentiment', 'voice_type',
     'primary_labels', 'secondary_labels', 'primary_label', 'secondary_label',
@@ -301,7 +309,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
           <AimaButton
             size="small"
             :disabled="store.analysisConfigured !== true"
-            :title="store.analysisConfigured === false ? 'AI 分析尚未配置' : store.analysisConfigured === null ? '正在检查 AI 分析是否可用' : '可选择已选内容或全部数据进行分析'"
+            :title="store.analysisConfigured === false ? 'AI 分析尚未配置' : store.analysisConfigured === null ? '正在检查 AI 分析是否可用' : '可选择已选内容、当前筛选结果或全部数据进行分析'"
             @click="analysisOpen = true"
           >
             AI 分析
@@ -319,7 +327,6 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       <VoicePlazaFilters
         v-model:search="store.filters.search"
         v-model:platform="store.filters.platform"
-        v-model:content-type="store.filters.contentType"
         v-model:analysis-status="store.filters.analysisStatus"
         v-model:relevance="store.filters.relevance"
         v-model:voice-type="store.filters.voiceType"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -28,8 +29,12 @@ ALL_POSTGRES_SUITES = (
     "content",
     "ingestion",
     "vehicles",
+    "reporting",
 )
 POSTGRES_ALL = ("all",)
+BACKEND_ALL = ("all",)
+FRONTEND_ALL = ("all",)
+
 
 DOCS_ONLY_EXACT = {"README.md"}
 GOVERNANCE_ONLY_EXACT = {"AGENTS.md"}
@@ -47,6 +52,7 @@ CI_SELF_EXACT = {
     "tests/unit/test_ci_workflow_structure.py",
     "tests/unit/test_ci_main_evidence_reuse.py",
     "tests/unit/test_actions_runner_optimization.py",
+    "tests/unit/test_validate_changed.py",
 }
 REPOSITORY_QUALITY_EXACT = {
     "scripts/quality/actions_hygiene.py",
@@ -128,6 +134,9 @@ class CiRequirements:
     report_font_required: bool
     frontend_audit_required: bool
     package_required: bool
+    backend_targets: tuple[str, ...]
+    frontend_unit_targets: tuple[str, ...]
+    frontend_e2e_specs: tuple[str, ...]
     postgres_targets: tuple[str, ...]
     postgres_suites: tuple[str, ...]
     fullstack_specs: tuple[str, ...]
@@ -201,6 +210,148 @@ def _is_report_font_path(path: str) -> bool:
     )
 
 
+def _backend_targets_for_path(path: str) -> tuple[tuple[str, ...], bool]:
+    """把已知后端 Owner 映射到直接单测；未知共享边界由调用方回退 all。"""
+    if path.startswith(("tests/unit/", "tests/api/", "tests/contracts/")) and path.endswith(".py"):
+        if Path(path).name == "conftest.py":
+            return (), False
+        return (path,), True
+
+    domain_markers: tuple[tuple[str, tuple[str, ...]], ...] = (
+        (
+            "/modules/analysis/",
+            (
+                "tests/unit/analysis",
+                "tests/unit/content/test_stage12_analysis_planner.py",
+                "tests/api/test_analysis_all_scope.py",
+                "tests/api/test_analysis_runtime_capability.py",
+                "tests/api/test_analysis_taxonomy.py",
+            ),
+        ),
+        (
+            "/modules/collection/",
+            (
+                "tests/unit/collection",
+                "tests/api/test_stage8e_collection_runs.py",
+                "tests/api/test_stage8f_collection_strategy.py",
+            ),
+        ),
+        (
+            "/modules/content/",
+            (
+                "tests/unit/content",
+                "tests/api/test_content_relevance_review_api.py",
+                "tests/api/test_stage8d_contents.py",
+            ),
+        ),
+        (
+            "/modules/ingestion/",
+            (
+                "tests/unit/ingestion",
+                "tests/api/test_stage12_historical_imports.py",
+                "tests/api/test_stage8b_imports.py",
+                "tests/api/test_stage8c_import_batches.py",
+            ),
+        ),
+        (
+            "/modules/vehicles/",
+            (
+                "tests/unit/vehicles",
+                "tests/api/test_brand_vehicle_stage2_contract.py",
+            ),
+        ),
+    )
+    for marker, targets in domain_markers:
+        if marker in path:
+            return targets, True
+    return (), False
+
+
+def _frontend_targets_for_path(path: str) -> tuple[tuple[str, ...], tuple[str, ...], bool]:
+    """把已知前端 Feature 映射到 Unit/Browser Mock；共享未知路径回退 all。"""
+    if path.startswith("frontend/tests/") and path.endswith(".spec.ts"):
+        return (path,), (), True
+    if path.startswith("frontend/e2e/") and path.endswith(".spec.ts"):
+        return (), (path,), True
+
+    mappings: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+        (
+            "frontend/src/features/voice-plaza/",
+            (
+                "frontend/tests/analysis-all-scope.spec.ts",
+                "frontend/tests/voice-plaza-design.spec.ts",
+                "frontend/tests/voice-plaza-media-preview.spec.ts",
+                "frontend/tests/voice-plaza.spec.ts",
+            ),
+            (
+                "frontend/e2e/voice-plaza-design.spec.ts",
+                "frontend/e2e/voice-plaza-media-carousel.spec.ts",
+                "frontend/e2e/voice-plaza-review-regressions.spec.ts",
+                "frontend/e2e/voice-plaza.spec.ts",
+            ),
+        ),
+        (
+            "frontend/src/features/workbench/",
+            ("frontend/tests/workbench.spec.ts",),
+            ("frontend/e2e/workbench.spec.ts",),
+        ),
+        (
+            "frontend/src/features/admin-configuration/",
+            (
+                "frontend/tests/admin-configuration-design.spec.ts",
+                "frontend/tests/admin-configuration-presentation.spec.ts",
+                "frontend/tests/provider-concurrency-config.spec.ts",
+            ),
+            (
+                "frontend/e2e/admin-configuration-figma.spec.ts",
+                "frontend/e2e/admin-configuration-release2.spec.ts",
+            ),
+        ),
+        (
+            "frontend/src/features/task-center/",
+            (
+                "frontend/tests/task-center-api.spec.ts",
+                "frontend/tests/task-center.spec.ts",
+                "frontend/tests/task-progress-bar.spec.ts",
+            ),
+            ("frontend/e2e/task-center.spec.ts",),
+        ),
+        (
+            "frontend/src/features/collection-strategy/",
+            (
+                "frontend/tests/collection-strategy-design.spec.ts",
+                "frontend/tests/collection-strategy.spec.ts",
+            ),
+            (
+                "frontend/e2e/collection-strategy-figma-geometry.spec.ts",
+                "frontend/e2e/collection-strategy-figma-projection.spec.ts",
+                "frontend/e2e/collection-strategy.spec.ts",
+            ),
+        ),
+        (
+            "frontend/src/features/collection-runtime/",
+            (
+                "frontend/tests/collection-runtime-design.spec.ts",
+                "frontend/tests/collection-runtime-release2.spec.ts",
+                "frontend/tests/collection-runtime.spec.ts",
+            ),
+            ("frontend/e2e/collection-runtime.spec.ts",),
+        ),
+    )
+    for marker, unit_targets, e2e_specs in mappings:
+        if path.startswith(marker):
+            return unit_targets, e2e_specs, True
+
+    return (), (), False
+
+
+def _ordered_targets(targets: set[str], *, all_value: tuple[str, ...]) -> tuple[str, ...]:
+    """稳定输出目标；出现 all 时保持 fail-closed 全量语义。"""
+    if "all" in targets:
+        return all_value
+    return tuple(sorted(targets))
+
+
 def _postgres_targets_for_path(path: str) -> tuple[str, ...]:
     """优先把明确叶子变化映射到可直接证明风险的 PostgreSQL 测试文件。"""
     exact: dict[str, tuple[str, ...]] = {
@@ -225,6 +376,7 @@ def _postgres_targets_for_path(path: str) -> tuple[str, ...]:
             "content",
             "ingestion",
             "vehicles",
+            "reporting",
         }:
             return (path,)
     return ()
@@ -252,6 +404,7 @@ def _postgres_suites_for_path(path: str) -> tuple[str, ...]:
             "content",
             "ingestion",
             "vehicles",
+            "reporting",
         }:
             return ()
         return POSTGRES_ALL
@@ -394,6 +547,9 @@ def _full_requirements() -> CiRequirements:
         report_font_required=True,
         frontend_audit_required=True,
         package_required=True,
+        backend_targets=BACKEND_ALL,
+        frontend_unit_targets=FRONTEND_ALL,
+        frontend_e2e_specs=FRONTEND_ALL,
         postgres_targets=(),
         postgres_suites=POSTGRES_ALL,
         fullstack_specs=FULLSTACK_ALL,
@@ -428,6 +584,9 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
             report_font_required=False,
             frontend_audit_required=False,
             package_required=False,
+            backend_targets=(),
+            frontend_unit_targets=(),
+            frontend_e2e_specs=(),
             postgres_targets=(),
             postgres_suites=(),
             fullstack_specs=(),
@@ -441,6 +600,11 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
     report_font_required = False
     frontend_audit_required = any(path in FRONTEND_DEPENDENCY_AUDIT_EXACT for path in product_paths)
     package_required = any(path in PACKAGE_BUILD_EXACT for path in product_paths)
+    backend_targets: set[str] = set()
+    frontend_unit_targets: set[str] = set()
+    frontend_e2e_specs: set[str] = set()
+    backend_has_unmapped = False
+    frontend_has_unmapped = False
     postgres_targets: set[str] = set()
     postgres_suites: set[str] = set()
     fullstack_specs: set[str] = set()
@@ -461,12 +625,14 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
 
         if path.startswith("frontend/e2e-fullstack/") and path.endswith(".spec.ts"):
             frontend_required = True
+            frontend_has_unmapped = True
             fullstack_specs.update(_fullstack_specs_for_path(path))
             kinds.add("frontend")
             continue
 
         if path.startswith("frontend/e2e-fullstack/"):
             frontend_required = True
+            frontend_has_unmapped = True
             fullstack_specs.update(FULLSTACK_ALL)
             kinds.add("frontend")
             continue
@@ -475,6 +641,9 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
             backend_required = True
             frontend_required = True
             contract_required = True
+            backend_targets.update(BACKEND_ALL)
+            frontend_unit_targets.update(FRONTEND_ALL)
+            frontend_e2e_specs.update(FRONTEND_ALL)
             if path == API_CONTRACT_EXACT or path.startswith(CONTRACT_PREFIXES):
                 fullstack_specs.update(FULLSTACK_ALL)
             else:
@@ -488,6 +657,7 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
 
         if path.startswith("tests/integration/"):
             backend_required = True
+            backend_has_unmapped = True
             postgres_required = True
             postgres_targets.update(_postgres_targets_for_path(path))
             postgres_suites.update(_postgres_suites_for_path(path))
@@ -496,6 +666,11 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
 
         if _is_persistence_path(path):
             backend_required = True
+            backend_direct, backend_mapped = _backend_targets_for_path(path)
+            if backend_mapped:
+                backend_targets.update(backend_direct)
+            else:
+                backend_has_unmapped = True
             postgres_required = True
             targets = _postgres_targets_for_path(path)
             suites = _postgres_suites_for_path(path)
@@ -511,6 +686,12 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
 
         if path.startswith(FRONTEND_PREFIXES):
             frontend_required = True
+            unit_targets, e2e_specs, frontend_mapped = _frontend_targets_for_path(path)
+            if frontend_mapped:
+                frontend_unit_targets.update(unit_targets)
+                frontend_e2e_specs.update(e2e_specs)
+            else:
+                frontend_has_unmapped = True
             journey_specs.update(_fullstack_specs_for_path(path))
             has_unmapped_user_journey = has_unmapped_user_journey or _is_unmapped_user_journey_path(
                 path
@@ -520,6 +701,11 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
 
         if path.startswith(BACKEND_PREFIXES):
             backend_required = True
+            backend_direct, backend_mapped = _backend_targets_for_path(path)
+            if backend_mapped:
+                backend_targets.update(backend_direct)
+            else:
+                backend_has_unmapped = True
             journey_specs.update(_fullstack_specs_for_path(path))
             has_unmapped_user_journey = has_unmapped_user_journey or _is_unmapped_user_journey_path(
                 path
@@ -548,6 +734,15 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         else:
             fullstack_specs.update(journey_specs)
 
+    if backend_required and (backend_has_unmapped or not backend_targets):
+        backend_targets.update(BACKEND_ALL)
+    if frontend_required and frontend_has_unmapped:
+        frontend_unit_targets.update(FRONTEND_ALL)
+        frontend_e2e_specs.update(FRONTEND_ALL)
+
+    selected_backend_targets = _ordered_targets(backend_targets, all_value=BACKEND_ALL)
+    selected_frontend_unit_targets = _ordered_targets(frontend_unit_targets, all_value=FRONTEND_ALL)
+    selected_frontend_e2e_specs = _ordered_targets(frontend_e2e_specs, all_value=FRONTEND_ALL)
     selected_postgres_targets = _ordered_postgres_targets(postgres_targets)
     selected_postgres_suites = _ordered_postgres_suites(postgres_suites)
     if postgres_required and not selected_postgres_targets and not selected_postgres_suites:
@@ -566,6 +761,9 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         report_font_required=report_font_required,
         frontend_audit_required=frontend_audit_required,
         package_required=package_required,
+        backend_targets=selected_backend_targets,
+        frontend_unit_targets=selected_frontend_unit_targets,
+        frontend_e2e_specs=selected_frontend_e2e_specs,
         postgres_targets=selected_postgres_targets,
         postgres_suites=selected_postgres_suites,
         fullstack_specs=selected_specs,
@@ -616,6 +814,9 @@ def _write_github_output(path: Path, requirements: CiRequirements, changed_count
         "report_font_required": _bool_output(requirements.report_font_required),
         "frontend_audit_required": _bool_output(requirements.frontend_audit_required),
         "package_required": _bool_output(requirements.package_required),
+        "backend_targets": " ".join(requirements.backend_targets),
+        "frontend_unit_targets": " ".join(requirements.frontend_unit_targets),
+        "frontend_e2e_specs": " ".join(requirements.frontend_e2e_specs),
         "postgres_targets": " ".join(requirements.postgres_targets),
         "postgres_suites": " ".join(requirements.postgres_suites),
         "fullstack_specs": " ".join(requirements.fullstack_specs),
@@ -626,22 +827,56 @@ def _write_github_output(path: Path, requirements: CiRequirements, changed_count
             handle.write(f"{key}={value}\n")
 
 
+def _requirements_json(requirements: CiRequirements, changed_paths: list[str]) -> str:
+    """输出开发期/CI 共用的机器可读分类结果。"""
+    payload = {
+        "profile": requirements.profile,
+        "repository_required": requirements.repository_required,
+        "repository_quality_required": requirements.repository_quality_required,
+        "backend_required": requirements.backend_required,
+        "frontend_required": requirements.frontend_required,
+        "contract_required": requirements.contract_required,
+        "postgres_required": requirements.postgres_required,
+        "fullstack_required": requirements.fullstack_required,
+        "stack_smoke_required": requirements.stack_smoke_required,
+        "report_font_required": requirements.report_font_required,
+        "frontend_audit_required": requirements.frontend_audit_required,
+        "package_required": requirements.package_required,
+        "backend_targets": list(requirements.backend_targets),
+        "frontend_unit_targets": list(requirements.frontend_unit_targets),
+        "frontend_e2e_specs": list(requirements.frontend_e2e_specs),
+        "postgres_targets": list(requirements.postgres_targets),
+        "postgres_suites": list(requirements.postgres_suites),
+        "fullstack_specs": list(requirements.fullstack_specs),
+        "changed_count": len(changed_paths),
+        "changed_paths": changed_paths,
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
 def main() -> int:
     """从 Git diff 计算 CI 证明责任，并可输出给 GitHub Actions。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, help="变更基线 commit SHA")
     parser.add_argument("--head", required=True, help="变更目标 commit SHA")
     parser.add_argument("--github-output", type=Path, help="可选 GITHUB_OUTPUT 文件")
+    parser.add_argument("--json", action="store_true", help="仅输出机器可读 JSON")
     args = parser.parse_args()
 
     changed_paths = _changed_paths(args.base, args.head)
     if changed_paths is None:
         requirements = _full_requirements()
+        changed_paths = []
         changed_count = 0
-        print("无法可靠读取变更范围，保守使用 full CI profile。")
     else:
         requirements = classify_requirements(changed_paths)
         changed_count = len(changed_paths)
+
+    if args.json:
+        print(_requirements_json(requirements, changed_paths))
+    else:
+        if changed_count == 0 and requirements.profile == "full":
+            print("无法可靠读取变更范围，保守使用 full CI profile。")
         print(
             "CI profile="
             f"{requirements.profile}; changed_count={changed_count}; "
@@ -653,6 +888,12 @@ def main() -> int:
         )
         for changed_path in changed_paths:
             print(f"- {changed_path}")
+        if requirements.backend_targets:
+            print("Backend targets: " + " ".join(requirements.backend_targets))
+        if requirements.frontend_unit_targets:
+            print("Frontend unit targets: " + " ".join(requirements.frontend_unit_targets))
+        if requirements.frontend_e2e_specs:
+            print("Frontend browser specs: " + " ".join(requirements.frontend_e2e_specs))
         if requirements.postgres_targets:
             print("PostgreSQL targets: " + " ".join(requirements.postgres_targets))
         if requirements.postgres_suites:

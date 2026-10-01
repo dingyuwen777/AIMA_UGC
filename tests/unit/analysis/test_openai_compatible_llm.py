@@ -35,6 +35,7 @@ def _request(
         items=(
             ContentLabelingModelItem(
                 item_no=1,
+                platform="xiaohongshu",
                 title="爱玛标题",
                 text="正文",
                 author_display_name="作者",
@@ -115,7 +116,7 @@ def test_openai_compatible_adapter_sends_one_minimal_chat_completion_request() -
     assert response.cost_currency is None
 
 
-def test_excel_output_contract_is_scoped_to_excel_complete_requests() -> None:
+def test_excel_complete_request_does_not_override_the_unique_prompt_protocol() -> None:
     captured: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -140,8 +141,8 @@ def test_excel_output_contract_is_scoped_to_excel_complete_requests() -> None:
         client.close()
 
     user_payload = json.loads(json.loads(captured[0].content)["messages"][1]["content"])
-    assert set(user_payload) == {"items", "excel_output_contract"}
-    assert "relevance=irrelevant" in user_payload["excel_output_contract"]
+    assert set(user_payload) == {"items"}
+    assert "excel_output_contract" not in user_payload
 
 
 def test_openai_compatible_adapter_derives_non_default_port_in_provider_identity() -> None:
@@ -235,7 +236,7 @@ def test_openai_compatible_adapter_judge_recomputes_from_current_items() -> None
         )
         adapter.complete(
             _request(
-                previous_errors=("voice_type_semantic_conflict",),
+                previous_errors=("fabricated_evidence",),
                 request_kind="judge",
             )
         )

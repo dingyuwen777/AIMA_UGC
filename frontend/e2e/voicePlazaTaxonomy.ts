@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 
 export const voicePlazaTaxonomyFixture = {
-  prompt_version: 'content-labeling.v3',
+  prompt_version: 'content-labeling.v3.0',
   prompt_sha256: 'a'.repeat(64),
   schema_version: 'aima-content-taxonomy.v2',
   taxonomy_sha256: 'b'.repeat(64),

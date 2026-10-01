@@ -25,6 +25,8 @@ from aima_ugc.adapters.providers.imports import (
 from aima_ugc.bootstrap.representative_selection_publication import (
     create_representative_llm,
 )
+from aima_ugc.contracts.export import UnifiedDataExcelV1
+from aima_ugc.modules.analysis.content_labeling import ContentLabelingLLMPort
 from aima_ugc.modules.analysis.representative_advice import (
     RepresentativeAdviceInput,
     RepresentativeAdviceService,
@@ -148,6 +150,73 @@ def prepare_representative_report(
         rows=rows,
         warnings=tuple(warnings),
     )
+
+
+def prepare_dataset_representatives(
+    *,
+    records: Sequence[UnifiedDataExcelV1],
+    prompt_path: Path,
+    llm: ContentLabelingLLMPort,
+    advice_prompt: str,
+) -> RepresentativeReportPreparation:
+    """从冻结数据库投影准备案例，严格模型校验失败时不产生替代案例。"""
+    from aima_ugc.platform.presentation import platform_display_name
+
+    contents = []
+    comments = {}
+    for index, record in enumerate(records, start=2):
+        content = record.content
+        analysis = content.analysis
+        if analysis is None:
+            continue
+        platform = platform_display_name(content.platform)
+        contents.append(
+            LabeledContent(
+                row_number=index,
+                platform=platform,
+                content_id=content.external_content_id,
+                title=content.title or "",
+                text=content.text or "",
+                author=content.author_display_name or "",
+                published_at=content.published_at.isoformat() if content.published_at else "",
+                content_url=content.content_url or "",
+                voice_type=analysis.voice_type or "",
+                sentiment_label=analysis.sentiment or "",
+                primary_label=analysis.primary_label,
+                secondary_label=analysis.secondary_label,
+                author_follower_count=content.author_follower_count,
+                like_count=content.like_count,
+                comment_count=content.comment_count,
+                share_count=content.share_count,
+            )
+        )
+        candidates = [comment for comment in record.comments if comment.text]
+        if candidates:
+            best = max(candidates, key=lambda comment: comment.like_count or 0)
+            comments[(platform, content.external_content_id)] = best.text or ""
+    pool = build_candidate_pool(contents, real_user_voice_type=REAL_USER_VOICE_TYPE)
+    selection = RepresentativeSelectionService(
+        prompt_path=prompt_path,
+        llm=llm,
+        fail_closed=True,
+    ).run(pool.candidates)
+    advice = RepresentativeAdviceService(llm=llm, fail_closed=True, prompt=advice_prompt).run(
+        tuple(
+            _advice_input(item_no=index, selected=selected, comment_map=comments)
+            for index, selected in enumerate(selection.selected, start=1)
+        )
+    )
+    rows = _build_report_rows(
+        selection,
+        advice_by_index=advice,
+        comment_map=comments,
+        warnings=[],
+        screenshots_dir=None,
+        capture_screenshots=False,
+        screenshot_output_dir=Path("."),
+        progress=None,
+    )
+    return RepresentativeReportPreparation(selection_run=selection, rows=rows, warnings=())
 
 
 def _advice_input(

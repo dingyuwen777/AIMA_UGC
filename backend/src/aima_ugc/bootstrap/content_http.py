@@ -13,10 +13,14 @@ from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.llm.capabilities import declared_concurrency
 from aima_ugc.adapters.persistence.postgres.analysis import (
     AnalysisRequestNotFound,
     AnalysisRunStateConflict,
     PostgresAnalysisRepository,
+)
+from aima_ugc.adapters.persistence.postgres.analysis_capacity import (
+    PostgresAnalysisCapacityRepository,
 )
 from aima_ugc.adapters.persistence.postgres.analysis_high_throughput import (
     PostgresHighThroughputAnalysisRepository,
@@ -88,6 +92,14 @@ from aima_ugc.contracts.relevance_review import (
     ContentRelevanceReviewRequest,
     ContentRelevanceReviewResponse,
 )
+from aima_ugc.modules.analysis.adaptive_capacity import (
+    CAPACITY_MODE,
+    SHARD_CONCURRENCY_CEILING,
+    SUPPORTED_CAPACITY_MODES,
+    VALIDATION_RETRIES,
+    CapacityState,
+    learned_run_limits,
+)
 from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
     CONTENT_ANALYSIS_JOB_PAYLOAD_VERSION,
@@ -100,8 +112,11 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobPayload,
     ContentAnalysisPlanJobPayload,
     analysis_all_scope_filter_snapshot,
+    analysis_query_filters_from_snapshot,
+    analysis_query_scope_filter_snapshot,
     is_analysis_all_scope_filter_snapshot,
 )
+from aima_ugc.modules.analysis.recovery import RECOVERY_MODE
 from aima_ugc.modules.analysis.sharding import calculate_analysis_shard_size
 from aima_ugc.modules.content.content_cursor import ContentCursorCodec, ContentCursorPosition
 from aima_ugc.modules.content.http import (
@@ -610,33 +625,37 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(session, self._runtime.settings)
+                configuration = active_analysis_configuration(
+                    session,
+                    self._runtime.settings,
+                    refresh_unused_git_bootstrap=True,
+                )
                 identity = configuration.identity
                 llm_provider = configuration.llm_provider
                 if identity is None or llm_provider is None:
                     raise ContentAnalysisUnavailable
-                runtime_config_snapshot = cast(
-                    dict[str, object], llm_provider.safe_runtime_snapshot()
+                runtime_config_snapshot = _adaptive_provider_snapshot(llm_provider)
+                profile = PostgresAnalysisCapacityRepository(session).get(
+                    llm_provider.id, identity.model
                 )
-                if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
-                    target_count = PostgresContentQueryRepository(
-                        session,
-                        analysis_identity=None,
-                    ).count_all_analysis_targets()
-                else:
-                    target_statement = self._analysis_target_statement(
-                        session,
-                        targets,
-                        analysis_identity=identity,
-                    )
-                    target_count = PostgresAnalysisRepository(session).count_targets(
-                        target_statement
-                    )
+                state = (
+                    CapacityState(**profile["state"]) if profile is not None else CapacityState()
+                )
+                if profile is not None and (
+                    profile["revision"] != llm_provider.revision
+                    or profile["prompt_sha256"] != identity.prompt_sha256
+                ):
+                    state = state.warm_start()
+                shard_size, _ = learned_run_limits(state)
+                target_count = self._analysis_target_count(
+                    session,
+                    targets,
+                    analysis_identity=identity,
+                )
                 if target_count == 0:
                     raise ContentSelectionEmpty
         finally:
             session.close()
-        shard_size = _analysis_shard_size(llm_provider)
         return AnalysisContentRunPreviewResponse(
             target_count=target_count,
             shard_count=ceil(target_count / shard_size),
@@ -751,12 +770,12 @@ class PostgresContentHttpService:
     ) -> tuple[AnalysisContentRunCreatedResponse, UUID | None, UUID | None]:
         """创建并冻结 Analysis Run；Shard 只由本次冻结 Provider 并发自动推导。"""
 
-        configuration = self._load_active_analysis_configuration()
+        configuration = self._load_active_analysis_configuration(refresh_unused_git_bootstrap=True)
         identity = configuration.identity
         llm_provider = configuration.llm_provider
         if identity is None or llm_provider is None:
             raise ContentAnalysisUnavailable
-        runtime_config_snapshot = cast(dict[str, object], llm_provider.safe_runtime_snapshot())
+        runtime_config_snapshot = _adaptive_provider_snapshot(llm_provider)
         generation_config, generation_hash = current_analysis_generation_config()
         configuration_hash = _analysis_configuration_hash(
             prompt_version=identity.prompt_version,
@@ -769,8 +788,8 @@ class PostgresContentHttpService:
         )
         if configuration_hash != expected_configuration_hash:
             raise ContentAnalysisRunConflict
-        shard_size = _analysis_shard_size(llm_provider)
-        filter_snapshot = _analysis_filter_snapshot(targets)
+        request_filter_snapshot = _analysis_filter_snapshot(targets)
+        stored_filter_snapshot = request_filter_snapshot
         storage_scope = _analysis_storage_scope(targets)
         session = self._runtime.database.new_session()
         try:
@@ -784,7 +803,7 @@ class PostgresContentHttpService:
                         expected_configuration_hash=expected_configuration_hash,
                         run_intent=run_intent,
                         scope=storage_scope,
-                        filter_snapshot=filter_snapshot,
+                        filter_snapshot=request_filter_snapshot,
                     )
                     existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
                     if freeze_in_http and not existing_shards:
@@ -800,6 +819,35 @@ class PostgresContentHttpService:
                         cast(UUID, first_shard["request_id"]) if first_shard else None,
                         cast(UUID, first_shard["job_id"]) if first_shard else None,
                     )
+                if (
+                    not freeze_in_http
+                    and isinstance(targets, AnalysisRunTargetSelection)
+                    and targets.scope == "query"
+                ):
+                    query_repository = PostgresContentQueryRepository(
+                        session,
+                        analysis_identity=identity,
+                    )
+                    current_target_count, target_fingerprint = (
+                        query_repository.snapshot_filtered_analysis_targets(
+                            targets.filters or ContentFilterSnapshot()
+                        )
+                    )
+                    if current_target_count != expected_target_count:
+                        raise ContentAnalysisTargetChanged
+                    stored_filter_snapshot = analysis_query_scope_filter_snapshot(
+                        request_filter_snapshot,
+                        target_fingerprint=target_fingerprint,
+                    )
+                state = PostgresAnalysisCapacityRepository(session).ensure(
+                    llm_provider.id,
+                    identity.model,
+                    revision=llm_provider.revision,
+                    prompt_sha256=identity.prompt_sha256,
+                    declared_ceiling=declared_concurrency(llm_provider.base_url, identity.model),
+                )
+                shard_size, timeout_seconds = learned_run_limits(state)
+                runtime_config_snapshot["timeout_seconds"] = timeout_seconds
                 shard_count = ceil(expected_target_count / shard_size)
                 run_id = uuid5(_ANALYSIS_RUN_ID_NAMESPACE, client_idempotency_key)
                 planner_job = PostgresJobRepository(session).enqueue(
@@ -818,7 +866,7 @@ class PostgresContentHttpService:
                     planner_job_id=planner_job.id,
                     run_intent=run_intent,
                     scope=storage_scope,
-                    filter_snapshot=filter_snapshot,
+                    filter_snapshot=stored_filter_snapshot,
                     target_count=expected_target_count,
                     shard_count=shard_count,
                     shard_size=shard_size,
@@ -839,7 +887,7 @@ class PostgresContentHttpService:
                         expected_configuration_hash=expected_configuration_hash,
                         run_intent=run_intent,
                         scope=storage_scope,
-                        filter_snapshot=filter_snapshot,
+                        filter_snapshot=request_filter_snapshot,
                     )
                     existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
                     if freeze_in_http and not existing_shards:
@@ -958,6 +1006,28 @@ class PostgresContentHttpService:
             )
         )
 
+    def _analysis_target_count(
+        self,
+        session: Session,
+        targets: _AnalysisTargetSelection,
+        *,
+        analysis_identity: Any,
+    ) -> int:
+        """按 Scope 统计服务端权威目标数；Query 不构造带窗口序号的冻结语句。"""
+
+        repository = PostgresContentQueryRepository(session, analysis_identity=analysis_identity)
+        if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
+            return PostgresContentQueryRepository(
+                session,
+                analysis_identity=None,
+            ).count_all_analysis_targets()
+        if targets.scope == "query":
+            return repository.count_filtered_analysis_targets(
+                targets.filters or ContentFilterSnapshot()
+            )
+        target_statement = repository.freeze_target_statement(content_ids=targets.content_ids)
+        return PostgresAnalysisRepository(session).count_targets(target_statement)
+
     def _analysis_target_statement(
         self,
         session: Session,
@@ -965,9 +1035,11 @@ class PostgresContentHttpService:
         *,
         analysis_identity: Any,
     ) -> Any:
+        """恢复兼容入口的冻结语句；新 Run 的 all/query 由 Planner 有界冻结。"""
+
         repository = PostgresContentQueryRepository(session, analysis_identity=analysis_identity)
-        if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
-            raise ValueError("all Scope 只能由 Planner 有界冻结")
+        if isinstance(targets, AnalysisRunTargetSelection) and targets.scope in {"all", "query"}:
+            raise ValueError("all/query Scope 只能由 Planner 有界冻结")
         if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
             return repository.freeze_target_statement(
                 filters=targets.filters or ContentFilterSnapshot()
@@ -1000,14 +1072,22 @@ class PostgresContentHttpService:
         finally:
             session.close()
 
-    def _load_active_analysis_configuration(self) -> ActiveAnalysisConfiguration:
-        """在短事务中读取并验证当前 Scheme，首次 bootstrap 会连同审计提交。"""
+    def _load_active_analysis_configuration(
+        self,
+        *,
+        refresh_unused_git_bootstrap: bool = False,
+    ) -> ActiveAnalysisConfiguration:
+        """短事务读取 Scheme；只有打标冻结入口显式检查纯 Git-managed Scheme 刷新。"""
 
         session = self._runtime.database.new_session()
         try:
             with session.begin():
                 try:
-                    return active_analysis_configuration(session, self._runtime.settings)
+                    return active_analysis_configuration(
+                        session,
+                        self._runtime.settings,
+                        refresh_unused_git_bootstrap=refresh_unused_git_bootstrap,
+                    )
                 except (RuntimeError, ValueError) as exc:
                     raise ContentAnalysisTaxonomyUnavailable from exc
         finally:
@@ -1077,9 +1157,11 @@ def _filter_value_options(
 
 
 def _analysis_filter_snapshot(targets: _AnalysisTargetSelection) -> dict[str, object]:
+    """把公开 Scope 固化成数据库可恢复的筛选快照。"""
+
     if isinstance(targets, AnalysisRunTargetSelection) and targets.scope == "all":
         return analysis_all_scope_filter_snapshot()
-    if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
+    if targets.scope == "query":
         return (targets.filters or ContentFilterSnapshot()).model_dump(mode="json")
     return {"content_ids": [str(item) for item in targets.content_ids]}
 
@@ -1098,6 +1180,20 @@ def _analysis_shard_size(provider: ProviderConfig) -> int:
         provider.max_concurrency,
         max_rps=provider.max_rps,
     )
+
+
+def _adaptive_provider_snapshot(provider: ProviderConfig) -> dict[str, object]:
+    """连接身份冻结；新协议执行参数由系统派生，历史快照无需重写。"""
+
+    return {
+        **provider.safe_runtime_snapshot(),
+        "capacity_mode": CAPACITY_MODE,
+        "recovery_mode": RECOVERY_MODE,
+        "max_concurrency": SHARD_CONCURRENCY_CEILING,
+        "max_rps": None,
+        "max_retries": VALIDATION_RETRIES,
+        "timeout_seconds": 120,
+    }
 
 
 def _analysis_response_scope(row: RowMapping) -> Literal["all", "query", "selected"]:
@@ -1130,7 +1226,15 @@ def _analysis_configuration_hash(
         "taxonomy_sha256": taxonomy_sha256,
     }
     if runtime_config_snapshot:
-        payload["runtime_config_snapshot"] = runtime_config_snapshot
+        snapshot = runtime_config_snapshot
+        if snapshot.get("capacity_mode") in SUPPORTED_CAPACITY_MODES:
+            # 学习状态和创建时派生 timeout 不参与用户确认/幂等身份；连接 Revision 仍参与。
+            snapshot = {
+                key: value
+                for key, value in snapshot.items()
+                if key not in {"timeout_seconds", "max_concurrency", "max_rps", "max_retries"}
+            }
+        payload["runtime_config_snapshot"] = snapshot
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -1153,11 +1257,16 @@ def _assert_same_analysis_run_request(
         generation_config_hash=cast(str, row["generation_config_hash"]),
         runtime_config_snapshot=cast(dict[str, object], row["runtime_config_snapshot"]),
     )
+    stored_filter_snapshot = row["filter_snapshot"]
+    if row["scope"] == "query" and not is_analysis_all_scope_filter_snapshot(
+        stored_filter_snapshot
+    ):
+        stored_filter_snapshot = analysis_query_filters_from_snapshot(stored_filter_snapshot)
     if (
         row["target_count"] != expected_target_count
         or row["run_intent"] != run_intent
         or row["scope"] != scope
-        or row["filter_snapshot"] != filter_snapshot
+        or stored_filter_snapshot != filter_snapshot
         or actual_configuration_hash != expected_configuration_hash
     ):
         raise ContentAnalysisRunConflict
@@ -1189,6 +1298,7 @@ def _analysis_run_response(
         generation_config=cast(dict[str, object], row["generation_config"]),
         generation_config_hash=cast(str, row["generation_config_hash"]),
         error_code=cast(str | None, row["error_code"]),
+        execution_settling=bool(row.get("execution_settling", False)),
         stats=AnalysisContentRunStatsResponse.model_validate(
             repository.run_stats(cast(UUID, row["id"]))
         ),

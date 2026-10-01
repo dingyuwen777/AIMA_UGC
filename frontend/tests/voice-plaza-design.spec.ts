@@ -35,7 +35,7 @@ const baseAnalysisRun: AnalysisContentRunResponse = {
   target_count: 100,
   shard_count: 2,
   shard_size: 50,
-  prompt_version: 'content_labeling_v3',
+  prompt_version: 'content-labeling.v3.0',
   prompt_sha256: 'a'.repeat(64),
   taxonomy_sha256: 'b'.repeat(64),
   model_provider: 'openai-compatible',
@@ -120,11 +120,11 @@ describe('声音广场正式 Figma 基线', () => {
       '竞争范围',
       '情感',
       '状态',
-      '内容类型',
       '一级标签',
       '二级标签',
       '发布时间范围',
     ]) expect(html).toContain(label)
+    expect(html).not.toContain('aria-label="内容类型"')
 
     for (const label of ['相关性', '情感', '状态']) {
       expect(html).toContain(`aria-label="${label}"`)
@@ -145,8 +145,8 @@ describe('声音广场正式 Figma 基线', () => {
       ['text', '纯文本'],
       ['unknown', '未识别'],
     ]) {
-      expect(html).toContain(`value="${value}"`)
-      expect(html).toContain(label)
+      expect(html).not.toContain(`value="${value}"`)
+      expect(html).not.toContain(`<option value="${value}">${label}</option>`)
     }
     expect(html).not.toContain('来源 Batch / Run ID')
     expect(html).not.toContain('UUID / 来源标识')

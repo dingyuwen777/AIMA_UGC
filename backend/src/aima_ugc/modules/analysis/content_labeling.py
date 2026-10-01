@@ -27,12 +27,10 @@ from aima_ugc.platform.time import beijing_now
 from .persistence import AnalysisConfigurationIdentity
 from .prompt_taxonomy import (
     CONTENT_LABELING_PROMPT_PATH,
-    CONTENT_LABELING_PROMPT_POINTER_PATH,
     PROMPT_VERSION,
     PromptTaxonomy,
     PromptTaxonomyError,
     PromptTaxonomyLoader,
-    resolve_content_labeling_prompt_path,
 )
 
 ContentLabelingRequestKind = Literal["primary", "repair", "judge"]
@@ -41,7 +39,8 @@ _JUDGE_ERROR_CODES = frozenset(
         "decision_needs_judge",
         "fabricated_evidence",
         "missing_evidence",
-        "voice_type_semantic_conflict",
+        "inconsistent_voice_type",
+        "invalid_real_user_qualification",
     }
 )
 
@@ -73,16 +72,17 @@ class ContentLabelingModelItem:
     """发给模型的一条最小业务输入；item_no 只用于批次配对。"""
 
     item_no: int
+    platform: str
     title: str
     text: str
     author_display_name: str
     author_bio: str
     author_verification_label: str
 
-    def model_payload(self) -> dict[str, object]:
-        """生成允许发送给模型的唯一业务字段形状。"""
+    def model_payload(self, *, include_platform: bool = False) -> dict[str, object]:
+        """按冻结协议生成允许发送给模型的唯一业务字段形状。"""
 
-        return {
+        payload: dict[str, object] = {
             "item_no": self.item_no,
             "title": self.title,
             "text": self.text,
@@ -92,6 +92,9 @@ class ContentLabelingModelItem:
                 "verification_label": self.author_verification_label,
             },
         }
+        if include_platform:
+            payload["platform"] = self.platform
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,13 +106,14 @@ class ContentLabelingLLMRequest:
     request_kind: ContentLabelingRequestKind = "primary"
     previous_validation_error_codes: tuple[str, ...] = ()
     require_excel_complete: bool = False
+    include_platform: bool = False
     logical_request_id: str | None = None
     stop_event: Event | None = field(default=None, repr=False, compare=False)
 
     def model_payload(self) -> list[dict[str, object]]:
         """返回批次中只含允许业务字段的 JSON-ready 列表。"""
 
-        return [item.model_payload() for item in self.items]
+        return [item.model_payload(include_platform=self.include_platform) for item in self.items]
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,17 +204,7 @@ class _ModelEvidenceLabelPair(_ModelLabelPair):
     evidence: list[str] = Field(min_length=1)
 
 
-class _ModelLabelItemV3(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    item_no: int = Field(ge=1)
-    relevance: Literal["relevant", "irrelevant"]
-    voice_type: ContentVoiceType
-    sentiment: str | None = None
-    labels: list[_ModelLabelPair] = Field(default_factory=list)
-
-
-class _ModelLabelItemV4(BaseModel):
+class _ModelLabelItem(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     item_no: int = Field(ge=1)
@@ -218,6 +212,7 @@ class _ModelLabelItemV4(BaseModel):
     relevance_evidence: list[str] = Field(min_length=1)
     source_type: str = Field(min_length=1)
     content_intent: str = Field(min_length=1)
+    real_user_qualified: bool | None = None
     voice_type: ContentVoiceType
     voice_evidence: list[str] = Field(default_factory=list)
     sentiment: str | None = None
@@ -230,49 +225,26 @@ class _ModelLabelItemV4(BaseModel):
 class _ParsedModelLabel:
     relevance: Literal["relevant", "irrelevant"]
     relevance_evidence: tuple[str, ...]
-    source_type: str | None
-    content_intent: str | None
+    source_type: str
+    content_intent: str
+    real_user_qualified: bool | None
     voice_type: ContentVoiceType
     voice_evidence: tuple[str, ...]
     sentiment: str | None
     sentiment_evidence: tuple[str, ...]
     labels: tuple[ContentLabelPairV2, ...]
     label_evidence: tuple[tuple[str, ...], ...]
-    decision_status: Literal["clear", "needs_judge"] | None
+    decision_status: Literal["clear", "needs_judge"]
 
 
-def _parse_model_label_item_v3(
-    value: dict[str, Any],
-) -> _ParsedModelLabel:
-    parsed = _ModelLabelItemV3.model_validate(value)
-    return _ParsedModelLabel(
-        relevance=parsed.relevance,
-        relevance_evidence=(),
-        source_type=None,
-        content_intent=None,
-        voice_type=parsed.voice_type,
-        voice_evidence=(),
-        sentiment=parsed.sentiment,
-        sentiment_evidence=(),
-        labels=tuple(
-            ContentLabelPairV2(
-                primary_label=pair.primary_label,
-                secondary_label=pair.secondary_label,
-            )
-            for pair in parsed.labels
-        ),
-        label_evidence=tuple(() for _ in parsed.labels),
-        decision_status=None,
-    )
-
-
-def _parse_model_label_item_v4(value: dict[str, Any]) -> _ParsedModelLabel:
-    parsed = _ModelLabelItemV4.model_validate(value)
+def _parse_model_label_item(value: dict[str, Any]) -> _ParsedModelLabel:
+    parsed = _ModelLabelItem.model_validate(value)
     return _ParsedModelLabel(
         relevance=parsed.relevance,
         relevance_evidence=tuple(parsed.relevance_evidence),
         source_type=parsed.source_type,
         content_intent=parsed.content_intent,
+        real_user_qualified=parsed.real_user_qualified,
         voice_type=parsed.voice_type,
         voice_evidence=tuple(parsed.voice_evidence),
         sentiment=parsed.sentiment,
@@ -302,53 +274,6 @@ class _ValidationResult:
     valid_items: dict[int, _ValidatedLabel]
     item_errors: dict[int, tuple[str, ...]]
     error_codes: tuple[str, ...]
-
-
-def _taxonomy_value_or_first(values: Sequence[str], preferred: str) -> str:
-    """从当前 Prompt Taxonomy 取首选闭集值；首选不存在时退回首项。"""
-
-    if not values:
-        raise ContentLabelingValidationError(["empty_taxonomy"])
-    return preferred if preferred in values else values[0]
-
-
-def _build_excel_complete_fallback(
-    *,
-    taxonomy: PromptTaxonomy,
-    input_hash: str,
-    model_provider: str,
-    model: str,
-    analyzed_at: datetime,
-) -> ContentLabelAnalysisV3:
-    """在模型重试耗尽后生成永不为空的最后一道 Excel 合法结果。
-
-    这是格式兜底，不伪造模型判断：只使用当前 Prompt Taxonomy 中的合法闭集值。
-    正常情况下不会触发；它的作用是保证单条异常不会让整批导出失败。
-    """
-
-    primary_label = taxonomy.primary_labels[0]
-    secondary_label = taxonomy.labels[primary_label][0]
-    fallback_voice_type = (
-        taxonomy.semantic_rules.unknown_voice_type if taxonomy.semantic_rules is not None else ""
-    )
-    return ContentLabelAnalysisV3(
-        relevance="relevant",
-        voice_type=_taxonomy_value_or_first(taxonomy.voice_types, fallback_voice_type),
-        sentiment=_taxonomy_value_or_first(taxonomy.sentiments, "中性"),
-        labels=(
-            ContentLabelPairV2(
-                primary_label=primary_label,
-                secondary_label=secondary_label,
-            ),
-        ),
-        prompt_version=taxonomy.prompt_version,
-        prompt_sha256=taxonomy.prompt_sha256,
-        taxonomy_sha256=taxonomy.taxonomy_sha256,
-        model_provider=model_provider,
-        model=model,
-        input_hash=input_hash,
-        analyzed_at=analyzed_at,
-    )
 
 
 class RuntimeTaxonomyValidator:
@@ -407,14 +332,14 @@ class RuntimeTaxonomyValidator:
         if errors:
             raise ContentLabelingValidationError(errors)
 
-    @staticmethod
     def _evidence_errors(
+        self,
         evidence: tuple[str, ...],
         *,
         item: ContentLabelingModelItem,
         required: bool,
     ) -> tuple[str, ...]:
-        """确认模型证据逐项来自五个输入字段，不做关键词分类。"""
+        """校验证据来自五个文本字段；全空输入仅接受专用哨兵。"""
 
         errors: list[str] = []
         if required and not evidence:
@@ -426,11 +351,15 @@ class RuntimeTaxonomyValidator:
             item.author_bio,
             item.author_verification_label,
         )
+        empty_input = not any(text.strip() for text in source_texts)
+        allow_empty_sentinel = empty_input
         seen: set[str] = set()
         for fragment in evidence:
             if fragment in seen:
                 errors.append("duplicate_evidence")
             seen.add(fragment)
+            if allow_empty_sentinel and fragment == "[EMPTY_INPUT]":
+                continue
             if (
                 not fragment
                 or fragment != fragment.strip()
@@ -439,18 +368,15 @@ class RuntimeTaxonomyValidator:
                 errors.append("fabricated_evidence")
         return _unique_error_codes(errors)
 
-    def _v4_semantic_errors(
+    def _semantic_errors(
         self,
         parsed: _ParsedModelLabel,
         *,
         item: ContentLabelingModelItem,
     ) -> tuple[str, ...]:
-        """校验 V4 主体、意图、证据和发声类型之间的确定性一致性。"""
+        """校验当前协议的辅助闭集、证据和独立发声类型。"""
 
         rules = self._taxonomy.semantic_rules
-        if rules is None:
-            return ("missing_semantic_rules",)
-
         errors: list[str] = []
         errors.extend(self._evidence_errors(parsed.relevance_evidence, item=item, required=True))
         if parsed.source_type not in rules.source_types:
@@ -458,26 +384,28 @@ class RuntimeTaxonomyValidator:
         if parsed.content_intent not in rules.content_intents:
             errors.append("unknown_content_intent")
 
-        derived_voice_type: str | None = None
-        if (
-            parsed.source_type in rules.source_types
-            and parsed.content_intent in rules.content_intents
-        ):
-            if self._taxonomy.output_protocol_version == "content-labeling.v4.6":
-                # V4.6 将 voice_type 定义为独立三分类，不再由两个辅助字段反推。
-                derived_voice_type = parsed.voice_type
+        if rules.voice_rules:
+            from .markdown_prompt import matching_voice_types
+
+            if parsed.real_user_qualified is None:
+                errors.append("missing_real_user_qualification")
             else:
-                derived_voice_type = rules.derive_voice_type(
-                    source_type=parsed.source_type,
-                    content_intent=parsed.content_intent,
+                expected = matching_voice_types(
+                    rules.voice_rules,
+                    parsed.source_type,
+                    parsed.content_intent,
+                    parsed.real_user_qualified,
                 )
-                if parsed.voice_type != derived_voice_type:
-                    errors.append("voice_type_semantic_conflict")
+                if expected != [parsed.voice_type]:
+                    errors.append("inconsistent_voice_type")
+                if parsed.real_user_qualified and parsed.relevance != "relevant":
+                    errors.append("invalid_real_user_qualification")
+
         errors.extend(
             self._evidence_errors(
                 parsed.voice_evidence,
                 item=item,
-                required=derived_voice_type != rules.unknown_voice_type,
+                required=True,
             )
         )
 
@@ -491,10 +419,7 @@ class RuntimeTaxonomyValidator:
             )
             for label_evidence in parsed.label_evidence:
                 errors.extend(self._evidence_errors(label_evidence, item=item, required=True))
-        elif (
-            self._taxonomy.output_protocol_version != "content-labeling.v4.6"
-            and parsed.sentiment_evidence
-        ):
+        elif parsed.sentiment_evidence:
             errors.append("irrelevant_has_sentiment_evidence")
 
         if parsed.decision_status == "needs_judge":
@@ -513,9 +438,7 @@ class RuntimeTaxonomyValidator:
         expected = tuple(expected_item_nos)
         expected_set = set(expected)
         validation_inputs = {item.item_no: item for item in expected_items}
-        if self._taxonomy.output_protocol_version != "content-labeling.v3" and (
-            tuple(validation_inputs) != expected
-        ):
+        if tuple(validation_inputs) != expected:
             return _all_invalid(expected, "missing_validation_input")
         try:
             payload = json.loads(raw_text)
@@ -569,10 +492,7 @@ class RuntimeTaxonomyValidator:
                 continue
 
             try:
-                if self._taxonomy.output_protocol_version != "content-labeling.v3":
-                    parsed = _parse_model_label_item_v4(candidates[0])
-                else:
-                    parsed = _parse_model_label_item_v3(candidates[0])
+                parsed = _parse_model_label_item(candidates[0])
             except ValidationError:
                 item_errors[item_no] = ("invalid_item_structure",)
                 aggregate_errors.append("invalid_item_structure")
@@ -586,31 +506,7 @@ class RuntimeTaxonomyValidator:
             if self._require_excel_complete and "空白" in parsed.voice_type:
                 shape_errors.append("blank_excel_voice_type_marker")
 
-            if self._require_excel_complete:
-                # Excel 打标结果的四个字段禁止出现 null、空字符串或空数组。
-                # 即使 relevance=irrelevant，也必须补齐情感和至少一个标签，
-                # 但当前持久化契约不允许 irrelevant 携带这些字段；因此这类结果
-                # 也只进入下一轮 LLM 修复，不得成为成功结果。
-                if parsed.relevance == "irrelevant":
-                    shape_errors.append("irrelevant_not_exportable")
-                if parsed.sentiment is None or "空白" in parsed.sentiment:
-                    shape_errors.append("missing_excel_sentiment")
-                if not parsed.labels:
-                    shape_errors.append("missing_excel_labels")
-                if any(
-                    "空白" in pair.primary_label or "空白" in pair.secondary_label
-                    for pair in parsed.labels
-                ):
-                    shape_errors.append("blank_excel_label_marker")
-                if parsed.sentiment is not None and parsed.labels:
-                    try:
-                        self.validate_label_pairs(
-                            sentiment=parsed.sentiment,
-                            labels=parsed.labels,
-                        )
-                    except ContentLabelingValidationError as exc:
-                        shape_errors.extend(exc.error_codes)
-            elif parsed.relevance == "relevant":
+            if parsed.relevance == "relevant":
                 if parsed.sentiment is None:
                     shape_errors.append("relevant_missing_sentiment")
                 if not parsed.labels:
@@ -628,13 +524,12 @@ class RuntimeTaxonomyValidator:
                     shape_errors.append("irrelevant_has_sentiment")
                 if parsed.labels:
                     shape_errors.append("irrelevant_has_labels")
-            if self._taxonomy.output_protocol_version != "content-labeling.v3":
-                shape_errors.extend(
-                    self._v4_semantic_errors(
-                        parsed,
-                        item=validation_inputs[item_no],
-                    )
+            shape_errors.extend(
+                self._semantic_errors(
+                    parsed,
+                    item=validation_inputs[item_no],
                 )
+            )
             if shape_errors:
                 codes = _unique_error_codes(shape_errors)
                 item_errors[item_no] = codes
@@ -733,6 +628,7 @@ class ContentLabelingService:
         *,
         max_validation_retries: int,
         stop_event: Event | None = None,
+        previous_validation_error_codes: tuple[str, ...] = (),
     ) -> ContentLabelingBatchResult:
         """分析一个批次；Validation Retry 只重新请求当前尚未成功的 item。"""
 
@@ -760,10 +656,12 @@ class ContentLabelingService:
             (item.item_no, item) for item in model_items
         )
         successful: dict[int, ContentLabelAnalysis] = {}
-        latest_errors: dict[int, tuple[str, ...]] = {}
+        latest_errors: dict[int, tuple[str, ...]] = (
+            {item.item_no: previous_validation_error_codes for item in model_items}
+            if previous_validation_error_codes
+            else {}
+        )
         attempts: list[ContentLabelingAttempt] = []
-        transport_fallback_triggered = False
-
         total_rounds = max_validation_retries + 1
         for retry_round in range(total_rounds):
             if not unresolved:
@@ -771,7 +669,7 @@ class ContentLabelingService:
             request_groups: tuple[
                 tuple[ContentLabelingRequestKind, tuple[ContentLabelingModelItem, ...]], ...
             ]
-            if retry_round == 0:
+            if retry_round == 0 and not previous_validation_error_codes:
                 request_groups = (("primary", tuple(unresolved.values())),)
             else:
                 repair_items: list[ContentLabelingModelItem] = []
@@ -806,21 +704,12 @@ class ContentLabelingService:
                     request_kind=request_kind,
                     previous_validation_error_codes=previous_errors,
                     require_excel_complete=self._force_excel_complete,
+                    include_platform=True,
                     logical_request_id=uuid4().hex,
                     stop_event=stop_event,
                 )
                 started_at = beijing_now()
-                try:
-                    response = self._llm.complete(request)
-                except ContentLabelingStopped:
-                    raise
-                except Exception:
-                    if not self._force_excel_complete:
-                        raise
-                    # 离线人工入口即使遇到网络/Provider 终态错误，也不能留下无法导出的
-                    # 半成品；实际 HTTP 错误已经由 Adapter 的 request_audit 记录。
-                    transport_fallback_triggered = True
-                    break
+                response = self._llm.complete(request)
                 completed_at = beijing_now()
 
                 validation = validator.validate_response(
@@ -873,25 +762,6 @@ class ContentLabelingService:
                     if item_no in unresolved:
                         latest_errors[item_no] = error_codes
 
-            if transport_fallback_triggered:
-                break
-
-        if unresolved and self._force_excel_complete:
-            # 模型多轮修复仍未收敛时，不能把空白结果写入最终 Excel。
-            # 兜底值仍从当前 Taxonomy 取闭集成员，且继续沿用同一 Prompt/Model 身份，
-            # 使后续 checkpoint 恢复和最终导出保持一致。
-            fallback_completed_at = beijing_now()
-            for item_no in tuple(unresolved):
-                successful[item_no] = _build_excel_complete_fallback(
-                    taxonomy=taxonomy,
-                    input_hash=input_hashes[item_no],
-                    model_provider=self._llm.provider_name,
-                    model=self._llm.model_name,
-                    analyzed_at=fallback_completed_at,
-                )
-                unresolved.pop(item_no, None)
-                latest_errors.pop(item_no, None)
-
         item_results: list[ContentLabelingItemResult] = []
         for item in model_items:
             analysis = successful.get(item.item_no)
@@ -931,6 +801,7 @@ def _to_model_item(content: CanonicalContentV1, *, item_no: int) -> ContentLabel
         author_verification_label = content.author.verification_label or ""
     return ContentLabelingModelItem(
         item_no=item_no,
+        platform=content.platform,
         title=content.title or "",
         text=content.text or "",
         author_display_name=author_display_name,
@@ -941,6 +812,7 @@ def _to_model_item(content: CanonicalContentV1, *, item_no: int) -> ContentLabel
 
 def _input_hash(item: ContentLabelingModelItem) -> str:
     payload = {
+        "platform": item.platform,
         "title": item.title,
         "text": item.text,
         "author": {
@@ -978,7 +850,6 @@ def _unique_error_codes(error_codes: Iterable[str]) -> tuple[str, ...]:
 
 
 __all__ = [
-    "CONTENT_LABELING_PROMPT_POINTER_PATH",
     "CONTENT_LABELING_PROMPT_PATH",
     "PROMPT_VERSION",
     "ContentLabelingAttempt",
@@ -995,6 +866,5 @@ __all__ = [
     "PromptTaxonomy",
     "PromptTaxonomyError",
     "PromptTaxonomyLoader",
-    "resolve_content_labeling_prompt_path",
     "RuntimeTaxonomyValidator",
 ]

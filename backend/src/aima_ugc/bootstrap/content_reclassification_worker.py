@@ -78,9 +78,14 @@ class PostgresContentReclassificationJobExecutor:
                                 raw_text=candidate.text,
                                 transcript_text=None,
                                 manual_vehicle_ids=candidate.manual_vehicle_ids,
+                                manual_brand_ids=candidate.manual_brand_ids,
                             )
                             conflicts = list(resolution.conflicts)
-                            brand_evidence = list(resolution.brand_evidence)
+                            brand_evidence = [
+                                item
+                                for item in resolution.brand_evidence
+                                if item.source != "manual_review"
+                            ]
                             for vehicle_id in candidate.existing_vehicle_ids:
                                 vehicle = vehicle_by_id.get(vehicle_id)
                                 if vehicle is None or vehicle.brand_id is None:
@@ -107,7 +112,7 @@ class PostgresContentReclassificationJobExecutor:
                                     deduplicated_brand_evidence,
                                 )
                             )
-                            if deduplicated_brand_evidence or resolution.vehicle_matches:
+                            if deduplicated_brand_evidence or resolution.matched:
                                 matched_count += 1
                             conflict_count += len(set(conflicts))
                             if candidate.manual_vehicle_ids is not None:
@@ -142,6 +147,9 @@ class PostgresContentReclassificationJobExecutor:
                             session
                         ).replace_automatic_alias_evidence_batch(
                             entries=tuple(vehicle_entries),
+                            include_import_text_matches=(
+                                snapshot.resolver_semantics == "brand_scoped_vehicle_v2"
+                            ),
                         )
                         brand_written, brand_locked_count = PostgresBrandVehicleRepository(
                             session
