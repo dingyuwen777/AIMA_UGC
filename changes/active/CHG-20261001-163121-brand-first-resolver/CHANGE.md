@@ -15,6 +15,7 @@ affected_areas:
   - ingestion
   - content
 affected_paths:
+  - .github/workflows/ci.yml
   - backend/src/aima_ugc/modules/vehicles
   - backend/src/aima_ugc/modules/ingestion
   - backend/src/aima_ugc/adapters/persistence/postgres
@@ -139,8 +140,10 @@ data_changes:
 
 新实例已通过当前canonical实例Contract校验。原基线15dd366、实现36f0f7f5的缺陷Red/Green和完整分套证据保持；本批已同步报告原生归档后的当前main `dd821ca86a64951d4f7add4d39b6129368aac18d`，组合实现检查点 `143f5a0bca6b5be72d4f574367fe358c69db0c7c`。18个品牌生产Git blob与原证据一致。当前组合1782项后端/16既有skip/12subtests、96项CI精确PG目标、24项品牌专项、报告PG9项/1 opt-in skip、16项真实全栈、前端274项与构建以及静态/Contract/文档检查通过。
 
-独立组合Repair复核RV-BRAND-01–09 closed，NO_FINDINGS_WITHIN_SCOPE，重读了上游完成定义，确认报告版本化Evidence消费者边界。当前进入ready_for_review；最终冻结head/current-base Review与required CI仍需live验证，通过之前不允许merge。详细命令、环境、原始失败、生产源码与XML摘要见LOCAL_VALIDATION.md和EVIDENCE.json。仅当前开发目录与自有测试资源可写，运行目录和既有容器未操作。
+独立组合Repair复核RV-BRAND-01–09 closed，确认报告版本化Evidence消费者边界。首个冻结head4b4e6b84的PG目标96项通过后，CI空库迁移probe因顺序问题失败，RV-BRAND-10为blocking并退Draft修复。原顺序真实数据库Red和新增顺序回归Red均已复现；仅移动完整迁移probe到数据测试之前，取得14个checkpoint/base回0078及紧接96targets的真实Green、相关79项回归Green。未修改生产Migration或降低断言，18个品牌生产文件保持。Final必须绑定新head/current-base及完整required CI，通过之前不允许merge。详细命令、环境、原始失败、生产源码与XML摘要见LOCAL_VALIDATION.md和EVIDENCE.json。仅当前开发目录与自有测试资源可写，运行目录和既有容器未操作。
 
 ## 交付阶段与 Issue AC21
+
+独立Repair已复核迁移顺序源码、Red/Green及真实新序列96项XML，RV-BRAND-01–10全部closed，没有新的blocking；当前进入ready_for_review，仍等待新冻结head的Final与完整CI。
 
 #685 / AC21保持未勾选：第一批报告PR #688已正常squash合并，原生Archive、main-fresh和Issue #684 Closure已完成；旧PR #686关闭为superseded，其分支/Change身份及失败记录保留。第二批PR #687按当前组合Ready门禁继续交付。Delivery Agent持有最终Review/CI、expected-head merge、main-fresh、Closure与cleanup，原生automation持有同ID Change归档。当前第二批delivery、main_fresh、change_archive、requirement_closure、end_to_end仍incomplete，不伪造已执行状态。当前Change的Ready准备不等价于整个Issue完成。

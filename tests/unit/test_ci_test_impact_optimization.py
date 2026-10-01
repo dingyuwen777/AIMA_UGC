@@ -102,6 +102,15 @@ def test_unknown_persistence_and_ci_self_fail_closed() -> None:
     assert ci_self.fullstack_specs == ("all",)
 
 
+def test_empty_database_migration_probe_precedes_data_writing_postgres_targets() -> None:
+    """旧版本回退只验证空库；业务目标测试会留下旧Schema不接受的新状态。"""
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    postgres_step = workflow.split("      - name: Selected PostgreSQL integration evidence", 1)[1]
+    migration_probe = "uv run python tests/integration/database/verify_migration_compatibility.py"
+    data_writing_targets = 'AIMA_REPORT_TEST_DATABASE=1 uv run pytest "${targets[@]}" -q'
+    assert postgres_step.index(migration_probe) < postgres_step.index(data_writing_targets)
+
+
 def test_ci_workflow_uses_selected_postgres_suites_and_conditional_report_font() -> None:
     """非报告PG仍保持轻量，真实报告渲染必须在自己的runner准备字体。"""
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

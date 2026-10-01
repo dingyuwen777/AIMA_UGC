@@ -332,5 +332,78 @@
       "pytest XML含12个subtests条目，summary通过数与XML总数分别保存。",
       "组合提交后的远程CI和最终current-head/current-base Review另行持有，不能由本地结果冒充。"
     ]
+  },
+  "ci_repair_validation": {
+    "parent_commit": "4b4e6b846a5e39ff9f701c57e47e67c47f5a3e83",
+    "baseline": "dd821ca86a64951d4f7add4d39b6129368aac18d",
+    "finding": "RV-BRAND-10",
+    "failed_run": 36869347726,
+    "failed_job": 110392868740,
+    "source_manifest": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "sha256_lf": "597e4b5d9706f5daa55c0bd44092ad1386c0da9041aa43ab0bd2c9019eb00cfe"
+      },
+      {
+        "path": "tests/unit/test_ci_test_impact_optimization.py",
+        "sha256_lf": "c271ff9682784b503e080d00854b9829da913bcd11107e47daaf02bf5aa38953"
+      }
+    ],
+    "records": [
+      {
+        "path": ".runtime/brand-ci-order-red.xml",
+        "sha256": "da9dd32e578322d8bb64ea23d04049b48b0963c0e856f90d0990de98f410ea22",
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": ".runtime/brand-ci-order-green.xml",
+        "sha256": "d6eeecf47535bd05f75fa0dc2fba797dd3c590b2cb3e2e247755605dc3352724",
+        "tests": 79,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": ".runtime/brand-ci-order-targets-green.xml",
+        "sha256": "d40bd8b12d4882696905c12a0e6dfa9fc04a6c65be0ba6263de8c1b5478407d6",
+        "tests": 96,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "logs": [
+      {
+        "path": ".runtime/brand-final-pg-ci.log",
+        "sha256": "b6635632b1c5605a5c610af9c08aedb2a81b61bff831bbcb77902cd56e60f44a"
+      },
+      {
+        "path": ".runtime/brand-migration-after-targets-red.log",
+        "sha256": "a953c2d3f259c99eae613c267fc67d310230e4dec14ac46656fc4fb3d17e9988"
+      },
+      {
+        "path": ".runtime/brand-migration-before-targets-green.log",
+        "sha256": "0069e4b0c64f3487715f118dd210ff4edaf3c959079911e6e5a3c0e1171cb085"
+      },
+      {
+        "path": ".runtime/brand-first-core-ci.log",
+        "sha256": "eed5b3d43b4ab1592e8989bff774681f246cbbdac7e72c3f9fc8cfadd0835370"
+      },
+      {
+        "path": ".runtime/brand-first-compose-ci.log",
+        "sha256": "26ec842aeb2f44ea0450d41c48f89b88646c2533236f1e7884e04d422de9d0b5"
+      }
+    ],
+    "scope_notes": [
+      "目标96项通过后旧Schema回退受revoked/revoking残留影响；本地专用库复现同CheckViolation/exit1。",
+      "修复仅移动原完整迁移probe到全部数据测试之前，不删除目标/套件或修改生产Migration/状态约束。",
+      "顺序回归1failed Red→相关79passed Green；空库14checkpoint/base→0078 probe exit0，紧接同8targets96passed/exit0。",
+      "原head的core1584/113/101及12subs、前端274/175Mock、实际全栈16、Compose、Tooling成功；该head整体CI仍为失败，不能用局部成功批准合并。",
+      "Compose在正式worker镜像内加载CJK常规/粗体并渲染含爱玛和续航的词云、Image.verify成功；不依赖runner字体。",
+      "修复后的新冻结head仍需完整required CI及Final Review。"
+    ]
   }
 }

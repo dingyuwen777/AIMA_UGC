@@ -613,12 +613,13 @@ jobs:
             [[ " ${POSTGRES_SUITES} " == *" all "* || " ${POSTGRES_SUITES} " == *" ${suite} "* ]]
           }
 
+          # 回退旧Schema的兼容探测要求空库，必须先于会留下当前业务状态的测试。
+          if selected migration; then
+            uv run python tests/integration/database/verify_migration_compatibility.py
+          fi
           if [[ -n "${POSTGRES_TARGETS}" ]]; then
             read -r -a targets <<< "${POSTGRES_TARGETS}"
             AIMA_REPORT_TEST_DATABASE=1 uv run pytest "${targets[@]}" -q
-          fi
-          if selected migration; then
-            uv run python tests/integration/database/verify_migration_compatibility.py
           fi
           if selected platform; then
             uv run pytest tests/integration/platform -q

@@ -83,3 +83,14 @@
 独立Repair复核绑定143f5a0b/base dd821ca8，RV-BRAND-01–09全部closed，NO_FINDINGS_WITHIN_SCOPE。审查重新读取Issue #685、引用方案和用户数据库配置决定，核对18个生产文件及旧新XML，报告读取版本化有效Evidence并冻结的消费者边界没有断裂。本地完成定义与当前组合覆盖满足Ready准备要求。
 
 本记录中的组合验证为本地证据；本批最终HEAD的独立Review、required CI、expected-head merge、main-fresh、原生归档、Issue #685 AC21/Closure和cleanup由交付阶段持有，必须通过live读取完成，不能由本地结果代替。
+
+
+## 当前head CI顺序缺陷与修复
+
+Ready head `4b4e6b846a5e39ff9f701c57e47e67c47f5a3e83` 的CI run36869347726必须记为失败，不能由其余Green覆盖。PG job110392868740实际先96 targets通过，然后在旧Migration0062的Campaign状态check回退失败。pytest session fixture仅在启动清库，没有结束清库；目标测试留下revoked/revoking等新状态，而compatibility probe要求空库，原工作流将targets放在probe之前破坏了该前提。此故障不是CJK字体问题；PG安装字体成功。
+
+RV-BRAND-10独立审查为阻塞项，PR已退Draft。修复仅将原完整 `verify_migration_compatibility.py` 移到任何target/suite数据测试之前，保留14个历史checkpoint/base的降级、升级、结构断言以及全部PG测试范围，不修改生产Migration/业务状态或约束。新增顺序回归：`.runtime/brand-ci-order-red.xml`真实1failed，修复后相关三文件79passed（`.runtime/brand-ci-order-green.xml`）。Ruff check/format通过。
+
+本地专用aima_brand_test保留96targets后的数据，`python .runtime/brand-migration-local.py probe`实际复现同CheckViolation/exit1，记录brand-migration-after-targets-red.log。随后只清空该自有专用库，执行完整probe取得14次回0078及alembic check通过/exit0，记录brand-migration-before-targets-green.log。紧接probe执行 `python .runtime/brand-validate.py <同8个postgres_targets> -q --junitxml=.runtime/brand-ci-order-targets-green.xml`，包装未额外清库，仅保留正式pytest fixture，结果96passed/117.74s/exit0。相应源码、XML和日志SHA保存在EVIDENCE的ci_repair_validation。
+
+原head其余CI实际成功：后端1584/113/101及12subtests、前端274/175Mock、全栈16、Compose与Windows/Linux Tooling。Compose还在正式worker镜像内加载常规/粗体CJK，渲染“爱玛”“续航”并Image.verify，确认字体属于最终镜像。服务器旧镜像与真实Provider/飞书权限仍未检查。本修复的新冻结head必须重新运行完整CI并取得Final Review后才允许合并。
