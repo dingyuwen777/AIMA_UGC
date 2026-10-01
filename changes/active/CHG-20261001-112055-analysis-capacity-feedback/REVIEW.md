@@ -205,3 +205,19 @@ Reviewer 实际独立运行纯内存 `.venv/Scripts/python.exe -B -`，只使用
 本次复核所读取的早期施工快照中 JSON cleanup.status 仍 in_progress；主任务随后已完成自己的资源清理与本地收口。最终措辞复核实际解析的 CAPACITY_PROBE_EVIDENCE.json SHA256 为 `04a32158c294a6ea6a1f5416f641a1797fb99388b15c6716e4a93d93b8b78273`，cleanup.status=complete、Finding=CLOSED。作者记录五个专属容器、专属匿名卷/镜像/network查询为空，55493–55496无监听；scratch及九个仓库外临时目录经owner/固定路径核验、先移除三个仅指向本次夹具的junction后，以原生LiteralPath精确删除，原.venv与frontend/node_modules仍存在。作者执行 `check_change_completion.py --root . --require-active-ready` 报告exit0、gated152/strict152/legacy128；Reviewer已读取当前ready_for_review、R19–R21 satisfied及Completion Audit四项勾选，仅读取/解析最终事实，没有自行运行清理、端口查询或该Ready命令。该收口属于审计/交付记录，不改变已冻结实现，早期pending历史保留。结论限于当前未提交本地代码和既有 main 组合；没有commit/push/PR/remote CI/merge/Archive/Issue Closure/部署验收。
 
 Reviewer全程仅只读Git/文件和无缓存纯内存调用，本节是唯一写入审查资产。没有新发现的 IN_SCOPE BLOCKING 项；无需再扩大修复包或重复不变范围测试。最终范围内结论 **PASS / NO_FINDINGS_WITHIN_SCOPE，CAPACITY-V3-REV-001 CLOSED**。
+
+## 2026-10-02 正式交付首次集中审查
+
+以下由Parent记录独立只读Reviewer `/root/delivery_review` 的实际返回，Reviewer未修改文件、Git或外部资源。Target为PR #689，base `64bfade138e6cdf0f86e8d8961a0415b8f994ea8`、已提交Head `12f9c3ec7f378ad814179ae7aa271bb16b872b49`；本轮按现有epoch8 lineage进入交付delta及新增Prompt纳入范围审查，没有重新开启旧实现FullReview。当前Source由Agent_Skills默认分支读取，未用安装副本替代。
+
+首次集中结论 **CHANGES_REQUIRED**，只有 **DELIVERY-REV-001 / MEDIUM / IN_SCOPE / BLOCKING / AUTO_REPAIR / OPEN**：active位置7个本地Markdown链接均可解析；按原生最终archive位置解析7个全部失效。Blueprint链接落到changes/docs；同目录Review/Evidence附件则实际仍留在active。真实Archiver仅移动CHANGE.md并freeze status/updated，Workflow只允许source/target两个路径，check_docs排除changes。本轮须只修当前Change的历史导航，采用已验证的不可变implementation revision Git permalink并注明快照；不移动附件、不扩展Archiver，不把旧snapshot当作包含新repair Evidence。附件没有被删除，产品运行或数据库不受此Finding影响。
+
+正式Linux CI `ctypes.windll` attr-defined失败为 **NEW_EXTERNAL_FACT / MEDIUM / IN_SCOPE / BLOCKING / AUTO_REPAIR**。Reviewer已核验当前单文件getattr平台能力修复及Parent两平台430-source mypy、Ruff、23项机器/workload Green，并独立再次运行生产CPU_read四边界纯内存探针exit0：实现问题已关闭，最终新Head正式CI仍是独立门禁。最初沙箱ACL/setup失败与mixed换行format失败保留在Evidence，未改测试断言或关闭规则。
+
+A1/A2从Blueprint35/36、AC1–AC20及当前Git授权重建完成定义，R1–R21覆盖容量/共享承诺/有效资源/低C尾部/格式持续修复/真实断网停止/有限Job续接/Fence取消/全部成功及旧协议；无确认的新需求遗漏。#591/#662未混入。AC10授权与全部本地修改保留一致；当前Ready只代表实现，不冒充CI/merge/main-fresh/Archive/cleanup。0076/0077仅downgrade guard，upgrade DDL/Schema/head保持；回退须排空新协议Run/预留并重建派生Profile。
+
+独立身份核验：39项首个交付工作树aggregate `c8ab5add1c3946bf14d373e5251b49cb96d45d6536ee6bc4589ed5a4cb7d2e78`；Git blob aggregate `2dd771f89bc3be8679d16edf88aa17b90513bc09a4ff877478ae98af368bd62c`。30项差异均逐项证明normalize_CRLF(worktree)==blob，没有其他内容改变。CPU repair后的39项工作树aggregate `0e7b1d01a6c8ae617af7bcfb54b2a9f87dfd110fab04dd96e19cffae4ccc4b04`，与DELIVERY_BASELINE一致；仅capacity.py变化，raw SHA `00d456f56c626f3f8119b71110fdffacad83be5b9803d861a42f979ce3a6a182`。首个47提交路径恰为39项及8Change资产，scratch未进入。
+
+用户Prompt raw SHA `9e0489a330dd1a5bffcdea90703310e37eb1abf4cdf7aa53224a44864e261741`保持；生产read_text与Git blob规范化文本SHA同为`274cacc9b240108e0af5eb30db80acbe83acf51f75941b3ed551145ce767c6aa`，只因换行规范化而不同于raw。独立Compiler→Scheme→Runtime Taxonomy完整round-trip，Taxonomy hash与base相同`07fbdbf61ba0158ae50fc48cc1e31751543c3cb4ba51e0d3a1191408c442f95c`，输出协议content-labeling.tables.v1保持。新增奖池例通过生产Validator（相关/非真实用户/营销推广发声/中性/品牌评价·营销与传播，0errors），未确认背景奖品自动变成真实用户的组合冲突。严格输出、原文证据、组合校验、双Hash版本与旧Run冻结保持；这些结果不证明真实LLM语义准确率。量化准确率保持未实测表述，不将其误称为AC9收费吞吐延期的已验证结果。
+
+Reviewer允许在各自未变范围复用epoch8的独立PASS、原阻塞CLOSED与Windows1843/PG80/Linuxwheel358/浏览器2流程Evidence；组间不累计，模拟20万条只观测1200虚拟秒，不冒充全完成、真实Provider或服务器收益。下一次仅核导航最终位置投影、完整repair Evidence/Review记录、新Head身份与live PR/current-head/current-base正式门禁。DELIVERY-REV-001尚未关闭；此处没有merge/Archive/Issue Closure/部署完成证明。

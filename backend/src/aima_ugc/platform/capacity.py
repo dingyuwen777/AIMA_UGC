@@ -66,7 +66,9 @@ class CpuPressureSampler:
                     ctypes.c_ulonglong(),
                     ctypes.c_ulonglong(),
                 )
-                if not ctypes.windll.kernel32.GetSystemTimes(
+                # windll 仅在 Windows 提供；动态读取与内存探测共用平台能力边界。
+                windows_api = getattr(ctypes, "windll", None)
+                if windows_api is None or not windows_api.kernel32.GetSystemTimes(
                     ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
                 ):
                     return None

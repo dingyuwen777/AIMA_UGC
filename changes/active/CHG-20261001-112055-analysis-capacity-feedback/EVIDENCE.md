@@ -269,3 +269,13 @@ scratch-analysis-probe-20261001清理前核对固定绝对路径与ownership.jso
 在子进程清除AIMA/数据库/PYTHONPATH/SSL调试环境后，使用原解释器运行`-B -m pytest tests/unit/analysis/test_markdown_prompt_source.py tests/unit/analysis/test_analysis_scheme_compilation.py -q -p no:cacheprovider --basetemp=<本任务独占目录>`，26passed/9条既有Pydantic弃用警告，0.22秒，exit0。纯内存生产Compiler/版本与合法输出链验证没有数据库或收费HTTP调用，没有修改用户Prompt。不能将Compiler成功冒充Gold Set语义准确率。
 
 已读取实际main Ruleset：三个required check为CI Gate、Requirement Traceability and Completion Audit、Compose Golden Path，strict最新base与Review线程解决生效；当前账号为授权更新main的用户，不修改Ruleset或绕过质量保护。正式current-head CI、独立交付delta Review、guarded merge、main-fresh、原生Archive与cleanup此时尚未完成，后续分别核验。
+
+### 首个远程Head的平台类型问题与单个修复包
+
+正式PR #689首个Head为`12f9c3ec7f378ad814179ae7aa271bb16b872b49`，base为`64bfade138e6cdf0f86e8d8961a0415b8f994ea8`。CI run `36900807907`的质量Job在Linux mypy报告`platform/capacity.py:69 Module has no attribute windll [attr-defined]`；Ruff888文件与Contract此前通过。该run全量PostgreSQL Job及Real Full-stack Job（16passed）成功；Runtime Acceptance run `36900807439`成功；Developer Tooling run `36900807343`的Windows/Linux均成功。整体CI Gate失败，不能以其他绿层或旧本地mypy代替。PR退回Draft，继续同一个修复包。
+
+本地Red：`.venv/Scripts/python.exe -m mypy --platform linux backend/src/aima_ugc/platform/capacity.py`实际1error/1source，exit1。原因是Windows专属ctypes属性以直接静态引用出现于跨平台源码，Linux类型定义不提供该属性。复用本文件内存探测已有的`getattr(ctypes, "windll", None)`能力读取；Windows系统计数API失败或缺失仍返回None，Linux仍读取/proc/stat，业务资源算法不变，没有ignore或关闭门禁。
+
+Green：同解释器`-m mypy --platform linux backend/src`和`-m mypy --platform win32 backend/src`各430source，均exit0；该capacity文件`ruff check --no-cache`和`ruff format --check --no-cache`均exit0。第一次patch混合LF/CRLF的format-check失败保留，仅对该文件运行正式formatter后通过。第一次机器回归的Windows沙箱独占临时目录有4个setup Error和退出PermissionError；未改测试断言，改用本任务独占外部临时目录、清除AIMA/数据库/SSL/PYTHONPATH环境，原`tests/unit/analysis/test_machine_adaptation.py tests/unit/analysis/test_capacity_workloads.py -q -p no:cacheprovider`得到23passed/77条既有Pydantic弃用警告、7.04秒、exit0。该回归纯内存，不启动数据库或HTTP服务。
+
+另直接调用生产CPU采样器验证：Windows真实ctypes参数经Fake系统计数输出(total300,idle120)、API返回0、API缺失均得到预期结果；本机实际采样为合法总/空闲计数或未知。四个直接边界PASS，exit0。临时探针不复制采样算法、不进入永久产品代码。新的DELIVERY_BASELINE嵌套首个交付baseline，保留修复前身份；当前代码修复与正式新Head CI/Review状态后续另取，不能将旧Head绿层冒充新Head完整通过。
