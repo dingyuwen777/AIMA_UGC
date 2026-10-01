@@ -79,8 +79,12 @@ class _AdviceResponse(BaseModel):
 class RepresentativeAdviceService:
     """使用既有 LLM Port 生成结构化行动建议，不改写筛选事实。"""
 
-    def __init__(self, *, llm: ContentLabelingLLMPort) -> None:
+    def __init__(
+        self, *, llm: ContentLabelingLLMPort, fail_closed: bool = False, prompt: str | None = None
+    ) -> None:
         self._llm = llm
+        self._fail_closed = fail_closed
+        self._prompt = prompt or _ADVICE_PROMPT
 
     def run(self, inputs: Sequence[RepresentativeAdviceInput]) -> dict[int, str]:
         if not inputs:
@@ -110,7 +114,7 @@ class RepresentativeAdviceService:
         expected = set(item_nos)
         response = self._llm.complete(
             ContentLabelingLLMRequest(
-                prompt=_ADVICE_PROMPT,
+                prompt=self._prompt,
                 items=request_items,
                 request_kind="primary",
             )
@@ -118,6 +122,8 @@ class RepresentativeAdviceService:
         try:
             result = _parse_advice_response(response.raw_text, expected=expected)
         except ValueError:
+            if self._fail_closed:
+                raise
             result = self._repair_or_fallback(
                 inputs,
                 request_items=request_items,
@@ -127,6 +133,8 @@ class RepresentativeAdviceService:
             item for item in inputs if not _is_chinese_advice(result[item.item_no])
         )
         if untranslated:
+            if self._fail_closed:
+                raise ValueError("行动建议模型输出必须为中文")
             translated = self._translate(untranslated, result)
             for item in untranslated:
                 candidate = translated.get(item.item_no, "")
@@ -234,6 +242,19 @@ def _collapse_adjacent_repeated_label(value: str) -> str:
         if repetitions >= 2 and value == value[:unit_length] * repetitions:
             return value[:unit_length]
     return value
+
+
+def report_advice_prompt() -> str:
+    """为正式报告冻结生产行动建议 Prompt。"""
+    return _ADVICE_PROMPT
+
+
+def validate_report_advice(raw_text: str, *, expected: set[int]) -> dict[int, str]:
+    """正式报告缓存前检查生产协议和中文约束，避免恢复永久复用坏输出。"""
+    result = _parse_advice_response(raw_text, expected=expected)
+    if any(not _is_chinese_advice(value) for value in result.values()):
+        raise ValueError("行动建议模型输出必须为中文")
+    return result
 
 
 __all__ = [

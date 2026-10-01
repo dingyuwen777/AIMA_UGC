@@ -16,6 +16,7 @@ from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaigns_table,
 )
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
+from aima_ugc.modules.reporting.report_tables import report_artifacts_table
 from aima_ugc.modules.reporting.tables import reporting_data_exports_table
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.canonical import CANONICAL_CONTENT_ARTIFACT_KIND
@@ -85,6 +86,11 @@ def _cleanup_eligibility(*, now: datetime, orphan_before: datetime) -> ColumnEle
             historical_import_campaign_items_table.c.artifact_id == artifacts_table.c.id
         )
     )
+    report_referenced = exists(
+        select(report_artifacts_table.c.artifact_id).where(
+            report_artifacts_table.c.artifact_id == artifacts_table.c.id
+        )
+    )
     historical_source_parent = historical_import_campaign_items_table.join(
         historical_import_campaigns_table,
         historical_import_campaigns_table.c.id
@@ -114,6 +120,7 @@ def _cleanup_eligibility(*, now: datetime, orphan_before: datetime) -> ColumnEle
         or_(
             and_(artifacts_table.c.kind == "file-import.raw", ~import_referenced),
             and_(artifacts_table.c.kind == "content-export.xlsx", ~export_referenced),
+            and_(artifacts_table.c.kind == "report.output", ~report_referenced),
             artifacts_table.c.kind == CANONICAL_CONTENT_ARTIFACT_KIND,
             and_(
                 artifacts_table.c.kind.in_(
@@ -260,6 +267,23 @@ class PostgresArtifactMetadataRepository:
         if row is None:
             raise ArtifactStateConflict("Artifact 不是 stored，不能标记为 linked")
         return _artifact_from_row(row)
+
+    def set_report_expiry(self, artifact_id: UUID, *, expires_at: datetime) -> None:
+        """为已绑定的报告文件设置统一清理器可消费的期限。"""
+        if expires_at.utcoffset() is None:
+            raise ValueError("报告 Artifact 期限必须包含时区")
+        row = self._session.execute(
+            update(artifacts_table)
+            .where(
+                artifacts_table.c.id == artifact_id,
+                artifacts_table.c.storage_status == "linked",
+                artifacts_table.c.kind == "report.output",
+            )
+            .values(expires_at=expires_at)
+            .returning(artifacts_table.c.id)
+        ).one_or_none()
+        if row is None:
+            raise ArtifactStateConflict("报告 Artifact 未绑定或类型不匹配")
 
     def link_canonical(
         self,

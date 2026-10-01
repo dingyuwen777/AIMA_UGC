@@ -3,6 +3,7 @@ import type {
   BrandResponse,
   ProviderConfigResponse,
   ResourceLifecycleResponse,
+  ReportResponse,
   VehicleModelResponse,
 } from '../src/generated/api/client'
 import { expect, test, type Page, type Route } from './fixture'
@@ -178,6 +179,7 @@ async function mockAdmin(
     if (url.pathname === '/api/v1/vehicle-brands') {
       return json(route, { items: brands, total: brands.length, catalog_version: 18, offset, limit })
     }
+    if (url.pathname === '/api/v1/reports') return json(route, { items: [] })
     if (url.pathname === '/api/v1/analysis-schemes') return json(route, { items: [scheme] })
     if (url.pathname === '/api/v1/analysis-schemes/lifecycle/archived') {
       return json(route, { items: archivedSchemes })
@@ -226,103 +228,89 @@ async function expectNoGlobalHorizontalScroll(page: Page): Promise<void> {
   expect(bounds.scroll).toBeLessThanOrEqual(bounds.client + 1)
 }
 
-test('admin exposes the six approved tabs including the frontend report strategy', async ({ page }) => {
+test('admin exposes database reports in the six approved tabs', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
   const nav = page.getByRole('navigation', { name: '管理员配置分类' })
   await expect(nav.getByRole('button')).toHaveCount(6)
-  for (const name of ['品牌与车型', 'AI 模型', 'TikHub', 'AI 分析规则', '操作记录', '报告策略']) {
+  for (const name of ['品牌与车型', 'AI 模型', 'TikHub', 'AI 分析规则', '操作记录', '报告生成']) {
     await expect(nav.getByRole('button', { name, exact: true })).toBeVisible()
   }
-  await nav.getByRole('button', { name: '报告策略', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '飞书报告发布' })).toBeVisible()
-  await expect(page.getByText('上传本期和上期 XLSX')).toBeVisible()
+  await nav.getByRole('button', { name: '报告生成', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '报告生成', exact: true })).toBeVisible()
+  await expect(page.getByLabel('报告品牌')).toBeVisible()
+  await expect(page.locator('input[type="file"]')).toHaveCount(0)
 })
 
-test('report strategy submits the two workbooks and renders the dry-run Job result', async ({ page }) => {
+test('database report preflight, polling recovery, downloads and independent publication', async ({ page }) => {
   await mockAdmin(page)
+  const reportId = '89111111-1111-4111-8111-111111111111'
+  const jobId = '89111111-1111-4111-8111-222222222222'
+  let report: ReportResponse | null = null
+  let readsAfterCreate = 0
+  let createCount = 0
+  let publishCount = 0
+  let initialRead: Route | null = null
+  await page.route('**/api/v1/reports**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/preflight')) {
+      expect(request.postDataJSON()).toEqual({ brand_id: brandId, vehicle_model_ids: [vehicles[0]!.id], start_date: '2026-09-10', end_date: '2026-09-17' })
+      return json(route, { content_count: 12, previous_content_count: 8, analyzed_count: 10, real_user_count: 6, comment_count: 8, model: 'deepseek-chat', provider: 'openai_compatible', prompt_version: 'v4.6', taxonomy_sha256: 'a'.repeat(64), ready: true, warnings: ['2 条内容尚无分析结果，仅参与全量声量统计'] })
+    }
+    if (url.pathname === '/api/v1/reports' && request.method() === 'POST') {
+      createCount += 1
+      report = { id: reportId, name: '爱玛舆情报告', brand_id: brandId, vehicle_model_ids: [vehicles[0]!.id], start_date: '2026-09-10', end_date: '2026-09-17', status: 'queued', generation_job: { id: jobId, job_type: 'reporting.report-generation.v1', status: 'queued', attempt: 0, max_attempts: 4, progress: 0, error_code: null, created_at: now, available_at: now, timeout_seconds: 1800, cancel_requested: false }, files: [], created_at: now, model: 'deepseek-chat', prompt_version: 'v4.6', provider_config_id: jobId, provider_revision: 2, scheme_version_id: jobId, prompt_sha256: 'a'.repeat(64), taxonomy_sha256: 'b'.repeat(64), selection_prompt_sha256: 'c'.repeat(64), content_count: 12, publication_enabled: true }
+      return json(route, report, 202)
+    }
+    if (url.pathname === '/api/v1/reports' && request.method() === 'GET') {
+      if (!report) { initialRead = route; return }
+      if (report) {
+        readsAfterCreate += 1
+        if (readsAfterCreate === 1) return json(route, { detail: 'temporary status outage' }, 503)
+        report = { ...report, status: report.status === 'queued' ? 'generated' : report.status, generation_job: { ...report.generation_job, status: 'succeeded', progress: 100 }, completed_at: now, expires_at: '2026-11-16T12:00:00+08:00', files: [{ artifact_id: jobId, artifact_type: 'word_report', filename: 'report.docx', content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', byte_size: 1000, download_url: `/api/v1/reports/${reportId}/artifacts/${jobId}/download` }, { artifact_id: reportId, artifact_type: 'excel_report', filename: 'report-data.xlsx', content_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', byte_size: 1200, download_url: `/api/v1/reports/${reportId}/artifacts/${reportId}/download` }] }
+      }
+      return json(route, { items: report ? [report] : [] })
+    }
+    if (url.pathname.endsWith('/publish') && report) {
+      publishCount += 1
+      report = { ...report, status: publishCount === 1 ? 'generated' : 'published', publication_job: { ...report.generation_job, id: reportId, job_type: 'reporting.report-publication.v1', status: publishCount === 1 ? 'failed' : 'succeeded', error_code: publishCount === 1 ? 'report_feishu_api_error' : null }, native_document_url: publishCount === 1 ? null : 'https://example.test/document' }
+      return json(route, report)
+    }
+    return route.fallback()
+  })
   await page.goto('/admin/configuration')
-  await page.getByRole('button', { name: '报告策略', exact: true }).click()
-
-  const submit = page.getByRole('button', { name: '生成报告并同步到飞书', exact: true })
+  await page.getByRole('button', { name: '报告生成', exact: true }).click()
+  const panel = page.getByRole('region', { name: '数据库报告生成' })
+  const submit = panel.getByRole('button', { name: '生成报告', exact: true })
   await expect(submit).toBeDisabled()
-  await page.getByLabel('本期 XLSX').setInputFiles({
-    name: '本期报告.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: Buffer.from('local-current-period'),
-  })
-  await page.getByLabel('上期 XLSX').setInputFiles({
-    name: '上期报告.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: Buffer.from('local-prior-period'),
-  })
-  await page.getByLabel('开始日期').fill('2026-09-10')
-  await page.getByLabel('结束日期').fill('2026-09-01')
+  await page.getByLabel('报告品牌').selectOption(brandId)
+  await page.getByLabel('报告车型').selectOption([vehicles[0]!.id])
+  await page.getByLabel('报告开始日期').fill('2026-09-10')
+  await page.getByLabel('报告结束日期').fill('2026-09-01')
+  await expect(panel.getByRole('button', { name: '检查数据与模型' })).toBeDisabled()
+  await page.getByLabel('报告结束日期').fill('2026-09-17')
+  await panel.getByRole('button', { name: '检查数据与模型' }).click()
+  await expect(panel.getByRole('region', { name: '报告预检' })).toContainText('本期 12 条 · 上期 8 条')
   await expect(submit).toBeEnabled()
   await submit.click()
-  await expect(page.getByRole('alert')).toContainText('结束日期不早于开始日期')
-
-  await page.getByLabel('结束日期').fill('2026-09-17')
-  const jobId = '89111111-1111-4111-8111-111111111111'
-  let publicationPosts = 0
-  await page.route('**/api/v1/admin/feishu-report-publications', async (route) => {
-    expect(route.request().method()).toBe('POST')
-    publicationPosts += 1
-    await json(route, { job_id: jobId, kind: 'report', status: 'queued' }, 202)
-  })
-  let jobReads = 0
-  await page.route(`**/api/v1/admin/feishu-publication-jobs/${jobId}**`, async (route) => {
-    jobReads += 1
-    if (jobReads === 1) {
-      return json(route, {
-        status: 503,
-        detail: 'job status temporarily unavailable',
-        request_id: 'e2e-temporary-job-read',
-        errors: [],
-      }, 503)
-    }
-    await json(route, {
-      id: jobId,
-      kind: 'report',
-      status: 'succeeded',
-      attempt: 1,
-      max_attempts: 3,
-      progress: 100,
-      error_code: null,
-      source_filenames: ['本期报告.xlsx', '上期报告.xlsx'],
-      result: {
-        kind: 'report',
-        dry_run: true,
-        native_document_url: null,
-        editable_chart_sheet_url: null,
-        representative_table_url: null,
-        representative_table_name: null,
-        representative_count: 4,
-        representative_created_count: 0,
-        representative_updated_count: 0,
-        representative_verified_count: 0,
-        content_rows: 12,
-        label_rows: 12,
-        comment_rows: 8,
-        start_date: '2026-09-01',
-        end_date: '2026-09-17',
-      },
-      created_at: now,
-      started_at: now,
-      finished_at: now,
-    })
-  })
-  await submit.click()
-  await expect(page.getByRole('status')).toContainText('Dry Run 已完成', { timeout: 12_000 })
-  expect(publicationPosts).toBe(1)
-  expect(jobReads).toBeGreaterThanOrEqual(2)
-  await expect(page.getByRole('region', { name: '报告任务结果' })).toContainText('代表性内容 4 条')
-  await expect(page.getByText('Dry Run 未生成真实飞书链接。')).toBeVisible()
-
-  await page.getByRole('button', { name: '重置', exact: true }).click()
-  await expect(page.getByLabel('开始日期')).toHaveValue('')
-  await expect(page.getByText('本期报告.xlsx')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '生成报告并同步到飞书', exact: true })).toBeDisabled()
+  await expect(panel.getByRole('button', { name: '取消任务' })).toBeVisible()
+  expect(initialRead).not.toBeNull()
+  await json(initialRead!, { items: [] })
+  // 创建前的旧空列表不得覆盖已经创建的任务，也不能因此停止轮询。
+  await expect(panel.getByRole('button', { name: '取消任务' })).toBeVisible()
+  await expect(panel.getByText('状态同步暂时失败', { exact: false })).toBeVisible({ timeout: 12000 })
+  await expect(panel.getByRole('link', { name: '下载 Word' })).toBeVisible({ timeout: 12000 })
+  await expect(panel.getByRole('link', { name: '下载 Excel 数据' })).toBeVisible()
+  expect(createCount).toBe(1)
+  expect(readsAfterCreate).toBeGreaterThanOrEqual(2)
+  await panel.getByRole('button', { name: '发布到飞书' }).click()
+  await expect(panel.getByText('失败，报告文件仍可下载', { exact: false })).toBeVisible()
+  await expect(panel.getByRole('link', { name: '下载 Word' })).toBeVisible()
+  await panel.getByRole('button', { name: '重试飞书发布' }).click()
+  await expect(panel.getByRole('link', { name: '打开飞书报告' })).toHaveAttribute('href', 'https://example.test/document')
+  expect(createCount).toBe(1)
+  expect(publishCount).toBe(2)
 })
 
 test('brand catalog follows the 1440 wide geometry and keeps tables locally scrollable', async ({ page }) => {

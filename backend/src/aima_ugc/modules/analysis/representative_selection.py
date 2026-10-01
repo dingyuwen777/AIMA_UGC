@@ -85,6 +85,10 @@ class LabeledContent:
     sentiment_label: str
     primary_label: str = ""
     secondary_label: str = ""
+    author_follower_count: int | None = None
+    like_count: int | None = None
+    comment_count: int | None = None
+    share_count: int | None = None
 
     @property
     def deduplication_key(self) -> tuple[str, str]:
@@ -304,6 +308,7 @@ class RepresentativeSelectionService:
         llm: ContentLabelingLLMPort,
         max_per_group: int = 10,
         selector_pool_size: int = 50,
+        fail_closed: bool = False,
     ) -> None:
         if (
             isinstance(selector_pool_size, bool)
@@ -315,6 +320,7 @@ class RepresentativeSelectionService:
         self._llm = llm
         self._max_per_group = max_per_group
         self._selector_pool_size = selector_pool_size
+        self._fail_closed = fail_closed
 
     @property
     def prompt(self) -> RepresentativePrompt:
@@ -382,6 +388,8 @@ class RepresentativeSelectionService:
                     except ContentLabelingStopped:
                         raise
                     except Exception as exc:
+                        if self._fail_closed:
+                            raise
                         error_codes = (_selection_error_code(exc),)
                 if model_selected is None:
                     model_selected = tuple(
@@ -423,10 +431,16 @@ class RepresentativeSelectionService:
     @staticmethod
     def _selector_model_item(candidate: RepresentativeCandidate) -> ContentLabelingModelItem:
         content = candidate.content
+        followers = content.author_follower_count
         body = (
             f"所属平台：{content.platform}\n"
             f"已有发声类型：{content.voice_type}\n"
             f"已有情感标签：{content.sentiment_label}\n"
+            "作者粉丝数："
+            f"{followers if followers is not None else '未知'}\n"
+            f"点赞数：{content.like_count if content.like_count is not None else '未知'}\n"
+            f"评论数：{content.comment_count if content.comment_count is not None else '未知'}\n"
+            f"分享数：{content.share_count if content.share_count is not None else '未知'}\n"
             f"原文：{content.text}\n"
         )
         return ContentLabelingModelItem(
@@ -463,6 +477,8 @@ def _rank_outcomes(
         outcomes,
         key=lambda outcome: (
             -(outcome.decision.score if outcome.decision is not None else 0),
+            -(outcome.candidate.content.author_follower_count or 0),
+            -(outcome.candidate.content.like_count or 0),
             -_evidence_length(outcome),
             outcome.candidate.item_no,
         ),

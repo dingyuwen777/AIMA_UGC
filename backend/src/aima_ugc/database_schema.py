@@ -115,6 +115,11 @@ from aima_ugc.modules.notification.tables import (
     notification_events_table,
     notification_inbox_items_table,
 )
+from aima_ugc.modules.reporting.report_tables import (
+    report_artifacts_table,
+    report_items_table,
+    report_runs_table,
+)
 from aima_ugc.modules.reporting.tables import (
     reporting_data_export_items_table,
     reporting_data_exports_table,
@@ -243,6 +248,9 @@ __all__ = [
     "provider_request_attempts_table",
     "provider_requests_table",
     "reporting_data_export_items_table",
+    "report_runs_table",
+    "report_items_table",
+    "report_artifacts_table",
     "reporting_data_exports_table",
     "system_settings_table",
     "content_vehicle_evidence_table",

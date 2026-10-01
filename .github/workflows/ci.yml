@@ -607,7 +607,7 @@ jobs:
 
           if [[ -n "${POSTGRES_TARGETS}" ]]; then
             read -r -a targets <<< "${POSTGRES_TARGETS}"
-            uv run pytest "${targets[@]}" -q
+            AIMA_REPORT_TEST_DATABASE=1 uv run pytest "${targets[@]}" -q
           fi
           if selected migration; then
             uv run python tests/integration/database/verify_migration_compatibility.py
@@ -644,6 +644,7 @@ jobs:
           if selected content; then uv run pytest tests/integration/content -q; fi
           if selected ingestion; then uv run pytest tests/integration/ingestion -q; fi
           if selected vehicles; then uv run pytest tests/integration/vehicles -q; fi
+          if selected reporting; then AIMA_REPORT_TEST_DATABASE=1 uv run pytest tests/integration/reporting -q; fi
 
   real-fullstack:
     name: Real Full-stack Golden Path

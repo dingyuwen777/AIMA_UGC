@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -209,6 +209,64 @@ def publish_all_report_to_feishu(
         representative_sync=representative_sync,
         representative_count=len(preparation.rows),
     )
+
+
+def publish_prepared_report_to_feishu(
+    *,
+    report: ReportGenerationSummary,
+    rows: Sequence[dict[str, object]],
+    settings: PlatformSettings,
+    environ: Mapping[str, str],
+    checkpoint: FeishuPublicationCheckpointStore,
+    idempotency_key: str,
+    progress: Callable[[int], None],
+    on_representative_sync: Callable[[FeishuSyncSummary], object] | None = None,
+    before_request: Callable[[], None] | None = None,
+) -> dict[str, object]:
+    """发布已冻结产物；恢复期间不执行统计、筛选、建议或报告生成。"""
+    if settings.feishu_dry_run:
+        raise FeishuReportPublicationConfigurationError(("AIMA_FEISHU_DRY_RUN=false",))
+    config = _load_publisher_config(settings, environ)
+    publisher = FeishuReportPublisher(config, before_request=before_request)
+    try:
+        publication = publisher.publish(
+            word_path=report.word_path,
+            markdown_path=report.markdown_path,
+            chart_specs=report.chart_specs,
+            chart_workbook_path=report.chart_workbook_path,
+            data_workbook_path=report.source_excel_path,
+            title=report.markdown_path.read_text(encoding="utf-8").splitlines()[0].lstrip("# "),
+            embed_representative_bitable=bool(rows),
+            idempotency_key=idempotency_key,
+            checkpoint=checkpoint,
+        )
+    finally:
+        publisher.close()
+    progress(80)
+    sync = None
+    if rows:
+        token = publication.representative_bitable_token
+        if token is None:
+            raise ValueError("飞书在线报告未返回内嵌多维表 token")
+        sync = publish_representative_rows_to_feishu(
+            rows=rows,
+            output_dir=report.word_path.parent / "representative_selection",
+            settings=settings,
+            target_bitable_block_token=token,
+            target_document_token=publication.native_document_token,
+            target_document_url=publication.native_document_url,
+            idempotency_key=idempotency_key,
+            checkpoint=checkpoint,
+            before_request=before_request,
+        )
+        if sync.mirror_table_id and on_representative_sync is not None:
+            on_representative_sync(sync)
+    progress(100)
+    return {
+        "native_document_url": publication.native_document_url,
+        "editable_chart_sheet_url": publication.editable_chart_sheet_url,
+        "representative_table_url": sync.target_table_url if sync else None,
+    }
 
 
 def _publication_generated_at(

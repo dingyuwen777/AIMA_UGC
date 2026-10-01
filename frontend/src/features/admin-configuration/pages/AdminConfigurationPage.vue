@@ -10,7 +10,7 @@ import ProviderConfigurationPanel from '../components/ProviderConfigurationPanel
 import AnalysisSchemePanel from './AdminConfigurationPage/components/AnalysisSchemePanel.vue'
 import AuditPanel from './AdminConfigurationPage/components/AuditPanel.vue'
 import CatalogConfigurationPanel from './AdminConfigurationPage/components/CatalogConfigurationPanel.vue'
-import ReportStrategyPanel from './AdminConfigurationPage/components/ReportStrategyPanel.vue'
+import ReportGenerationPanel from './AdminConfigurationPage/components/ReportGenerationPanel.vue'
 
 type Tab = 'catalog' | 'llm' | 'tikhub' | 'scheme' | 'audit' | 'report'
 
@@ -24,7 +24,7 @@ const tabItems = [
   ['tikhub', 'TikHub'],
   ['scheme', 'AI 分析规则'],
   ['audit', '操作记录'],
-  ['report', '报告策略'],
+  ['report', '报告生成'],
 ] as const
 
 /** 将机器 Tab 标识映射为用户可见名称。 */
@@ -38,7 +38,7 @@ function dirtySubject(value: Tab): string {
   if (value === 'llm') return 'AI 模型配置'
   if (value === 'tikhub') return 'TikHub 配置'
   if (value === 'scheme') return 'AI 分析规则'
-  if (value === 'report') return '报告策略'
+  if (value === 'report') return '报告生成'
   return '当前页面'
 }
 
@@ -122,7 +122,7 @@ function discardAndSwitch(): void {
         @dirty-change="handleDirtyChange"
       />
       <AuditPanel v-else-if="tab === 'audit'" />
-      <ReportStrategyPanel
+      <ReportGenerationPanel
         v-else
         @dirty-change="handleDirtyChange"
       />

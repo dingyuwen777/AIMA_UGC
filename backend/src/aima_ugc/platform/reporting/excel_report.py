@@ -181,6 +181,69 @@ def generate_excel_report(
             report_date_range=_previous_period_range(actual_date_range),
         )
     )
+    return _render_report_stats(
+        stats,
+        previous_stats=previous_stats,
+        source_path=source_path,
+        template=template,
+        target_dir=target_dir,
+        markdown_name=markdown_name,
+        word_name=word_name,
+        chart_workbook_name=chart_workbook_name,
+        generated_at=generated_at,
+        representative_rows=representative_rows,
+    )
+
+
+def generate_dataset_report(
+    *,
+    records: Sequence[Any],
+    previous_records: Sequence[Any],
+    output_dir: Path,
+    report_date_range: tuple[date, date],
+    template_path: Path | None = None,
+    generated_at: datetime | None = None,
+    representative_rows: Sequence[RepresentativeReportRow] = (),
+) -> ReportGenerationSummary:
+    """直接消费冻结数据库 Dataset，Excel 仅作为后续输出产物。"""
+    from aima_ugc.platform.export.excel import build_unified_report_workbook
+
+    period = _validate_report_date_range(report_date_range)
+    stats = _collect_workbook_stats(
+        build_unified_report_workbook(records), report_date_range=period
+    )
+    previous_stats = _collect_workbook_stats(
+        build_unified_report_workbook(previous_records),
+        report_date_range=_previous_period_range(period),
+    )
+    return _render_report_stats(
+        stats,
+        previous_stats=previous_stats,
+        source_path=Path("数据库冻结快照"),
+        template=template_path or DEFAULT_REPORT_TEMPLATE_PATH,
+        target_dir=output_dir,
+        markdown_name="report.md",
+        word_name="report.docx",
+        chart_workbook_name="report-charts.xlsx",
+        generated_at=generated_at,
+        representative_rows=representative_rows,
+    )
+
+
+def _render_report_stats(
+    stats: _ReportStats,
+    *,
+    previous_stats: _ReportStats | None,
+    source_path: Path,
+    template: Path,
+    target_dir: Path,
+    markdown_name: str,
+    word_name: str,
+    chart_workbook_name: str | None,
+    generated_at: datetime | None,
+    representative_rows: Sequence[RepresentativeReportRow] | None,
+) -> ReportGenerationSummary:
+    """复用当前模板、统计图、原生 Office 图表及 Word 转换。"""
     target_dir.mkdir(parents=True, exist_ok=True)
     report_representatives = _materialize_representative_assets(
         tuple(representative_rows or ()),
@@ -276,6 +339,13 @@ def _collect_stats(
     report_date_range: tuple[date, date] | None,
 ) -> _ReportStats:
     workbook = load_workbook(path, read_only=True, data_only=False)
+    return _collect_workbook_stats(workbook, report_date_range=report_date_range)
+
+
+def _collect_workbook_stats(
+    workbook: Any, *, report_date_range: tuple[date, date] | None
+) -> _ReportStats:
+    """文件输入和数据库 Dataset 共用同一统计口径，调用后释放内存表。"""
     try:
         expected = {_CONTENT_SHEET, _LABEL_SHEET, _COMMENT_SHEET}
         missing_sheets = expected.difference(workbook.sheetnames)

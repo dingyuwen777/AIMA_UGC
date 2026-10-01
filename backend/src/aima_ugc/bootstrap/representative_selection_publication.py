@@ -12,6 +12,7 @@ from pathlib import Path
 from pydantic import SecretStr
 
 from aima_ugc.adapters.feishu import (
+    FeishuAPIError,
     FeishuBitableClient,
     FeishuConfig,
     FeishuPublicationCheckpointStore,
@@ -187,6 +188,7 @@ def publish_representative_rows_to_feishu(
     progress: Callable[[int], None] | None = None,
     idempotency_key: str | None = None,
     checkpoint: FeishuPublicationCheckpointStore | None = None,
+    before_request: Callable[[], None] | None = None,
 ) -> FeishuSyncSummary:
     """发布已经冻结的飞书行；重试只做外部资源恢复和 Upsert 对账。"""
 
@@ -204,6 +206,7 @@ def publish_representative_rows_to_feishu(
         config=feishu_config,
         app_secret=app_secret,
         upsert_key_fields=_FEISHU_TARGET_KEY_FIELDS,
+        before_request=before_request,
     ) as template_feishu:
         external_table = _checkpoint_table(checkpoint, "external_table")
         if external_table is None:
@@ -235,7 +238,10 @@ def publish_representative_rows_to_feishu(
         app_secret=app_secret,
         output_dir=target_dir,
         artifact_prefix="external",
+        before_request=before_request,
     )
+    if sync_summary.verification_errors:
+        raise FeishuAPIError("飞书代表性外表写入后回读不一致", retryable=True)
     embedded_summary = None
     if embedded_table is not None:
         embedded_summary = _sync_rows_to_table(
@@ -245,9 +251,10 @@ def publish_representative_rows_to_feishu(
             app_secret=app_secret,
             output_dir=target_dir,
             artifact_prefix="embedded",
+            before_request=before_request,
         )
         if embedded_summary.verification_errors:
-            raise RuntimeError("飞书文档内嵌镜像表写入后回读不一致")
+            raise FeishuAPIError("飞书文档内嵌镜像表写入后回读不一致", retryable=True)
     sync_summary = replace(
         sync_summary,
         target_table_id=external_table.table_id,
@@ -279,6 +286,7 @@ def _sync_rows_to_table(
     app_secret: str,
     output_dir: Path,
     artifact_prefix: str,
+    before_request: Callable[[], None] | None = None,
 ) -> FeishuSyncSummary:
     if not table.app_token:
         raise ValueError("飞书目标表缺少 app_token")
@@ -293,6 +301,7 @@ def _sync_rows_to_table(
         config=target_config,
         app_secret=app_secret,
         upsert_key_fields=_FEISHU_TARGET_KEY_FIELDS,
+        before_request=before_request,
     ) as feishu:
         prepared = feishu.preflight(rows)
         _write_json(
