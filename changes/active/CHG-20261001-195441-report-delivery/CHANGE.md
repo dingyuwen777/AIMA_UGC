@@ -147,3 +147,7 @@ main 仍使用上传 Excel 的报告管理页面。冻结检查点 `0fd93aec4030
 ## 真实CI修复检查点
 
 旧headf19895fa的Ready CI36860409129：core/全前端/全栈16/Compose/WindowsLinux通过，前7PG套件通过，reporting实际5失败均缺中文字体。新增RV-REPORT-06环境依赖阻塞，PR退Draft，不merge。PG独立runner现在安装已有fonts-noto-cjk并覆盖target/all/reporting选择；1Red→64Green+12subtests，不修改报告生产行为或降低断言。当前产品AC1–AC7证据继续成立，新的CI修复需新head实际PG和Final Review确认，AC8继续未勾选。
+
+## 字体修复最终本地检查点
+
+6f600435真实Linux CI报告PG现9passed/1显式browserSkip，前7套通过，安装依赖成功；core只有旧“PG永不安装字体”断言失败。已同步为有条件安装和非报告Collection轻量保护，保留其他原断言，经独立Repair Review认可；生产/Renderer不变。完整本地父子进程统一PYTHONUTF8后1750passed/16skip/12subtests，68.39秒；XML1778tests/0error/0failure。此前仅父进程-Xutf8而Windows子进程CP936导致读取stderr失败的日志保留，环境原因已直接读取stderr字节证实，不改种子隔离测试。当前新head的完整required CI和Final Review仍待取得，不能用6f部分绿色宣称已合并。

@@ -87,6 +87,14 @@
       "errors": 0,
       "failures": 0,
       "skipped": 0
+    },
+    {
+      "path": ".runtime/report-final-all.xml",
+      "sha256": "4b36190db6ffcbf4f9305eb7f5e223cc711b634daa89ff3c92d4b5dd64035440",
+      "tests": 1778,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 16
     }
   ],
   "checks": {
@@ -112,7 +120,25 @@
     "actual_new_head_ci_pending": true,
     "files_sha256": {
       ".github/workflows/ci.yml": "5cef0b5e3209209ce55fef7c7ec27de500e84ef9c5f714cf928afba5f2299c96",
-      "tests/unit/test_ci_scope.py": "268861eaf642cf137eb3472b0bdda82e3b19eec3cea9f199573eb2f9ba973a73"
-    }
+      "tests/unit/test_ci_scope.py": "268861eaf642cf137eb3472b0bdda82e3b19eec3cea9f199573eb2f9ba973a73",
+      "tests/unit/test_ci_test_impact_optimization.py": "2480158ca4241473ad251f164d3c1d467ab62a11113e85282207acba7a42f139"
+    },
+    "linux_report_pg": {
+      "head": "6f600435f495b9ae38d49b9fd6cafd6f4aa682db",
+      "run": 36862386916,
+      "job": 110369569169,
+      "passed": 9,
+      "skipped": 1,
+      "prior_suites_passed": [
+        56,
+        119,
+        20,
+        143,
+        124,
+        95,
+        2
+      ]
+    },
+    "old_test_expectation": "old prohibition on all PG font install updated to require conditional report flag/all/reporting plus preserve non-report collection lightweight boundary"
   }
 }

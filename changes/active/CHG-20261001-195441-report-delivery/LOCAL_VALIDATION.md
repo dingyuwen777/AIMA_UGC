@@ -41,3 +41,7 @@
 Ready run36860409129 / headf19895fa真实完成：core成功（包含全量前端），16真实全栈成功，Compose和Windows/Linux tooling成功；前7PG套件56/119/20/143/124/95/2通过。报告PG实际5fail/4pass/1skip，五项均在生产resolve_cjk_font抛缺少CJK字体，日志保留.runtime/report-final-pg-failure.log。core和PG是独立runner，不能复用另一个job已安装的字体，故CI Gate正确失败，PR退Draft修复。
 
 在PG job、Selected PostgreSQL integration evidence之前安装项目已有fonts-noto-cjk，条件由现有classifier report_font_required或all/reporting套件选择控制，包含窄目标/混合目标；不增加第二套scope映射、不改Renderer/skip/assert。生产Dockerfile已有该系统依赖，应用/Contract/Migration/页面不变。新增独立runner依赖回归先1Red，修复后CI scope/Actions/validate_changed/报告DB guard64passed+12subtests。实际新head Linux runner报告PG绿色仍是合并前必需证据。原冻结守恒现在明确增加CI字体步骤及其测试这一交付修正。
+
+## 字体修复最终本地检查点
+
+6f600435真实Linux CI报告PG现9passed/1显式browserSkip，前7套通过，安装依赖成功；core只有旧“PG永不安装字体”断言失败。已同步为有条件安装和非报告Collection轻量保护，保留其他原断言，经独立Repair Review认可；生产/Renderer不变。完整本地父子进程统一PYTHONUTF8后1750passed/16skip/12subtests，68.39秒；XML1778tests/0error/0failure。此前仅父进程-Xutf8而Windows子进程CP936导致读取stderr失败的日志保留，环境原因已直接读取stderr字节证实，不改种子隔离测试。当前新head的完整required CI和Final Review仍待取得，不能用6f部分绿色宣称已合并。
