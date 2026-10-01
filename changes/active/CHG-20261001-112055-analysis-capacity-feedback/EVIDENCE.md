@@ -279,3 +279,9 @@ scratch-analysis-probe-20261001清理前核对固定绝对路径与ownership.jso
 Green：同解释器`-m mypy --platform linux backend/src`和`-m mypy --platform win32 backend/src`各430source，均exit0；该capacity文件`ruff check --no-cache`和`ruff format --check --no-cache`均exit0。第一次patch混合LF/CRLF的format-check失败保留，仅对该文件运行正式formatter后通过。第一次机器回归的Windows沙箱独占临时目录有4个setup Error和退出PermissionError；未改测试断言，改用本任务独占外部临时目录、清除AIMA/数据库/SSL/PYTHONPATH环境，原`tests/unit/analysis/test_machine_adaptation.py tests/unit/analysis/test_capacity_workloads.py -q -p no:cacheprovider`得到23passed/77条既有Pydantic弃用警告、7.04秒、exit0。该回归纯内存，不启动数据库或HTTP服务。
 
 另直接调用生产CPU采样器验证：Windows真实ctypes参数经Fake系统计数输出(total300,idle120)、API返回0、API缺失均得到预期结果；本机实际采样为合法总/空闲计数或未知。四个直接边界PASS，exit0。临时探针不复制采样算法、不进入永久产品代码。新的DELIVERY_BASELINE嵌套首个交付baseline，保留修复前身份；当前代码修复与正式新Head CI/Review状态后续另取，不能将旧Head绿层冒充新Head完整通过。
+
+### 归档导航修复与最终位置验证
+
+独立首次集中审查返回DELIVERY-REV-001：原生归档只移动CHANGE.md，7个本地导航在active有效而在archive最终位置全部失效。修复只将当前Change的这7个目标改为已发布implementation checkpoint `69c39716b057a8171dba0041b596a877f250a9af` 的不可变Git permalink，显示完整仓库路径；添加快照时点说明与PR #689最终状态入口。该checkpoint包含CPU修复、实际Green、原平台失败和首次审查，不声称含尚未发生的最终CI/merge。没有改Archiver、移动附件、改产品算法或引入新的长期事实Owner。
+
+实际逐个`git cat-file -e <checkpoint>:<目标路径>`验证全部7个blob；分别按active与原生archive/2026-10最终位置解析，7个不可变文件目标及PR导航均有效。远程`gh api .../commits/69c39716...`确认同SHA/tree已发布，任务分支删除不影响这些链接。本轮canonical validate-change exit0、项目Ready exit0（gated152/strict152/legacy128）、git diff --check exit0。此时导航已修复，Finding仍须独立REPAIR_VERIFY关闭；正式新Head/current-base CI、受保护merge、main-fresh与Archive尚未完成。

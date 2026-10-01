@@ -31,11 +31,13 @@ data_changes:
 
 修正打标的容量证据、机器调度和持续恢复，使正常内容尽快推进且每条成功才正常完整退出。当前本地修复已完成隔离验证；本次授权将全部现有本地修改（含用户现有 Prompt 编辑）经受保护 PR 交付 main。远程 CI、合并、main-fresh、归档和清理尚未完成，不以本地 Ready 代替。
 
+本Change的文件导航固定到implementation快照`69c39716b057a8171dba0041b596a877f250a9af`，包含CPU平台修复和截至该快照的本地/首次远程Evidence；历史链接不依赖任务分支或归档位置。快照中的未完成状态保留其当时语义，后续独立关闭复核、current-head CI和合并后状态以[PR #689](https://github.com/dingyuwen777/AIMA_UGC/pull/689)的实际记录为准，不把早期状态冒充最终交付。
+
 # 背景、现状与问题
 
 ## 背景
 
-正式上游为 [docs/blueprint/07_技术决策与实施门禁.md](../../../docs/blueprint/07_技术决策与实施门禁.md) 第35/36节与稳定验收标识，以及本轮用户明确批准的 Git 交付、隔离验证和两平台自适应要求。
+正式上游为 [docs/blueprint/07_技术决策与实施门禁.md](https://github.com/dingyuwen777/AIMA_UGC/blob/69c39716b057a8171dba0041b596a877f250a9af/docs/blueprint/07_%E6%8A%80%E6%9C%AF%E5%86%B3%E7%AD%96%E4%B8%8E%E5%AE%9E%E6%96%BD%E9%97%A8%E7%A6%81.md) 第35/36节与稳定验收标识，以及本轮用户明确批准的 Git 交付、隔离验证和两平台自适应要求。
 
 ## 当前现状
 
@@ -53,9 +55,9 @@ data_changes:
 
 | 证据编号 | 已确认事实 | 来源 / 定位 / 命令 | 支撑的约束或决策 |
 | --- | --- | --- | --- |
-| E1 | epoch8 的38项冻结与用户 Prompt 哈希有完整清单 | [changes/active/CHG-20261001-112055-analysis-capacity-feedback/REVIEW_BASELINE.json](REVIEW_BASELINE.json) | 按字节判断旧证据可复用范围 |
-| E2 | Windows、Linux wheel、真实PG和浏览器关键链已隔离运行 | [changes/active/CHG-20261001-112055-analysis-capacity-feedback/EVIDENCE.md](EVIDENCE.md) | 保留真实结果与最初环境失败，不重复无效测试 |
-| E3 | 原阻塞项已由独立 Reviewer 关闭 | [changes/active/CHG-20261001-112055-analysis-capacity-feedback/REVIEW.md](REVIEW.md) | 新交付审查按 lineage 检查 delta 与直接相邻边界 |
+| E1 | epoch8 的38项冻结与用户 Prompt 哈希有完整清单 | [changes/active/CHG-20261001-112055-analysis-capacity-feedback/REVIEW_BASELINE.json](https://github.com/dingyuwen777/AIMA_UGC/blob/69c39716b057a8171dba0041b596a877f250a9af/changes/active/CHG-20261001-112055-analysis-capacity-feedback/REVIEW_BASELINE.json) | 按字节判断旧证据可复用范围 |
+| E2 | Windows、Linux wheel、真实PG和浏览器关键链已隔离运行 | [changes/active/CHG-20261001-112055-analysis-capacity-feedback/EVIDENCE.md](https://github.com/dingyuwen777/AIMA_UGC/blob/69c39716b057a8171dba0041b596a877f250a9af/changes/active/CHG-20261001-112055-analysis-capacity-feedback/EVIDENCE.md) | 保留真实结果与最初环境失败，不重复无效测试 |
+| E3 | 原阻塞项已由独立 Reviewer 关闭 | [changes/active/CHG-20261001-112055-analysis-capacity-feedback/REVIEW.md](https://github.com/dingyuwen777/AIMA_UGC/blob/69c39716b057a8171dba0041b596a877f250a9af/changes/active/CHG-20261001-112055-analysis-capacity-feedback/REVIEW.md) | 新交付审查按 lineage 检查 delta 与直接相邻边界 |
 | E4 | main Ruleset要求三个检查、最新base与线程解决 | 2026-10-02 gh api rules/branches/main | 通过PR和预期Head SHA合并，不绕过门禁 |
 
 ## 推断与待确认
@@ -225,7 +227,7 @@ R18 同时追溯最新用户授权 `user:20261001-sync-remote-main`，Source 采
 
 ### 历史：目标与约束
 
-2026-10-01 用户追加授权拉取远程 main 并同步本地，解决兼容冲突；仅该本地同步动作扩展此前“不合并”的边界，不授权提交或推送本地修改。当前基线为 `64bfade138e6cdf0f86e8d8961a0415b8f994ea8`，原本地代码和用户 Prompt 保留；main 新增报告与品牌识别能力的组合验证见 [changes/active/CHG-20261001-112055-analysis-capacity-feedback/MAIN_SYNC_EVIDENCE.json](MAIN_SYNC_EVIDENCE.json)。旧阶段 Evidence 保留为历史，各环境中途 setup 错误及最终有效回归分别记录。
+2026-10-01 用户追加授权拉取远程 main 并同步本地，解决兼容冲突；仅该本地同步动作扩展此前“不合并”的边界，不授权提交或推送本地修改。当前基线为 `64bfade138e6cdf0f86e8d8961a0415b8f994ea8`，原本地代码和用户 Prompt 保留；main 新增报告与品牌识别能力的组合验证见 [changes/active/CHG-20261001-112055-analysis-capacity-feedback/MAIN_SYNC_EVIDENCE.json](https://github.com/dingyuwen777/AIMA_UGC/blob/69c39716b057a8171dba0041b596a877f250a9af/changes/active/CHG-20261001-112055-analysis-capacity-feedback/MAIN_SYNC_EVIDENCE.json)。旧阶段 Evidence 保留为历史，各环境中途 setup 错误及最终有效回归分别记录。
 
 2026-10-01 17:28 的新运行事实重新打开本 Change：14618 条中 13988 条成功，412 条已投放但未完成、218 条未投放；旧阶段验证没有覆盖连续迟到 429 与许可等待组合。用户明确要求除真实网络/模型错误外全部正常内容成功，个别问题不得终止其余正常内容。当前工作以此新要求为准，以下旧完成记录保留为历史证据，不代表本轮修复已完成。
 
@@ -330,7 +332,7 @@ R18 同时追溯最新用户授权 `user:20261001-sync-remote-main`，Source 采
 
 先完成需求覆盖复核，再按当前 diff 检查许可生命周期、事务锁顺序、版本兼容、异常退出、成本审计、取消与输出验证。前一阶段以下复核发现已修正并取得相应用例证据：配置热启动不能丢弃在途预留；旧控制器 unsafe 不可当作新容量证明；Client 关闭异常仍要回收本 Fence；downgrade guard 必须覆盖 v2；本地许可排队不能计作 HTTP 延迟且价格按实际发送时间生效。当前任务范围没有未处理阻塞 Finding。
 
-两阶段自审之后，一个只读 Reviewer 独立完成 A1/A2 和质量审查，首次发现 CAP-REV-001（端点切换的声明提示与容量边界）及 CAP-REV-002（RPS 与并发许可顺序）两项 IN_SCOPE/BLOCKING 问题。修复后取得端点切换、物理发送间隔、取消与正式 Worker 组合回归证据；同一 Reviewer 的独立修复复核为 PASS / NO_FINDINGS_WITHIN_SCOPE，两项均 CLOSED。当前工作树满足本地可审查完成定义；没有远程 PR Review/CI/合并。审查范围和证据见 [REVIEW.md](REVIEW.md)。
+两阶段自审之后，一个只读 Reviewer 独立完成 A1/A2 和质量审查，首次发现 CAP-REV-001（端点切换的声明提示与容量边界）及 CAP-REV-002（RPS 与并发许可顺序）两项 IN_SCOPE/BLOCKING 问题。修复后取得端点切换、物理发送间隔、取消与正式 Worker 组合回归证据；同一 Reviewer 的独立修复复核为 PASS / NO_FINDINGS_WITHIN_SCOPE，两项均 CLOSED。当前工作树满足本地可审查完成定义；没有远程 PR Review/CI/合并。审查范围和证据见 [changes/active/CHG-20261001-112055-analysis-capacity-feedback/REVIEW.md](https://github.com/dingyuwen777/AIMA_UGC/blob/69c39716b057a8171dba0041b596a877f250a9af/changes/active/CHG-20261001-112055-analysis-capacity-feedback/REVIEW.md)。
 
 Validation Asset Redundancy: clean。生产控制器与 Repository 是唯一判断实现；事件模拟复用生产观察和状态转换，内存 Session 只替换存储/时钟；PG 与浏览器验收复用既有 Fixture、Worker 和 Fake HTTP。临时隔离服务配置只改变地址与目录，没有建立平行业务实现。
 
@@ -338,7 +340,7 @@ Validation Asset Redundancy: clean。生产控制器与 Repository 是唯一判�
 
 基线 15dd366db6e1632535fadc615513636a4b22c639。原有诊断修改与用户 Prompt 修改继续保留。本 Change 保持 Active；没有提交、PR、CI、合并或部署。性能模拟不等于真实 DeepSeek 性能或语义准确率实测。
 
-实际命令与完整结果见 [EVIDENCE.md](EVIDENCE.md)。没有新增表/列或 Migration head；既有 0076 只增强降级安全检查，upgrade DDL 不变。新版代码以派生 Profile JSON 升级观测协议；回退到仅识别 v1 的代码前应先排空 v2 Run 并重建派生 Profile，不删除业务结果。用户正在运行的 API/Worker 未重启；加载本地改造需在用户现有任务结束后使用原运行方式重启相应进程并创建新 Run。
+实际命令与完整结果见 [changes/active/CHG-20261001-112055-analysis-capacity-feedback/EVIDENCE.md](https://github.com/dingyuwen777/AIMA_UGC/blob/69c39716b057a8171dba0041b596a877f250a9af/changes/active/CHG-20261001-112055-analysis-capacity-feedback/EVIDENCE.md)。没有新增表/列或 Migration head；既有 0076 只增强降级安全检查，upgrade DDL 不变。新版代码以派生 Profile JSON 升级观测协议；回退到仅识别 v1 的代码前应先排空 v2 Run 并重建派生 Profile，不删除业务结果。用户正在运行的 API/Worker 未重启；加载本地改造需在用户现有任务结束后使用原运行方式重启相应进程并创建新 Run。
 
 
 ### 历史：续修完成与本地交付
