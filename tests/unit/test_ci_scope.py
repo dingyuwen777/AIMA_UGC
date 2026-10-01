@@ -111,6 +111,27 @@ def test_full_postgres_evidence_includes_report_workflows() -> None:
     )
 
 
+def test_postgres_report_rendering_has_its_own_cjk_font_dependency() -> None:
+    """PG 在独立 runner 渲染真实文件，不能借用 core Job 安装的字体。"""
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    postgres_job = workflow.split("  postgres-integration:", 1)[1].split("\n  real-fullstack:", 1)[
+        0
+    ]
+    font_step = postgres_job.split("- name: Install report integration CJK font", 1)[1]
+    font_step = font_step.split("- name:", 1)[0]
+    assert "fonts-noto-cjk" in font_step
+    assert "report_font_required == 'true'" in font_step
+    assert "' all '" in font_step
+    assert "' reporting '" in font_step
+    assert postgres_job.index("Install report integration CJK font") < postgres_job.index(
+        "Selected PostgreSQL integration evidence"
+    )
+    targeted = _requirements("tests/integration/reporting/test_database_reports.py")
+    full = _requirements(".github/workflows/ci.yml")
+    assert targeted.report_font_required is True
+    assert full.report_font_required is True
+
+
 def test_http_producer_change_requires_contract_drift_and_real_cross_component_proof() -> None:
     requirements = _requirements("backend/src/aima_ugc/entrypoints/api_main.py")
 

@@ -143,3 +143,7 @@ main 仍使用上传 Excel 的报告管理页面。冻结检查点 `0fd93aec4030
 产品提交d1e09a8d、main15dd366为base、canonical041c9b6为规则源；0fd产品字节守恒。当前后端1749 passed/16 skipped/12subtests；报告PG9 passed/1显式browserSkip、registry1、导航fixture11、前端274组件/38报告浏览器/build、mypy427/ruff868格式/Contract/Docs/Owner/Secret均通过。原22项真实报告全链路验收继续覆盖字节守恒实现。当前命令、失败与修复范围见LOCAL_VALIDATION.md，源字节与XML摘要见EVIDENCE.json。Draft PR #688已建立，当前Final Review、required CI、merge和post-merge仍需逐项取得，不提前声称交付完成。
 
 原 PR #686 保留失败记录，建立替代 PR 后关闭为 superseded，原分支和 Change 保留。Issue #684 AC8 在 main-fresh、原生archive及收尾之前保持未勾选。生产部署与在线付费服务验收未执行。
+
+## 真实CI修复检查点
+
+旧headf19895fa的Ready CI36860409129：core/全前端/全栈16/Compose/WindowsLinux通过，前7PG套件通过，reporting实际5失败均缺中文字体。新增RV-REPORT-06环境依赖阻塞，PR退Draft，不merge。PG独立runner现在安装已有fonts-noto-cjk并覆盖target/all/reporting选择；1Red→64Green+12subtests，不修改报告生产行为或降低断言。当前产品AC1–AC7证据继续成立，新的CI修复需新head实际PG和Final Review确认，AC8继续未勾选。

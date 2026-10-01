@@ -71,6 +71,22 @@
       "failures": 0,
       "errors": 0,
       "skipped": 0
+    },
+    {
+      "path": ".runtime/report-font-red.xml",
+      "sha256": "8dbadc43e6cd268477cc71884cf39b20d28afd9585bf9c1bce65d263ebe945a5",
+      "tests": 1,
+      "errors": 0,
+      "failures": 1,
+      "skipped": 0
+    },
+    {
+      "path": ".runtime/report-font-green.xml",
+      "sha256": "e3b99024143f555b3bfab30ad0be47d8cca23ca6806b352804b44afcedb5df17",
+      "tests": 76,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0
     }
   ],
   "checks": {
@@ -85,5 +101,18 @@
     "database": "aima_report_test",
     "browser_port": 55438
   },
-  "remaining": "current PR CI/Final Review/merge/main-fresh/native archive/Issue closure; no production deployment or online paid provider calls"
+  "remaining": "current PR CI/Final Review/merge/main-fresh/native archive/Issue closure; no production deployment or online paid provider calls",
+  "ci_repair": {
+    "failed_revision": "f19895fa1e6cf6aec3ffa7a239489fa05ce5915e",
+    "failed_run": 36860409129,
+    "finding": "RV-REPORT-06",
+    "root_cause": "PostgreSQL job independent runner lacked required CJK font",
+    "fix": "existing fonts-noto-cjk installed before PG selected targets/suites; font flag or all/reporting suites",
+    "production_sources_changed": false,
+    "actual_new_head_ci_pending": true,
+    "files_sha256": {
+      ".github/workflows/ci.yml": "5cef0b5e3209209ce55fef7c7ec27de500e84ef9c5f714cf928afba5f2299c96",
+      "tests/unit/test_ci_scope.py": "268861eaf642cf137eb3472b0bdda82e3b19eec3cea9f199573eb2f9ba973a73"
+    }
+  }
 }

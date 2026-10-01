@@ -596,6 +596,14 @@ jobs:
           uv run alembic upgrade head
           uv run alembic current
           uv run alembic check
+      - name: Install report integration CJK font
+        if: >-
+          needs.ci-plan.outputs.report_font_required == 'true' ||
+          contains(format(' {0} ', needs.ci-plan.outputs.postgres_suites), ' all ') ||
+          contains(format(' {0} ', needs.ci-plan.outputs.postgres_suites), ' reporting ')
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - name: Selected PostgreSQL integration evidence
         shell: bash
         run: |

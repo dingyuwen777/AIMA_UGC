@@ -35,3 +35,9 @@
 ## 当前复核与就绪记录
 
 独立Repair Review重新读取上游、canonical远程源码和57个产品差异路径：无新blocking Finding，报告01–05关闭；确认原历史守恒、CI report PG全量/目标路径和guard。Completion gate最终150 gated、128 legacy、150 strict、errors=[]。canonical接受的inline YAML列表在项目轻量parser中不兼容，已改为现有block列表，产品未变。Final Review与required CI仍在合并前取得。
+
+## RV-REPORT-06：真实CI中文字体依赖修复
+
+Ready run36860409129 / headf19895fa真实完成：core成功（包含全量前端），16真实全栈成功，Compose和Windows/Linux tooling成功；前7PG套件56/119/20/143/124/95/2通过。报告PG实际5fail/4pass/1skip，五项均在生产resolve_cjk_font抛缺少CJK字体，日志保留.runtime/report-final-pg-failure.log。core和PG是独立runner，不能复用另一个job已安装的字体，故CI Gate正确失败，PR退Draft修复。
+
+在PG job、Selected PostgreSQL integration evidence之前安装项目已有fonts-noto-cjk，条件由现有classifier report_font_required或all/reporting套件选择控制，包含窄目标/混合目标；不增加第二套scope映射、不改Renderer/skip/assert。生产Dockerfile已有该系统依赖，应用/Contract/Migration/页面不变。新增独立runner依赖回归先1Red，修复后CI scope/Actions/validate_changed/报告DB guard64passed+12subtests。实际新head Linux runner报告PG绿色仍是合并前必需证据。原冻结守恒现在明确增加CI字体步骤及其测试这一交付修正。
