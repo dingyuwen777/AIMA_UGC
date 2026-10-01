@@ -50,6 +50,7 @@ _POOL_IDLE_DOWNSHIFT_SECONDS = 30.0
 _MIB = 1024 * 1024
 _STARTUP_FAILURE_WINDOW_SECONDS = 30.0
 _MAX_RESTART_DELAY_SECONDS = 60.0
+_WORKER_LEASE_OWNER_ENV = "_AIMA_WORKER_LEASE_OWNER"
 _REPLAY_BACKGROUND_JOB_TYPES = frozenset(
     {
         CANONICAL_REPLAY_PLAN_JOB_TYPE,
@@ -158,7 +159,9 @@ def _run_single_worker(*, foreground_only: bool = False) -> None:
         else registry.supported_types
     )
     worker_role = "foreground-reserve" if foreground_only and maximum_processes > 1 else "general"
-    worker_id = f"{socket.gethostname()}:{os.getpid()}"
+    # Windows venv 启动器的 Popen.pid 与实际 Python PID 可以不同。
+    # Lease 身份由进程池分配并继承，不能从包装进程 PID 推断。
+    worker_id = os.environ.get(_WORKER_LEASE_OWNER_ENV) or (f"{socket.gethostname()}:{os.getpid()}")
     worker = create_job_worker(
         runtime=runtime,
         registry=registry,
@@ -184,6 +187,7 @@ def _run_single_worker(*, foreground_only: bool = False) -> None:
         "Worker 已启动",
         worker_id=worker_id,
         worker_role=worker_role,
+        process_pid=os.getpid(),
         supported_job_types=supported_job_types,
         minimum_priority=(
             CANONICAL_REPLAY_BACKGROUND_PRIORITY + 1
@@ -249,7 +253,7 @@ def _run_single_worker(*, foreground_only: bool = False) -> None:
 
 def _pool_pressure(
     runtime: PlatformRuntime,
-    children: dict[int, subprocess.Popen[bytes]],
+    child_lease_owners: dict[int, str],
     maximum: int,
 ) -> tuple[int, set[str]]:
     """只读当前可领取队列和本容器在途 Lease，不扫描历史 Job。"""
@@ -257,9 +261,8 @@ def _pool_pressure(
     session = runtime.database.new_session()
     try:
         with session.begin():
-            owners = {f"{socket.gethostname()}:{pid}" for pid in children}
             return PostgresJobRepository(session).pool_pressure(
-                lease_owners=owners,
+                lease_owners=set(child_lease_owners.values()),
                 queued_limit=maximum,
                 now=beijing_now(),
             )
@@ -274,6 +277,7 @@ def _run_worker_pool() -> None:
     children: dict[int, subprocess.Popen[bytes]] = {}
     child_started_at: dict[int, float] = {}
     child_roles: dict[int, str] = {}
+    child_lease_owners: dict[int, str] = {}
     stopping = False
     idle_since: float | None = None
     restart_backoff = _WorkerRestartBackoff()
@@ -286,12 +290,26 @@ def _run_worker_pool() -> None:
         """按角色启动子进程；foreground-reserve 只限制 Replay，其他 Job 仍可使用全部进程。"""
 
         argument = "--foreground-child" if role == "foreground-reserve" else "--child"
+        owner = f"{socket.gethostname()}:{uuid4().hex}"
+        environment = dict(os.environ)
+        environment[_WORKER_LEASE_OWNER_ENV] = owner
         child = subprocess.Popen(
-            [sys.executable, "-m", "aima_ugc.entrypoints.worker_main", argument]
+            [sys.executable, "-m", "aima_ugc.entrypoints.worker_main", argument],
+            env=environment,
         )
         children[child.pid] = child
         child_started_at[child.pid] = time.monotonic()
         child_roles[child.pid] = role
+        child_lease_owners[child.pid] = owner
+        log_event(
+            runtime.logger,
+            logging.INFO,
+            "capacity.worker_process_spawned",
+            "Worker 子进程已创建",
+            worker_pid=child.pid,
+            worker_id=owner,
+            worker_role=role,
+        )
 
     signal.signal(signal.SIGTERM, request_stop)
     try:
@@ -329,6 +347,7 @@ def _run_worker_pool() -> None:
             for pid, child in tuple(children.items()):
                 if (exit_code := child.poll()) is not None:
                     del children[pid]
+                    child_lease_owners.pop(pid)
                     exited_role = child_roles.pop(pid, None)
                     now = time.monotonic()
                     delay = restart_backoff.record_exit(
@@ -350,7 +369,7 @@ def _run_worker_pool() -> None:
                         )
             resources = detect_resources()
             maximum = worker_process_limit(resources)
-            queued, busy_owners = _pool_pressure(runtime, children, maximum)
+            queued, busy_owners = _pool_pressure(runtime, child_lease_owners, maximum)
             desired = desired_worker_processes(
                 maximum=maximum, queued=queued, busy=len(busy_owners)
             )
@@ -416,7 +435,7 @@ def _run_worker_pool() -> None:
                     idle_candidates = tuple(
                         (pid, child)
                         for pid, child in reversed(tuple(children.items()))
-                        if f"{socket.gethostname()}:{pid}" not in busy_owners
+                        if child_lease_owners[pid] not in busy_owners
                     )
                     preferred_role = "foreground-reserve" if desired < 2 else "general"
                     idle_entry = next(

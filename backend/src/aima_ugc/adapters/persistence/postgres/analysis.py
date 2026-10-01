@@ -85,6 +85,20 @@ class AnalysisPendingPage:
     exhausted: bool
 
 
+def _retry_ready_condition() -> ColumnElement[bool]:
+    """分页取项和需求探测共用同一退避/提前恢复规则，避免两条查询漂移。"""
+    item = analysis_content_request_items_table
+    run = analysis_content_runs_table
+    return (
+        item.c.retry_not_before.is_(None)
+        | (item.c.retry_not_before <= func.clock_timestamp())
+        | (
+            (item.c.retry_kind == "transport")
+            & (item.c.last_retry_at < run.c.last_transport_success_at)
+        )
+    )
+
+
 class PostgresAnalysisRepository:
     """Analysis 表唯一写入口；所有业务可见提交验证当前 Job Fence。"""
 
@@ -474,19 +488,7 @@ class PostgresAnalysisRepository:
                     item.c.status == "pending",
                     item.c.ordinal > after_ordinal,
                     item.c.content_id.not_in(excluded_content_ids),
-                    (
-                        (item.c.retry_not_before.is_(None))
-                        | (item.c.retry_not_before <= func.clock_timestamp())
-                        | (
-                            (item.c.retry_kind == "transport")
-                            & (
-                                item.c.last_retry_at
-                                < analysis_content_runs_table.c.last_transport_success_at
-                            )
-                        )
-                    )
-                    if recovery
-                    else literal(True),
+                    _retry_ready_condition() if recovery else literal(True),
                 )
                 .order_by(
                     item.c.retry_kind.is_not(None).desc() if recovery else item.c.ordinal,
@@ -518,6 +520,27 @@ class PostgresAnalysisRepository:
                 continue
             work.append(_row_to_work_item(row))
         return AnalysisPendingPage(tuple(work), rows[-1]["ordinal"], len(rows) < limit)
+
+    def has_ready(self, request_id: UUID, *, excluded_content_ids: Sequence[UUID] = ()) -> bool:
+        """只探测未发送且已到重试时间的项，pending 在途和未提交结果不代表需求。"""
+        item = analysis_content_request_items_table
+        request = analysis_content_requests_table
+        run = analysis_content_runs_table
+        return (
+            self._session.scalar(
+                select(item.c.content_id)
+                .join(request, request.c.id == item.c.request_id)
+                .join(run, run.c.id == request.c.run_id)
+                .where(
+                    item.c.request_id == request_id,
+                    item.c.status == "pending",
+                    item.c.content_id.not_in(excluded_content_ids),
+                    _retry_ready_condition(),
+                )
+                .limit(1)
+            )
+            is not None
+        )
 
     def persist_success(
         self,
@@ -909,10 +932,10 @@ class PostgresAnalysisRepository:
         if run is None:
             raise AnalysisRequestNotFound
         # 新协议系统停止是父事实，其他 Shard 收尾不能把它改回 running/partial_failed。
-        if (
-            run["status"] == "failed"
-            and run["runtime_config_snapshot"].get("recovery_mode") == "recovery.v1"
-        ):
+        if run["status"] == "failed" and run["runtime_config_snapshot"].get("recovery_mode") in {
+            "recovery.v1",
+            "recovery.v2",
+        }:
             return "failed"
         counts = self.run_stats(run_id)
         if counts["pending"]:
@@ -923,6 +946,13 @@ class PostgresAnalysisRepository:
             finished_at = beijing_now()
         elif counts["cancelled"]:
             status = "cancelled"
+            finished_at = beijing_now()
+        elif (
+            run["runtime_config_snapshot"].get("recovery_mode") == "recovery.v2"
+            and counts["succeeded"] != run["target_count"]
+        ):
+            # 执行结束不等于全部成功；过期版本保留stale事实，不能把旧内容结果写入新版本。
+            status = "partial_failed" if counts["succeeded"] else "failed"
             finished_at = beijing_now()
         else:
             status = "succeeded"
@@ -950,10 +980,10 @@ class PostgresAnalysisRepository:
             raise AnalysisRequestNotFound
         if job_status == "succeeded":
             return self.refresh_run(run_id)
-        if (
-            run["status"] == "failed"
-            and run["runtime_config_snapshot"].get("recovery_mode") == "recovery.v1"
-        ):
+        if run["status"] == "failed" and run["runtime_config_snapshot"].get("recovery_mode") in {
+            "recovery.v1",
+            "recovery.v2",
+        }:
             return "failed"
         status = "cancelled" if job_status == "cancelled" else "failed"
         now = beijing_now()

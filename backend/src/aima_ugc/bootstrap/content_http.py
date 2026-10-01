@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.llm.capabilities import declared_concurrency
 from aima_ugc.adapters.persistence.postgres.analysis import (
     AnalysisRequestNotFound,
     AnalysisRunStateConflict,
@@ -94,6 +95,7 @@ from aima_ugc.contracts.relevance_review import (
 from aima_ugc.modules.analysis.adaptive_capacity import (
     CAPACITY_MODE,
     SHARD_CONCURRENCY_CEILING,
+    SUPPORTED_CAPACITY_MODES,
     VALIDATION_RETRIES,
     CapacityState,
     learned_run_limits,
@@ -114,6 +116,7 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     analysis_query_scope_filter_snapshot,
     is_analysis_all_scope_filter_snapshot,
 )
+from aima_ugc.modules.analysis.recovery import RECOVERY_MODE
 from aima_ugc.modules.analysis.sharding import calculate_analysis_shard_size
 from aima_ugc.modules.content.content_cursor import ContentCursorCodec, ContentCursorPosition
 from aima_ugc.modules.content.http import (
@@ -841,6 +844,7 @@ class PostgresContentHttpService:
                     identity.model,
                     revision=llm_provider.revision,
                     prompt_sha256=identity.prompt_sha256,
+                    declared_ceiling=declared_concurrency(llm_provider.base_url, identity.model),
                 )
                 shard_size, timeout_seconds = learned_run_limits(state)
                 runtime_config_snapshot["timeout_seconds"] = timeout_seconds
@@ -1184,11 +1188,11 @@ def _adaptive_provider_snapshot(provider: ProviderConfig) -> dict[str, object]:
     return {
         **provider.safe_runtime_snapshot(),
         "capacity_mode": CAPACITY_MODE,
-        "recovery_mode": "recovery.v1",
+        "recovery_mode": RECOVERY_MODE,
         "max_concurrency": SHARD_CONCURRENCY_CEILING,
         "max_rps": None,
         "max_retries": VALIDATION_RETRIES,
-        "timeout_seconds": 45,
+        "timeout_seconds": 120,
     }
 
 
@@ -1223,7 +1227,7 @@ def _analysis_configuration_hash(
     }
     if runtime_config_snapshot:
         snapshot = runtime_config_snapshot
-        if snapshot.get("capacity_mode") == CAPACITY_MODE:
+        if snapshot.get("capacity_mode") in SUPPORTED_CAPACITY_MODES:
             # 学习状态和创建时派生 timeout 不参与用户确认/幂等身份；连接 Revision 仍参与。
             snapshot = {
                 key: value

@@ -165,7 +165,7 @@ max_concurrency = 1000, max_rps = 1    → shard_size = 900
 max_concurrency = 250,  max_rps = 5    → shard_size = 4,500
 ```
 
-新 Run 的每片大小按历史成功吞吐、所需分片数和约 300 秒目标耗时派生，限制在 200–50,000 条，创建时写入 `analysis_content_runs.shard_size`。每片物理并发上限 256，全局目标上限 5000。冻结范围之后不随学习变化；`analysis.content-label.v1` 的 1800 秒 Attempt Deadline 仍是执行硬边界，恢复等待不能无限续期。
+新 Run 的每片大小按历史成功吞吐、所需分片数和约 300 秒目标耗时派生，限制在 200–50,000 条，创建时写入 `analysis_content_runs.shard_size`。并发和资源边界见[共享自适应容量](#14-共享自适应容量)。冻结范围之后不随学习变化；`analysis.content-label.v1` 的 1800 秒 Attempt Deadline 仍是执行硬边界，恢复等待不能无限续期。
 
 环境与数据库配置的新 Run 都使用同一自适应策略和并发执行器；环境里的旧人工执行值只供历史固定 Snapshot 兼容。旧静态 `AIMA_ANALYSIS_RUN_SHARD_SIZE` / `AIMA_ANALYSIS_BATCH_SIZE` 已移除。
 
@@ -494,7 +494,7 @@ Job error / Request Item error_code
 → Batch Repository / Fence / Content Version
 ```
 
-新正式 Run 的临时 Transport 错误进入持久 pending；系统错误或五分钟健康窗口到期停止父 Run。历史固定 Run 保留单条 Transport 耗尽终结对应 Content 的行为；已成功内容始终不重发。
+新正式 Run 的临时 Transport 错误进入持久 pending；系统硬错误或连续五分钟真实网络不可用停止父 Run。格式错误持续修复，429、HTTP 错误响应和本地等待不计断网。历史固定 Run 保留单条 Transport 耗尽终结对应 Content 的行为；已成功内容始终不重发。
 
 ### 页面提示 LLM Runtime 未配置
 
@@ -542,7 +542,7 @@ Query Preview 返回服务端权威目标数；用户确认 Create 时，服务�
 
 因此新 query Run 不需要跨全部批次持有长事务或单一 MVCC Snapshot，同时仍能证明 Planner 最终冻结集合与确认 Create 时集合一致；确认完成后的后续内容或 Analysis 变化不会改写已冻结目标。
 
-新 Run 使用 `adaptive.v1`：Shard size 从历史成功入库速率与约 300 秒目标时长推导，并在 Create 冻结。没有历史时使用内部冷启动估计；运行中不修改已有 `shard_size` 或 `shard_no × shard_size` 范围。环境配置与数据库配置走同一规则；历史 Run 保留自己的固定快照。
+新 Run 使用 `adaptive.v2`：Shard size 从历史成功入库速率与约 300 秒目标时长推导，并在 Create 冻结。没有历史时使用内部冷启动估计；运行中不修改已有 `shard_size` 或 `shard_no × shard_size` 范围。环境配置与数据库配置走同一规则；历史 Run 保留自己的快照。
 
 ---
 
@@ -556,24 +556,42 @@ Query Preview 返回服务端权威目标数；用户确认 Create 时，服务�
 - Monitoring/Alert/VOC/Ticket 业务域。
 - 已人工复核的 Gold Set 与量化准确率门禁；当前没有依据调整模型、thinking 或生成参数。
 
-当前高吞吐实现仍使用同一个 PostgreSQL durable Job Runtime。共享容量有 5000 的系统保护上限，每片物理线程池上限为 256；实际可用容量还受 Worker、数据库和服务商限制。Simulator 只证明控制算法，不能证明实际模型或服务器的吞吐收益。
+当前高吞吐实现仍使用同一个 PostgreSQL durable Job Runtime。实际可用容量受 Worker、数据库和服务商限制，精确上限由下节实现维护。Simulator 只证明控制算法，不能证明实际模型或服务器的吞吐收益。
 
 ## 14. 共享自适应容量
 
-规则在 [`backend/src/aima_ugc/modules/analysis/adaptive_capacity.py`](adaptive_capacity.py)，单表 Owner 在 [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_capacity.py`](../../adapters/persistence/postgres/analysis_capacity.py)，Worker 装配在 [`backend/src/aima_ugc/bootstrap/analysis_capacity.py`](../../bootstrap/analysis_capacity.py)。`analysis_llm_capacity_profiles` 按 Provider Config UUID + Model 保存当前 C、已确认/历史安全容量、拥塞上界、从属 RPS、吞吐/延迟、冷却和有限收敛状态。Revision 或 Prompt 变化保守热启动，旧身份反馈不覆盖新状态。
+规则在 [`backend/src/aima_ugc/modules/analysis/adaptive_capacity.py`](adaptive_capacity.py)，单表 Owner 在 [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_capacity.py`](../../adapters/persistence/postgres/analysis_capacity.py)，Worker 装配在 [`backend/src/aima_ugc/bootstrap/analysis_capacity.py`](../../bootstrap/analysis_capacity.py)。`analysis_llm_capacity_profiles` 按 Provider Config UUID + Model 保存当前 C、已确认/历史安全容量、拥塞上界、从属 RPS、吞吐/延迟、冷却和有限收敛状态。Revision 或 Prompt 变化保守热启动，旧身份反馈不覆盖新状态。端点从官方切换为未知时清除旧声明；切换到已核验端点时，新发容量受当前声明上界约束，旧在途预留仍排空。
 
-控制器先从小容量指数探索，拥塞时快速减半，健康冷却后有限区间收敛；稳定后周期重探。升档必须有足够需求与真实成功入库，两个窗口未提升入库速度时恢复已确认容量。周期重探失败恢复已知安全点，避免反复完整搜索造成稳定吞吐损失。RPS 只在 429 后按实际发送速率收紧，并独立逐步恢复。
+控制器从有界初值指数探索，稳定后周期重探。已核验的官方端点/精确模型声明用于初值和上界，代理或未知模型继续从响应反馈学习；声明不等于账号实时可用额度。单次超时或低负载尾部不缩容，连续服务拥塞或并发 429 才退避；请求速率 429 优先收紧 RPS，未知 429 同时保守保护发送速率。健康恢复按经过秒数控制，不再等待三个随 P95 延长的窗口。当前阶段未完成的请求不作为该阶段容量证明；本地瓶颈也不写成模型 unsafe。成功吞吐无提升时仍保留平台判定与有限收敛。
 
-有效 Lease/Deadline 的运行分片跨 Run 共享整数份额，余数按稳定 Job ID 分配，允许零份额。每秒刷新，因此控制窗内允许短暂超目标；降档只停止补充，既有发送由原 Timeout/取消/Fence 收敛。无强分布式信号量或 Capacity Lease。历史固定 Run 的 Snapshot 不变，新协议等待同 Provider/Model 的历史工作排空，终态回调唤醒待执行 Run。
+控制版本3以同一档位的跨窗累计成功数/墙钟时间判断吞吐，结合已学习延迟和样本量形成证据块，连续两个不足收益的证据块才回退；单窗峰值不作基线。稀疏格式修复不重置升档，较多格式失败暂停探测但仍逐条严格修复。明确请求数/token的429响应优先于模型并发声明。具体形成条件与安全诊断字段见[AI实现专题](../../../../../docs/appendix/07_AI舆情打标与分析实现.md)。旧控制器升级只清除搜索证明，保留未过期物理/RPS预留，不需要新增Migration。
 
-HTTP 线程只更新有界计数和延迟桶，调度线程持有 Job Fence 后合并共享墙钟窗。通常 10 秒，慢请求最多等待 30 秒成熟；Profile 行锁保证同窗只推进一次，不相加并发 Shard 的耗时。P95 是固定桶上界估计。成功吞吐只计事务提交后的新增 succeeded；stale、失败、取消和重复回调不计成功。新协议每轮已验证逻辑结果与物理 Attempt 的分母分别计算，pending 重试不能算已成功入库。
+有效 Lease/Deadline 的运行分片跨 Run 共享整数份额，余数按稳定 Job ID 分配，允许零份额和尾部借出不用的额度。Profile 行锁原子预留，每秒刷新，本地许可约束每次物理发送及 Retry。C 与 RPS 在同一准入点都允许立即发送才占位，等待许可不预先消费发送时隙，也不计入物理在途。降档保留旧占用直到排空，退出仅删除本 Fence；崩溃/换 Fence 的旧占用到期后回收。HTTP 超时后上游是否还在执行未知，不能保证服务端绝无重叠。新 Run 每片物理上限 1024、全局保护上限 5000；实际值还受目标数和资源限制，不预建全部线程。历史 v1 保留 256 的冻结上限，固定 Run 保留原参数，新协议等待同 Provider/Model 的历史固定工作排空，终态回调唤醒待执行 Run。
 
-Job 投放复用 `runtime.job_window()` 的 CPU/内存边界，再结合 Provider 所需分片数、全局已投放量、DB 连接余量与剩余分片。在无可继续领取工作的零余量边界保留一片持久 Job，避免压力恢复后无人唤醒；不扩大既有积压。新 Run 的 HTTP timeout 在创建时派生并冻结，范围 15–180 秒。冷启动默认 45 秒；无成功样本的 timeout 也保存真实等待下界，允许下一 Run 有界增加等待时间，当前 Run 的 Timeout 不变。
+HTTP 线程只更新有界计数、延迟桶和实际在途积分，调度线程持有 Job Fence 后合并共享墙钟窗。最短两秒且需足够结果，首批仍未完成时不误判健康；Profile 行锁保证同窗只推进一次，并发 Shard 不重复累计墙钟时间。阶段序号隔离旧请求反馈，最后一片退出清空不足窗的尾部和空闲分母。P95 是固定桶上界估计。成功吞吐只计事务提交后的新增 succeeded；stale、失败、取消和重复回调不计成功。物理 Attempt 与逻辑结果分母独立，pending 重试不能算成功。
+
+容量学习需要未发送且当前可发送的工作，以及足以覆盖当前探测档位的实际占用。数据库 pending 中的在途请求、未提交结果和未来退避项都不当作新增需求；即使部分分片仍报告需求，明显未装满目标的共享窗口也不能更新吞吐基线或模型 unsafe。退避资格与实际取项使用同一查询规则。父 Run 已因最后一批结果变为终态时，分片先检查自身是否还有 pending，再判断探活资格，避免已完成的 Worker 等待到 Deadline。
+
+Job 投放复用 `runtime.job_window()`，结合 Provider 需求、全局投放量、DB 连接余量与剩余分片；有后续分片时保留一个有界衔接位置，旧片等待慢尾请求时，新片可借用实际释放的共享许可，不提高 HTTP 总上限。每片 HTTP 许可再读取有效 CPU、实时可用内存、CPU 压力和结果事务吞吐，保留其他进程的内存余量；资源入口在 [`backend/src/aima_ugc/platform/capacity.py`](../../platform/capacity.py)。本地瓶颈按当前分片应得份额判断，不能把正常跨片分配误认为模型能力不足。零 DB 余量时保留一片持久 Job，压力恢复后仍可领取。
+
+Windows 原生运行读取系统 CPU 差值与实时可用内存；Linux 容器优先按 cgroup v1/v2 的使用时间除以有效 CPU 核配额计算压力，避免宿主空闲掩盖容器饱和。配额变化、计数回退或缺失时先重建基线，不沿用旧压力或伪造零负载。更多核数和可用内存提供更大的探索空间，是否真正升档仍由模型响应、成功入库吞吐和压力护栏决定。同一代码不按操作系统设置固定机器档位。
+
+正式进程池入口在 [`backend/src/aima_ugc/entrypoints/worker_main.py`](../../entrypoints/worker_main.py)。父进程分配稳定 Lease 身份并传给子进程，扩容和空闲缩容都按该身份匹配数据库 Lease；启动包装层 PID 和实际解释器 PID 只用于进程控制及诊断。`capacity.worker_process_spawned` 与 `worker.started` 可用同一 `worker_id` 对齐，分别查看启动 PID 和实际 `process_pid`。这样 Windows 虚拟环境启动器与 Linux 直接解释器都能准确计数忙碌 Worker。
+
+v2 在创建时保存初始 Read Timeout：冷启动 120 秒，历史延迟可派生更短等待；运行中仅对下一次请求按成功 P95/真实 Read 或 Write 超时下界有界延长，最多 180 秒。Connect/Pool 超时另记阶段，不用于延长模型等待。历史 v1 的 Timeout 保持冻结。没有改变 thinking、reasoning effort、输出长度或 Prompt。代码回退到仅支持 v1 的版本前须排空 v2 Run，并按回滚流程重建派生 Profile JSON；不删除业务结果。
+
+`analysis.capacity_window` 输出真实 `average_in_flight`、报告/接受的需求、当前阶段样本、成功吞吐、CPU 压力来源、限流分类和剩余冷却秒数；`analysis.capacity_adjusted` 记录目标与实际本地上限；执行收尾记录 HTTP 峰值和数据库/控制耗时。请求错误日志区分 Connect/Read/Write/Pool，不记录 Prompt 或响应正文。
 
 LLM 管理 Create/Update 拒绝显式 timeout/retry/concurrency/RPS；这些字段只继续服务 Collection。LLM 页面每 3 秒读取安全只读投影，轮询不覆盖未保存草稿。学习不改变模型、Prompt、Taxonomy、生成参数或 Job timeout；新 Run 的 Primary/Repair/Judge 与持久恢复配合，详见下节。
 
 ## 15. 正式 Run 失败恢复
 
-新 Run 在创建时冻结 `recovery.v1`；历史 Snapshot 不补写 marker，旧失败 Item 不自动重新排队。详细计时、探活与迁移边界由[AI 实现专题](../../../../../docs/appendix/07_AI舆情打标与分析实现.md#295-正式-run-持久恢复)解释。机器入口为 [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_recovery.py`](../../adapters/persistence/postgres/analysis_recovery.py)、[`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py) 和现有 Run/Request Item 表。
+新 Run 在创建时冻结 `recovery.v2`：格式、字段、Taxonomy 和证据校验失败持续重试，没有五分钟截止；只有真实网络失败观测跨越五分钟且没有任何 HTTP 响应才停止。历史 `recovery.v1` 保持原冻结语义，旧失败 Item 不自动重新排队。详细计时、探活与兼容边界由[AI 实现专题](../../../../../docs/appendix/07_AI舆情打标与分析实现.md#295-正式-run-持久恢复)解释。机器入口为 [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_recovery.py`](../../adapters/persistence/postgres/analysis_recovery.py)、[`backend/src/aima_ugc/bootstrap/analysis_concurrent_worker.py`](../../bootstrap/analysis_concurrent_worker.py) 和现有 Run/Request Item 表。
 
-退避项留在 PostgreSQL，只有 ready-at 到期才进入有界执行器；取消、Fence 与 Deadline 在等待期间仍持续检查。Retry 不消耗新的 Job attempt；进程失权后由原 Job 接管机制恢复。五分钟窗口无法延长 1800 秒 Attempt Deadline。恢复回归见 [`tests/integration/content/test_analysis_retry_recovery.py`](../../../../../tests/integration/content/test_analysis_retry_recovery.py)。
+新任务只有成功数等于目标数才显示成功；打标期间内容版本变化产生的stale保留原事实，任务显示partial_failed/failed，不把旧标签写入新版本。pending和未投放内容继续推进，余额/鉴权等硬错误及手动取消仍显式停止。
+
+退避项留在 PostgreSQL，只有 ready-at 到期才进入有界执行器；取消、Fence 与 Deadline 在等待期间仍持续检查。逻辑 Retry 不消耗新的 Job attempt；进程失权由原 Job 接管恢复。每次 Attempt 仍限 1800 秒、每个 Job 仍限三次；v2 周期因 Deadline 耗尽且仍有 pending 时，正式终态回调同事务创建后继 Job 并绑定原 Request。成功项、Item 身份和断点保留，旧 Fence/旧回调不能写后继结果，取消和终态 Run 不续接。恢复回归见 [`tests/integration/content/test_analysis_retry_recovery.py`](../../../../../tests/integration/content/test_analysis_retry_recovery.py)。
+
+容量预留使用实际 HTTP 在途数，等待 Future 只表示待处理需求；没有 ready 或已派发工作时不保留最低一个份额。空闲份额连同余数可借给 ready 分片，旧 Fence 的未知占用继续保护。C 调整或 RPS 收紧切换发送阶段，迟到旧错误保留原始日志但不反复压低新容量；观察窗日志以 `control_*` 显示实际参与决策的错误数。
+
+同一预留还保存本 Fence 的派生 RPS，Feedback 在同事务取得 C/RPS 后一次安装到本地联合准入。零 ready 分片归还未来发送速率；其他分片按实际可发送份额借额，不按活动 Job 数均分，也不按本机 C 占全局 C 的比例损失速率。所有新分配扣除 peer 尚未归还的旧承诺；需求恢复或全局降档通过后续刷新收敛，不能把其他进程旧许可当成已经归还。旧记录缺失 RPS 或旧 Fence 未过期时保守保护，控制版本升级保留原有承诺。每秒批量短事务，无逐 HTTP 数据库写入。

@@ -1,0 +1,344 @@
+{
+  "task": "同步远程 main，保留原本地打标修改及用户 Prompt",
+  "from": "15dd366db6e1632535fadc615513636a4b22c639",
+  "to": "64bfade138e6cdf0f86e8d8961a0415b8f994ea8",
+  "branch": "fix/analysis-capacity-feedback",
+  "local_main_matches": true,
+  "remote_main_rechecked": true,
+  "decision_epoch": 5,
+  "local_review_digest": "e90ee1e36245133a6bf8b230ba9e8c2e6170ad78dfa4990b4381a0bda829fb87",
+  "user_prompt_sha256": "9e0489a330dd1a5bffcdea90703310e37eb1abf4cdf7aa53224a44864e261741",
+  "git_actions": [
+    "git fetch origin main",
+    "git stash push --include-untracked -m '同步 main 前保留本地自适应打标修改 20261001'",
+    "git merge --ff-only 64bfade138e6cdf0f86e8d8961a0415b8f994ea8",
+    "git stash apply f102e5fcae6c8edd3d4864a933bfabcb3731bb16",
+    "git merge-base --is-ancestor 15dd366db6e1632535fadc615513636a4b22c639 64bfade138e6cdf0f86e8d8961a0415b8f994ea8",
+    "git update-ref -m '同步远程 main 保留当前任务工作区' refs/heads/main 64bfade138e6cdf0f86e8d8961a0415b8f994ea8 15dd366db6e1632535fadc615513636a4b22c639",
+    "git ls-remote origin refs/heads/main"
+  ],
+  "isolation": {
+    "postgres_container": "aima-codex-main-sync-pg-20261001",
+    "postgres_id": "0ed8ffa00b7ccde718dde470def998ceff5ec9d3d10796a1b0fa4628b3451591",
+    "host_endpoint": "127.0.0.1:55490/aima_ugc",
+    "schema_head": "20261001_0078",
+    "linux_image": "aima-main-sync-validation:20261001",
+    "linux_image_config_id": "sha256:c0c9d6c3d9319c9d429b269851fe5bae815fa6f49d11e610dc3cca598c8ca9f5",
+    "linux_user": "10001:10001",
+    "linux_resources": "3 CPU/3 GiB",
+    "linux_endpoint": "127.0.0.1:5432 inside network container:aima-codex-main-sync-pg-20261001",
+    "report_fixture": "GITHUB_ACTIONS=true and AIMA_REPORT_TEST_DATABASE=1 are local fixture isolation switches; not remote CI.",
+    "frontend": "scratch-main-sync-20261001/frontend, cache .vite-sync, browser port55491, proxy55492 unused, Playwright fresh contexts",
+    "user_services_or_database_mutated": false
+  },
+  "validations": [
+    {
+      "scope": "Windows behavior/API/Contracts",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-B",
+        "scratch-main-sync-20261001/run_isolated.py",
+        "-m",
+        "pytest",
+        "tests/unit/analysis",
+        "tests/unit/test_brand_first_resolver.py",
+        "tests/unit/test_brand_resolver_snapshot_semantics.py",
+        "tests/unit/platform/test_report_dataset.py",
+        "tests/unit/platform/test_report_publication_guards.py",
+        "tests/unit/test_report_test_database_guard.py",
+        "tests/unit/content/test_stage12_analysis_planner.py",
+        "tests/api",
+        "tests/contracts",
+        "-q",
+        "--basetemp=scratch-main-sync-20261001/pytest-unit"
+      ],
+      "initial": {
+        "exit_code": 1,
+        "passed": 523,
+        "failed": 1
+      },
+      "followup_command": [
+        ".venv/Scripts/python.exe",
+        "-B",
+        "scratch-main-sync-20261001/run_isolated.py",
+        "-m",
+        "pytest",
+        "tests/api/test_analysis_runtime_capability.py",
+        "-q",
+        "--basetemp=scratch-main-sync-20261001/pytest-api-capability"
+      ],
+      "followup": {
+        "exit_code": 0,
+        "passed": 3
+      },
+      "effective_unique_passed": 524,
+      "reason": "Temporary runner globally set external_secret_dir, overriding fixture-created secret_dir; remove runner override only. Two followup tests overlap initial passed."
+    },
+    {
+      "scope": "Windows PostgreSQL/Worker/Brand",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-B",
+        "scratch-main-sync-20261001/run_isolated.py",
+        "-m",
+        "pytest",
+        "tests/integration/content/test_analysis_adaptive_capacity.py",
+        "tests/integration/content/test_analysis_capacity_reservations.py",
+        "tests/integration/content/test_analysis_machine_adaptation.py",
+        "tests/integration/content/test_analysis_provider_concurrency.py",
+        "tests/integration/content/test_analysis_retry_recovery.py",
+        "tests/integration/jobs/test_worker_process_lifecycle.py",
+        "tests/integration/ingestion/test_brand_first_replay.py",
+        "tests/integration/vehicles/test_brand_first_frozen_cleanup.py",
+        "tests/integration/content/test_brand_replay_owner_baseline.py",
+        "-q",
+        "--basetemp=scratch-main-sync-20261001/pytest-integration"
+      ],
+      "result": {
+        "exit_code": 0,
+        "passed": 112,
+        "skipped": 1,
+        "duration_seconds": 180.84
+      },
+      "skip": "Linux-only signal/process lifecycle"
+    },
+    {
+      "scope": "Linux current formal wheel",
+      "unit_targets": [
+        "tests/unit/analysis"
+      ],
+      "integration_targets": [
+        "tests/integration/content/test_analysis_adaptive_capacity.py",
+        "tests/integration/content/test_analysis_capacity_reservations.py",
+        "tests/integration/content/test_analysis_machine_adaptation.py",
+        "tests/integration/content/test_analysis_provider_concurrency.py",
+        "tests/integration/content/test_analysis_retry_recovery.py",
+        "tests/integration/jobs/test_worker_process_lifecycle.py",
+        "tests/integration/ingestion/test_brand_first_replay.py",
+        "tests/integration/vehicles/test_brand_first_frozen_cleanup.py",
+        "tests/integration/content/test_brand_replay_owner_baseline.py",
+        "tests/integration/reporting/test_database_reports.py"
+      ],
+      "initial": {
+        "exit_code": 1,
+        "passed": 264,
+        "skipped": 3,
+        "setup_errors": 120,
+        "reason": "Original global CI reset guard rejected test password; no integration reset occurred."
+      },
+      "integration_retry": {
+        "exit_code": 1,
+        "passed": 111,
+        "skipped": 3,
+        "setup_errors": 9,
+        "duration_seconds": 140.35,
+        "reason": "Report API must write fake provider secret refs; read-only mounted DB secret root was used as external root."
+      },
+      "report_retry": {
+        "exit_code": 1,
+        "skipped": 1,
+        "setup_errors": 9,
+        "reason": "Selected writable child Secret Root did not exist, strict production root validation rejected it."
+      },
+      "final_report_command": [
+        "python",
+        "-B",
+        "-m",
+        "pytest",
+        "tests/integration/reporting/test_database_reports.py",
+        "-q",
+        "--tb=short",
+        "--basetemp=/tmp/main-sync-report-pytest",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "final_report_result": {
+        "chunk_id": "aeab18",
+        "wall_time_seconds": 1.09e-05,
+        "exit_code": 0,
+        "original_token_count": 266,
+        "output": "....s.                                                               [100%]\n=============================== warnings summary ===============================\n.venv/lib/python3.14/site-packages/pydantic/_internal/_generate_schema.py:325: 89 warnings\n  /app/.venv/lib/python3.14/site-packages/pydantic/_internal/_generate_schema.py:325: PydanticDeprecatedSince20: `json_encoders` is deprecated. See https://docs.pydantic.dev/2.13/concepts/serialization/#custom-serializers for alternatives. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    warnings.warn(\n\n.venv/lib/python3.14/site-packages/fastapi/testclient.py:1\n  /app/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n9 passed, 1 skipped, 90 warnings in 12.55s\n"
+      },
+      "effective_unique_passed": 384,
+      "effective_unique_skipped": 3,
+      "skip": "Two Windows-only process tests and explicitly opt-in report browser-to-real-API test.",
+      "environment_fix": "Dedicated PG test password matches original guard; AIMA_SECRET_DIR readonly=/sync-secrets; AIMA_EXTERNAL_SECRET_DIR=/app/data, existing non-root-owned ephemeral container path; no production guard or test changed."
+    },
+    {
+      "scope": "Frontend unit in source copy",
+      "command": [
+        "npm",
+        "run",
+        "test",
+        "--",
+        "--run",
+        "--maxWorkers=2"
+      ],
+      "initial": {
+        "exit_code": 1,
+        "passed": 272,
+        "failed": 2
+      },
+      "followup_command": [
+        "npm",
+        "run",
+        "test",
+        "--",
+        "--run",
+        "tests/analysis-labels-editor.spec.ts",
+        "tests/collection-runtime-release2.spec.ts",
+        "--maxWorkers=2"
+      ],
+      "followup": {
+        "exit_code": 0,
+        "passed": 8
+      },
+      "effective_unique_passed": 274,
+      "reason": "Add missing sibling doc/current Prompt/locked interpreter path to isolated frontend copy; six followup tests overlap initial passed."
+    },
+    {
+      "scope": "Browser mock acceptance",
+      "command": [
+        "npm",
+        "exec",
+        "--",
+        "playwright",
+        "test",
+        "--config",
+        "playwright.sync.config.ts",
+        "e2e/admin-configuration-release2.spec.ts",
+        "e2e/voice-plaza-review-regressions.spec.ts",
+        "--workers=1"
+      ],
+      "result": {
+        "exit_code": 0,
+        "passed": 14,
+        "duration_seconds": 37.5
+      },
+      "boundary": "Mock API requests; not real UI/API/DB full stack"
+    },
+    {
+      "scope": "Frontend build/types",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "result": {
+        "exit_code": 0
+      },
+      "warning": "Existing bundle chunk over 500 kB"
+    },
+    {
+      "scope": "Frontend lint",
+      "command": [
+        "npm",
+        "run",
+        "lint"
+      ],
+      "result": {
+        "exit_code": 0
+      }
+    },
+    {
+      "scope": "Python static",
+      "commands": [
+        "python -B -m ruff check <100 current changed Python paths from unique CI classifier>",
+        "python -B -m ruff format --check <same100 paths>",
+        "python -B -m mypy backend/src"
+      ],
+      "result": {
+        "exit_code": 0,
+        "formatted_python_files": 100,
+        "mypy_source_files": 430
+      }
+    },
+    {
+      "scope": "Contracts/Schema",
+      "commands": [
+        "python -B scripts/contracts/generate.py --check",
+        "python -B scripts/contracts/check_compatibility.py",
+        "isolated python -B -m alembic upgrade head",
+        "isolated python -B -m alembic check"
+      ],
+      "result": {
+        "exit_code": 0,
+        "head": "20261001_0078",
+        "schema": "No new upgrade operations detected."
+      }
+    },
+    {
+      "scope": "Repository",
+      "commands": [
+        "python -B scripts/quality/check_docs.py",
+        "python -B scripts/quality/check_docs_facts.py",
+        "python -B scripts/quality/scan_secrets.py",
+        "python -B scripts/quality/check_architecture.py",
+        "git diff --check"
+      ],
+      "result": {
+        "exit_code": 0
+      }
+    }
+  ],
+  "limitations": [
+    "No remote push, PR, CI dispatch, merge, deploy, or user database migration.",
+    "No paid provider/TikHub/Feishu calls or actual server performance/semantic accuracy measurements.",
+    "CI classifier selects full for142 composed changed paths; local risk-targeted validations are not a claim that every full CI suite ran.",
+    "Skipped browser-to-real-report integration remains separate from passed browser mock plus real API/PG/Worker report tests."
+  ],
+  "independent_review": {
+    "reviewer": "/root/capacity_review",
+    "decision_epoch": 5,
+    "outcome": "PASS / NO_FINDINGS_WITHIN_SCOPE",
+    "frozen_files_verified": 38,
+    "aggregate_sha256": "e90ee1e36245133a6bf8b230ba9e8c2e6170ad78dfa4990b4381a0bda829fb87",
+    "reviewed_test_record_sha256_before_cleanup_append": "47de51141b7ca006cd2c4316f6edad6861501df666f90be92bd470789a65fd2e",
+    "boundary": "Read-only identity, implementation and recorded execution evidence review; reviewer did not rerun database/container tests."
+  },
+  "cleanup": {
+    "completed": true,
+    "postgres_id_removed": "0ed8ffa00b7ccde718dde470def998ceff5ec9d3d10796a1b0fa4628b3451591",
+    "postgres_anonymous_volume_removed": "71a5375508d692706b5c2e1fe602d937b9d2b5b04bb65bc3df4e597248781a8c",
+    "validation_image_manifest_id_removed": "sha256:ab9de6519813dcc58937618d3c24e1976749497172e96349c6fe45fccbe7a418",
+    "owned_tag_queries_empty": true,
+    "ports_without_listeners": [
+      55490,
+      55491,
+      55492
+    ],
+    "scratch_removed": "E:/work/03_Aima/code/AIMA_UGC/scratch-main-sync-20261001",
+    "scratch_junctions_removed_before_recursive_delete": true,
+    "original_venv_and_node_modules_preserved": true,
+    "backup_removed_after_43_file_restoration_verification": "C:/Users/YNND/AppData/Local/Temp/aima-main-sync-20261001-32qbh89l",
+    "own_stash_dropped": "f102e5fcae6c8edd3d4864a933bfabcb3731bb16",
+    "stash_list_empty": true,
+    "user_services_or_database_operated": false,
+    "shared_image_cache_pruned": false
+  },
+  "final_checks": {
+    "completion_command": ".venv/Scripts/python.exe -B scripts/quality/check_change_completion.py --root . --require-active-ready",
+    "completion_initial": {
+      "exit_code": 1,
+      "reason": "New R18 Source used only user message id without stable Acceptance; fixed carrier Source to existing Blueprint #AC10, preserved user provenance."
+    },
+    "completion_final": {
+      "exit_code": 0,
+      "gated": 152,
+      "strict": 152,
+      "legacy": 128
+    },
+    "check_docs_exit_code": 0,
+    "check_docs_facts_exit_code": 0,
+    "scan_secrets_exit_code": 0,
+    "diff_check_exit_code": 0,
+    "frozen_file_hashes_verified": 38,
+    "prompt_preserved": true,
+    "head_main_origin": "64bfade138e6cdf0f86e8d8961a0415b8f994ea8",
+    "staged_paths": 0,
+    "unmerged_paths": 0,
+    "stash_entries": 0,
+    "scratch_and_backup_absent": true,
+    "original_dependencies_present": true
+  }
+}

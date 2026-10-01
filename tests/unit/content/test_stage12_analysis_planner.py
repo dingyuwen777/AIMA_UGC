@@ -102,8 +102,8 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         "max_rps": None,
         "extra_config": {},
         "revision": 1,
-        "capacity_mode": "adaptive.v1",
-        "recovery_mode": "recovery.v1",
+        "capacity_mode": "adaptive.v2",
+        "recovery_mode": "recovery.v2",
     }
     configuration_hash = content_http._analysis_configuration_hash(
         prompt_version=identity.prompt_version,
@@ -142,6 +142,8 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
             identity=identity,
             llm_provider=SimpleNamespace(
                 id=provider_config_id,
+                base_url="https://provider.example/v1",
+                model="fake-model",
                 revision=1,
                 max_concurrency=5,
                 max_rps=None,

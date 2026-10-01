@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -485,7 +486,14 @@ def test_concurrent_executor_preserves_existing_frozen_single_item_shards(tmp_pa
 
 
 @contextmanager
-def _controlled_http(*, expected: int, block_all: bool = False, status: int = 200):
+def _controlled_http(
+    *,
+    expected: int,
+    block_all: bool = False,
+    status: int = 200,
+    delay_seconds: float = 0,
+    endpoint_ready: Callable[[str], None] | None = None,
+):
     """真实本地 HTTP 服务：首请求或全部请求由测试显式释放，不调用付费模型。"""
 
     arrived = Event()
@@ -512,6 +520,8 @@ def _controlled_http(*, expected: int, block_all: bool = False, status: int = 20
             try:
                 if ordinal == 1 or block_all:
                     assert release.wait(10)
+                if delay_seconds:
+                    Event().wait(delay_seconds)
                 data = json.dumps(
                     {"choices": [{"message": {"content": _valid_response()}}]}
                 ).encode()
@@ -524,7 +534,10 @@ def _controlled_http(*, expected: int, block_all: bool = False, status: int = 20
                 with lock:
                     active -= 1
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    class Server(ThreadingHTTPServer):
+        request_queue_size = 256
+
+    server = Server(("127.0.0.1", 0), Handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     adapters: list[OpenAICompatibleContentLabelingLLM] = []
@@ -536,6 +549,8 @@ def _controlled_http(*, expected: int, block_all: bool = False, status: int = 20
         return adapter
 
     try:
+        if endpoint_ready is not None:
+            endpoint_ready(f"http://127.0.0.1:{server.server_port}/v1")
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr(
                 "aima_ugc.bootstrap.analysis_concurrent_worker.OpenAICompatibleContentLabelingLLM",

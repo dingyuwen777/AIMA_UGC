@@ -31,6 +31,7 @@ from aima_ugc.modules.analysis.tables import (
 )
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.identity import Principal
+from aima_ugc.modules.system.tables import provider_configs_table
 from aima_ugc.platform.capacity import ResourceSnapshot
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 from aima_ugc.platform.jobs.tables import jobs_table
@@ -46,6 +47,136 @@ from tests.integration.content.test_analysis_provider_concurrency import (
     _seed_contents,
     _seed_provider,
 )
+
+
+def test_200_item_run_grows_physical_http_without_overriding_thinking(runtime, caplog):
+    """公开 API→Planner→真实 HTTP→Validator→PG，证明快速探测与合法结果同时成立。"""
+    import logging
+
+    _seed_provider(runtime)
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            update(provider_configs_table).values(
+                base_url="https://api.deepseek.com/v1", model="deepseek-flash"
+            )
+        )
+    client = _client(runtime)
+    ids = _seed_contents(client, runtime, row_count=200)
+    run_id = _create_run(client, ids, runtime, key=str(uuid4()), legacy=False)
+    worker = _worker(runtime)
+    assert worker.run_once()
+    with caplog.at_level(logging.INFO):
+        with _controlled_http(expected=50, delay_seconds=3) as (arrived, release, bodies, adapters):
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(worker.run_once)
+                try:
+                    assert arrived.wait(8), "官方已知容量的新 Run 未达到初始探测并发"
+                finally:
+                    release.set()
+                assert future.result(timeout=25)
+            assert len(bodies) == 200
+            assert adapters[0].request_metrics()["http_peak_active"] > 50
+            assert all(set(body) == {"model", "messages", "response_format"} for body in bodies)
+            assert all(body["model"] == "deepseek-flash" for body in bodies)
+            assert all(body["response_format"] == {"type": "json_object"} for body in bodies)
+    result = client.get(f"/api/v1/analysis/content-runs/{run_id}").json()
+    assert result["status"] == "succeeded"
+    assert result["stats"] == {
+        "pending": 0,
+        "succeeded": 200,
+        "failed": 0,
+        "stale": 0,
+        "cancelled": 0,
+    }
+    windows = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", "") == "analysis.capacity_window"
+    ]
+    assert any(record.global_concurrency > 50 and record.mature_cohort for record in windows)
+    with runtime.database.engine.begin() as connection:
+        assert connection.execute(select(profiles.c.window)).scalar_one()["reservations"] == {}
+
+
+def test_historical_v1_keeps_frozen_timeout_and_physical_ceiling(runtime):
+    """历史 v1 使用新协调器，但不能改写冻结快照或偷偷启用 v2 延时。"""
+    _seed_provider(runtime)
+    client = _client(runtime)
+    ids = _seed_contents(client, runtime, row_count=2)
+    run_id = UUID(_create_run(client, ids, runtime, key=str(uuid4()), legacy=False))
+    with runtime.database.engine.begin() as connection:
+        snapshot = dict(
+            connection.execute(
+                select(runs.c.runtime_config_snapshot).where(runs.c.id == run_id)
+            ).scalar_one()
+        )
+        snapshot.update(capacity_mode="adaptive.v1", max_concurrency=256, timeout_seconds=45)
+        connection.execute(
+            update(runs).where(runs.c.id == run_id).values(runtime_config_snapshot=snapshot)
+        )
+    worker = _worker(runtime)
+    assert worker.run_once()
+    with _controlled_http(expected=2) as (arrived, release, _bodies, adapters):
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(worker.run_once)
+            try:
+                assert arrived.wait(4)
+            finally:
+                release.set()
+            assert future.result(timeout=5)
+        assert adapters[0]._client.timeout.read == 45
+        assert adapters[0]._current_timeout_seconds is None
+    assert client.get(f"/api/v1/analysis/content-runs/{run_id}").json()["stats"]["succeeded"] == 2
+    with runtime.database.engine.begin() as connection:
+        assert (
+            connection.execute(
+                select(runs.c.runtime_config_snapshot).where(runs.c.id == run_id)
+            ).scalar_one()
+            == snapshot
+        )
+
+
+def test_worker_combines_rps_with_shrinking_physical_capacity(runtime):
+    """正式 Worker 的慢请求排空后，已派发队列仍按物理发送时间限速。"""
+    from time import sleep
+
+    _seed_provider(runtime)
+    client = _client(runtime)
+    ids = _seed_contents(client, runtime, row_count=3)
+    _create_run(client, ids, runtime, key=str(uuid4()), legacy=False)
+    with runtime.database.engine.begin() as connection:
+        connection.execute(update(profiles).values(state=asdict(CapacityState(current=3, rps=5))))
+    worker = _worker(runtime)
+    assert worker.run_once()
+    with _controlled_http(expected=1, delay_seconds=0) as (arrived, release, bodies, adapters):
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(worker.run_once)
+            try:
+                assert arrived.wait(5)
+                feedback = adapters[0]._before_request.__self__
+                assert feedback.rate_limiter is not None
+                audits = []
+                original_audit = adapters[0]._request_audit
+
+                def record(audit):
+                    """保留生产审计链，同时读取真正发送阶段的开始时间。"""
+                    audits.append(audit)
+                    original_audit(audit)
+
+                adapters[0]._request_audit = record
+                with feedback._condition:
+                    feedback.target = 1
+                sleep(0.55)
+                assert len(bodies) == 1
+            finally:
+                release.set()
+            assert future.result(timeout=10)
+    assert len(bodies) == 3
+    # 每响应立即完成，最后两次发送仍须间隔 0.2 秒，不能同时释放旧预约。
+    sent_at = sorted(audit.started_at for audit in audits)
+    assert len(sent_at) == 3
+    assert (sent_at[2] - sent_at[1]).total_seconds() >= 0.19
+    assert adapters[0].request_metrics()["http_requests"] == 3
 
 
 @pytest.fixture
@@ -73,10 +204,10 @@ def test_cold_adaptive_run_ignores_old_manual_provider_fields_and_persists_succe
         snapshot = connection.execute(
             select(runs.c.runtime_config_snapshot).where(runs.c.id == UUID(run_id))
         ).scalar_one()
-        assert snapshot["capacity_mode"] == "adaptive.v1"
-        assert snapshot["max_concurrency"] == 256
+        assert snapshot["capacity_mode"] == "adaptive.v2"
+        assert snapshot["max_concurrency"] == 1024
         assert snapshot["max_retries"] == 3
-        assert connection.execute(select(profiles.c.window)).scalar_one()["persisted"] == 30
+        assert connection.execute(select(profiles.c.window)).scalar_one()["reservations"] == {}
 
 
 def test_two_sessions_advance_one_window_and_old_revision_cannot_overwrite(
@@ -88,6 +219,11 @@ def test_two_sessions_advance_one_window_and_old_revision_cannot_overwrite(
         repository = PostgresAnalysisCapacityRepository(session)
         repository.ensure(provider_id, "model", revision=1, prompt_sha256="a" * 64)
         start = repository.get(provider_id, "model")["window_started_at"]
+        window = empty_window()
+        window["reservations"] = {
+            "fake": {"wanted": 100, "expires_at": (start + timedelta(hours=1)).isoformat()}
+        }
+        session.execute(update(profiles).values(window=window))
     session.close()
     monkeypatch.setattr(
         PostgresAnalysisCapacityRepository, "_now", lambda _self: start + timedelta(seconds=10)
@@ -97,6 +233,8 @@ def test_two_sessions_advance_one_window_and_old_revision_cannot_overwrite(
         "persisted": 100,
         "requests": 100,
         "started": 100,
+        "cohort_requests": 100,
+        "sample_seconds": 10,
         "busy_seconds": 100.0,
         "demand": True,
     }
@@ -233,7 +371,9 @@ def test_cross_run_shares_ignore_queued_and_expired_lease_and_allow_zero(runtime
     for value, fence in zip(feedback, fences, strict=True):
         value.refresh(fence, demand=True, force=True)
     assert sorted(value.target for value in feedback) == [0, 1]
-    assert sorted(value.rps for value in feedback) == [0.0, 1.0]
+    # 零 C 的片不能发送，唯一发送者应得到全局可用速率，而非按两个 Job 再减半。
+    assert sorted(value.rps for value in feedback) == [0.0, 2.0]
+    assert sum(value.rps for value in feedback) == 2.0
     with runtime.database.engine.begin() as connection:
         connection.execute(
             update(jobs_table)
@@ -257,6 +397,10 @@ def test_terminal_callback_releases_capacity_to_waiting_run(runtime) -> None:
     first, second = [
         _create_run(client, ids, runtime, key=str(uuid4()), legacy=False) for _ in range(2)
     ]
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            update(profiles).values(state=asdict(CapacityState(current=8, unsafe=9)))
+        )
     worker = _worker(runtime)
     assert worker.run_once() and worker.run_once()
     assert client.get(f"/api/v1/analysis/content-runs/{second}").json()["shards"] == []
@@ -402,10 +546,12 @@ def test_adaptive_real_http_feedback_counts_attempts_but_not_stale_success(runti
         assert adapters[0].request_metrics()["http_requests"] == 2
     state = client.get(f"/api/v1/analysis/content-runs/{run_id}").json()
     assert state["stats"]["succeeded"] == 1 and state["stats"]["stale"] == 1
+    assert state["status"] == "partial_failed", "内容版本过期不能冒充全部打标成功"
     with runtime.database.engine.begin() as connection:
         observation = connection.execute(select(profiles.c.window)).scalar_one()
-        assert observation["requests"] == 2 and observation["started"] == 2
-        assert observation["persisted"] == 1
+        # 物理请求由 Adapter 证明、合法提交由 API 证明；最后一片退出清空尾窗。
+        assert observation["requests"] == observation["persisted"] == 0
+        assert observation["reservations"] == {}
 
 
 def test_zero_database_headroom_keeps_durable_initial_and_terminal_progress(

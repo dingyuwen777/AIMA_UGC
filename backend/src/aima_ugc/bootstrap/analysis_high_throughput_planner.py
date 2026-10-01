@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import cast
 from uuid import UUID, uuid4
@@ -20,7 +21,7 @@ from aima_ugc.adapters.persistence.postgres.content_queries import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.contracts.http import ContentFilterSnapshot
-from aima_ugc.modules.analysis.adaptive_capacity import CAPACITY_MODE
+from aima_ugc.modules.analysis.adaptive_capacity import SUPPORTED_CAPACITY_MODES
 from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
     CONTENT_ANALYSIS_JOB_PAYLOAD_VERSION,
@@ -36,6 +37,7 @@ from aima_ugc.modules.analysis.content_analysis_job import (
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
+from aima_ugc.platform.logging import log_event
 
 from .runtime import PlatformRuntime
 
@@ -272,7 +274,7 @@ def schedule_high_throughput_analysis_run_shards(
         return 0
     if run["cancel_requested_at"] is not None:
         return 0
-    if run["runtime_config_snapshot"].get("capacity_mode") == CAPACITY_MODE:
+    if run["runtime_config_snapshot"].get("capacity_mode") in SUPPORTED_CAPACITY_MODES:
         max_in_flight = PostgresAnalysisCapacityRepository(session).provider_job_window(
             run, min(max_in_flight, PostgresJobRepository(session).database_headroom())
         )
@@ -323,6 +325,23 @@ def create_high_throughput_analysis_job_terminal_callback(
             return
 
         shard_payload = ContentAnalysisJobPayload.model_validate(job.payload)
+        if not repository.is_current_request_job(shard_payload.request_id, job.id):
+            return
+        successor_id = repository.continue_timed_out_request(
+            request_id=shard_payload.request_id, job=job
+        )
+        if successor_id is not None:
+            log_event(
+                runtime.logger,
+                logging.INFO,
+                "analysis.execution_continued",
+                "Analysis 执行周期到期，未完成内容已持久续接。",
+                run_id=str(shard_payload.run_id),
+                request_id=str(shard_payload.request_id),
+                previous_job_id=str(job.id),
+                job_id=str(successor_id),
+            )
+            return
         run_id = repository.complete_request_terminal(
             request_id=shard_payload.request_id,
             job_status=job.status,

@@ -1,0 +1,155 @@
+{
+  "decision_epoch": 8,
+  "local_only": true,
+  "head": "64bfade138e6cdf0f86e8d8961a0415b8f994ea8",
+  "branch": "fix/analysis-capacity-feedback",
+  "simulated_workloads": [
+    {
+      "count": 200,
+      "model_capacity": 2500,
+      "simulated_elapsed": 44,
+      "physical_peak": 112,
+      "last_completed": 200,
+      "steady_persisted_per_second": null,
+      "oracle_persisted_per_second": null
+    },
+    {
+      "count": 200000,
+      "model_capacity": 100,
+      "simulated_elapsed": 1200,
+      "physical_peak": 160,
+      "last_completed": 7782,
+      "steady_persisted_per_second": 6.733,
+      "oracle_persisted_per_second": 7.692
+    },
+    {
+      "count": 200000,
+      "model_capacity": 500,
+      "simulated_elapsed": 1200,
+      "physical_peak": 640,
+      "last_completed": 38660,
+      "steady_persisted_per_second": 34.277,
+      "oracle_persisted_per_second": 38.462
+    },
+    {
+      "count": 200000,
+      "model_capacity": 2500,
+      "simulated_elapsed": 1200,
+      "physical_peak": 3100,
+      "last_completed": 188377,
+      "steady_persisted_per_second": 170.227,
+      "oracle_persisted_per_second": 192.308
+    }
+  ],
+  "simulation_boundary": "生产Controller/Repository聚合规则和跨窗HTTP生命周期的确定性事件模拟；200条完整完成，大数据量仅测1200秒持续吞吐，不是付费模型或服务器实测。",
+  "windows": {
+    "backend": {
+      "command": ".venv/Scripts/python.exe scratch-analysis-probe-20261001/runner.py -m pytest -q tests/unit tests/contracts tests/api -p no:cacheprovider --basetemp=C:/Users/YNND/AppData/Local/Temp/aima-analysis-probe-20261001-backend-epoch8",
+      "passed": 1843,
+      "skipped": 16,
+      "subtests": 12,
+      "exit_code": 0,
+      "seconds": 93.14,
+      "decision_epoch": 8
+    },
+    "idle_and_workloads": {
+      "command": ".venv/Scripts/python.exe scratch-analysis-probe-20261001/runner.py -m pytest -q tests/unit/analysis/test_capacity_feedback_regression.py tests/unit/analysis/test_capacity_workloads.py -p no:cacheprovider --basetemp=C:/Users/YNND/AppData/Local/Temp/aima-analysis-probe-20261001-review-unit",
+      "passed": 27,
+      "exit_code": 0,
+      "decision_epoch": 8
+    },
+    "pg": {
+      "command": ".venv/Scripts/python.exe scratch-analysis-probe-20261001/runner.py -m pytest -q tests/integration/content/test_analysis_adaptive_capacity.py tests/integration/content/test_analysis_capacity_reservations.py tests/integration/content/test_analysis_retry_recovery.py tests/integration/content/test_analysis_machine_adaptation.py -p no:cacheprovider --basetemp=C:/Users/YNND/AppData/Local/Temp/aima-analysis-probe-20261001-review-pg",
+      "passed": 80,
+      "exit_code": 0,
+      "database": "127.0.0.1:55493/aima_analysis_probe",
+      "paid_model": "none; local Fake HTTP",
+      "seconds": 139.7,
+      "decision_epoch": 8
+    }
+  },
+  "linux": {
+    "command": "docker run --name aima-analysis-probe-linux-epoch8-20261001 --label owner=analysis-probe-20261001 --network aima-analysis-probe-net-20261001 --cpus 3 --memory 3g --mount type=bind,source=<owned-context>,target=/source,readonly aima-analysis-probe-validation:20261001 python /source/linux-final.py",
+    "package": "uv build --wheel -> uv pip install --no-deps --reinstall-package aima-ugc -> /app/.venv/lib/python3.14/site-packages/aima_ugc",
+    "uid": "10001:10001",
+    "python": "3.14.7",
+    "controller_sha256": "656e3e7e6526c4c59d458ad353af9f1f76b48466540fd78adb9a3044e355e803",
+    "passed": 358,
+    "exit_code": 0,
+    "seconds": 132.54,
+    "decision_epoch": 8
+  },
+  "original_failures": {
+    "controller_and_classification_red": 5,
+    "stale_success_gate_red": 1,
+    "idle_evidence_red": 1,
+    "review_local_low_sample_red": 1,
+    "review_last_release_red": 1,
+    "review_release_controls_passed": 2
+  },
+  "setup_failures": {
+    "windows": [
+      "第一次basetemp父目录缺失；受限Windows pytest临时目录权限拒绝，改专用目录权限执行",
+      "全后端首轮1834pass/16skip/7fail：6个文档扫描夹具位于Git仓库内、1个external-secret覆盖；修正隔离runner后14项以及完整1841项通过",
+      "Browser ready最初继承父测试进程SSL调试文件权限失败；仅清理测试进程SSLKEYLOGFILE后原2spec通过。修复unit首次误用默认pytest临时目录再次权限拒绝，26pass/1setup-error；专属目录重跑27pass。"
+    ],
+    "linux": [
+      "复制时未排除历史Provider output造成空间不足；仅删除本次副本并按正式排除规则重建10.5MiB测试上下文",
+      "测试镜像初轮274pass/2fail/77setup-error：缺libpq5、测试文档和benchmark脚本；补测试环境，未修改或升级生产依赖",
+      "首次非root重新构建wheel遇 /.cache/uv 权限错误；仅测试runner设独占 UV_CACHE_DIR 后正式wheel和354项全绿。"
+    ]
+  },
+  "contracts": "OpenAPI/Schema生成漂移与兼容检查通过；没有新Migration/依赖/API字段，recovery.v2成功状态要求成功数等于target，stale保留而不冒充成功",
+  "provider_probe": "not_run",
+  "user_runtime_and_db_operations": "none",
+  "commit_push_pr_merge": "none",
+  "aggregate_sha256": "3de577e65419ed45c4c77b44718d5eeef4ff8239ad1cea1c7a2c4f9afbc2d3a5",
+  "fullstack": {
+    "command": ".venv/Scripts/python.exe scratch-analysis-probe-20261001/browser_harness.py -> D:/node/node.exe frontend/node_modules/@playwright/test/cli.js test analysis-streaming.spec.ts stage12-historical-analysis.spec.ts --config=<owned-browser-config>",
+    "passed": 2,
+    "seconds": 38.1,
+    "exit_code": 0,
+    "ports": [
+      55494,
+      55495,
+      55496
+    ],
+    "database": "127.0.0.1:55493/aima_analysis_probe_browser",
+    "actual_chain": "Chrome -> frontend -> API -> Worker -> PostgreSQL -> Fake HTTP -> legal labels",
+    "processes": "all owned service roots and descendants exited; all three ports released"
+  },
+  "review": {
+    "finding": "CAPACITY-V3-REV-001",
+    "status": "PASS / NO_FINDINGS_WITHIN_SCOPE",
+    "scope": "epoch8 five-file repair vs epoch7; no further frozen changes",
+    "finding_status": "CLOSED",
+    "unresolved_blocking": 0,
+    "report_sha256": "4a0bc30ac63f9b3232303b50e1b01275bf948b4c1f06d8f517e72bbc3eb87582"
+  },
+  "cleanup": {
+    "status": "complete",
+    "owner": "analysis-probe-20261001",
+    "removed_containers": 5,
+    "removed_image": "aima-analysis-probe-validation:20261001",
+    "removed_network": "aima-analysis-probe-net-20261001",
+    "removed_anonymous_volume": "30d039476ae1e392a3757fa9baa3331d70acbd5b7b2e629c138febfdbf0bc938",
+    "removed_directory": "scratch-analysis-probe-20261001",
+    "removed_external_temp_directories": 9,
+    "ports_released": [
+      55493,
+      55494,
+      55495,
+      55496
+    ],
+    "original_venv_and_frontend_dependencies": "verified exist; preserved",
+    "junctions": "3 owned test links removed first; all targets inside owned fixtures verified before native LiteralPath recursive removal",
+    "user_services_or_database": "no operations"
+  },
+  "ready_check": {
+    "command": ".venv/Scripts/python.exe -B scripts/quality/check_change_completion.py --root . --require-active-ready",
+    "exit_code": 0,
+    "gated": 152,
+    "strict": 152,
+    "legacy": 128
+  }
+}
