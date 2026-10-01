@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from math import floor, isfinite
 from pathlib import Path
 from statistics import median
+from time import monotonic
 
 _MIB = 1024 * 1024
 _CGROUP_UNLIMITED = 1 << 60
@@ -26,6 +27,104 @@ class ResourceSnapshot:
     source: str
     memory_accounted_bytes: int | None = None
     memory_reclaimable_bytes: int | None = None
+
+
+def analysis_http_slots(resources: ResourceSnapshot, *, shard_count: int = 1) -> int:
+    """为 I/O 槽位分配有效资源，保留一半可用内存给其他进程及响应落库。
+
+    CPU 只限制解析/调度的资源上界，不把逻辑核数直接当作 HTTP 并发数。
+    单槽预留包含线程、请求副本和完整响应，不按总物理内存侵占在用程序。
+    """
+    available = (
+        resources.memory_available_bytes
+        if resources.memory_available_bytes is not None
+        else resources.memory_limit_bytes
+    )
+    memory_slots = max(1, available // (4 * _MIB)) if available is not None else 32
+    total = min(5_000, max(1, int(resources.cpu_cores * 256)), memory_slots)
+    return min(1_024, max(1, total // max(1, shard_count)))
+
+
+class CpuPressureSampler:
+    """容器按有效核配额采样使用时间，原生运行按系统累计时间采样。"""
+
+    def __init__(self, *, cgroup_root: Path = Path("/sys/fs/cgroup")) -> None:
+        """初始样本只作时间基线，不能据此报告当前负载。"""
+        self._cgroup_root = cgroup_root
+        self.source: str | None = None
+        self._previous = self._read_sample()
+        self._at = monotonic()
+        self.value: float | None = None
+
+    @staticmethod
+    def _read() -> tuple[int, int] | None:
+        """Windows/Linux 从系统计数读取总时间与空闲时间，未知时保留未知。"""
+        try:
+            if os.name == "nt":
+                idle, kernel, user = (
+                    ctypes.c_ulonglong(),
+                    ctypes.c_ulonglong(),
+                    ctypes.c_ulonglong(),
+                )
+                # windll 仅在 Windows 提供；动态读取与内存探测共用平台能力边界。
+                windows_api = getattr(ctypes, "windll", None)
+                if windows_api is None or not windows_api.kernel32.GetSystemTimes(
+                    ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
+                ):
+                    return None
+                return kernel.value + user.value, idle.value
+            values = [
+                int(value) for value in Path("/proc/stat").read_text().splitlines()[0].split()[1:]
+            ]
+            return sum(values[:8]), sum(values[3:5])
+        except OSError, ValueError, AttributeError:
+            return None
+
+    def _read_sample(self) -> tuple[str, int, float] | None:
+        """配额存在但使用计数缺失时保留未知，不能退回空闲宿主机掩盖压力。"""
+        root = self._cgroup_root
+        quota = _cpu_quota_v2(root)
+        if quota is not None:
+            source = "cgroup_v2"
+            usage = None
+            try:
+                fields = dict(line.split() for line in (root / "cpu.stat").read_text().splitlines())
+                usage = int(fields["usage_usec"])
+            except OSError, ValueError, KeyError:
+                pass
+        else:
+            quota = _cpu_quota_v1(root)
+            source = "cgroup_v1"
+            nanoseconds = _positive_int(root / "cpuacct" / "cpuacct.usage")
+            usage = nanoseconds // 1000 if nanoseconds is not None else None
+        if quota is not None:
+            self.source = source
+            effective = min(quota, float(os.process_cpu_count() or os.cpu_count() or 1))
+            return (source, usage, effective) if usage is not None and usage >= 0 else None
+        self.source = "host"
+        host = self._read()
+        return ("host", host[0], float(host[1])) if host is not None else None
+
+    def sample(self) -> float | None:
+        """每两秒更新一次差值，没有可靠数据时不伪造零负载。"""
+        now = monotonic()
+        elapsed = now - self._at
+        if elapsed < 2:
+            return self.value
+        current = self._read_sample()
+        self.value = None
+        previous = self._previous
+        if current is not None and previous is not None and current[0] == previous[0]:
+            total = current[1] - previous[1]
+            if current[0] == "host":
+                idle = current[2] - previous[2]
+                if total > 0 and 0 <= idle <= total:
+                    self.value = 1 - idle / total
+            elif current[2] == previous[2] and total >= 0:
+                # usage_usec 是容器所有核累计的时间，分母必须使用当前有效核数。
+                self.value = min(1.0, total / (elapsed * current[2] * 1_000_000))
+        self._previous, self._at = current, now
+        return self.value
 
 
 def detect_resources(

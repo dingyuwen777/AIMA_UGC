@@ -49,6 +49,7 @@ from aima_ugc.modules.analysis import (
 from aima_ugc.modules.analysis.adaptive_capacity import (
     CAPACITY_MODE,
     SHARD_CONCURRENCY_CEILING,
+    SUPPORTED_CAPACITY_MODES,
     VALIDATION_RETRIES,
 )
 from aima_ugc.modules.analysis.concurrent_labeling import (
@@ -58,7 +59,7 @@ from aima_ugc.modules.analysis.concurrent_labeling import (
 from aima_ugc.modules.analysis.content_analysis_job import ContentAnalysisJobPayload
 from aima_ugc.modules.analysis.content_labeling import ContentLabelingStopped
 from aima_ugc.modules.analysis.persistence import AnalysisWorkItem
-from aima_ugc.modules.analysis.recovery import OUTPUT_ERROR_CODES
+from aima_ugc.modules.analysis.recovery import OUTPUT_ERROR_CODES, SUPPORTED_RECOVERY_MODES
 from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, LeaseLostError
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
@@ -134,7 +135,8 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                     )
                     if (
                         run is not None
-                        and run["runtime_config_snapshot"].get("recovery_mode") == "recovery.v1"
+                        and run["runtime_config_snapshot"].get("recovery_mode")
+                        in SUPPORTED_RECOVERY_MODES
                     ):
                         stop_error, _ = PostgresAnalysisRecoveryRepository(session).refresh(
                             fence=fence,
@@ -154,9 +156,11 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
         last_control = 0.0
         buffered_at = 0.0
         database_seconds = 0.0
+        recovery_control_seconds = 0.0
         persisted_count = 0
         remaining_work_count = 0
         scan_exhausted = False
+        ready_demand = True
         peak_in_flight: int | None = None
         fatal_error: OpenAICompatibleLLMError | None = None
         persistence_buffer: list[
@@ -230,6 +234,7 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                     validation_failed=validation_failed
                     if recovery is not None
                     else min(written.failed, validation_failed),
+                    seconds=monotonic() - before,
                 )
             persistence_buffer.clear()
             stats = self._request_stats(payload.request_id)
@@ -239,7 +244,7 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
         def refresh_recovery(*, force: bool = False, stop_error: str | None = None) -> None:
             """持久健康窗口跨 Shard/接管共享，停止只影响同一 Run。"""
 
-            nonlocal recovery_stop_error, half_open, last_recovery_refresh
+            nonlocal recovery_stop_error, half_open, last_recovery_refresh, recovery_control_seconds
             if recovery is None or cancelled:
                 return
             now = monotonic()
@@ -259,6 +264,7 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                 last_recovery_refresh = now
             finally:
                 session.close()
+                recovery_control_seconds += monotonic() - now
             if recovery_stop_error is not None:
                 stop_event.set()
 
@@ -271,7 +277,10 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
             if execution.capacity is not None and not stop_event.is_set():
                 execution.capacity.refresh(
                     fence,
-                    demand=not scan_exhausted or remaining_work_count > execution.capacity.target,
+                    demand=ready_demand
+                    if recovery is not None
+                    else not scan_exhausted or remaining_work_count > execution.capacity.target,
+                    pending_items=remaining_work_count,
                 )
 
         def work_items() -> Iterator[AnalysisWorkItem]:
@@ -316,7 +325,8 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
         ) -> tuple[Sequence[AnalysisWorkItem], bool]:
             """从持久 pending 中取有界可发送项，退避不占线程；已发和未落库项不重复发送。"""
 
-            nonlocal last_poll, scan_exhausted, remaining_work_count, half_open
+            nonlocal last_poll, scan_exhausted, remaining_work_count, half_open, database_seconds
+            nonlocal ready_demand
             if monotonic() - last_poll < 0.25:
                 return (), False
             last_poll = monotonic()
@@ -324,19 +334,30 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                 outcome.item.content_id for outcome in persistence_buffer
             )
             session = self._runtime.database.new_session()
+            poll_started = monotonic()
             try:
                 with session.begin():
                     PostgresJobRepository(session).lock_current_execution(fence)
                     repository = PostgresAnalysisRepository(session)
+                    # 父 Run 可在最后一批入库时先变为终态；已完成分片必须先退出，
+                    # 不能再被终态 Run 不允许探活的规则挡在循环中。
+                    if not PostgresAnalysisBatchRepository(session).has_pending(payload.request_id):
+                        ready_demand = False
+                        scan_exhausted = True
+                        return (), True
                     if room == 0:
-                        return (), not PostgresAnalysisBatchRepository(session).has_pending(
-                            payload.request_id
+                        ready_demand = repository.has_ready(
+                            payload.request_id, excluded_content_ids=excluded
                         )
+                        scan_exhausted = not ready_demand
+                        return (), False
                     recovery_repository = PostgresAnalysisRecoveryRepository(session)
                     allowed, half_open = recovery_repository.claim_probe(
                         fence=fence, run_id=recovery_run_id
                     )
                     if not allowed or (half_open and in_flight):
+                        ready_demand = False
+                        scan_exhausted = True
                         return (), False
                     page = repository.load_pending_page(
                         payload.request_id,
@@ -346,20 +367,23 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                     )
                     if page.items:
                         repository.mark_run_running(page.items[0].analysis_run_id)
-                    pending = PostgresAnalysisBatchRepository(session).has_pending(
-                        payload.request_id
+                    ready_demand = repository.has_ready(
+                        payload.request_id,
+                        excluded_content_ids=excluded
+                        + tuple(item.content_id for item in page.items),
                     )
                     if half_open and not page.items:
                         recovery_repository.release_probe(fence=fence, run_id=recovery_run_id)
             finally:
                 session.close()
+                database_seconds += monotonic() - poll_started
             for item in page.items:
                 if not _matches_frozen_configuration(item, execution.service):
                     raise AnalysisRunConfigurationChanged
             remaining_work_count += len(page.items)
             # 暂无更多 ready 也允许及时提交尾部；future retry 仍由 pending 判断维持轮询。
-            scan_exhausted = page.exhausted
-            return page.items, not pending
+            scan_exhausted = not ready_demand
+            return page.items, False
 
         def label_one(work_item: AnalysisWorkItem) -> ContentLabelingBatchResult:
             """保持单内容请求和原有 Validator；停止信号同时约束所有重试层。"""
@@ -483,7 +507,9 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
             if recovery_stop_error is not None:
                 return JobHandlerResult.failed(recovery_stop_error)
             if execution.capacity is not None and fatal_error is None:
-                execution.capacity.refresh(fence, demand=False, force=True)
+                execution.capacity.refresh(
+                    fence, demand=False, force=True, pending_items=0, release=True
+                )
             if fatal_error is not None:
                 return JobHandlerResult.failed(f"llm_{fatal_error.error_code}")
             before = monotonic()
@@ -516,7 +542,15 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
             raise
         finally:
             stop_event.set()
-            execution.close()
+            try:
+                execution.close()
+            finally:
+                if capacity is not None:
+                    try:
+                        capacity.release(fence)
+                    except Exception:
+                        # 许可有期限；清理故障不能掩盖业务异常或失权结果。
+                        self._runtime.logger.exception("Analysis 容量许可清理失败，将按期限回收。")
             log_event(
                 self._runtime.logger,
                 logging.INFO,
@@ -528,6 +562,10 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                 elapsed_ms=round((monotonic() - started) * 1000),
                 setup_ms=round(setup_seconds * 1000),
                 database_ms=round(database_seconds * 1000),
+                capacity_control_ms=round(capacity.control_seconds * 1000)
+                if capacity is not None
+                else 0,
+                recovery_control_ms=round(recovery_control_seconds * 1000),
                 persisted_count=persisted_count,
                 scheduler_peak_in_flight=peak_in_flight,
                 cancelled=cancelled,
@@ -571,10 +609,10 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                     max_concurrency = provider.max_concurrency
                     max_rps = provider.max_rps
                     validation_retries = provider.max_retries
-                    if snapshot.get("recovery_mode") == "recovery.v1":
-                        recovery = AnalysisRecoveryFeedback()
-                    if snapshot.get("capacity_mode") == CAPACITY_MODE:
-                        max_concurrency = SHARD_CONCURRENCY_CEILING
+                    if snapshot.get("recovery_mode") in SUPPORTED_RECOVERY_MODES:
+                        recovery = AnalysisRecoveryFeedback(mode=snapshot["recovery_mode"])
+                    if snapshot.get("capacity_mode") in SUPPORTED_CAPACITY_MODES:
+                        max_concurrency = min(provider.max_concurrency, SHARD_CONCURRENCY_CEILING)
                         validation_retries = VALIDATION_RETRIES
                         max_rps = None
                         capacity = AnalysisCapacityFeedback(
@@ -582,6 +620,10 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
                             provider=provider,
                             prompt_sha256=run["prompt_sha256"],
                             run_id=analysis_run_id,
+                            work_ceiling=min(
+                                max_concurrency, run["shard_size"], run["target_count"]
+                            ),
+                            timeout_seconds=timeout_seconds,
                         )
                     api_key = resolve_provider_secret(settings, provider)
                 else:
@@ -639,7 +681,11 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
             max_connections=max_concurrency,
             pricing_catalog=load_llm_pricing(),
             request_audit=record_audit,
-            on_request_started=capacity.started if capacity is not None else None,
+            before_request=capacity.admit if capacity is not None else None,
+            on_request_finished=capacity.finished if capacity is not None else None,
+            current_timeout_seconds=(lambda: capacity.request_timeout)
+            if capacity is not None and snapshot.get("capacity_mode") == CAPACITY_MODE
+            else None,
         )
         llm: ContentLabelingLLMPort = adapter
         rate_limited: RateLimitedContentLabelingLLM | None = None
@@ -647,11 +693,11 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
             rate_limited = RateLimitedContentLabelingLLM(
                 inner=llm, current_rps=lambda: capacity.rps
             )
-            llm = rate_limited
+            capacity.rate_limiter = rate_limited
         elif max_rps is not None:
             rate_limited = RateLimitedContentLabelingLLM(inner=llm, max_rps=max_rps)
             llm = rate_limited
-        # Retry 包在限流层外，确保每次物理 Retry 都重新取得 RPS 时隙。
+        # 自适应在实际发送点合并 C/RPS；固定模式的 Retry 仍包在限流层外。
         retrying_llm = RetryingContentLabelingLLM(inner=llm, retry_output_errors=recovery is None)
         service = ContentLabelingService(
             prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
@@ -781,6 +827,8 @@ class ConcurrentPostgresContentAnalysisJobExecutor:
             status=audit.status,
             status_code=audit.status_code,
             error_code=audit.error_code,
+            timeout_phase=audit.timeout_phase,
+            rate_limit_kind=audit.rate_limit_kind,
             input_tokens=audit.input_tokens,
             output_tokens=audit.output_tokens,
             cost_amount=str(audit.cost_amount) if audit.cost_amount is not None else None,

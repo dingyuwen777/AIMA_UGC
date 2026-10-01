@@ -56,7 +56,7 @@ def downgrade() -> None:
         .execute(
             sa.text(
                 "SELECT 1 FROM analysis_content_runs r "
-                "WHERE r.runtime_config_snapshot->>'capacity_mode' = 'adaptive.v1' "
+                "WHERE r.runtime_config_snapshot->>'capacity_mode' LIKE 'adaptive.v%' "
                 "AND (r.status IN ('queued','running','cancelling') OR EXISTS ("
                 "SELECT 1 FROM jobs j WHERE j.status IN ('queued','running') AND ("
                 "j.id = r.planner_job_id OR j.id IN (SELECT q.job_id "

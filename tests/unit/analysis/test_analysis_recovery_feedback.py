@@ -1,5 +1,6 @@
 """物理 HTTP 反馈乱序与内存上限不应丢失成功后的首错。"""
 
+from dataclasses import replace
 from datetime import timedelta
 
 from aima_ugc.adapters.llm.request_audit import LLMHTTPRequestAudit
@@ -48,3 +49,34 @@ def test_feedback_overflow_is_bounded_and_conservative():
     assert len(value.failure_spans) <= 4096
     assert value.failure_spans[0][0] == success
     assert max(last for _, last in value.failure_spans) == start + timedelta(microseconds=4999)
+
+
+def test_v2_http_responses_and_local_wait_do_not_mean_network_outage():
+    """429/503 是网络可达的响应，连接池等待不是网络故障。"""
+    start = beijing_now()
+    feedback = AnalysisRecoveryFeedback(mode="recovery.v2")
+    for index, status in enumerate((429, 503, 200)):
+        feedback.audit(_audit(start + timedelta(seconds=index), status))
+    feedback.audit(
+        replace(
+            _audit(start + timedelta(seconds=3), None), error_code="timeout", timeout_phase="pool"
+        )
+    )
+    value = feedback.take()
+    assert value.success_at == start + timedelta(seconds=2)
+    assert value.failure_spans == ()
+
+
+def test_v2_response_resets_real_network_errors_without_hiding_later_failure():
+    """服务端恢复响应切断连续不可达；响应后的新网络错误仍保留。"""
+    start = beijing_now()
+    feedback = AnalysisRecoveryFeedback(mode="recovery.v2")
+    error = replace(_audit(start, None), error_code="network_error", status="network_error")
+    feedback.audit(error)
+    feedback.audit(_audit(start + timedelta(seconds=301), 429))
+    feedback.audit(replace(error, completed_at=start + timedelta(seconds=302)))
+    value = feedback.take()
+    assert value.success_at == start + timedelta(seconds=301)
+    assert value.failure_spans == (
+        (start + timedelta(seconds=302), start + timedelta(seconds=302)),
+    )

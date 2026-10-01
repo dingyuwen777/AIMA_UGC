@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.modules.analysis.persistence import AnalysisWorkItem
 from aima_ugc.modules.analysis.recovery import (
+    RECOVERY_MODE,
     TRANSPORT_UNAVAILABLE,
     UNHEALTHY_SECONDS,
     VALIDATION_UNHEALTHY,
@@ -123,21 +124,31 @@ class PostgresAnalysisRecoveryRepository:
         if failure_at is None:
             values.update(probe_job_id=None, probe_not_before=None)
         self._session.execute(update(runs).where(runs.c.id == run_id).values(**values))
-        expired_validation = self._session.scalar(
-            select(items.c.content_id)
-            .join(
-                requests,
-                requests.c.id == items.c.request_id,
+        legacy = run["runtime_config_snapshot"].get("recovery_mode") != RECOVERY_MODE
+        expired_validation = (
+            self._session.scalar(
+                select(items.c.content_id)
+                .join(
+                    requests,
+                    requests.c.id == items.c.request_id,
+                )
+                .where(
+                    requests.c.run_id == run_id,
+                    items.c.status == "pending",
+                    items.c.validation_failure_started_at
+                    <= now - timedelta(seconds=UNHEALTHY_SECONDS),
+                )
+                .limit(1)
             )
-            .where(
-                requests.c.run_id == run_id,
-                items.c.status == "pending",
-                items.c.validation_failure_started_at <= now - timedelta(seconds=UNHEALTHY_SECONDS),
-            )
-            .limit(1)
+            if legacy
+            else None
         )
         if stop_error is None:
-            if failure_at is not None and now - failure_at >= timedelta(seconds=UNHEALTHY_SECONDS):
+            # v2 必须有持续失败的真实物理反馈；一次错误后在本地等待不能证明网络故障。
+            failure_end = now if legacy else max((last for _, last in spans), default=now)
+            if failure_at is not None and failure_end - failure_at >= timedelta(
+                seconds=UNHEALTHY_SECONDS
+            ):
                 stop_error = TRANSPORT_UNAVAILABLE
             elif expired_validation is not None:
                 stop_error = VALIDATION_UNHEALTHY

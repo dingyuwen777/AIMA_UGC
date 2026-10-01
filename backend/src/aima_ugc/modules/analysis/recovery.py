@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import random
 
-RECOVERY_MODE = "recovery.v1"
+RECOVERY_MODE = "recovery.v2"
+SUPPORTED_RECOVERY_MODES = frozenset({"recovery.v1", RECOVERY_MODE})
 UNHEALTHY_SECONDS = 300
 TRANSPORT_UNAVAILABLE = "llm_transport_unavailable"
 VALIDATION_UNHEALTHY = "llm_validation_unhealthy"

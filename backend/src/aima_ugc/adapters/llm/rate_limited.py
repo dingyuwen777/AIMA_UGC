@@ -68,6 +68,33 @@ class RateLimitedContentLabelingLLM:
         with self._lock:
             return {"rate_wait_ms": round(self._wait_seconds * 1000)}
 
+    def try_acquire_slot(self) -> float:
+        """只在可立即发送时消费时隙，否则返回延迟，不积累远期预约。
+
+        并发许可调用方可在自己的锁内检查这一步，再原子占用物理槽位。
+        等待期间不占速率时隙，因此并发排队结束不会把旧预约集中发出。
+        """
+        with self._lock:
+            rate = (
+                self._current_rps() if self._current_rps is not None else 1 / self._interval_seconds
+            )
+            now = self._clock()
+            if rate is None:
+                self._last_sent = now
+                return 0.0
+            if rate < 0:
+                raise ValueError("动态 RPS 不能为负数")
+            delay = 0.1 if rate == 0 else max(0.0, (self._last_sent or 0.0) + 1.0 / rate - now)
+            if rate > 0 and (self._last_sent is None or delay == 0):
+                self._last_sent = now
+                return 0.0
+            return delay
+
+    def record_wait(self, seconds: float) -> None:
+        """外部并发准入循环在释放锁等待后记录真实限速开销。"""
+        with self._lock:
+            self._wait_seconds += seconds
+
     def _wait_for_slot(self, stop_event: Event | None) -> None:
         """原子预约下一个请求起始时刻，并在锁外等待以允许其他线程继续预约。"""
 
@@ -94,25 +121,15 @@ class RateLimitedContentLabelingLLM:
         assert self._current_rps is not None
         while True:
             ensure_labeling_running(stop_event)
-            with self._lock:
-                rate = self._current_rps()
-                now = self._clock()
-                if rate is None:
-                    self._last_sent = now
-                    return
-                if rate < 0:
-                    raise ValueError("动态 RPS 不能为负数")
-                delay = 0.1 if rate == 0 else max(0.0, (self._last_sent or 0.0) + 1.0 / rate - now)
-                if rate > 0 and (self._last_sent is None or delay == 0):
-                    self._last_sent = now
-                    return
+            delay = self.try_acquire_slot()
+            if delay == 0:
+                return
             before = self._clock()
             if stop_event is None:
                 self._sleep(min(delay, 0.1))
             else:
                 stop_event.wait(min(delay, 0.1))
-            with self._lock:
-                self._wait_seconds += self._clock() - before
+            self.record_wait(self._clock() - before)
 
 
 __all__ = ["RateLimitedContentLabelingLLM"]

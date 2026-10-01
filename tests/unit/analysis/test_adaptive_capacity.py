@@ -116,7 +116,7 @@ def test_capacity_drop_and_recovery_relearns_without_model_change() -> None:
 def test_shares_do_not_multiply_capacity_when_more_shards_than_slots() -> None:
     assert [shard_capacity(2, 5, index) for index in range(5)] == [1, 1, 0, 0, 0]
     assert sum(shard_capacity(100, 7, index) for index in range(7)) == 100
-    assert shard_capacity(5000, 1, 0) == 256
+    assert shard_capacity(5000, 1, 0) == 1024
 
 
 def test_invalid_or_unsaturated_results_cannot_approve_larger_capacity() -> None:
@@ -147,10 +147,10 @@ def test_warm_start_and_frozen_limits_are_bounded() -> None:
         current=2500, last_safe=2500, historical_safe=2500, throughput_ewma=250, latency_p95=12
     )
     warmed = learned.warm_start()
-    assert warmed.current == 32
+    assert warmed.current == 1250
     assert warmed.last_safe == 0
     assert warmed.historical_safe == 2500
-    assert learned_run_limits(learned) == (7500, 41)
+    assert learned_run_limits(learned) == (25000, 41)
 
 
 def test_successful_persisted_throughput_plateau_rejects_unhelpful_concurrency() -> None:
@@ -184,7 +184,7 @@ def test_timeout_without_any_success_informs_next_run_but_not_running_timeout() 
     state = state.observe(sample)
     assert state.latency_p95 == 0
     assert learned_run_limits(state)[1] >= 60
-    assert frozen_timeout == 45
+    assert frozen_timeout == 120
     for _ in range(10):
         state = state.observe(
             CapacityObservation(

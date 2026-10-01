@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import datetime
-from threading import Lock
+from threading import Event, Lock
 from time import monotonic
 from typing import Any, Self
 from urllib.parse import urlsplit
@@ -21,6 +21,7 @@ from aima_ugc.modules.analysis.content_labeling import (
 )
 from aima_ugc.platform.time import beijing_now
 
+from .capabilities import declared_concurrency
 from .pricing import (
     LLMCostCalculation,
     LLMModelPrice,
@@ -46,10 +47,12 @@ class OpenAICompatibleLLMError(RuntimeError):
         error_code: str,
         retryable: bool,
         status_code: int | None = None,
+        timeout_phase: str | None = None,
     ) -> None:
         self.error_code = error_code
         self.retryable = retryable
         self.status_code = status_code
+        self.timeout_phase = timeout_phase
         super().__init__(message)
 
 
@@ -70,6 +73,9 @@ class OpenAICompatibleContentLabelingLLM:
         pricing_catalog: LLMPricingCatalog | None = None,
         request_audit: Callable[[LLMHTTPRequestAudit], None] | None = None,
         on_request_started: Callable[[], None] | None = None,
+        before_request: Callable[[Event | None], None] | None = None,
+        on_request_finished: Callable[[], None] | None = None,
+        current_timeout_seconds: Callable[[], float] | None = None,
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
         normalized_base_url = _normalize_base_url(actual_base_url)
@@ -99,6 +105,9 @@ class OpenAICompatibleContentLabelingLLM:
         self._use_json_mode = use_json_mode
         self._request_audit = request_audit
         self._on_request_started = on_request_started
+        self._before_request = before_request
+        self._on_request_finished = on_request_finished
+        self._current_timeout_seconds = current_timeout_seconds
         self._pricing_catalog = pricing_catalog
         self._pricing_unavailable_reason: str | None = None
         if pricing_catalog is None:
@@ -169,19 +178,12 @@ class OpenAICompatibleContentLabelingLLM:
         status: LLMHTTPRequestStatus = "network_error"
         status_code: int | None = None
         error_code: str | None = None
+        timeout_phase: str | None = None
+        rate_limit_kind: str | None = None
         usage = LLMTokenUsage(input_tokens=None, output_tokens=None)
         calculation: LLMCostCalculation | None = None
         cost_unavailable_reason = self._pricing_unavailable_reason
         price: LLMModelPrice | None = None
-        if self._pricing_catalog is not None and self._pricing_unavailable_reason is None:
-            try:
-                price = self._pricing_catalog.price_for(
-                    provider=self._provider_name,
-                    model=self._model,
-                    at=started_at,
-                )
-            except LLMPriceNotConfiguredError:
-                cost_unavailable_reason = "price_not_effective_at_request_time"
         body: dict[str, object] = {
             "model": self._model,
             "messages": [
@@ -193,6 +195,10 @@ class OpenAICompatibleContentLabelingLLM:
             body["response_format"] = {"type": "json_object"}
 
         ensure_labeling_running(request.stop_event)
+        if self._before_request is not None:
+            self._before_request(request.stop_event)
+            # 许可等待属于本地调度，审计与价格生效时间从实际发送阶段开始。
+            started_at = beijing_now()
         http_started = monotonic()
         with self._metrics_lock:
             self._http_requests += 1
@@ -202,6 +208,15 @@ class OpenAICompatibleContentLabelingLLM:
             try:
                 if self._on_request_started is not None:
                     self._on_request_started()
+                if self._pricing_catalog is not None and self._pricing_unavailable_reason is None:
+                    try:
+                        price = self._pricing_catalog.price_for(
+                            provider=self._provider_name,
+                            model=self._model,
+                            at=started_at,
+                        )
+                    except LLMPriceNotConfiguredError:
+                        cost_unavailable_reason = "price_not_effective_at_request_time"
                 response = self._client.post(
                     "chat/completions",
                     headers={
@@ -211,21 +226,50 @@ class OpenAICompatibleContentLabelingLLM:
                         "User-Agent": "AIMA_UGC/1.0",
                     },
                     json=body,
+                    timeout=httpx.Timeout(
+                        read=self._current_timeout_seconds(), connect=10, write=30, pool=1
+                    )
+                    if self._current_timeout_seconds is not None
+                    else self._client.timeout,
                 )
             except httpx.HTTPError as exc:
+                timeout_phase = next(
+                    (
+                        phase
+                        for error_type, phase in (
+                            (httpx.ConnectTimeout, "connect"),
+                            (httpx.ReadTimeout, "read"),
+                            (httpx.WriteTimeout, "write"),
+                            (httpx.PoolTimeout, "pool"),
+                        )
+                        if isinstance(exc, error_type)
+                    ),
+                    None,
+                )
                 raise OpenAICompatibleLLMError(
                     "OpenAI-compatible LLM 网络请求失败",
                     error_code="timeout"
                     if isinstance(exc, httpx.TimeoutException)
                     else "network_error",
                     retryable=True,
+                    timeout_phase=timeout_phase,
                 ) from exc
             finally:
+                if self._on_request_finished is not None:
+                    self._on_request_finished()
                 with self._metrics_lock:
                     self._http_active -= 1
                     self._http_seconds += monotonic() - http_started
 
             status_code = response.status_code
+            if status_code == 429:
+                # 当前响应的明确配额证据优先于模型声明；不记录响应正文或Secret。
+                if response.headers.get("x-ratelimit-remaining-requests") == "0":
+                    rate_limit_kind = "request_rate"
+                elif response.headers.get("x-ratelimit-remaining-tokens") == "0":
+                    rate_limit_kind = "token_rate"
+                elif declared_concurrency(str(self._client.base_url), self._model) is not None:
+                    rate_limit_kind = "concurrency"
             if status_code < 200 or status_code >= 300:
                 raise OpenAICompatibleLLMError(
                     f"OpenAI-compatible LLM 请求失败: HTTP {status_code}",
@@ -295,6 +339,8 @@ class OpenAICompatibleContentLabelingLLM:
                         price=price,
                         calculation=calculation,
                         cost_unavailable_reason=cost_unavailable_reason,
+                        timeout_phase=timeout_phase,
+                        rate_limit_kind=rate_limit_kind,
                     )
                 )
 
@@ -480,6 +526,8 @@ def _request_audit_record(
     price: LLMModelPrice | None,
     calculation: LLMCostCalculation | None,
     cost_unavailable_reason: str | None,
+    timeout_phase: str | None = None,
+    rate_limit_kind: str | None = None,
 ) -> LLMHTTPRequestAudit:
     return LLMHTTPRequestAudit(
         http_request_id=http_request_id,
@@ -491,6 +539,8 @@ def _request_audit_record(
         status=status,
         status_code=status_code,
         error_code=error_code,
+        timeout_phase=timeout_phase,
+        rate_limit_kind=rate_limit_kind,
         input_tokens=usage.input_tokens,
         input_cache_hit_tokens=usage.input_cache_hit_tokens,
         input_cache_miss_tokens=usage.input_cache_miss_tokens,
