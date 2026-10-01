@@ -66,8 +66,20 @@ from tests.integration.content.test_stage8d_voice_plaza_runtime import (
 def report_system(tmp_path: Path):  # type: ignore[no-untyped-def]
     """禁止对运行库清表；测试只能显式连接 report 专用数据库。"""
     settings = load_settings()
-    if settings.db_port != 55437 or settings.db_name != "aima_report_test":
-        pytest.skip("只允许在本任务隔离数据库中运行此破坏性 fixture")
+    local_test_database = (
+        settings.db_host == "127.0.0.1"
+        and settings.db_port == 55437
+        and settings.db_name == "aima_report_test"
+    )
+    isolated_ci_database = (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("AIMA_REPORT_TEST_DATABASE") == "1"
+        and settings.db_host == "127.0.0.1"
+        and settings.db_port == 5432
+        and settings.db_name == "aima_ugc"
+    )
+    if not (local_test_database or isolated_ci_database):
+        pytest.skip("只允许 report 专用本地库或明确授权的 GitHub Actions 临时库")
     settings = settings.model_copy(
         update={
             "data_dir": tmp_path / "data",

@@ -58,7 +58,7 @@ data_changes:
 
 # 目标、成功标准与非目标
 
-成功标准与需求追溯逐条对应。范围为报告数据、任务、接口、管理员页面、产物与生命周期、必要日志及文档。非目标为依赖升级、生产部署、运行数据库迁移、远程 Issue/PR/push。既有离线报告入口保持兼容。
+成功标准与需求追溯逐条对应。范围为报告数据、任务、接口、管理员页面、产物与生命周期、必要日志及文档。非目标为依赖升级、生产部署和运行数据库迁移。当前远程交付授权已由 Issue #684 接管；原仅本地边界作为已完成里程碑保留。既有离线报告入口保持兼容。
 
 # 约束与意图决策
 
@@ -80,17 +80,25 @@ ReportRun 保存品牌/车型/本期与相邻等长上期范围、安全 Provide
 
 # 需求追溯
 
-上游Owner为引用会话的最终方案及本轮明确决定。AC1–AC7是对这些已批准要求的稳定定位编号，依次对应数据、快照、产物、发布、AI、前端与本地运行约束；编号不代表新增需求或新增用户决定。
+当前团队可访问的上游 Owner 为 [Issue #684](https://github.com/dingyuwen777/AIMA_UGC/issues/684)，其 AC1–AC7 保持原报告完成定义，AC8 记录新增的分批远程交付与合并后收尾。原引用会话及当前用户决定继续作为 Issue 的上游依据。AC1–AC7是对这些已批准要求的稳定定位编号，依次对应数据、快照、产物、发布、AI、前端与本地运行约束；编号不代表新增需求或新增用户决定。
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 数据库直接生成，品牌车型日期过滤，保持统计与上期比较；关键词按已保存品牌/车型命中证据 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249-最终方案数据及本轮品牌车型证据决定 / AC1 | satisfied | tests/integration/reporting/test_database_reports.py 验证有效标准名称、重复来源去重、无效证据排除、本期/上期冻结，以及目录改名/证据停用后下载的计数、分母、Excel字段和口径说明不变；完整工作流22项通过 |
-| R2 | 冻结 Content/Version/评论/指标/分析身份及 Provider | user:6abdb5d9-9c94-83e8-92dc-972cc3377249-最终方案快照 / AC2 | satisfied | tests/integration/reporting/test_database_reports.py：创建后改变实时数据仍使用冻结输入；正式 Contract/历史页显示当前选择模型与实际分析身份；仅报告引用的 Provider 禁止删除 |
-| R3 | DOCX/XLSX/Markdown/图表保存并下载，默认可配置60天清理 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249-最终方案文件与生命周期 / AC3 | satisfied | 同一 PostgreSQL 工作流下载并重新解析 DOCX ZIP/Office 图表、统一数据 Excel；61 天到期返回410并清理；中途文件失败的一天孤儿窗口与已关联完整文件互斥；Word属性标题跟随实际品牌标题，特殊字符与旧入口兼容有独立复现和回归证据 |
-| R4 | 独立发布 Word、Excel 图表及多维表；重试不重跑模型 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249-最终方案飞书 / AC4 | satisfied | tests/unit/platform/test_report_publication_guards.py：生产 Publisher/外表/内嵌表 Adapter + MockTransport 验证上传、三 Client 守卫、读回错误；PG 工作流验证持久发布重试、文件仍可下载且 LLM 调用不增加；真实飞书在线验收未执行 |
-| R5 | 管理员 Provider、模型可追溯，粉丝和互动参与代表性选择，失败不产出错误案例 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249-最终方案AI / AC5 | satisfied | tests/unit/analysis/test_report_selection.py；PG 工作流验证冻结当前粉丝数与管理员配置、严格模型输出及断点复用；前端生成依据显示配置修订和规则摘要 |
-| R6 | 预检、进度、历史、取消/重试、下载与飞书链接 | user:6abdb5d9-9c94-83e8-92dc-972cc3377249-最终方案前端 / AC6 | satisfied | frontend/e2e/admin-configuration-release2.spec.ts：迟到历史 GET 不覆盖创建，503 后继续轮询、生成下载、发布失败独立恢复；真实浏览器连接正式 API/Worker 下载 Word；tests/api/test_database_reports.py 验证8个入口权限 |
-| R7 | 必要安全日志、有界计划重试及超时取消；仅本地，不影响运行服务和容器 | user:本轮全局目标请求及直接修改当前目录决定 / AC7 | satisfied | PG 工作流分别覆盖503、ReadTimeout、连续429有界耗尽、取消 fence、已成功步骤复用；HTTP120秒上限与单次Job1800秒；安全日志/Secret扫描；测试专用库55437和独立端口，运行目录与原容器未操作 |
+| R1 | 数据库直接生成，品牌车型日期过滤，保持统计与上期比较；关键词按已保存品牌/车型命中证据 | #684 / AC1 | satisfied | tests/integration/reporting/test_database_reports.py 验证有效标准名称、重复来源去重、无效证据排除、本期/上期冻结，以及目录改名/证据停用后下载的计数、分母、Excel字段和口径说明不变；完整工作流22项通过 |
+| R2 | 冻结 Content/Version/评论/指标/分析身份及 Provider | #684 / AC2 | satisfied | tests/integration/reporting/test_database_reports.py：创建后改变实时数据仍使用冻结输入；正式 Contract/历史页显示当前选择模型与实际分析身份；仅报告引用的 Provider 禁止删除 |
+| R3 | DOCX/XLSX/Markdown/图表保存并下载，默认可配置60天清理 | #684 / AC3 | satisfied | 同一 PostgreSQL 工作流下载并重新解析 DOCX ZIP/Office 图表、统一数据 Excel；61 天到期返回410并清理；中途文件失败的一天孤儿窗口与已关联完整文件互斥；Word属性标题跟随实际品牌标题，特殊字符与旧入口兼容有独立复现和回归证据 |
+| R4 | 独立发布 Word、Excel 图表及多维表；重试不重跑模型 | #684 / AC4 | satisfied | tests/unit/platform/test_report_publication_guards.py：生产 Publisher/外表/内嵌表 Adapter + MockTransport 验证上传、三 Client 守卫、读回错误；PG 工作流验证持久发布重试、文件仍可下载且 LLM 调用不增加；真实飞书在线验收未执行 |
+| R5 | 管理员 Provider、模型可追溯，粉丝和互动参与代表性选择，失败不产出错误案例 | #684 / AC5 | satisfied | tests/unit/analysis/test_report_selection.py；PG 工作流验证冻结当前粉丝数与管理员配置、严格模型输出及断点复用；前端生成依据显示配置修订和规则摘要 |
+| R6 | 预检、进度、历史、取消/重试、下载与飞书链接 | #684 / AC6 | satisfied | frontend/e2e/admin-configuration-release2.spec.ts：迟到历史 GET 不覆盖创建，503 后继续轮询、生成下载、发布失败独立恢复；真实浏览器连接正式 API/Worker 下载 Word；tests/api/test_database_reports.py 验证8个入口权限 |
+| R7 | 必要安全日志、有界计划重试及超时取消；本地实施与隔离测试不影响运行服务和容器 | #684 / AC7 | satisfied | PG 工作流分别覆盖503、ReadTimeout、连续429有界耗尽、取消 fence、已成功步骤复用；HTTP120秒上限与单次Job1800秒；安全日志/Secret扫描；测试专用库55437和独立端口，运行目录与原容器未操作 |
+
+# 计划改动
+
+| 文件 / 模块 / 资产 | 改动及目的 | 对应要求 |
+| --- | --- | --- |
+| reporting 模块、PostgreSQL Repository、报告 HTTP/Worker、Migration、生成 Contract 和管理员页面 | 数据冻结、生成下载、独立发布及可追溯历史；实际文件见本 Change 的 LOCAL_VALIDATION | R1–R7 |
+| scripts/quality/classify_ci_scope.py、.github/workflows/ci.yml、报告 PG fixture 与测试 | 报告持久化工作流纳入现有 CI，并保持破坏性 fixture 的隔离保护 | R1–R7；Issue AC8 的合并前证据责任 |
+| docs/blueprint/07_技术决策与实施门禁.md | 同步两种报告入口及 Renderer 的事实边界 | R1、R4 |
 
 # 验证矩阵
 
@@ -123,3 +131,11 @@ ReportRun 保存品牌/车型/本期与相邻等长上期范围、安全 Provide
 # 完成证据与状态
 
 已取得关键词补齐后的当前证据：真实隔离 PostgreSQL、生产装配与可控外部 HTTP 传输下22项工作流通过，下载的Word关键词说明/排名和Excel数据/批注/属性均重新解析；后端1742项及12项子测试通过，16项跳过。前端源码未变，沿用组件274项与浏览器174项通过证据。原5项Review Finding均关闭，独立复核重新读取上游要求后未发现遗漏的产品能力或新增blocking实现问题。已完成上游和反向能力审计，按本轮仅本地边界进入ready_for_review；完整正式CI及远程集成未执行。实际命令、各验证对应的修订范围、迁移往返和剩余限制见同目录 [LOCAL_VALIDATION.md](LOCAL_VALIDATION.md)。仅本地分支；不 push、不创建 PR、不 merge、不部署，也未执行运行数据库迁移。
+
+## 当前远程交付接管
+
+2026-10-01 用户新增授权：两批均完成本地修改和验证后，按报告功能、品牌车型整改的顺序通过 PR 合并远程 main，必要时可用管理员权限。管理员权限不替代 Review、当前 head/base 或 required CI。Issue #684 已创建、读回并通过当前 canonical create Contract；R1–R7 的产品实现和本地里程碑继续成立。
+
+Issue AC8 保持未勾选：当前尚未执行 PR required CI、merge、main 新鲜验证、仓库原生 Change 归档、Issue 关闭和分支清理。上述动作是实现 Ready 之后的交付阶段，不能由本地测试推导为已完成；交付过程与最终 Evidence 回写 Issue AC8，完整目标仍未完成。原文中的“不 push、不创建 PR、不 merge”仅描述前一轮本地里程碑，已不作为当前授权边界。
+
+报告 CI 修正取得两条失败测试复现后，CI scope、workflow 和不安全数据库拒绝测试共 82 项通过。独立新建 PostgreSQL 容器、端口 55437 的报告工作流 9 项通过，1 项显式浏览器用例跳过；该浏览器用例原实际验收证据继续覆盖未修改的生产 UI/API/Worker 源码。正式 CI 报告 PG 的实际执行仍需当前 PR 结果确认。

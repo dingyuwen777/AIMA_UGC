@@ -1,6 +1,16 @@
 # 数据库报告本地验证记录
 
-本轮直接修改 `E:/Desktop/AIMA_UGC`，本地分支为 `feature/report-generation`，基线为 `15dd366db6e1632535fadc615513636a4b22c639`。运行代码目录是独立的 `E:/work/03_Aima/code/AIMA_UGC`，两个 checkout 的 Git common directory 也不同。没有 push、远程 Issue/PR、merge、Release、部署或运行数据库迁移。
+前一轮本地里程碑直接修改 `E:/Desktop/AIMA_UGC`，本地分支为 `feature/report-generation`，基线为 `15dd366db6e1632535fadc615513636a4b22c639`。运行代码目录是独立的 `E:/work/03_Aima/code/AIMA_UGC`，两个 checkout 的 Git common directory 也不同。该里程碑没有 push、远程 Issue/PR、merge、Release、部署或运行数据库迁移。当前用户已新增分批远程交付授权，状态见下节与 Issue #684，旧证据不冒充远程结果。
+
+## 远程交付准备的增量验证
+
+报告能力由 [Issue #684](https://github.com/dingyuwen777/AIMA_UGC/issues/684) 的 AC1–AC7 接管，AC8 跟踪两批本地验证后的合并和收尾，当前未勾选。报告日期级 Change 是前轮已存在的身份，保持不变；当前 canonical `validate-change` 只校验新实例，日期级历史身份使用项目现有 ready validator 验证，不伪称新实例 create PASS。
+
+CI 原未执行报告 PostgreSQL suite，且 fixture 会拒绝 CI 临时库；新增 classifier 回归先取得 2 条 Red。修正唯一 classifier/workflow 接线和 fixture 后，执行 `.venv/Scripts/python.exe -m pytest tests/unit/test_ci_scope.py tests/unit/test_report_test_database_guard.py tests/unit/test_ci_workflow_structure.py tests/unit/test_ci_test_impact_optimization.py -q -p no:cacheprovider --junitxml=.runtime/report-evidence/report-ci-green.xml`，82 项通过。不安全主机、运行库配置和缺少显式 CI 授权均在创建运行时/清表前被拒绝。
+
+新建本任务独占 PostgreSQL 18.4 容器 `31c4b9340204766d8e24ab9d916ed80a67285a48228335372d5c970f81c7bea2`，端口 `127.0.0.1:55437`、空库 `aima_report_test`、1 CPU/1 GiB 上限。通过 `.runtime/report-validate.py migrate` 仅迁移该测试库，再运行 `.venv/Scripts/python.exe .runtime/report-validate.py tests/integration/reporting/test_database_reports.py -q -p no:cacheprovider --junitxml=.runtime/report-evidence/report-delivery-pg.xml`：9 项通过，1 项显式浏览器用例跳过。原真实浏览器 Evidence 仍覆盖未修改的生产页面/API/Worker；当前正式 CI 的 PG 执行结果尚未取得。未操作任何既有容器。
+
+文档检查、Ruff 和 `check_change_completion.py --root . --changed-since main --require-active-ready --json` 已通过。当前生产代码与前端未新增改动；增量范围是 CI/安全测试保护、正式决策文档及交付追溯。PR/CI、合并、main 新鲜验证、原生归档、Issue 关闭和分支清理仍须后续取得直接证据；不部署、不操作运行数据。
 
 ## 当前结论
 

@@ -90,6 +90,27 @@ def test_reporting_change_marks_font_evidence_required() -> None:
     assert requirements.report_font_required is True
 
 
+def test_report_postgres_workflow_is_a_selected_ci_target() -> None:
+    requirements = _requirements("tests/integration/reporting/test_database_reports.py")
+
+    assert requirements.postgres_required is True
+    assert requirements.postgres_targets == (
+        "tests/integration/reporting/test_database_reports.py",
+    )
+
+
+def test_full_postgres_evidence_includes_report_workflows() -> None:
+    assert "reporting" in SCRIPT["ALL_POSTGRES_SUITES"]
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "if selected reporting; then" in workflow
+    assert "AIMA_REPORT_TEST_DATABASE=1 uv run pytest tests/integration/reporting -q" in workflow
+    postgres_step = workflow.split('if [[ -n "${POSTGRES_TARGETS}" ]]; then', 1)[1]
+    assert (
+        'AIMA_REPORT_TEST_DATABASE=1 uv run pytest "${targets[@]}" -q'
+        in (postgres_step.split("fi", 1)[0])
+    )
+
+
 def test_http_producer_change_requires_contract_drift_and_real_cross_component_proof() -> None:
     requirements = _requirements("backend/src/aima_ugc/entrypoints/api_main.py")
 
