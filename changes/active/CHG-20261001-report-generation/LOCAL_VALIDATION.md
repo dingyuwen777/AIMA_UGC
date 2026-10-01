@@ -29,7 +29,8 @@
 | 后端静态 | `python -m ruff check`、`python -m ruff format --check` 对受影响文件；`python -m mypy backend/src/aima_ugc` | Ruff通过；mypy 427 source files通过 |
 | Contract | `python scripts/contracts/generate.py --check`、`python scripts/contracts/check_compatibility.py` | exit 0；正式生成 OpenAPI/Client，旧path/schema没有语义改动 |
 | 文档与安全 | `python scripts/quality/check_docs.py`、`check_docs_facts.py`、`check_table_ownership.py`、`scan_secrets.py` | 均exit 0；新增3张表唯一Owner为Reporting |
-| Change元数据 | `python scripts/quality/check_change_completion.py --root . --changed-since main --json` | `ok=true`；当前Change不是Ready，此结果不能替代完整完成审计 |
+| Change元数据 | `python scripts/quality/check_change_completion.py --root . --json` | 当前字段结构与历史记录校验；不替代新Change的Ready门禁 |
+| 当前Change完成门禁 | `python scripts/quality/check_change_completion.py --root . --changed-since main --json` | 未提交工作树时没有进入changed-commit范围；建立本地checkpoint后，明确拒绝`in_progress`状态、要求`ready_for_review`。关键词R1尚未满足，因此保留此阻塞，未把状态强行改为Ready |
 | Migration往返 | `python .runtime/report-migration-roundtrip.py` | 专用库78→77→78，`alembic check`没有新增操作，head为`20261001_0078`，exit 0 |
 | 影响面 | `python scripts/dev/validate_changed.py --base main --json` | 复用唯一CI classifier；profile为full。未运行远程CI、完整PostgreSQL/Compose/Release矩阵，不能冒充正式交付 |
 
