@@ -3183,6 +3183,159 @@ export interface ReadinessResponse {
   status: ReadinessResponseStatus;
 }
 
+export type ReportAnalysisBasisResponsePeriod = typeof ReportAnalysisBasisResponsePeriod[keyof typeof ReportAnalysisBasisResponsePeriod];
+
+
+export const ReportAnalysisBasisResponsePeriod = {
+  current: 'current',
+  previous: 'previous',
+} as const;
+
+/**
+ * 按周期汇总实际采用的历史分析身份，不回显正文或模型输出。
+ */
+export interface ReportAnalysisBasisResponse {
+  content_count: number;
+  manual_override_count: number;
+  model: string;
+  period: ReportAnalysisBasisResponsePeriod;
+  prompt_sha256: string;
+  prompt_version: string;
+  provider: string;
+  scheme_version_id: string;
+  taxonomy_sha256: string;
+}
+
+/**
+ * 下载只使用报告内 Artifact 身份，不暴露存储路径。
+ */
+export interface ReportArtifactResponse {
+  artifact_id: string;
+  artifact_type: string;
+  byte_size: number;
+  content_type: string;
+  download_url: string;
+  filename: string;
+}
+
+export type ReportJobResponseStatus = typeof ReportJobResponseStatus[keyof typeof ReportJobResponseStatus];
+
+
+export const ReportJobResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+/**
+ * 暴露下一次计划领取时间，让过载重试有可见进度。
+ */
+export interface ReportJobResponse {
+  /** @minimum 0 */
+  attempt: number;
+  available_at: string;
+  cancel_requested: boolean;
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  id: string;
+  job_type: string;
+  /** @exclusiveMinimum 0 */
+  max_attempts: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  result?: ImportJobResultResponse | ContentAnalysisJobResultResponse | DataExportJobResultResponse | CanonicalReplayJobResultResponse | null;
+  started_at?: string | null;
+  status: ReportJobResponseStatus;
+  timeout_seconds: number;
+}
+
+export type ReportResponseStatus = typeof ReportResponseStatus[keyof typeof ReportResponseStatus];
+
+
+export const ReportResponseStatus = {
+  queued: 'queued',
+  generating: 'generating',
+  generated: 'generated',
+  published: 'published',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  expired: 'expired',
+} as const;
+
+/**
+ * 生成与发布分别展示 Job 状态，发布失败不影响已生成文件。
+ */
+export interface ReportResponse {
+  analysis_bases?: ReportAnalysisBasisResponse[];
+  brand_id: string;
+  completed_at: string | null;
+  content_count: number;
+  created_at: string;
+  editable_chart_sheet_url?: string | null;
+  end_date: string;
+  expires_at: string | null;
+  files?: ReportArtifactResponse[];
+  generation_job: ReportJobResponse;
+  id: string;
+  model: string;
+  name: string;
+  native_document_url?: string | null;
+  prompt_sha256: string;
+  prompt_version: string;
+  provider_config_id: string;
+  provider_revision: number;
+  publication_enabled: boolean;
+  publication_job?: ReportJobResponse | null;
+  representative_table_url?: string | null;
+  scheme_version_id: string;
+  selection_prompt_sha256: string;
+  start_date: string;
+  status: ReportResponseStatus;
+  taxonomy_sha256: string;
+  vehicle_model_ids: string[];
+}
+
+/**
+ * 按创建时间降序列出最近报告。
+ */
+export interface ReportListResponse {
+  items: ReportResponse[];
+}
+
+/**
+ * 实时预检只描述当前事实，创建时会再次检查并冻结。
+ */
+export interface ReportPreflightResponse {
+  analyzed_count: number;
+  comment_count: number;
+  content_count: number;
+  model: string | null;
+  previous_content_count: number;
+  prompt_version: string;
+  provider: string | null;
+  ready: boolean;
+  real_user_count: number;
+  taxonomy_sha256: string;
+  warnings?: string[];
+}
+
+/**
+ * 品牌、可选车型与包含首尾日期的北京时间报告范围。
+ */
+export interface ReportSubmitRequest {
+  brand_id: string;
+  end_date: string;
+  start_date: string;
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
+}
+
 /**
  * 物理删除前的只读资格；有历史引用时只允许归档。
  */
@@ -7864,6 +8017,264 @@ export const testProviderConfigConnection = async (providerConfigId: string, opt
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ProviderConnectionTestResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListReportsUrl = () => {
+
+
+
+
+  return `/api/v1/reports`
+}
+
+/**
+ * 历史列表。
+ * @summary List Reports
+ */
+export const listReports = async ( options?: RequestInit): Promise<ReportListResponse> => {
+
+  const res = await fetch(getListReportsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateReportUrl = () => {
+
+
+
+
+  return `/api/v1/reports`
+}
+
+/**
+ * 冻结并排队，外部调用由 Worker 完成。
+ * @summary Create
+ */
+export const createReport = async (reportSubmitRequest: ReportSubmitRequest, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getCreateReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reportSubmitRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getPreflightReportUrl = () => {
+
+
+
+
+  return `/api/v1/reports/preflight`
+}
+
+/**
+ * 实时预检。
+ * @summary Preflight
+ */
+export const preflightReport = async (reportSubmitRequest: ReportSubmitRequest, options?: RequestInit): Promise<ReportPreflightResponse> => {
+
+  const res = await fetch(getPreflightReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reportSubmitRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportPreflightResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetReportUrl = (reportId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}`
+}
+
+/**
+ * 报告详情。
+ * @summary Get
+ */
+export const getReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getGetReportUrl(reportId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getDownloadReportArtifactUrl = (reportId: string,
+    artifactId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}/artifacts/${artifactId}/download`
+}
+
+/**
+ * 所属校验与到期校验后流式下载。
+ * @summary Download
+ */
+export const downloadReportArtifact = async (reportId: string,
+    artifactId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getDownloadReportArtifactUrl(reportId,artifactId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
+export const getCancelReportUrl = (reportId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}/cancel`
+}
+
+/**
+ * 提交生成或发布任务的取消意图。
+ * @summary Cancel
+ */
+export const cancelReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getCancelReportUrl(reportId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getPublishReportUrl = (reportId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}/publish`
+}
+
+/**
+ * 独立发布或恢复失败发布。
+ * @summary Publish
+ */
+export const publishReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getPublishReportUrl(reportId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRetryReportUrl = (reportId: string,) => {
+
+
+
+
+  return `/api/v1/reports/${reportId}/retry`
+}
+
+/**
+ * 恢复失败生成。
+ * @summary Retry
+ */
+export const retryReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+
+  const res = await fetch(getRetryReportUrl(reportId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReportResponse = body ? JSON.parse(body) : {}
   return data
 }
 

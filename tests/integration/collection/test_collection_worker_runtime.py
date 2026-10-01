@@ -217,6 +217,8 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             "workbench.snapshot-refresh.v1",
             "administration.feishu-report-publication.v1",
             "administration.feishu-representative-selection.v1",
+            "reporting.report-generation.v1",
+            "reporting.report-publication.v1",
         )
         assert worker.run_once() is True
         assert worker.run_once() is False

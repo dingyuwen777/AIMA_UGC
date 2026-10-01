@@ -102,8 +102,8 @@ def test_unknown_persistence_and_ci_self_fail_closed() -> None:
     assert ci_self.fullstack_specs == ("all",)
 
 
-def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install() -> None:
-    """完整后端单测所需字体留在 Core，PostgreSQL Job 不重复安装。"""
+def test_ci_workflow_uses_selected_postgres_suites_and_conditional_report_font() -> None:
+    """非报告PG仍保持轻量，真实报告渲染必须在自己的runner准备字体。"""
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "postgres_suites" in text
@@ -113,7 +113,19 @@ def test_ci_workflow_uses_selected_postgres_suites_and_no_postgres_font_install(
     assert "Repository quality static and targeted regression" in text
 
     postgres_job = _section(text, "  postgres-integration:\n", "  real-fullstack:\n")
-    assert "fonts-noto-cjk" not in postgres_job
+    font_step = _section(
+        postgres_job,
+        "      - name: Install report integration CJK font\n",
+        "      - name: Selected PostgreSQL integration evidence\n",
+    )
+    assert "        if: >-\n" in font_step
+    assert "report_font_required == 'true'" in font_step
+    assert "' all '" in font_step
+    assert "' reporting '" in font_step
+    assert "fonts-noto-cjk" in font_step
+    non_report = CLASSIFY_REQUIREMENTS(("backend/src/aima_ugc/modules/collection/tables.py",))
+    assert non_report.report_font_required is False
+    assert non_report.postgres_suites == ("collection",)
     assert "      POSTGRES_SUITES: ${{ needs.ci-plan.outputs.postgres_suites }}\n" in postgres_job
     assert "uv run pytest tests/integration/vehicles -q" in postgres_job
 

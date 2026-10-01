@@ -30,6 +30,7 @@ from aima_ugc.bootstrap.feishu_publication_http import (
     FeishuPublicationResourceNotFound,
     FeishuPublicationUploadTooLarge,
 )
+from aima_ugc.bootstrap.report_runs_http import PostgresReportHttpService
 from aima_ugc.contracts.administration import (
     AnalysisSchemeCreateDraftRequest,
     AnalysisSchemeListResponse,
@@ -404,6 +405,7 @@ def create_app(
     canonical_replay_service: CanonicalReplayHttpService | None = None,
     administration_service: AdministrationHttpService | None = None,
     feishu_publication_service: FeishuPublicationHttpService | None = None,
+    report_runs_service: PostgresReportHttpService | None = None,
     product_service: ProductHttpService | None = None,
     workbench_service: WorkbenchHttpService | None = None,
     identity_resolver: IdentityResolver | None = None,
@@ -3119,6 +3121,20 @@ def create_app(
             request_id=_request_id(request),
         )
 
+    from .report_routes import register_report_routes
+
+    def current_report_runs_service() -> PostgresReportHttpService:
+        """延迟装配数据库报告服务，不改变 API runtime 生命周期。"""
+        if report_runs_service is not None:
+            return report_runs_service
+        resolved_runtime = get_runtime()
+        if resolved_runtime is None:
+            raise RuntimeError("Report Service 依赖不可用")
+        return PostgresReportHttpService(resolved_runtime)
+
+    register_report_routes(
+        application, service=current_report_runs_service, administrator=current_administrator
+    )
     return application
 
 
