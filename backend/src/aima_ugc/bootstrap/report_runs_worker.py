@@ -209,7 +209,11 @@ class PostgresReportJobExecutor:
                 context.heartbeat(progress=75)
                 excel = output / "report-data.xlsx"
                 export_unified_data_excel(
-                    records, excel, include_analysis=True, require_complete_analysis=False
+                    records,
+                    excel,
+                    include_analysis=True,
+                    require_complete_analysis=False,
+                    keyword_basis=snapshot.get("keyword_basis"),
                 )
                 context.heartbeat(progress=85)
                 feishu_rows = (

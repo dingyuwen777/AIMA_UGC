@@ -10,6 +10,7 @@ from io import BytesIO
 from pathlib import Path
 from threading import Event
 from uuid import UUID, uuid4
+from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
 import aima_ugc.bootstrap.report_runs_worker as report_worker
@@ -21,6 +22,7 @@ from aima_ugc.adapters.persistence.postgres.provider_lifecycle import (
     PostgresProviderConfigLifecycleRepository,
 )
 from aima_ugc.adapters.persistence.postgres.report_runs import PostgresReportRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.bootstrap.administration_http import PostgresAdministrationHttpService
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
@@ -38,6 +40,13 @@ from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.reporting.report_tables import report_items_table
 from aima_ugc.modules.system.tables import provider_configs_table
+from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
+from aima_ugc.modules.vehicles.tables import (
+    content_brand_evidence_table,
+    content_vehicle_evidence_table,
+    vehicle_brands_table,
+    vehicle_models_table,
+)
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.time import beijing_now
@@ -467,6 +476,124 @@ def test_database_report_snapshot_retry_download_and_publish(
     assert expired["files"] == []
     assert client.post(path + "/publish").status_code == 410
     assert client.get("/api/v1/reports").json()["items"][0]["id"] == report_id
+
+
+def test_report_keywords_use_frozen_active_brand_vehicle_evidence(
+    report_system, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    """标准名称按内容去重；无效证据和创建后的目录变化不能污染报告。"""
+    runtime, client, worker, body, _ = report_system
+    calls, clients = _fake_model(monkeypatch)
+    with runtime.database.new_session() as session, session.begin():
+        identities = tuple(
+            session.execute(
+                select(contents_table.c.id, contents_table.c.external_content_id).order_by(
+                    contents_table.c.external_content_id
+                )
+            )
+        )
+        ids = tuple(row.id for row in identities)
+        catalog = PostgresVehicleCatalogRepository(session)
+        models = [
+            catalog.create_model(
+                code=f"REPORT-{name}",
+                display_name=name,
+                aliases=(),
+                brand_id=UUID(body["brand_id"]),
+                actor_ref="report-keyword-test",
+            )
+            for name in ("Pony", "无效车型")
+        ]
+        for content_id, model, source, active in (
+            (ids[0], models[0], "alias_match", True),
+            (ids[0], models[0], "import", True),
+            (ids[2], models[0], "manual_review", True),
+            (ids[0], models[1], "alias_match", False),
+        ):
+            catalog.append_evidence(
+                ContentVehicleEvidence(
+                    id=uuid4(),
+                    content_id=content_id,
+                    content_version=1,
+                    vehicle_model_id=model.id,
+                    source=source,
+                    matched_text="P O N Y",
+                    source_field="title",
+                    catalog_version=model.catalog_version,
+                    confidence=1.0,
+                    is_manual_locked=False,
+                    is_active=active,
+                    created_at=beijing_now(),
+                )
+            )
+        brand_name = session.scalar(
+            select(vehicle_brands_table.c.display_name).where(
+                vehicle_brands_table.c.id == UUID(body["brand_id"])
+            )
+        )
+    created = client.post("/api/v1/reports", json=body)
+    assert created.status_code == 202, created.text
+    report_id = UUID(created.json()["id"])
+    with runtime.database.new_session() as session:
+        repository = PostgresReportRepository(session)
+        current = repository.load_records(report_id, "current")
+        previous = repository.load_records(report_id, "previous")
+        snapshot = repository.get(report_id)["snapshot"]
+    expected_current = {
+        identities[0].external_content_id: (brand_name, "Pony"),
+        identities[1].external_content_id: (brand_name,),
+    }
+    assert {
+        record.content.external_content_id: record.content.matched_keywords for record in current
+    } == expected_current
+    assert {
+        record.content.external_content_id: record.content.matched_keywords for record in previous
+    } == {identities[2].external_content_id: (brand_name, "Pony")}
+    assert snapshot["keyword_source"] == "brand_vehicle_evidence.v1"
+    with runtime.database.engine.begin() as connection:
+        connection.execute(update(vehicle_models_table).values(display_name="创建后的名称"))
+        connection.execute(update(vehicle_brands_table).values(display_name="创建后的品牌"))
+        connection.execute(update(content_brand_evidence_table).values(is_active=False))
+        connection.execute(update(content_vehicle_evidence_table).values(is_active=False))
+    assert worker.run_once()
+    generated = client.get(f"/api/v1/reports/{report_id}").json()
+    assert generated["status"] == "generated", generated
+    files = {
+        item["filename"]: client.get(item["download_url"]).content for item in generated["files"]
+    }
+    markdown = files["report.md"].decode()
+    assert f"| {brand_name} | 2 | 100.00% |" in markdown
+    assert "| Pony | 1 | 50.00% |" in markdown
+    assert "关键词口径：数据库" in markdown
+    assert "无效车型" not in markdown
+    assert "创建后的名称" not in markdown
+    with ZipFile(BytesIO(files["report.docx"])) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+    word_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    word_text = "".join(node.text or "" for node in document.iter(f"{{{word_ns}}}t"))
+    assert snapshot["keyword_basis"] in word_text
+    ranking_rows = [
+        "".join(node.text or "" for node in row.iter(f"{{{word_ns}}}t"))
+        for row in document.iter(f"{{{word_ns}}}tr")
+    ]
+    assert any("Pony" in row and "50.00%" in row for row in ranking_rows)
+    assert "无效车型" not in word_text
+    assert "创建后的名称" not in word_text
+    data = load_workbook(BytesIO(files["report-data.xlsx"]))
+    try:
+        keyword_column = next(cell.column for cell in data["内容"][1] if cell.value == "命中关键词")
+        assert {
+            row[1].value: row[keyword_column - 1].value for row in data["内容"].iter_rows(min_row=2)
+        } == {key: "；".join(value) for key, value in expected_current.items()}
+        assert data["内容"].cell(1, keyword_column).comment.text == snapshot["keyword_basis"]
+        assert data.properties.description == snapshot["keyword_basis"]
+    finally:
+        data.close()
+    with runtime.database.new_session() as session:
+        assert PostgresReportRepository(session).load_records(report_id, "current") == current
+    assert calls == ["selection", "advice"]
+    for adapter_client in clients:
+        adapter_client.close()
 
 
 def test_empty_scope_catalog_cancel_and_manual_retry(report_system) -> None:  # type: ignore[no-untyped-def]

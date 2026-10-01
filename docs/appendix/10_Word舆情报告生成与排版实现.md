@@ -248,6 +248,8 @@ Word 不应该重新打开 Excel 再算一次。
 
 词云也不应该自己重新遍历 Workbook；它只消费 Context 中已经计算好的 Counter。
 
+正式数据库报告的关键词来自冻结的品牌、车型命中证据标准名称；离线输入仍使用 Excel 原有的“命中关键词”。两者复用相同的逐内容去重计数，来源说明及历史冻结边界见 [backend/src/aima_ugc/modules/reporting/README.md](../../backend/src/aima_ugc/modules/reporting/README.md)。
+
 这样可以保证：
 
 ```text

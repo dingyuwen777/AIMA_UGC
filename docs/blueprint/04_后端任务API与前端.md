@@ -116,6 +116,8 @@ Pydantic
 
 调用者需要精确 Path 时直接查 [contracts/openapi/openapi.json](../../contracts/openapi/openapi.json)，不要从 Blueprint 复制 URL。
 
+管理员数据库报告的关键词采用已保存的有效品牌、车型命中证据，标准名称与结果在创建时冻结；每条内容内去重，按报告全量内容计数和计算占比。该业务口径与旧离线词包或采集搜索上下文区分，具体机制由 Reporting 模块说明维护。
+
 ## 6. 采集运行中心为什么是 Read Model
 
 采集运行中心会同时展示：

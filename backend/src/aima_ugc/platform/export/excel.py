@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 from openpyxl import Workbook, load_workbook
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.cell.cell import Cell
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.page import PageMargins
@@ -319,6 +320,7 @@ def export_unified_data_excel(
     content_columns: Iterable[str] | None = None,
     label_detail_columns: Iterable[str] | None = None,
     comment_columns: Iterable[str] | None = None,
+    keyword_basis: str | None = None,
 ) -> ExcelExportSummary:
     """使用 write-only Workbook 流式写出 UnifiedDataExcelV1 的受控展示视图。"""
 
@@ -348,13 +350,20 @@ def export_unified_data_excel(
     temp_path.unlink(missing_ok=True)
 
     workbook = Workbook(write_only=True)
+    workbook.properties.description = keyword_basis
     content_sheet = workbook.create_sheet(_CONTENT_SHEET)
     label_sheet = workbook.create_sheet(_LABEL_SHEET)
     comment_sheet = workbook.create_sheet(_COMMENT_SHEET)
     _configure_sheet(content_sheet, content_headers, _CONTENT_COLUMN_WIDTHS)
     _configure_sheet(label_sheet, label_headers, _LABEL_COLUMN_WIDTHS)
     _configure_sheet(comment_sheet, comment_headers, _COMMENT_COLUMN_WIDTHS)
-    content_sheet.append(_header_cells(content_sheet, content_headers))
+    header_cells = _header_cells(content_sheet, content_headers)
+    if keyword_basis is not None and "命中关键词" in content_headers:
+        # 在同一流式输出中解释字段来源，不重新载入整份明细或修改既有列结构。
+        header_cells[content_headers.index("命中关键词")].comment = Comment(
+            keyword_basis, "AIMA_UGC"
+        )
+    content_sheet.append(header_cells)
     label_sheet.append(_header_cells(label_sheet, label_headers))
     comment_sheet.append(_header_cells(comment_sheet, comment_headers))
 

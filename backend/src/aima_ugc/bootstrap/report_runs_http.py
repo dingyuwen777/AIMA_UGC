@@ -155,11 +155,22 @@ class PostgresReportHttpService:
             template = template.replace(
                 "# 爱玛品牌舆情分析报告", f"# {brand['display_name']}品牌舆情分析报告", 1
             )
+            keyword_basis = (
+                "关键词口径：数据库中该内容版本的有效品牌、车型命中证据，"
+                "按标准名称合并别名（车型沿用目录合并映射）。"
+                "每条内容内同一名称只计一次，内容占比以本期全部内容为分母。"
+                "名称与命中结果在报告创建时冻结。"
+            )
+            template = template.replace(
+                "## 5. 热点关键词\n", f"## 5. 热点关键词\n\n{keyword_basis}\n", 1
+            )
             selection_prompt = _SELECTION_PROMPT.read_text(encoding="utf-8").replace(
                 "爱玛", str(brand["display_name"])
             )
             snapshot = {
                 "schema_version": "report-dataset.v1",
+                "keyword_source": "brand_vehicle_evidence.v1",
+                "keyword_basis": keyword_basis,
                 "provider": provider.safe_runtime_snapshot(),
                 "scheme_version_id": str(config.scheme.id),
                 "prompt_version": config.taxonomy.prompt_version,

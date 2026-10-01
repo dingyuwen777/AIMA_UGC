@@ -107,16 +107,19 @@ class PostgresReportRepository:
             values = []
             for ordinal, record in page:
                 identity = by_ordinal[ordinal]
+                # 使用该版本已有的有效证据标准名称；不重扫正文，重复别名只计一个名称。
+                content_updates: dict[str, Any] = {
+                    "matched_keywords": tuple(
+                        dict.fromkeys((*record.content.brands, *record.content.vehicles))
+                    )
+                }
                 # 作者最新已知粉丝数属于指标；正文版本中的作者信息仍保持冻结版本。
                 follower_count = followers.get(identity["content_id"])
                 if follower_count is not None:
-                    record = record.model_copy(
-                        update={
-                            "content": record.content.model_copy(
-                                update={"author_follower_count": follower_count}
-                            )
-                        }
-                    )
+                    content_updates["author_follower_count"] = follower_count
+                record = record.model_copy(
+                    update={"content": record.content.model_copy(update=content_updates)}
+                )
                 values.append(
                     {
                         "report_run_id": report_id,

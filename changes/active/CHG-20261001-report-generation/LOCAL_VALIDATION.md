@@ -4,9 +4,9 @@
 
 ## 当前结论
 
-报告数据冻结、生成、下载、过载恢复、取消、独立发布和文件生命周期已取得本地工作流证据。关键词统计口径仍待用户决定；当前 Change 保持 `in_progress`，不宣称完整需求满足或 Final Ready。真实模型额度、飞书账户权限和在线发布结果尚未验证。
+报告数据冻结、生成、下载、过载恢复、取消、独立发布和文件生命周期已取得本地工作流证据。用户随后明确采用已保存的品牌、车型命中证据，关键词口径已补齐并取得当前22项工作流与1742项后端回归通过证据。下载的Word关键词说明与排名、Excel数据与口径说明均实际解析。独立复核未发现遗漏的产品能力或新增blocking实现问题。当前Change按仅本地范围进入ready_for_review，不宣称远程CI/PR或生产Ready。真实模型额度、飞书账户权限和在线发布结果尚未验证。
 
-## 环境与隔离
+## 初次实施的环境与隔离（历史记录）
 
 - Python 3.14.7，使用仓库根 `.venv` 与现有锁定依赖；未升级依赖。
 - PostgreSQL 18.4 专用容器 `aima-report-validation-20261001`，容器 ID 为 `8fd60d38dd103b9d85799148e34200ff2dcb009e6da5b52c0b49d922df7b830b`，仅绑定 `127.0.0.1:55437`，数据库为 `aima_report_test`。报告集成 fixture 对端口与数据库名执行硬校验后才允许清表。
@@ -15,7 +15,7 @@
 - Windows 子进程统一采用 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`。测试临时目录位于系统 TEMP，避免文档导航 fixture 被上级真实 Git 仓库识别。
 - 验证结束后按完整容器ID删除本轮专用容器，并通过记录的进程session停止本轮Vite；55437/55438/55439/55440均没有剩余监听。只读核对发现原`aima-ugc-postgres-dev`已于北京时间11:17以exit 0结束；本轮没有对它执行启停或删除，不能宣称它当前仍运行。
 
-## 实际命令与结果
+## 初次实施的实际命令与结果（历史记录）
 
 以下 Python 命令均由仓库根执行；`python` 代表当前 `.venv/Scripts/python.exe`。前端命令在 `frontend/` 执行，使用本机 `D:/node/npm.ps1`。
 
@@ -30,11 +30,11 @@
 | Contract | `python scripts/contracts/generate.py --check`、`python scripts/contracts/check_compatibility.py` | exit 0；正式生成 OpenAPI/Client，旧path/schema没有语义改动 |
 | 文档与安全 | `python scripts/quality/check_docs.py`、`check_docs_facts.py`、`check_table_ownership.py`、`scan_secrets.py` | 均exit 0；新增3张表唯一Owner为Reporting |
 | Change元数据 | `python scripts/quality/check_change_completion.py --root . --json` | 当前字段结构与历史记录校验；不替代新Change的Ready门禁 |
-| 当前Change完成门禁 | `python scripts/quality/check_change_completion.py --root . --changed-since main --json` | 未提交工作树时没有进入changed-commit范围；建立本地checkpoint后，明确拒绝`in_progress`状态、要求`ready_for_review`。关键词R1尚未满足，因此保留此阻塞，未把状态强行改为Ready |
+| 当时Change完成门禁 | `python scripts/quality/check_change_completion.py --root . --changed-since main --json` | 历史拒绝：未提交工作树时没有进入changed-commit范围；建立本地checkpoint后拒绝`in_progress`状态。当时关键词R1尚未满足，未强行改为Ready；最新决定、实现和当前门禁记录见文末 |
 | Migration往返 | `python .runtime/report-migration-roundtrip.py` | 专用库78→77→78，`alembic check`没有新增操作，head为`20261001_0078`，exit 0 |
 | 影响面 | `python scripts/dev/validate_changed.py --base main --json` | 复用唯一CI classifier；profile为full。未运行远程CI、完整PostgreSQL/Compose/Release矩阵，不能冒充正式交付 |
 
-本轮原始输出及源码SHA256清单保存在忽略的 `.runtime/report-evidence/`。有意保留失败复现和旧验证输出；最终Green使用 `backend-preflight.xml`、`workflows.xml`、`frontend-unit.xml`、`frontend-e2e.xml`。历史失败XML不能当作最终状态，也不能删除它们来掩盖过程。
+原始输出及源码SHA256清单保存在忽略的 `.runtime/report-evidence/`。有意保留失败复现和旧验证输出；上述初次实施Green为 `backend-preflight.xml`、`workflows.xml`、`frontend-unit.xml`、`frontend-e2e.xml`，最新关键词补齐后的Green与修订绑定见文末。历史失败XML不能当作最终状态，也不能删除它们来掩盖过程。
 
 ## 关键行为证据
 
@@ -49,9 +49,9 @@
 
 ## Review与未完成项
 
-独立只读Reviewer重新读取生产调用链、原始XML及具体断言，关闭了孤儿清理、飞书发送guard、旧GET覆盖、DryRun绕过和Provider并发删除共5项Finding。没有新的已知blocking代码Finding；这不替代R1的业务决定、完整Completion审计或正式CI。
+独立只读Reviewer重新读取生产调用链、原始XML及具体断言，关闭了孤儿清理、飞书发送guard、旧GET覆盖、DryRun绕过和Provider并发删除共5项Finding。后续又独立重读会话最终方案、目录/本地限制和本轮关键词决定，确认R1–R7的实现及证据覆盖，没有发现遗漏的产品要求或新增blocking生产缺陷。该复核不替代正式CI和线上账户验收。
 
-关键词来源尚缺正式决定。旧离线导入的 `RelevanceService.evaluate()` 只检查标题和正文，返回指定词包的标准名称；`UnifiedContentRecordV1.matched_keywords` 经打标写入 Excel。离线 Provider Probe 可使用搜索上下文，二者不能统一称为“原采集关键词”。正式数据库导出的 `UnifiedDataExcelContentV1.matched_keywords` 目前使用空默认值，没有投影同口径证据。历史 Campaign 的词包快照不等于全量内容的命中字段。采用现有品牌/车型证据或明确词包后保持原匹配规则会改变这一业务口径，因此再次列出准确选项，等待用户决定；没有补造统计、标为延期或宣称已满足。
+原关键词缺口已由用户本轮明确决定解除：采用数据库已保存的品牌、车型命中证据。此前已确认旧离线词包匹配与 Provider Probe 搜索上下文不同；本次仅为正式报告填充已批准的证据标准名称，不重解释历史离线字段，也不把普通数据导出的空默认值改为另一种含义。
 
 ## 后续 Word 标题修复
 
@@ -63,3 +63,16 @@
 - 最终完整后端回归：`python .runtime/report-unit-validate.py tests/unit tests/contracts tests/api -q -p no:cacheprovider --basetemp=$env:TEMP/aima-report-word-title-backend-final-20261001 --junitxml=.runtime/report-evidence/backend-word-title-final.xml`，1742 passed、16 skipped、12 subtests passed，exit 0，69.15秒。修复后 Ruff检查/格式检查、mypy受影响文件、文档链接/机器事实检查均 exit 0。
 - 本次只改变 Word 元数据，不修改数据库、Job、HTTP Contract、依赖或 Migration，也不启动服务或 Docker。先前完整工作流证据对应实现 checkpoint `568b6e9`；本次修复另有当前源码的局部回归，不能把旧工作流 XML 说成重新执行。
 - 独立只读复核重新解析 Red/Green 和最终完整回归 XML，确认首个可见标题、后续不覆盖、XML转义、旧无参数调用与UTC时间协议均成立，未发现新增 blocking Finding。当前源码清单核验50个文件与14个XML摘要，并通过 `validation_basis` 区分当前后端证据和既有 PG/前端证据。
+
+## 关键词口径补齐后的当前验证
+
+用户明确决定后，Reporting 复用按内容版本读取的有效 Brand/Vehicle 生产投影，把标准名称的去重并集写入本期及上期冻结记录；HTTP 同时冻结口径说明并写入报告模板，数据 Excel 仍使用原列结构，在同一流式导出中增加表头批注与文件属性说明。每条内容内同名只计一次，分母为报告全量内容。代码、模块README、Blueprint和报告Appendix同步，不新增依赖或Migration。
+
+- 专项Red/Green：`python .runtime/report-validate.py tests/integration/reporting/test_database_reports.py -k keywords -q -p no:cacheprovider`，分别使用`.runtime/report-keywords-red`和`.runtime/report-keywords-green`；原始XML为`keywords-red.xml`与`keywords-green.xml`。Red为1 failed（冻结命中字段实际为两个空元组），Green为1 passed、9 deselected。
+- 完整后端：`python .runtime/report-unit-validate.py tests/unit tests/contracts tests/api -q -p no:cacheprovider --basetemp=$env:TEMP/aima-report-keywords-backend-20261001 --junitxml=.runtime/report-evidence/backend-keywords-final.xml`，1742 passed、16 skipped、12 subtests passed，exit 0，101.10秒。
+- 完整工作流：前述四个报告/Provider生命周期验证文件，显式`AIMA_REPORT_BROWSER_ACCEPTANCE=1`，`--basetemp=.runtime/report-keywords-identity-final --junitxml=.runtime/report-evidence/workflows-keywords-final.xml`，22 passed，exit 0，30.26秒。下载后重新解析DOCX正文XML中的关键词说明/排名，以及Excel数据、批注和属性；品牌名/车型名改动、有效证据停用后，冻结记录与报告计数保持不变。
+- 追加Word断言的首次复跑发现测试把本期记录顺序误当成外部ID排序；失败结果保留为`keyword-order-assumption-red.xml`。正式target ordinal有自己的排序规则。测试已按external_content_id核对本期/上期和Excel的准确命中归属，没有改生产排序或降低去重、计数、冻结断言；最终22项重新通过。
+- Ruff/format、mypy427个文件、Contract生成/兼容、docs/docs_facts、TableOwner、Secret检查均exit 0。唯一CI classifier仍给出full范围；其实现明确将重依赖PG与真实全栈矩阵留给正式CI，本轮补足隔离报告关键路径，未启动远程CI或默认Compose栈。
+- 本次专用PostgreSQL容器为`aima-report-keyword-validation-20261001`，完整ID为`23348b461bc36566ff71efb8e13d2a61cea76a5142fa96e266430069ef3b3354`，仅55437，限制1核/1GB；创建前只读确认5432的既有容器运行，未对其执行启停、迁移或数据操作。结束后再次核对专用容器ID、名称、55437映射，仅删除该专用容器；通过本次session停止55440的Vite，API在测试finally关闭。55437–55440均无剩余监听。只读`docker ps`显示原`aima-ugc-postgres-dev`（`e444f87aaffa`）仍运行于5432；这是当前状态，不能沿用历史容器已退出的记录描述现状。
+- 当前完成门禁：`python scripts/quality/check_change_completion.py --root . --require-active-ready --json`，exit 0，`ok=true`、`errors=[]`，150个当前gated文档严格检查、128个legacy保留。首次Ready校验要求上游稳定Acceptance绑定，已把引用会话和本轮明确决定按原有七项验收建立AC1–AC7稳定定位，没有新增需求或把Change当自己的需求源；原始通过输出保存为`completion-keywords-final.json`。
+- 当前源码/证据清单为`.runtime/report-evidence/source-manifest.json`，SHA256绑定50个受影响源码/正式文档及19个XML。`validation_basis`区分关键词补齐后的当前后端/工作流证据与未改动的既有前端证据，保留原始失败复现和旧清单；独立Reviewer核验最终增量及这些绑定。
