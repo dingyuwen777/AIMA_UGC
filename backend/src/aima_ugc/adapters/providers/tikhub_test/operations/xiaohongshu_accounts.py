@@ -610,6 +610,10 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
             target=None,
         )
 
+    def _strict_full_comment_mode(self) -> bool:
+        """小红书独立账号入口也要求 Provider 正常结束，保留原有导出模式。"""
+        return self.comment_mode == "all"
+
     def _fetch_replies(
         self,
         transport: TikHubHttpTransport,
@@ -630,6 +634,7 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
                 fetch_all=fetch_all,
             )
 
+        failures_before = len(self._comment_coverage_failures)
         request_no_before = self._request_no
         max_reply_pages = self.limits.max_reply_pages_per_root
         rows = super()._fetch_replies(
@@ -660,7 +665,20 @@ class _XiaohongshuAccountRunner(_TikHubDebugRunner):
                 "expected": expected,
                 "reason": "hard_page_limit_or_provider_shape",
             }
+        if warning is None and any(
+            failure.get("root_comment_id") == root.external_comment_id
+            for failure in self._comment_coverage_failures[failures_before:]
+        ):
+            warning = {
+                "stage": "replies",
+                "external_content_id": content.external_content_id,
+                "root_comment_id": root.external_comment_id,
+                "observed": len(rows),
+                "expected": expected,
+                "reason": "reply_pagination_incomplete",
+            }
         if warning is not None:
+            self._partial_content_ids.add(content.external_content_id)
             summary = self._current_account_summary()
             if summary is not None:
                 cast(list[object], summary["warnings"]).append(warning)

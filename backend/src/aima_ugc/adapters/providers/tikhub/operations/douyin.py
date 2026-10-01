@@ -127,7 +127,9 @@ class DouyinUserPostsPagination:
             default=previous_cursor,
         )
         has_more = _path_value(body, has_more_path)
-        if not isinstance(items, list) or not items:
+        if not isinstance(items, list):
+            return cls(next_cursor, False, "response_data_unavailable")
+        if not items:
             return cls(next_cursor, False, "empty_page")
         if _provider_exhausted(has_more):
             return cls(next_cursor, False, "provider_exhausted")
@@ -321,11 +323,8 @@ def extract_user_posted_videos(
     douplus_items = _path_value(body, "data.data.itemInfoList")
     if isinstance(douplus_items, list):
         return tuple(
-            normalized
+            (_normalize_douplus_post(item) or item) if isinstance(item, dict) else {}
             for item in douplus_items
-            if isinstance(item, dict)
-            for normalized in (_normalize_douplus_post(item),)
-            if normalized is not None
         )
 
     candidates = [items_path, "data.aweme_list", "data.data.aweme_list", "aweme_list"]
@@ -336,8 +335,8 @@ def extract_user_posted_videos(
         seen_paths.add(candidate)
         items = _path_value(body, candidate)
         if isinstance(items, list):
-            return tuple(item for item in items if isinstance(item, dict))
-    return ()
+            return tuple(item if isinstance(item, dict) else {} for item in items)
+    raise ValueError("抖音账号作品响应缺少作品列表")
 
 
 def _normalize_douplus_post(item: dict[str, Any]) -> dict[str, Any] | None:

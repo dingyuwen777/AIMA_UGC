@@ -245,7 +245,9 @@ def extract_user_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...
 def extract_user_post_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """从 Web V2 用户历史微博 envelope 提取可映射的微博卡片。"""
 
-    _, items = _find_user_posts_container(body)
+    container, items = _find_user_posts_container(body)
+    if container is None:
+        raise ValueError("weibo 账号作品响应缺少有效作品列表")
     return items
 
 
@@ -335,10 +337,9 @@ def _find_user_posts_container(
             value = current.get(key)
             if not isinstance(value, list):
                 continue
-            items = tuple(
-                item for item in value if isinstance(item, dict) and _is_user_post_item(item)
-            )
-            if items or (not value and "since_id" in current):
+            # 坏项保留索引并交给 Mapper/账号失败账本，不把过滤后集合当结束证据。
+            items = tuple(item if isinstance(item, dict) else {} for item in value)
+            if isinstance(value, list):
                 return current, items
         queue.extend(value for value in current.values() if isinstance(value, dict))
     return None, ()
@@ -353,15 +354,6 @@ def _is_user_search_item(item: dict[str, Any]) -> bool:
     uid = _string(candidate.get("uid") or candidate.get("user_id") or candidate.get("id"))
     identity_keys = ("screen_name", "nickname", "nick_name", "profile_url")
     return bool(uid and any(key in candidate for key in identity_keys))
-
-
-def _is_user_post_item(item: dict[str, Any]) -> bool:
-    candidate = item.get("mblog")
-    if not isinstance(candidate, dict):
-        candidate = item
-    return _has_stable_id(candidate) and any(
-        key in candidate for key in ("text", "text_raw", "created_at", "user")
-    )
 
 
 def _choice(mapping: dict[str, int], value: str, field_name: str) -> int:

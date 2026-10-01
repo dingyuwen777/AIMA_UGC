@@ -69,7 +69,7 @@ backend/src/aima_ugc/adapters/providers/tikhub/
 
 - [`backend/src/aima_ugc/adapters/providers/tikhub_test/.env.example`](.env.example)
 
-为同目录的 [`backend/src/aima_ugc/adapters/providers/tikhub_test/.env`](.env) 文件。
+为同目录的 `backend/src/aima_ugc/adapters/providers/tikhub_test/.env` 文件。
 
 当前示例：
 
@@ -79,7 +79,7 @@ TIKHUB_API_KEY=你的真实密钥
 TIKHUB_TIMEOUT_SECONDS=300
 ```
 
-[`backend/src/aima_ugc/adapters/providers/tikhub_test/.env`](.env) 已被 Git 忽略。不要把真实 API Key 写进源码、README、Issue、日志或提交历史。
+`backend/src/aima_ugc/adapters/providers/tikhub_test/.env` 已被 Git 忽略。不要把真实 API Key 写进源码、README、Issue、日志或提交历史。
 
 生产 `TikHubHttpTransport` 当前允许的 HTTPS Host 以：
 
@@ -234,7 +234,7 @@ uv run python backend/src/aima_ugc/adapters/providers/tikhub_test/bilibili_accou
 
 ## 3. 关键词怎么传
 
-关键词是本次人工调试参数，不放在 [`backend/src/aima_ugc/adapters/providers/tikhub_test/.env`](.env)。
+关键词是本次人工调试参数，不放在 `backend/src/aima_ugc/adapters/providers/tikhub_test/.env`。
 
 单关键词：
 
@@ -933,7 +933,7 @@ Fake Transport 纵切 / PostgreSQL integration
 - 不把 Excel 当 Raw 或回灌格式；
 - 不实现自动 App/Web fallback；
 - 不把 `state.json` / `resolved_accounts.json` 当业务数据库；
-- 不提交真实 [`backend/src/aima_ugc/adapters/providers/tikhub_test/.env`](.env)；
+- 不提交真实 `backend/src/aima_ugc/adapters/providers/tikhub_test/.env`；
 - 不把人工页数限制说成生产预算功能；
 - 不把指定账号人工文件入口直接描述成正式官号监控/调度能力。
 
@@ -978,3 +978,8 @@ Fake Transport 纵切 / PostgreSQL integration
 快手双源共用每篇作品/每条根评论的技术页数上限，不能对两个源分别重复使用同一上限。
 评论标注文件中“文章编号”是评论自身 ID，“原文链接”留空，以避免生产导入器从作品 URL 提取 ID 并将评论合并。
 完整作品关系与 Raw 来源继续保留在 Canonical JSONL 中。
+
+详情在追加 Canonical、调用入库 Owner 或进入 Excel 之前再次校验目标作品 ID 和账号作者；错误详情不会覆盖合法 Discovery。
+作品列表结构缺失不是正常空页；混合列表中的坏项保留原 Raw 定位并记录逐项失败，合法作品继续处理。
+快手同根评论只输出一次，后续 App/Web 来源新增或提高回复数量证据仍可触发回复展开；相同已展开信息不会无条件重复发送。
+小红书 all 的回复分页异常会保留 warning/partial，达到正数计数不能替代正常结束；抖音和 B站手工入口也会拒绝账号 partial 的全量完成提示，并保留结果文件。

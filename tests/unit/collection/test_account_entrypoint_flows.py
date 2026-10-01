@@ -126,6 +126,9 @@ def _invoke(
     reply_limit: int | None = None,
     post_limit: int | None = None,
     transport_failure_delivery: str | None = None,
+    account_target: Any = None,
+    identity_response: dict[str, Any] | None = None,
+    web_roots: dict[str, Any] | None = None,
 ) -> tuple[Any, dict[str, Any], list[ProviderTransportRequest]]:
     posts, detail, roots, replies, empty = _responses(platform)
     seen: list[ProviderTransportRequest] = []
@@ -147,7 +150,10 @@ def _invoke(
             nonlocal post_calls
             seen.append(request)
             path = request.path
-            if "post" in path and ("user" in path or "posted" in path):
+            if "search_user" in path:
+                assert identity_response is not None
+                body = identity_response
+            elif "post" in path and ("user" in path or "posted" in path):
                 post_calls += 1
                 body = posts if post_calls == 1 else empty
             elif "sub_comment" in path or "replies" in path or "reply_detail" in path:
@@ -171,7 +177,9 @@ def _invoke(
                     raise AssertionError("回复出现预期外调用")
             elif "comment" in path:
                 if "/web/" in path and platform == "kuaishou":
-                    body = {"data": {"rootComments": [], "pcursor": "no_more", "commentCount": 3}}
+                    body = web_roots or {
+                        "data": {"rootComments": [], "pcursor": "no_more", "commentCount": 3}
+                    }
                 else:
                     body = roots
             elif "video" in path or "detail" in path:
@@ -198,7 +206,7 @@ def _invoke(
         "bilibili": tikhub_test.BilibiliAccountTarget(uid="100002"),
     }
     result = getattr(tikhub_test, f"run_{platform}_accounts")(
-        accounts=[targets[platform]],
+        accounts=[account_target or targets[platform]],
         start_date="2024-01-01",
         end_date="2026-12-31",
         env_file=env,
@@ -457,3 +465,202 @@ def test_account_transport_failure_keeps_successful_rows_without_retry(
         )
         == 2
     )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"user_id": "999"},
+        {"eid": "3xwrong"},
+        {"homepage_url": "https://www.kuaishou.com/profile/3xwrong"},
+    ],
+)
+def test_kuaishou_search_rejects_other_configured_identity(config, tmp_path, monkeypatch):
+    target = tikhub_test.KuaishouAccountTarget(kuaishou_id="handle-A", **config)
+    identity = {
+        "data": {
+            "users": [{"userId": "100002", "kwaiId": "handle-A", "eid": "3xuser"}],
+            "pcursor": "no_more",
+        }
+    }
+    _, summary, seen = _invoke(
+        "kuaishou", tmp_path, monkeypatch, account_target=target, identity_response=identity
+    )
+    assert summary["accounts"][0]["status"] == "failed"
+    assert len(seen) == 1, [r.path for r in seen]
+
+
+@pytest.mark.parametrize("missing_eid", [False, True])
+def test_kuaishou_search_requires_complete_consistent_identity(missing_eid, tmp_path, monkeypatch):
+    target = tikhub_test.KuaishouAccountTarget(
+        kuaishou_id="handle-A",
+        user_id="100002",
+        eid="3xuser",
+        homepage_url="https://www.kuaishou.com/profile/3xuser",
+    )
+    candidate = {"userId": "100002", "kwaiId": "handle-A", "eid": "3xuser"}
+    if missing_eid:
+        candidate.pop("eid")
+    identity = {"data": {"users": [candidate], "pcursor": "no_more"}}
+    _, summary, seen = _invoke(
+        "kuaishou", tmp_path, monkeypatch, account_target=target, identity_response=identity
+    )
+    assert summary["accounts"][0]["status"] == ("failed" if missing_eid else "completed"), summary
+    assert len(seen) == 1 if missing_eid else len(seen) > 1
+
+
+@pytest.mark.parametrize("platform", _PLATFORMS)
+def test_account_rejects_detail_author_after_correct_discovery(platform, tmp_path, monkeypatch):
+    original = _responses
+
+    def changed(name):
+        posts, detail, roots, replies, empty = copy.deepcopy(original(name))
+        posts = copy.deepcopy(posts)
+        item = runtime.extract_detail_items(name, detail)[0]
+        if name == "douyin":
+            item["author"].update(uid="999", sec_uid="MS4wLjABwrong")
+        elif name == "kuaishou":
+            item["user_id"] = 999
+        elif name == "weibo":
+            item["user"].update(id=999, idstr="999")
+        else:
+            item["owner"]["mid"] = 999
+        return posts, detail, roots, replies, empty
+
+    monkeypatch.setattr(__import__(__name__, fromlist=["_responses"]), "_responses", changed)
+    result, summary, seen = _invoke(platform, tmp_path, monkeypatch)
+    rows = [
+        json.loads(row)
+        for row in (result.run_dir / "canonical/contents.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert all(row["author"]["external_account_id"] == "100002" for row in rows), rows
+    assert summary["status"] != "completed", summary
+    assert not any("comment" in r.path or "replies" in r.path for r in seen)
+
+
+@pytest.mark.parametrize("platform", _PLATFORMS)
+@pytest.mark.parametrize("shape", ["mixed", "missing"])
+def test_account_invalid_post_items_are_not_normal_exhaustion(
+    platform, shape, tmp_path, monkeypatch
+):
+    original = _responses
+
+    def changed(name):
+        posts, detail, roots, replies, empty = original(name)
+        if shape == "missing":
+            posts = {"data": {}}
+        else:
+            items = (
+                posts["data"]["aweme_list"]
+                if name == "douyin"
+                else posts["data"]["photos"]
+                if name == "kuaishou"
+                else posts["data"]["statuses"]
+                if name == "weibo"
+                else posts["data"]["data"]["archives"]
+            )
+            items.extend([{"bad": "missing-id"}, "invalid-item"])
+        return posts, detail, roots, replies, empty
+
+    monkeypatch.setattr(__import__(__name__, fromlist=["_responses"]), "_responses", changed)
+    result, summary, _ = _invoke(platform, tmp_path, monkeypatch)
+    assert summary["accounts"][0]["status"] != "completed", summary
+    if shape == "mixed":
+        assert result.content_count == 1
+        assert len(summary["accounts"][0]["post_failures"]) == 2, summary
+        assert all(f["item_locator"] for f in summary["accounts"][0]["post_failures"])
+
+
+@pytest.mark.parametrize(
+    "offset,fallback,expected",
+    [(20, 99, 20), ("20", 99, 20), ("opaque", 22, 22), ("opaque", None, None), ("0", 99, None)],
+)
+def test_bilibili_reply_offset_uses_numeric_value_before_fallback(
+    offset, fallback, expected, tmp_path, monkeypatch
+):
+    original = _responses
+
+    def changed(name):
+        values = original(name)
+        cursor = values[3][0]["data"]["data"]["cursor"]
+        cursor["pagination_reply"]["next_offset"] = offset
+        if fallback is None:
+            cursor.pop("next")
+        else:
+            cursor["next"] = fallback
+        return values
+
+    monkeypatch.setattr(__import__(__name__, fromlist=["_responses"]), "_responses", changed)
+    result, summary, seen = _invoke("bilibili", tmp_path, monkeypatch)
+    calls = [r for r in seen if "reply_detail" in r.path]
+    if expected is None:
+        assert len(calls) == 1
+        assert summary["status"] != "completed"
+    else:
+        assert len(calls) == 2
+        assert calls[1].params["next_offset"] == expected
+        assert result.reply_count == 2
+
+
+@pytest.mark.parametrize("app_count", [0, 1])
+@pytest.mark.parametrize("web_count", [None, 1, 2])
+def test_kuaishou_duplicate_web_root_can_add_reply_discovery(
+    app_count, web_count, tmp_path, monkeypatch
+):
+    original = _responses
+    values = original("kuaishou")
+    web = copy.deepcopy(values[2])
+    runtime.extract_comment_items("kuaishou", web)[0]["subCommentCount"] = web_count
+    root = runtime.extract_comment_items("kuaishou", values[2])[0]
+    root["subCommentCount"] = app_count
+    monkeypatch.setattr(
+        __import__(__name__, fromlist=["_responses"]),
+        "_responses",
+        lambda name: copy.deepcopy(values),
+    )
+    result, summary, seen = _invoke("kuaishou", tmp_path, monkeypatch, web_roots=web)
+    assert result.root_comment_count == 1
+    assert result.reply_count == 2, summary
+    assert summary["status"] == "completed", summary
+    assert sum("sub_comment" in r.path and "/app/" in r.path for r in seen) == 2
+
+
+@pytest.mark.parametrize("platform", ["douyin", "bilibili"])
+def test_account_manual_main_rejects_account_partial_with_complete_comments(
+    platform, tmp_path, monkeypatch
+):
+    import importlib
+    from types import SimpleNamespace
+
+    module = importlib.import_module(
+        f"aima_ugc.adapters.providers.tikhub_test.{platform}_accounts_test"
+    )
+    summary_path = tmp_path / "run_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "status": "partial_success",
+                "accounts": [
+                    {
+                        "status": "partial",
+                        "posts_discovered": 1,
+                        "stop_reason": "max_account_post_pages_reached",
+                    }
+                ],
+                "partial_content_count": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = SimpleNamespace(
+        run_summary_path=summary_path, content_count=1, workbook_path=tmp_path / "kept.xlsx"
+    )
+    result.workbook_path.write_bytes(b"retained-result")
+    monkeypatch.setattr(module, f"run_{platform}_accounts", lambda **kwargs: result)
+    if platform == "bilibili":
+        monkeypatch.setattr(module, "ACCOUNTS", [tikhub_test.BilibiliAccountTarget(uid="100002")])
+    with pytest.raises(RuntimeError, match="未完成|不完整|全量"):
+        module.main()
+    assert result.workbook_path.read_bytes() == b"retained-result"

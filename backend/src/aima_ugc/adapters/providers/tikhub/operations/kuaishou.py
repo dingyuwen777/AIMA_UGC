@@ -414,7 +414,9 @@ def extract_user_profile(body: dict[str, Any]) -> dict[str, Any]:
 
 def extract_user_post_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """提取用户作品 V2 的视频卡片，兼容当前常见 envelope。"""
-    _, items = _find_user_posts_container(body)
+    container, items = _find_user_posts_container(body)
+    if container is None:
+        raise ValueError("kuaishou 账号作品响应缺少有效作品列表")
     return items
 
 
@@ -451,10 +453,9 @@ def _find_user_posts_container(
             value = current.get(key)
             if not isinstance(value, list):
                 continue
-            items = tuple(
-                item for item in value if isinstance(item, dict) and _is_user_post_item(item)
-            )
-            if items or (not value and "pcursor" in current):
+            # 坏项保留索引并交给 Mapper/账号失败账本，不把过滤后集合当结束证据。
+            items = tuple(item if isinstance(item, dict) else {} for item in value)
+            if isinstance(value, list):
                 return current, items
         queue.extend(value for value in current.values() if isinstance(value, dict))
     return None, ()
@@ -515,12 +516,6 @@ def _is_user_search_item(item: dict[str, Any]) -> bool:
             "user_name",
         )
     )
-
-
-def _is_user_post_item(item: dict[str, Any]) -> bool:
-    feed = item.get("feed")
-    candidate = feed if isinstance(feed, dict) else item
-    return "photo_id" in candidate or "photoId" in candidate
 
 
 def _is_terminal_pcursor(value: str) -> bool:

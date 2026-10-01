@@ -69,6 +69,19 @@ def main() -> None:
             f"存在未完整采集的评论：{summary.get('comment_coverage_failures')}。"
             f"运行摘要：{result.run_summary_path}"
         )
+    incomplete = [
+        {
+            "status": account.get("status"),
+            "stop_reason": account.get("stop_reason"),
+            "error_summary": account.get("error_summary"),
+        }
+        for account in summary.get("accounts", [])
+        if account.get("status") != "completed"
+    ]
+    if summary.get("status") != "completed" or incomplete:
+        raise RuntimeError(
+            f"账号采集未完成全量，已保留生成文件：{incomplete}。运行摘要：{result.run_summary_path}"
+        )
     print(f"采集完成：{result.workbook_path}")
     print(f"运行摘要：{result.run_summary_path}")
 

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from aima_ugc.adapters.providers.tikhub_test import (
     XiaohongshuAccountTarget,
     run_xiaohongshu_accounts,
@@ -48,10 +50,13 @@ def _fake_transport_type(responses: list[dict[str, Any]]) -> type:
     return FakeTransport
 
 
-def test_all_mode_marks_partial_when_reply_hard_page_limit_is_reached(
+def _run_reply_case(
     tmp_path: Path,
     monkeypatch: Any,
-) -> None:
+    *,
+    limit: int = 1,
+    terminal: bool | None = None,
+) -> Any:
     """reply_count 即使低报到已满足，撞到硬页数边界也不能宣称全部回复完整。"""
     env_file = tmp_path / ".env"
     _write_env(env_file)
@@ -153,6 +158,14 @@ def test_all_mode_marks_partial_when_reply_hard_page_limit_is_reached(
             }
         },
     ]
+    if terminal is not None:
+        continuation = copy.deepcopy(responses[-1])
+        continuation["data"]["data"].update(
+            comments=[] if terminal else continuation["data"]["data"]["comments"],
+            cursor="reply-done" if terminal else "reply-still-more",
+            has_more=not terminal,
+        )
+        responses.append(continuation)
     monkeypatch.setattr(
         "aima_ugc.adapters.providers.tikhub_test.operations.runner.TikHubHttpTransport",
         _fake_transport_type(responses),
@@ -168,7 +181,7 @@ def test_all_mode_marks_partial_when_reply_hard_page_limit_is_reached(
         max_account_search_pages=2,
         max_note_pages_per_account=2,
         max_comment_pages_per_content=2,
-        max_reply_pages_per_root=1,
+        max_reply_pages_per_root=limit,
         include_comments=True,
         include_replies=True,
         comment_mode="all",
@@ -178,6 +191,11 @@ def test_all_mode_marks_partial_when_reply_hard_page_limit_is_reached(
     assert result.root_comment_count == 1
     assert result.reply_count == 1
     summary = json.loads(result.run_summary_path.read_text(encoding="utf-8"))
+    return summary
+
+
+def test_all_mode_marks_partial_when_reply_hard_page_limit_is_reached(tmp_path, monkeypatch):
+    summary = _run_reply_case(tmp_path, monkeypatch)
     assert summary["status"] == "completed_with_errors"
     assert summary["accounts"][0]["status"] == "partial"
     assert summary["accounts"][0]["warnings"] == [
@@ -190,3 +208,10 @@ def test_all_mode_marks_partial_when_reply_hard_page_limit_is_reached(
             "reason": "reply_page_limit_boundary",
         }
     ]
+
+
+@pytest.mark.parametrize("terminal", [False, True])
+def test_all_mode_reply_known_count_does_not_hide_cursor_stall(terminal, tmp_path, monkeypatch):
+    summary = _run_reply_case(tmp_path, monkeypatch, limit=3, terminal=terminal)
+    assert summary["accounts"][0]["status"] == ("completed" if terminal else "partial"), summary
+    assert bool(summary["accounts"][0]["warnings"]) == (not terminal), summary

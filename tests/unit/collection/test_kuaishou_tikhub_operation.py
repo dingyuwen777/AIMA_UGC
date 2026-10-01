@@ -87,7 +87,8 @@ def test_account_profile_and_posts_extractors_handle_nested_envelopes() -> None:
             }
         }
     }
-    assert extract_user_post_items(body) == ({"feed": {"photoId": "photo-1"}},)
+    # 坏作品不能静默过滤：保留原索引，由账号执行器记录 Mapper 失败与 partial。
+    assert extract_user_post_items(body) == ({"feed": {"photoId": "photo-1"}}, {"ignored": True})
     pagination = KuaishouUserPostsPagination.from_response(
         previous_cursor="",
         body=body,

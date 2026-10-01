@@ -294,11 +294,12 @@ def extract_user_post_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
 
     provider_data = _provider_data(body)
     if provider_data is None:
-        return ()
+        raise ValueError("B站账号作品响应缺少 data.data")
     archives = provider_data.get("archives")
     if not isinstance(archives, list):
-        return ()
-    return tuple(item for item in archives if isinstance(item, dict) and _string(item.get("aid")))
+        raise ValueError("B站账号作品响应缺少 archives 列表")
+    # 保留坏项的位置，由账号执行器记录逐项失败；不能先过滤再误判空页。
+    return tuple(item if isinstance(item, dict) else {} for item in archives)
 
 
 def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:

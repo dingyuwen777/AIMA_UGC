@@ -167,6 +167,8 @@ class _TikHubDebugRunner:
         self._partial_content_ids: set[str] = set()
         self._comment_page_counts: dict[str, int] = {}
         self._reply_page_counts: dict[tuple[str, str], int] = {}
+        self._reply_expansion_counts: dict[tuple[str, str], int | None] = {}
+        self._reply_ids_by_root: dict[tuple[str, str], set[str]] = {}
         self._comment_coverage_failures: list[dict[str, object]] = []
         self._comment_count_discrepancies: list[dict[str, object]] = []
 
@@ -425,6 +427,23 @@ class _TikHubDebugRunner:
                         error=exc,
                     )
                     raise
+                if mapped.external_content_id != content_id:
+                    # Detail 可能包含其他作品；这些数据不能进入当前作品的输出或写入链。
+                    continue
+                if self.account_mode or self._strict_full_comment_mode():
+                    expected_author = search_content.author
+                    actual_author = mapped.author
+                    if (
+                        expected_author is None
+                        or actual_author is None
+                        or not expected_author.external_account_id
+                        or actual_author.external_account_id != expected_author.external_account_id
+                    ):
+                        error = ValueError("账号作品 Detail 作者身份不一致或缺失")
+                        self._record_candidate_failure(
+                            candidate_id=candidate_id, raw_record=detail_raw, error=error
+                        )
+                        raise error
                 self.store.append_canonical("contents", mapped)
                 self._ingest_content(mapped, candidate_id=candidate_id)
                 mapped_details.append(
@@ -570,11 +589,7 @@ class _TikHubDebugRunner:
         return self.force_refresh or self._strict_full_comment_mode()
 
     def _strict_full_comment_mode(self) -> bool:
-        return (
-            self.platform in {"douyin", "kuaishou", "weibo", "bilibili"}
-            and self.account_mode
-            and self.comment_mode == "all"
-        )
+        return self.account_mode and self.comment_mode == "all"
 
     def _strict_douyin_comment_mode(self) -> bool:
         return self.platform == "douyin" and self.account_mode and self.comment_mode == "all"
@@ -652,6 +667,8 @@ class _TikHubDebugRunner:
                 self.store.append_canonical("comments", comment)
             self._ingest_comment(comment, candidate_id=candidate_id)
             if not is_new:
+                if self._strict_kuaishou_comment_mode():
+                    roots.append(comment)
                 continue
             self.state.remember_comment(
                 self.platform,
@@ -760,8 +777,8 @@ class _TikHubDebugRunner:
                 locator_group=("comments.app_v3" if self.platform == "douyin" else "comments.app"),
             )
             mapped_rows.extend(page_rows)
-            root_total += len(mapped_roots)
-            if mapped_roots:
+            root_total += len(page_rows)
+            if page_rows:
                 progressless_pages = 0
             else:
                 progressless_pages += 1
@@ -1067,7 +1084,7 @@ class _TikHubDebugRunner:
                 locator_group="comments.web",
             )
             mapped_rows.extend(page_rows)
-            root_total += len(mapped_roots)
+            root_total += len(page_rows)
             if self.include_replies:
                 for root in mapped_roots:
                     reply_rows = self._fetch_replies(
@@ -1110,9 +1127,21 @@ class _TikHubDebugRunner:
     ) -> list[UnifiedDataExcelCommentV1]:
         strict_douyin = self._strict_douyin_comment_mode()
         strict_kuaishou = self._strict_kuaishou_comment_mode()
-        strict_weibo = self._strict_weibo_comment_mode()
-        strict_bilibili = self._strict_bilibili_comment_mode()
-        strict_full = strict_douyin or strict_kuaishou or strict_weibo or strict_bilibili
+        strict_full = self._strict_full_comment_mode()
+        page_key = (content.external_content_id, root.external_comment_id)
+        if strict_kuaishou and page_key in self._reply_expansion_counts:
+            previous_count = self._reply_expansion_counts[page_key]
+            incoming_count = root.metrics.reply_count
+            if incoming_count is None and (previous_count is None or previous_count > 0):
+                return []
+            if (
+                incoming_count is not None
+                and previous_count is not None
+                and incoming_count <= previous_count
+            ):
+                return []
+        if strict_kuaishou:
+            self._reply_expansion_counts[page_key] = root.metrics.reply_count
         full_fetch_requested = strict_full or fetch_all
         if full_fetch_requested:
             if not self.include_replies or not self.capability.operation("sub_comments"):
@@ -1162,8 +1191,15 @@ class _TikHubDebugRunner:
             expected_replies = _maximum_known_count(expected_replies, web_reported)
             provider_exhausted = app_exhausted and web_exhausted
 
+        observed_count = len(self._reply_ids_by_root.get(page_key, set()))
+        if strict_kuaishou:
+            self._reply_expansion_counts[page_key] = (
+                max(expected_replies or 0, observed_count)
+                if expected_replies is not None or observed_count
+                else None
+            )
         replies_complete = provider_exhausted and (
-            expected_replies is None or mapped_count >= expected_replies
+            expected_replies is None or observed_count >= expected_replies
         )
         if strict_full and not replies_complete:
             self._partial_content_ids.add(content.external_content_id)
@@ -1173,7 +1209,7 @@ class _TikHubDebugRunner:
                     "kind": "replies",
                     "root_comment_id": root.external_comment_id,
                     "expected": expected_replies,
-                    "collected": mapped_count,
+                    "collected": observed_count,
                     "sources": (
                         ["app_v3"]
                         if strict_douyin
@@ -1299,6 +1335,9 @@ class _TikHubDebugRunner:
                         )
                         continue
                     raise
+                self._reply_ids_by_root.setdefault(
+                    (content.external_content_id, root.external_comment_id), set()
+                ).add(comment.external_comment_id)
                 key = (content.external_content_id, comment.external_comment_id)
                 is_new = key not in self._seen_comments
                 if is_new:

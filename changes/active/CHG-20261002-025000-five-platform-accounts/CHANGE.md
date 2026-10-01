@@ -10,8 +10,19 @@ created: 2026-10-02
 updated: 2026-10-02
 completion_gate: required
 depends_on: []
-affected_areas: [provider, export, tests, docs]
-affected_paths: [backend/src/aima_ugc/adapters/providers/tikhub, backend/src/aima_ugc/adapters/providers/tikhub_test, backend/src/aima_ugc/platform/export, tests/unit/collection, tests/unit/platform]
+affected_areas:
+  - "provider"
+  - "export"
+  - "tests"
+  - "docs"
+affected_paths:
+  - "backend/src/aima_ugc/adapters/providers/tikhub"
+  - "backend/src/aima_ugc/adapters/providers/tikhub_test"
+  - "backend/src/aima_ugc/platform/export"
+  - "tests/unit/collection"
+  - "tests/unit/platform"
+  - "docs/appendix"
+  - "changes/active/CHG-20261002-025000-five-platform-accounts"
 contracts: []
 data_changes: []
 ---
@@ -48,7 +59,7 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 
 ## 推断与待确认
 
-真实 Provider 当前字段和分页行为待本轮受限 Probe 核验；离线 Fixture 不代替真实接口证据。
+本轮有界 Probe 共实际发送 23 次请求，取得五平台身份/作品及部分评论响应形状。该证据不证明五平台真实全量评论/回复完成；具体覆盖与 HTTP 400、请求上限、首次记录器校验失败的限制见 V3。
 
 # 目标、成功标准与非目标
 
@@ -58,7 +69,7 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 
 ## 成功标准
 
-- [ ] AC1–AC8 逐项有实现、自动测试、真实边界或交付证据。
+- [ ] AC1–AC7 的实现与回归已验证；AC8 的同 Reviewer 修复复核及正式 CI 门禁待闭合。
 
 ## 范围
 
@@ -107,14 +118,14 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 账号采集 AC1 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC1 | not_satisfied | 尚未验证 |
-| R2 | 账号采集 AC2 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC2 | not_satisfied | 尚未验证 |
-| R3 | 账号采集 AC3 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC3 | not_satisfied | 尚未验证 |
-| R4 | 账号采集 AC4 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC4 | not_satisfied | 尚未验证 |
-| R5 | 账号采集 AC5 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC5 | not_satisfied | 尚未验证 |
-| R6 | 账号采集 AC6 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC6 | not_satisfied | 尚未验证 |
-| R7 | 账号采集 AC7 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC7 | not_satisfied | 尚未验证 |
-| R8 | 账号采集 AC8 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC8 | not_satisfied | 尚未验证 |
+| R1 | 账号采集 AC1 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC1 | satisfied | V1/V2/V4：稳定身份、URL 冲突、作者匹配和 lean upMid 的公开入口反例 |
+| R2 | 账号采集 AC2 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC2 | satisfied | V1/V2/V4：北京时间日期、缺失时间、映射失败、重复页/停滞与作品硬上限 |
+| R3 | 账号采集 AC3 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC3 | satisfied | V1/V2/V4：已知正数软目标之后继续一级/回复分页；双源共享上限 |
+| R4 | 账号采集 AC4 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC4 | satisfied | V1/V2/V4：五平台公开入口使用生产链；关键词、小红书、Mapper/runtime 回归 |
+| R5 | 账号采集 AC5 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC5 | satisfied | V1/V2/V4：单作品/根评论 HTTP 或 TransportFailure 隔离、成功行保留与摘要 |
+| R6 | 账号采集 AC6 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC6 | satisfied | V1/V2/V4：原子重开验证、长 ID/公式防护及生产 reader/mapper 三条评论身份保持 |
+| R7 | 账号采集 AC7 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC7 | satisfied | V3：23 次本机有界真实发送，生产 Transport/Operation；脱敏摘录，无自动跨 family fallback |
+| R8 | 账号采集 AC8 | backend/src/aima_ugc/adapters/providers/tikhub_test/README.md#AC8 | not_satisfied | V1/V2 已通过；独立审查、Ready 与 current-head/current-base CI 待闭合。合并后状态由真实 PR/Commit/CI/原生 Archive 持有。 |
 
 # 计划改动
 
@@ -166,9 +177,9 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready 前重新读取 README AC 与 Owner 要求。
-- [ ] change_coverage：逐项比对 AC1–AC8。
-- [ ] reverse_audit：公开入口 → 调用 → 输出；输出 → 既有导入器；无前端/数据库能力变更。
+- [x] upstream_re_read：已重读当前 README AC1–AC8 与 Owner 决定；#591/#592 是取消，竞争范围保留。
+- [ ] change_coverage：AC1–AC7 已逐项绑定实现/测试/Probe；AC8 独立审查与合并前门禁仍需闭合。
+- [x] reverse_audit：五平台公开入口 → 生产 Operation/Mapper → Canonical/共享 Excel 已用 FakeTransport 纵切；评论文件 → 生产 reader/mapper 证明三条独立 ID。无前端/数据库能力变更。
 - [ ] unresolved_cleared：not_satisfied 尚未清零。
 
 # 完成证据与状态
@@ -177,17 +188,22 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
-| V0 | 原 Head + main 未提交合并 | git diff --cc | 仅 Excel 一处冲突 | 当前集成边界 |
+| V0 | d0bf5943 集成原 PR 与 main da99a65f | Git merge 与冲突解析 | 保留 main 报告工作簿及评论标注导出 | 当前集成边界 |
+| V1 | 9ff83534；Python 3.14.7 / uv 0.12.3；child PYTHONUTF8=1、PYTHONIOENCODING=utf-8；清除 child SSLKEYLOGFILE | .venv/Scripts/python scripts/dev/validate_changed.py --base origin/main --execute | exit 0；Ruff 38 文件、mypy 435 源文件通过；1899 passed、16 skipped、12 subtests passed | 当前 backend-only 影响范围的单元、Contract、API 回归 |
+| V2 | 同一实现 revision / Windows 本机 | .venv/Scripts/python -m pytest -q --tb=short tests/unit/collection/test_account_entrypoint_flows.py tests/unit/fullstack/test_seed_collection_plan_provider.py | exit 0；44 passed，其中账号公开入口 43 个参数化场景 | 五平台软目标/上限/身份/缺失时间/映射及传输局部失败；Excel 生产重导入 |
+| V3 | 本轮 Probe 的历史观测，不能当作修复后全量重跑 | 生产公开入口 → 生产 Transport/Operation，api.tikhub.io，实际 23 次发送 | 12 个脱敏记录 + 首轮 11 次发送计数；HTTP 200 与微博评论 HTTP 400 如实记录 | 五平台真实字段的有限摘录；Bilibili V2 upMid；不证明完整真实评论/回复链 |
+| V4 | 当前修复代码；Python 3.14.7 / uv 0.12.3 / Windows；无新付费请求 | .venv/Scripts/python scripts/dev/validate_changed.py --base origin/main --execute；.venv/Scripts/python scripts/quality/check_docs.py | 均 exit 0；Ruff 39 文件；mypy 435 源文件；1931 passed、16 skipped、12 subtests passed；文档 gate 通过 | 稳定 ledger F-662-001–008 的直接回归及相邻关键词/小红书/Mapper/Excel；旧快手过滤断言改为验证坏项保留，与公开入口 partial 验收共同约束 |
+
 
 ## 未验证内容与剩余风险
 
-尚未完成实现、测试、真实 Probe、独立审查和 CI，不具备 Ready 或合并资格。
+FIRST_ASSEMBLY 在 9ff83534/da99a65f 给出 BLOCK，8 项稳定 Findings 已按同批修复并通过 V4，仍待同 Reviewer REPAIR_VERIFY 和 current-head/current-base CI，PR 保持 Draft。真实 Probe 未完成五平台全量评论/回复，微博评论出现 HTTP 400；有限响应形状由离线生产入口反例补充，不宣称真实全量验收。未执行 Release/Deploy/生产 Migration 或数据库写入。
 
 ## 交付状态
 
-- 提交：本地集成准备中。
+- 提交：9ff83534 已正常推送到原 feature/BOLL，未改写原作者历史。
 - 拉取请求：https://github.com/dingyuwen777/AIMA_UGC/pull/662，Draft。
-- CI：待新 Head。
+- CI：当前本机 preflight 已通过；Draft 的 required full CI 尚待进入 Ready 后取得。
 - 合并：未合并。
 - Change 归档：未归档。
 - 发布 / 部署：不适用，本次只做 PR 集成。
@@ -195,3 +211,12 @@ PR #662 原 Head 为 d473058d2487e41d80a1baf4ea5d994c3fcd42a3，main 为 da99a65
 ## 备注
 
 #591 已按 Owner 决定直接关闭，#592 以 not_planned 关闭，不视为需求已实现。
+
+## 不随归档目录失效的证据导航
+
+原生归档只移动本文件，附件保留在原 active 目录；以下使用已发布实现 revision 的不可变链接，文件标签保留完整仓库路径。
+
+- [backend/src/aima_ugc/adapters/providers/tikhub_test/README.md](https://github.com/dingyuwen777/AIMA_UGC/blob/9ff83534f0e00cbd1d86c81ded7a674143431e93/backend/src/aima_ugc/adapters/providers/tikhub_test/README.md)
+- [tests/unit/collection/test_account_entrypoint_flows.py](https://github.com/dingyuwen777/AIMA_UGC/blob/9ff83534f0e00cbd1d86c81ded7a674143431e93/tests/unit/collection/test_account_entrypoint_flows.py)
+- [changes/active/CHG-20261002-025000-five-platform-accounts/evidence/probe_accounts.sanitized.json](https://github.com/dingyuwen777/AIMA_UGC/blob/9ff83534f0e00cbd1d86c81ded7a674143431e93/changes/active/CHG-20261002-025000-five-platform-accounts/evidence/probe_accounts.sanitized.json)
+- [docs/appendix/04_TikHub接口选型与真实验证台账.md](https://github.com/dingyuwen777/AIMA_UGC/blob/9ff83534f0e00cbd1d86c81ded7a674143431e93/docs/appendix/04_TikHub接口选型与真实验证台账.md)

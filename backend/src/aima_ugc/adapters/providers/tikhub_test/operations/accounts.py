@@ -937,8 +937,8 @@ class _AccountDebugRunner(_TikHubDebugRunner):
             )
         if target.user_id and user_id != target.user_id:
             raise _AccountResolutionError("快手主页与 user_id 身份不一致")
-        if target.eid and identity.get("eid") not in {None, target.eid}:
-            raise _AccountResolutionError(f"快手账号 {target.label} eid 身份不一致")
+        if not _kuaishou_configured_identity_matches(target, identity):
+            raise _AccountResolutionError(f"快手账号 {target.label} 配置身份冲突或响应身份字段缺失")
         return user_id, "profile_reference"
 
     def _search_kuaishou_account(
@@ -1871,7 +1871,9 @@ def _kuaishou_account_candidate_matches(
 ) -> bool:
     candidate_nickname = candidate.get("nickname")
     if target.kuaishou_id:
-        return candidate.get("kuaishou_id") == target.kuaishou_id
+        return candidate.get(
+            "kuaishou_id"
+        ) == target.kuaishou_id and _kuaishou_configured_identity_matches(target, candidate)
     if target.eid:
         return candidate.get("eid") == target.eid or candidate.get("kuaishou_id") == target.eid
     return (
@@ -1879,6 +1881,29 @@ def _kuaishou_account_candidate_matches(
         or candidate.get("eid") == query
         or candidate_nickname == query
     )
+
+
+def _kuaishou_configured_identity_matches(
+    target: KuaishouAccountTarget,
+    candidate: Mapping[str, str],
+) -> bool:
+    """同时校验稳定标识；缺少约束字段不能当作身份一致。"""
+    for configured, key in (
+        (target.user_id, "user_id"),
+        (target.eid, "eid"),
+        (target.kuaishou_id, "kuaishou_id"),
+    ):
+        if configured is not None and candidate.get(key) != configured:
+            return False
+    if target.homepage_url:
+        homepage_id = _platform_homepage_id(target.homepage_url, "kuaishou")
+        if homepage_id not in {
+            candidate.get("user_id"),
+            candidate.get("eid"),
+            candidate.get("kuaishou_id"),
+        }:
+            return False
+    return True
 
 
 def _kuaishou_content_matches_account(

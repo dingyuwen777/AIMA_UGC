@@ -1074,7 +1074,8 @@ def _bilibili_offset_from_response(value: object) -> int | str | None:
     if isinstance(value, int):
         return value if value >= 0 else None
     if isinstance(value, str) and value.strip():
-        return value.strip()
+        numeric = _nonnegative_integer(value)
+        return numeric if numeric is not None else value.strip()
     return None
 
 

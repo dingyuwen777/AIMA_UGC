@@ -193,8 +193,21 @@ def main() -> None:
     if count_discrepancies:
         print(
             "提示：TikHub 返回了标记为需要修正的评论总数；"
-            "App、Web 和重叠游标均已采集完，已按当前可访问评论导出。"
+            "已按本次实际采集的可访问评论导出。"
             f"差异明细：{count_discrepancies}"
+        )
+    incomplete = [
+        {
+            "status": account.get("status"),
+            "stop_reason": account.get("stop_reason"),
+            "error_summary": account.get("error_summary"),
+        }
+        for account in summary.get("accounts", [])
+        if account.get("status") != "completed"
+    ]
+    if summary.get("status") != "completed" or incomplete:
+        raise RuntimeError(
+            f"账号采集未完成全量，已保留生成文件：{incomplete}。运行摘要：{result.run_summary_path}"
         )
     print(f"采集完成：{result.workbook_path}")
     print(f"运行摘要：{result.run_summary_path}")
