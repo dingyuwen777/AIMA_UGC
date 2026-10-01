@@ -109,7 +109,7 @@ Pydantic
 | Replay | Replay Request / Run / Reversal | Planner / Replay / Shard / Reversal Job |
 | Content | Content / Comment / Filter / Manual Review | 主要是 Query；部分人工动作短事务 |
 | Analysis | Scheme / Run / Result / Manual Override | Planner / Label Shard Job |
-| Reporting | Export Request / Artifact | Export Job |
+| Reporting | Export Request / ReportRun / 冻结报告数据 / Artifact | Export Job；报告生成与飞书发布各自独立 Job，发布失败不影响文件下载。机制见 [backend/src/aima_ugc/modules/reporting/README.md](../../backend/src/aima_ugc/modules/reporting/README.md) |
 | Administration | Provider / Brand / Vehicle / Scheme / Audit | 多为配置短事务 |
 | Identity | Connector / Principal / Session | 登录、登出和授权边界 |
 | Workbench | 声音流 / 品牌用户心智 / UGC 趋势 / 用户布局 | 从 Content/Analysis/Identity 读取当前口径，只有用户布局属于 Workbench 写事实 |

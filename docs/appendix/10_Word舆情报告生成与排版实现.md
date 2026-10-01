@@ -1,22 +1,22 @@
 # Word 舆情报告生成与排版实现
 
-本文用于真正理解和修改当前离线报告链：一份已经处理完成的统一 Excel 怎样经过统计、Markdown 模板、Office Chart、词云和 OOXML 打包，最终生成 `report.md + report.docx`。
+本文解释共用的报告统计和排版：冻结的数据库 Dataset 或已经处理完成的统一 Excel，怎样经过统计、Markdown 模板、Office Chart、词云和 OOXML 打包，最终生成 `report.md + report.docx`。正式管理员流程的冻结、任务恢复、下载及期限由 [backend/src/aima_ugc/modules/reporting/README.md](../../backend/src/aima_ugc/modules/reporting/README.md) 维护。
 
-先区分两个 Reporting 能力：
+先区分业务流程和共用渲染：
 
 ```text
-正式数据库 Excel Export
+正式数据库 Export / ReportRun
 → backend/src/aima_ugc/modules/reporting/
 → PostgreSQL + Job
-→ 产出统一数据明细 XLSX
+→ 导出统一明细，或冻结报告 Dataset 并生成全部产物
 
-本文的离线 Word Report
+本文的 Word 渲染
 → backend/src/aima_ugc/platform/reporting/
-→ 读取统一 XLSX
+→ 消费冻结 Dataset / 读取离线统一 XLSX
 → 产出 Markdown + DOCX
 ```
 
-当前 Word Report **不直接查 PostgreSQL、不创建正式 Job、不再次调用 LLM**。
+渲染器不直接查 PostgreSQL、创建 Job 或调用 LLM。正式报告在创建时冻结数据，生成 Worker 先使用冻结的管理员模型完成代表性筛选与行动建议，再调用共用渲染器；旧离线输入仍可独立验证排版。
 
 ---
 

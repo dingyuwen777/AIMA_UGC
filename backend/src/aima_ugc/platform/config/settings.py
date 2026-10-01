@@ -56,6 +56,7 @@ class PlatformSettings(BaseModel):
     llm_max_connections: int = Field(default=10, ge=1, le=100)
     llm_validation_retries: int = Field(default=1, ge=0, le=3)
     analysis_run_max_in_flight_jobs: int | None = Field(default=None, ge=1)
+    report_artifact_retention_days: int = Field(default=60, ge=1, le=3650)
     # 飞书多维表发布配置；与身份登录配置并存，Secret 仍只保存文件引用。
     feishu_base_url: str = Field(default="https://open.feishu.cn", min_length=1)
     feishu_app_token: str | None = None
@@ -332,6 +333,7 @@ _ENV_TO_FIELD = {
     "AIMA_LLM_BASE_URL": "llm_base_url",
     "AIMA_LLM_PROVIDER_NAME": "llm_provider_name",
     "AIMA_LLM_MODEL": "llm_model",
+    "AIMA_REPORT_ARTIFACT_RETENTION_DAYS": "report_artifact_retention_days",
     "AIMA_LLM_TIMEOUT_SECONDS": "llm_timeout_seconds",
     "AIMA_LLM_MAX_CONNECTIONS": "llm_max_connections",
     "AIMA_LLM_VALIDATION_RETRIES": "llm_validation_retries",

@@ -191,6 +191,27 @@ class PostgresDataExportRepository:
         if limit <= 0:
             raise ValueError("limit 必须大于 0")
         item = reporting_data_export_items_table
+        target = select(
+            item.c.ordinal,
+            item.c.content_id,
+            item.c.content_version,
+        ).where(item.c.export_id == export_id)
+        page = self.load_target_page(target, after_ordinal=after_ordinal, limit=limit)
+        if not page and self.get(export_id) is None:
+            raise DataExportNotFound
+        return page
+
+    def load_target_page(
+        self,
+        target_statement: Any,
+        *,
+        after_ordinal: int,
+        limit: int,
+    ) -> tuple[tuple[int, UnifiedDataExcelV1], ...]:
+        """共用生产投影读取真实目标，不为报告伪造 Export 父事实。"""
+        if limit <= 0:
+            raise ValueError("limit 必须大于 0")
+        item = target_statement.subquery("reporting_projection_targets")
         content = contents_table
         version = content_versions_table
         attempt = provider_request_attempts_table
@@ -235,14 +256,12 @@ class PostgresDataExportRepository:
                     .join(attempt, attempt.c.id == version.c.provider_attempt_id)
                     .join(request, request.c.id == attempt.c.provider_request_id)
                 )
-                .where(item.c.export_id == export_id, item.c.ordinal > after_ordinal)
+                .where(item.c.ordinal > after_ordinal)
                 .order_by(item.c.ordinal)
                 .limit(limit)
             ).mappings()
         )
         if not rows:
-            if self.get(export_id) is None:
-                raise DataExportNotFound
             return ()
         content_ids = tuple(cast(UUID, row["content_id"]) for row in rows)
         versions = {

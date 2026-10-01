@@ -1,6 +1,8 @@
-# Provider-neutral 离线舆情报告
+# Provider-neutral 舆情报告统计与排版
 
-本目录实现从**处理完成的统一数据 Excel**生成 Markdown / Word 舆情报告的只读派生能力。
+本目录提供共用的 Markdown / Word 舆情报告统计与排版。正式管理员流程直接消费冻结的数据库 Dataset；离线调试仍可读取处理完成的统一数据 Excel。渲染器本身不查询数据库、不调模型，也不管理持久任务。
+
+正式报告的范围、冻结依据、生成与独立发布 Job、文件下载和生命周期由 [backend/src/aima_ugc/modules/reporting/README.md](../../modules/reporting/README.md) 解释。数据库入口 `generate_dataset_report()` 先把冻结数据投影到内存 Workbook，再复用本目录的统计及渲染，不读写 Excel 输入文件。Word、Markdown、图表和词云继续消费同一统计上下文。
 
 它和 `modules/reporting/` 的正式 PostgreSQL Excel Export 不是同一件事：
 
@@ -532,10 +534,10 @@ uv run pytest \
 
 ## 15. 当前限制
 
-- 当前是离线文件报告，不是正式网页报告中心；
-- 不生成新的 AI 结论，只统计已有结构化数据；
+- 本目录只负责文件报告的统计与排版；管理员页面及持久报告流程由 Reporting 模块装配；
+- 统计只消费已有结构化数据；正式生成流程在渲染之前调用模型筛选代表性内容和生成建议；
 - Word 转换只支持当前报告需要的 Markdown/Mermaid/Office Chart 子集，不是通用转换引擎；
-- 当前没有独立 Report PostgreSQL Read Model 或 Report Web 中心；管理员配置页的飞书发布使用通用 PostgreSQL Job Runtime，并由专用管理端点查询发布状态；
+- 正式报告保留完整冻结数据及生成依据，管理员历史展示生成/发布两个独立任务；
 - 正式 Excel Data Export 由 `modules/reporting/` 负责，不应和本目录混为一个 Owner。
 
 ---
@@ -559,6 +561,6 @@ uv run pytest \
 `table-style=compact-daily` 的三列日期/维度/数量明细会按 Word 相同的首见顺序透视为“日期 × 维度”原生表格；每张表最多五个维度，避免在线文档列过窄。
 飞书文档保持 Markdown 中的章节、表格和图表顺序；Word 的并排版式在飞书中会顺序展示为“表格后接图”，不承诺像素级分页一致。
 
-报告图表和词云在飞书文档中是高清 PNG。启用飞书发布时，会用本地临时生成的 `report-charts.xlsx` 导入飞书原生“可编辑图表”Sheet，并在每张图下提供对应的数据编辑入口；用户改完 Sheet 后截图并手动替换在线报告中的图片。当前不生成同步清单、不同步按钮，也不会影响原始 Word。该 XLSX 仅作导入输入，不是用户交付物。
+报告图表和词云在飞书文档中是高清 PNG。飞书发布将可编辑图表工作簿导入原生 Sheet，并在每张图下提供对应的数据编辑入口；用户改完 Sheet 后截图并手动替换在线报告中的图片。当前没有图表自动回写，不影响原始 Word。正式数据库报告同时保留图表工作簿供下载；离线入口的本地图表工作簿仍是发布中间件。
 
-发布器上传原始 DOCX 时直接使用本地文件字节并记录 SHA-256；原始 Word 不会被飞书文档修改覆盖。默认报告生成始终只产生 Markdown 和 Word；显式开启飞书发布时才生成并在发布成功后清理本地临时图表 XLSX，同时发起飞书发布请求。
+发布器上传原始 DOCX 时直接使用已保存文件字节并记录 SHA-256；原始 Word 不会被在线修改覆盖。正式报告生成时保存 DOCX、统一数据 Excel、Markdown、图表工作簿和图片，随后可独立发布；飞书中的 Word 和数据 Excel 作为下载件保留，图表导入源成功转换为 Sheet 后仅清理远端中间文件。离线入口继续沿用显式开启发布的行为。

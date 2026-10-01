@@ -1,6 +1,6 @@
 # Reporting 模块
 
-`modules/reporting` 当前负责**正式 PostgreSQL 驱动的 Excel 数据导出**。
+`modules/reporting` 负责正式 PostgreSQL 驱动的 Excel 数据导出，以及管理员数据库报告的持久业务事实。两者共用统一数据投影、通用 Job Runtime 与 Artifact 存储，报告的统计和排版由 `platform/reporting/` 提供。
 
 先区分两个容易混淆的能力：
 
@@ -9,9 +9,13 @@ modules/reporting/
 → 正式 HTTP + Job + PostgreSQL Export
 → 生成统一数据明细 Excel
 
+modules/reporting/report_tables.py
+→ ReportRun + 冻结本期/上期数据 + 报告文件关联
+→ 独立生成与飞书发布 Job
+
 platform/reporting/
-→ 离线 Markdown / Word 舆情报告
-→ 当前不是同一个 PostgreSQL Export Job
+→ 共用 Markdown / Word 统计与排版
+→ 接受冻结 Dataset；也保留离线 Excel 入口
 ```
 
 如果要改声音广场“导出 Excel”，先看本 README；如果要改横向 A4 Word 报告，去：
@@ -19,6 +23,28 @@ platform/reporting/
 [`docs/appendix/10_Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md)
 
 ---
+
+## 数据库报告与恢复
+
+管理员在“报告生成”选择品牌、可选车型及北京时间自然日范围。预检不调用模型；创建时在一致读事务中冻结本期和紧邻等长上期的正文版本、评论、指标、实际分析身份及人工修订，并原子创建生成 Job。Worker 从冻结数据生成 Word、统一数据 Excel、Markdown、可编辑图表工作簿和图片，完整产物集合提交后才开放下载。
+
+报告的模型配置、安全 Secret 引用、配置修订、规则与提示词摘要在创建时冻结。数据库 Provider 在冻结事务内由 System Owner 加行锁，与归档/删除协调；已经进入报告历史的配置禁止永久删除，尚未接管数据库配置时保留既有环境回退。代表性筛选和行动建议使用该模型；已分析内容沿用各自历史结果，不重新打标。粉丝、点赞、评论和分享指标进入筛选输入。模型输出不合法则失败关闭；过载、限流及暂时网络故障交给持久 Job 安排有界退避，成功模型输出跨重试复用。
+
+飞书发布通过独立 Job 读取已保存文件，不重新统计或调用模型。发布原始 Word、数据 Excel、原生文档、可编辑图表 Sheet 和代表性外表/内嵌表，复用现有双向镜像。发布失败保留下载；重试复用已确认外部资源。每次外部发送前检查取消与当前 Job fence，但已经发送且结果未知的请求不能承诺远端零重复。`AIMA_FEISHU_DRY_RUN=true` 时真实发布入口关闭；管理员仍可生成和下载。
+
+`AIMA_REPORT_ARTIFACT_RETENTION_DAYS` 默认 60 天，范围 1–3650 天，在报告创建时冻结；期限从完整产物提交开始计算。已有 Scheduler 清理器删除到期文件，保留报告历史和依据。文件写入中途失败留下的无关联 `report.output` 文件沿用一天孤儿清理窗口；有报告关联的完整文件不进入该窗口。
+
+实现定位：
+
+- [backend/src/aima_ugc/contracts/reports.py](../../contracts/reports.py)：管理员请求、报告历史、文件下载与模型依据契约。
+- [backend/src/aima_ugc/bootstrap/report_runs_http.py](../../bootstrap/report_runs_http.py)：预检、范围校验、一致读冻结、取消和恢复。
+- [backend/src/aima_ugc/adapters/persistence/postgres/report_runs.py](../../adapters/persistence/postgres/report_runs.py)：报告唯一写 Owner，保存数据、断点与文件关联。
+- [backend/src/aima_ugc/bootstrap/report_runs_worker.py](../../bootstrap/report_runs_worker.py)：生成和独立发布的生产装配。
+- [backend/src/aima_ugc/modules/reporting/report_jobs.py](report_jobs.py)：版本化 Payload、超时与重试注册。
+- [backend/src/aima_ugc/modules/reporting/report_tables.py](report_tables.py)：ReportRun、冻结数据及报告文件关联表。
+- [tests/integration/reporting/test_database_reports.py](../../../../../tests/integration/reporting/test_database_reports.py)：专用 PostgreSQL 下的完整流程、过载、取消、孤儿和过期验证；真实浏览器验收必须显式开启。
+
+排障先通过 ReportRun ID、生成/发布 Job ID 和 request ID 关联应用 `.log`：`report.snapshot.created` 记录冻结规模，`report.llm.started/completed` 记录模型与耗时，`report.generated` / `report.published` 记录完成，`report.retry_requested` / `report.failed` 记录失败类别，通用 `job.*` 记录尝试次数及计划恢复。日志不输出 Secret、正文或原始模型响应。
 
 ## 1. 当前正式 Export 主链
 
