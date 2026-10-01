@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261001-112055-analysis-capacity-feedback
 title: 修正打标容量观测并加快不同规模任务的自适应调度
 level: L3
-status: ready_for_review
+status: done
 owner: assistant
 branch: fix/analysis-capacity-feedback
 created: 2026-10-01 11:20:55 +08:00
