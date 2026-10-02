@@ -66,7 +66,10 @@ def test_service_persists_run_and_scopes_bound_to_real_job(
                 job_id=job.id,
                 trigger_type="backfill",
                 config_snapshot={
-                    "schema_version": "collection-run-config.v2",
+                    "plan_type": "tikhub",
+                    "comment_policy": "adaptive",
+                    "decision_policy": {"comment_mode": "adaptive"},
+                    "schema_version": "collection-run-config.v4",
                     "platforms": ["xiaohongshu", "douyin"],
                 },
                 scopes=(
@@ -380,7 +383,12 @@ def test_repository_never_commits_caller_transaction(database_runtime: DatabaseR
             service.create_run(
                 job_id=job.id,
                 trigger_type="api",
-                config_snapshot={},
+                config_snapshot={
+                    "schema_version": "collection-run-config.v4",
+                    "plan_type": "tikhub",
+                    "comment_policy": "adaptive",
+                    "decision_policy": {"comment_mode": "adaptive"},
+                },
                 scopes=(),
             )
             raise RuntimeError("force rollback")

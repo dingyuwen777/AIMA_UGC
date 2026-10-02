@@ -11,7 +11,7 @@ updated: 2026-10-02T17:45:00+08:00
 completion_gate: required
 depends_on: []
 affected_areas: [collection, content, frontend, contracts, database, docs]
-affected_paths: [backend/src/aima_ugc/contracts, backend/src/aima_ugc/modules/collection, backend/src/aima_ugc/adapters/persistence/postgres, backend/src/aima_ugc/bootstrap, frontend/src/features/collection-strategy, frontend/src/generated/api/client, frontend/e2e, frontend/fullstack, tests, migrations/versions, docs]
+affected_paths: [backend/src/aima_ugc/contracts, backend/src/aima_ugc/modules/collection, backend/src/aima_ugc/adapters/persistence/postgres, backend/src/aima_ugc/bootstrap, frontend/src/features/collection-strategy, frontend/src/generated/api/client, frontend/e2e, frontend/e2e-fullstack, tests, migrations/versions, docs]
 contracts: [CollectionPlanCreateRequest, CollectionPlanResponse, CollectionDecisionPolicyV1, CollectionDecisionRequestV1, ReplyDecisionRequestV1, collection-run-config]
 data_changes: [collection_plans.plan_type, collection_content_actions.comment_action, collection_plan_decision_policies.policy]
 ---
@@ -187,7 +187,7 @@ A（采用）：显式父类型+类型配置、复用已有表和分页；兼容
 所有产品实现和分层证据尚未完成，不能宣称可交付；原方案历史事实需逐项以现代码核验。
 
 ## 交付状态
-提交/PR/CI/merge/main-fresh/archive/Closure均未执行。用户授权自动完成本地验证后merge；不把自动测试冒称用户人工验收。
+本地任务分支与首个治理提交4ea78ff已推送，早期Draft PR #695已建立。后续实现提交、Ready/CI/merge/main-fresh/archive/Closure仍待完成。用户授权自动完成本地验证后merge；不把自动测试冒称用户人工验收。
 
 ## 备注
-当前Source Mode读取canonical d2802f6994b78fcd6defed2bd2952acc54f86a35；文件位于本轮从GitHub直接获取的临时源码目录，仅本轮取得规则，未使用目标安装副本。原方案完整保存正式Roadmap和Issue。
+当前Source Mode读取canonical d2802f6994b78fcd6defed2bd2952acc54f86a35；文件位于本轮从GitHub直接获取的临时源码目录，仅本轮取得规则，未使用目标安装副本。完整36节原方案保存在同目录 APPROVED_PLAN.md 与 live Issue #694；正式知识已迁移到 Product/Blueprint/Collection/Operations Owner，施工方案退出 Live Roadmap。

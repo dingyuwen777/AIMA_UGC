@@ -13,6 +13,7 @@ DetailAction = Literal["fetch", "skip"]
 CommentAction = Literal[
     "skip",
     "fetch_adaptive",
+    "fetch_full",
     "fetch_incremental",
     "refresh_controlled",
     "probe_first_page",
@@ -42,12 +43,14 @@ CommentReason = Literal[
     "comment_count_decreased",
     "comment_count_unknown_detail_required",
     "comment_count_unknown_probe",
+    "full_capture_incomplete",
 ]
 ReplyReason = Literal[
     "sub_comments_unavailable",
     "reply_count_zero",
     "reply_count_positive",
     "reply_count_unknown_probe",
+    "reply_count_unchanged_complete",
 ]
 
 
@@ -118,7 +121,7 @@ class CollectionDecisionPolicyV1(CollectionBaseModel):
 
     comments_enabled: bool = True
     comment_trigger: Literal["new_or_comment_changed"] = "new_or_comment_changed"
-    comment_mode: Literal["adaptive"] = "adaptive"
+    comment_mode: Literal["adaptive", "full"] = "adaptive"
     full_fetch_threshold: int = Field(default=50, ge=1)
     sample_target: int = Field(default=50, ge=1)
     reply_target_per_root: int = Field(default=5, ge=1)
@@ -131,6 +134,7 @@ class ContentObservationV1(CollectionBaseModel):
     """Decision Service 所需的本次规范化内容事实，不包含 Provider Raw。"""
 
     comment_count: int | None = Field(default=None, ge=0)
+
     comments_available: bool | None = None
     search_missing_required_fields: bool = False
     business_changed: bool = False
@@ -140,6 +144,8 @@ class PreviousContentStateV1(CollectionBaseModel):
     """Decision Service 所需的上次当前状态最小快照。"""
 
     comment_count: int | None = Field(default=None, ge=0)
+    # 从 Content Owner 的一级与回复 Coverage 聚合；缺证据时不得推断完整。
+    full_comment_capture_complete: bool = False
 
 
 class CollectionDecisionContextV1(CollectionBaseModel):
@@ -179,6 +185,8 @@ class ReplyDecisionRequestV1(CollectionBaseModel):
         "collection-reply-decision-request.v1"
     )
     reply_count: int | None = Field(default=None, ge=0)
+    previous_reply_count: int | None = Field(default=None, ge=0)
+    previous_capture_complete: bool = False
     policy: CollectionDecisionPolicyV1 = Field(default_factory=CollectionDecisionPolicyV1)
     capability: ProviderPlatformCapabilityV1
 

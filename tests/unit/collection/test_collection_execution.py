@@ -62,7 +62,12 @@ def test_service_creates_supported_run_with_immutable_scope_sequence() -> None:
     result = service.create_run(
         job_id=job_id,
         trigger_type="manual",
-        config_snapshot={"schema_version": "collection-run-config.v2"},
+        config_snapshot={
+            "plan_type": "tikhub",
+            "comment_policy": "adaptive",
+            "decision_policy": {"comment_mode": "adaptive"},
+            "schema_version": "collection-run-config.v4",
+        },
         scopes=scopes,
     )
 
@@ -71,7 +76,12 @@ def test_service_creates_supported_run_with_immutable_scope_sequence() -> None:
         {
             "job_id": job_id,
             "trigger_type": "manual",
-            "config_snapshot": {"schema_version": "collection-run-config.v2"},
+            "config_snapshot": {
+                "schema_version": "collection-run-config.v4",
+                "plan_type": "tikhub",
+                "comment_policy": "adaptive",
+                "decision_policy": {"comment_mode": "adaptive"},
+            },
             "scopes": tuple(scopes),
             "manual_plan_id": None,
             "occurrence_id": None,
@@ -89,7 +99,12 @@ def test_service_passes_optional_import_batch_binding_to_repository() -> None:
     service.create_run(
         job_id=uuid4(),
         trigger_type="api",
-        config_snapshot={},
+        config_snapshot={
+            "schema_version": "collection-run-config.v4",
+            "plan_type": "tikhub",
+            "comment_policy": "adaptive",
+            "decision_policy": {"comment_mode": "adaptive"},
+        },
         scopes=(),
         import_batch_id=import_batch_id,
     )
@@ -105,7 +120,12 @@ def test_service_passes_optional_campaign_binding_to_repository() -> None:
     service.create_run(
         job_id=uuid4(),
         trigger_type="api",
-        config_snapshot={},
+        config_snapshot={
+            "schema_version": "collection-run-config.v4",
+            "plan_type": "tikhub",
+            "comment_policy": "adaptive",
+            "decision_policy": {"comment_mode": "adaptive"},
+        },
         scopes=(),
         data_import_campaign_id=campaign_id,
     )
@@ -121,7 +141,12 @@ def test_service_accepts_non_scheduled_trigger_types(trigger_type: str) -> None:
     service.create_run(
         job_id=uuid4(),
         trigger_type=trigger_type,
-        config_snapshot={},
+        config_snapshot={
+            "schema_version": "collection-run-config.v4",
+            "plan_type": "tikhub",
+            "comment_policy": "adaptive",
+            "decision_policy": {"comment_mode": "adaptive"},
+        },
         scopes=(),
     )
 
@@ -136,7 +161,12 @@ def test_service_accepts_scheduled_run_with_occurrence_only() -> None:
     service.create_run(
         job_id=uuid4(),
         trigger_type="scheduled",
-        config_snapshot={},
+        config_snapshot={
+            "schema_version": "collection-run-config.v4",
+            "plan_type": "tikhub",
+            "comment_policy": "adaptive",
+            "decision_policy": {"comment_mode": "adaptive"},
+        },
         scopes=(),
         occurrence_id=occurrence_id,
     )
@@ -168,7 +198,12 @@ def test_service_rejects_inconsistent_plan_occurrence_binding(
         service.create_run(
             job_id=uuid4(),
             trigger_type=trigger_type,
-            config_snapshot={},
+            config_snapshot={
+                "schema_version": "collection-run-config.v4",
+                "plan_type": "tikhub",
+                "comment_policy": "adaptive",
+                "decision_policy": {"comment_mode": "adaptive"},
+            },
             scopes=(),
             manual_plan_id=manual_plan_id,
             occurrence_id=occurrence_id,
@@ -185,7 +220,12 @@ def test_service_rejects_unknown_trigger_before_repository_call() -> None:
         service.create_run(
             job_id=uuid4(),
             trigger_type="cron",
-            config_snapshot={},
+            config_snapshot={
+                "schema_version": "collection-run-config.v4",
+                "plan_type": "tikhub",
+                "comment_policy": "adaptive",
+                "decision_policy": {"comment_mode": "adaptive"},
+            },
             scopes=(),
         )
 
@@ -206,8 +246,32 @@ def test_service_rejects_duplicate_scope_identity_before_repository_call() -> No
         service.create_run(
             job_id=uuid4(),
             trigger_type="api",
-            config_snapshot={},
+            config_snapshot={
+                "schema_version": "collection-run-config.v4",
+                "plan_type": "tikhub",
+                "comment_policy": "adaptive",
+                "decision_policy": {"comment_mode": "adaptive"},
+            },
             scopes=(scope, scope),
         )
 
+    assert repository.calls == []
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        {},
+        {"schema_version": "collection-run-config.v2"},
+        {"schema_version": "collection-run-config.v3", "mode": "content_supplement"},
+        {"schema_version": "collection-run-config.v99", "plan_type": "tikhub"},
+        {"schema_version": "collection-run-config.v4", "plan_type": "unknown"},
+    ],
+)
+def test_new_run_rejects_historical_or_unknown_snapshot_before_repository(snapshot) -> None:
+    repository = RecordingCollectionRepository()
+    with pytest.raises(ValueError):
+        CollectionExecutionService(repository).create_run(
+            job_id=uuid4(), trigger_type="api", config_snapshot=snapshot, scopes=()
+        )
     assert repository.calls == []

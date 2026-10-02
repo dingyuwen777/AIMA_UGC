@@ -122,6 +122,9 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
+                    "schema_version": "collection-run-config.v4",
+                    "plan_type": "tikhub",
+                    "decision_policy": {"comment_mode": "adaptive"},
                     **stage4_collection_config_snapshot(platform_runtime),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",

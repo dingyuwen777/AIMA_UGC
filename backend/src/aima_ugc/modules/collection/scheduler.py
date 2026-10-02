@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from aima_ugc.modules.collection.planning import CollectionPlanRecord
+from aima_ugc.modules.collection.planning import CollectionPlanRecord, require_tikhub_plan
 
 MISFIRE_SUPERSEDED = "misfire_superseded"
 _MAX_CALENDAR_SEARCH_DAYS = 366 * 5
@@ -89,6 +89,7 @@ def next_schedule_time(schedule_expr: str, timezone: str, after: datetime) -> da
 
 def resolve_scheduler_plan(plan: CollectionPlanRecord, *, now: datetime) -> SchedulerPlanDecision:
     """按已批准 `latest_only` 策略解析一个已加锁 Plan。"""
+    require_tikhub_plan(plan)
     if now.utcoffset() is None:
         raise ValueError("now 必须包含时区")
 

@@ -33,6 +33,7 @@ const plan = {
   next_run_at: '2026-08-28T01:00:00Z',
   last_scheduled_at: null,
   detail_policy: 'on_change',
+  plan_type: 'tikhub',
   comment_policy: 'adaptive',
   platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId, search_config: {} }],
   keyword_pack_ids: [packId],
@@ -163,7 +164,7 @@ test('matches the formal 1440×900 Figma geometry for the strategy workspace', a
   await expect(page.locator('.detail-card').getByRole('button', { name: '编辑', exact: true })).toBeVisible()
 })
 
-test('matches the formal keyword modal and collection plan drawer geometry', async ({ page }) => {
+test('matches the keyword modal and approved TikHub plan modal geometry', async ({ page }) => {
   await page.goto('/collection-strategy')
   await page.getByRole('button', { name: '关键词包' }).click()
   await page.locator('.table-head').getByRole('button', { name: /新建词包/ }).click()
@@ -174,13 +175,24 @@ test('matches the formal keyword modal and collection plan drawer geometry', asy
   await expectBox(packDialog.locator('footer'), { height: 76 })
   await packDialog.getByRole('button', { name: '关闭' }).click()
 
-  await page.getByRole('button', { name: /新建采集计划/ }).click()
-  const drawer = page.getByRole('dialog', { name: '新建采集计划' })
-  await expectBox(drawer, { x: 930, y: 0, width: 510, height: 900 })
-  await expectBox(drawer.locator('header'), { height: 84 })
-  await expectBox(drawer.locator('.body'), { y: 84, height: 742 })
-  await expectBox(drawer.locator('footer'), { y: 826, height: 74 })
-  await expectBox(drawer.locator('.platform').first(), { height: 68 })
+  await page.getByRole('button', { name: /新建 TikHub 采集计划/ }).click()
+  const drawer = page.getByRole('dialog', { name: '新建 TikHub 采集计划' })
+  await expectBox(drawer, { x: 240, y: 40, width: 960, height: 820 })
+  const body = drawer.locator('.aima-modal-body')
+  await expect(body).toHaveCSS('overflow-y', 'auto')
+  const headerBefore = await drawer.locator('header').boundingBox()
+  const footerBefore = await drawer.locator('footer').boundingBox()
+  await body.evaluate((element) => { element.scrollTop = element.scrollHeight })
+  expect(await drawer.locator('header').boundingBox()).toEqual(headerBefore)
+  expect(await drawer.locator('footer').boundingBox()).toEqual(footerBefore)
+  await expect(drawer.getByRole('button', { name: '取消', exact: true })).toBeInViewport()
+  await expect(drawer.locator('.platforms')).toHaveCSS('grid-template-columns', /\d+.* \d+/)
+  await page.screenshot({ path: '../.runtime/tikhub-plan-source/tikhub-modal-desktop.png' })
+  await page.setViewportSize({ width: 640, height: 700 })
+  await expectBox(drawer, { x: 24, y: 24, width: 592, height: 652 })
+  await expect(drawer.locator('.platforms')).toHaveCSS('grid-template-columns', /^\d+(\.\d+)?px$/)
+  await page.screenshot({ path: '../.runtime/tikhub-plan-source/tikhub-modal-narrow.png' })
+  await page.setViewportSize({ width: 1440, height: 900 })
 
   await drawer.getByText('指定品牌', { exact: true }).click()
   const brandSelect = drawer.locator('.brand-select')
@@ -308,11 +320,11 @@ test('opens complete current pack details from plan references and returns to th
 
 test('supports Escape and returns keyboard focus for every strategy overlay', async ({ page }) => {
   await page.goto('/collection-strategy')
-  const create = page.getByRole('button', { name: '新建采集计划', exact: true })
+  const create = page.getByRole('button', { name: '新建 TikHub 采集计划', exact: true })
   await create.click()
-  await expect(page.getByRole('dialog', { name: '新建采集计划', exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '新建 TikHub 采集计划', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog', { name: '新建采集计划', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '新建 TikHub 采集计划', exact: true })).toHaveCount(0)
   await expect(create).toBeFocused()
   const detail = page.getByRole('button', { name: '查看详情' })
   await detail.click()
@@ -327,14 +339,14 @@ test('supports Escape and returns keyboard focus for every strategy overlay', as
   await expect(pack).toBeFocused()
 })
 
-test('edits the selected plan through a single drawer and preserves its identity', async ({ page }) => {
+test('edits the selected plan through the shared TikHub modal and preserves its identity', async ({ page }) => {
   await page.route(`**/api/v1/collection-plans/${planId}`, async (route) => {
     await route.fulfill({ json: { ...plan, name: '编辑后的计划', schedule_version: 4 } })
   })
   await page.goto('/collection-strategy')
   await page.getByRole('button', { name: '查看详情' }).click()
   await page.getByRole('button', { name: '编辑计划', exact: true }).click()
-  const editor = page.getByRole('dialog', { name: '编辑采集计划', exact: true })
+  const editor = page.getByRole('dialog', { name: '编辑 TikHub 采集计划', exact: true })
   await expect(editor).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(1)
   await expect(editor.getByText('指定品牌', { exact: true })).toBeVisible()
@@ -343,11 +355,14 @@ test('edits the selected plan through a single drawer and preserves its identity
   await editor.getByLabel('小红书排序').selectOption('latest')
   await editor.getByLabel('小红书发布时间').selectOption('1d')
   await editor.getByLabel('小红书内容类型').selectOption('all')
+  await editor.getByRole('radio', { name: /^全量采集/ }).check()
   const request = page.waitForRequest((item) => new URL(item.url()).pathname === `/api/v1/collection-plans/${planId}` && item.method() === 'PUT')
   await editor.getByRole('button', { name: '保存修改' }).click()
   const payload = (await request).postDataJSON()
   expect(payload).toMatchObject({
     name: '编辑后的计划',
+    plan_type: 'tikhub',
+    comment_policy: 'full',
     expected_version: 3,
     brand_ids: [activeBrandId],
   })

@@ -74,7 +74,10 @@ def stage4_collection_config_snapshot(
     finally:
         session.close()
     return {
-        "schema_version": "collection-run-config.v2",
+        "schema_version": "collection-run-config.v4",
+        "plan_type": "tikhub",
+        "comment_policy": "adaptive",
+        "decision_policy": {"comment_mode": "adaptive"},
         "brand_vehicle_filter": filter_snapshot.model_dump(mode="json"),
         **overrides,
     }

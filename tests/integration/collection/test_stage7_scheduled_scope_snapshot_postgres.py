@@ -201,7 +201,8 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
             ("xiaohongshu", "keyword_search", "电动车", "content_discovery"),
         }
         assert run["config_snapshot"]["keyword_pack_ids"] == [str(pack.id)]
-        assert run["config_snapshot"]["schema_version"] == "collection-run-config.v2"
+        assert run["config_snapshot"]["schema_version"] == "collection-run-config.v4"
+        assert run["config_snapshot"]["plan_type"] == "tikhub"
         assert run["config_snapshot"]["search_snapshot"]["terms"] == ["爱玛", "电动车"]
         assert run["config_snapshot"]["brand_vehicle_filter"]["search_semantics"] == (
             "keyword_pack"

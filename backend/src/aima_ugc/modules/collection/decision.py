@@ -67,17 +67,32 @@ class CollectionDecisionService:
 
         if request.reply_count == 0:
             return ReplyDecisionV1(action="skip", reason="reply_count_zero")
+        if (
+            request.policy.comment_mode == "full"
+            and request.previous_capture_complete
+            and request.reply_count is not None
+            and request.reply_count == request.previous_reply_count
+        ):
+            return ReplyDecisionV1(action="skip", reason="reply_count_unchanged_complete")
         if request.reply_count is None:
             return ReplyDecisionV1(
                 action="probe_first_page",
                 reason="reply_count_unknown_probe",
-                target=request.policy.reply_target_per_root,
+                target=(
+                    None
+                    if request.policy.comment_mode == "full"
+                    else request.policy.reply_target_per_root
+                ),
             )
 
         return ReplyDecisionV1(
             action="fetch_target",
             reason="reply_count_positive",
-            target=min(request.reply_count, request.policy.reply_target_per_root),
+            target=(
+                request.reply_count
+                if request.policy.comment_mode == "full"
+                else min(request.reply_count, request.policy.reply_target_per_root)
+            ),
         )
 
     @staticmethod
@@ -127,9 +142,16 @@ class CollectionDecisionService:
             detail = request.capability.operation("content_detail")
             if detail_action == "fetch" and detail is not None and detail.observes_comment_count:
                 return "defer_until_detail", "comment_count_unknown_detail_required", None
+            if policy.comment_mode == "full":
+                return "fetch_full", "comment_count_unknown_probe", None
             return "probe_first_page", "comment_count_unknown_probe", policy.sample_target
 
         target = cls._comment_target(current_count, request)
+        if policy.comment_mode == "full":
+            if request.previous is None:
+                return "fetch_full", "new_content_comments", target
+            if not request.previous.full_comment_capture_complete:
+                return "fetch_full", "full_capture_incomplete", target
         if request.previous is None:
             return "fetch_adaptive", "new_content_comments", target
 
@@ -157,6 +179,7 @@ class CollectionDecisionService:
     ) -> int | None:
         if comment_action not in {
             "fetch_adaptive",
+            "fetch_full",
             "fetch_incremental",
             "refresh_controlled",
             "probe_first_page",
@@ -166,7 +189,9 @@ class CollectionDecisionService:
         sub_comments = request.capability.operation("sub_comments")
         if comments is None or sub_comments is None or not comments.supports_sub_comments:
             return None
-        return request.policy.reply_target_per_root
+        return (
+            None if request.policy.comment_mode == "full" else request.policy.reply_target_per_root
+        )
 
     @staticmethod
     def _comment_target(
@@ -174,6 +199,8 @@ class CollectionDecisionService:
         request: CollectionDecisionRequestV1,
     ) -> int:
         policy = request.policy
+        if policy.comment_mode == "full":
+            return current_count
         if current_count <= policy.full_fetch_threshold:
             return current_count
         return min(current_count, policy.sample_target)

@@ -173,6 +173,9 @@ def test_scope_runtime_persists_search_or_detail_final_canonical_before_filter(
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
+                    "schema_version": "collection-run-config.v4",
+                    "plan_type": "tikhub",
+                    "decision_policy": {"comment_mode": "adaptive"},
                     **stage4_collection_config_snapshot(database_runtime, alias=filter_alias),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",

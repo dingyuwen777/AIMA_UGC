@@ -522,6 +522,8 @@ PostgreSQL、Artifact、日志和 Secret 不随应用版本目录切换。使用
 
 代码回滚本身不删除已经写入的业务数据，也不能替代数据补偿方案。
 
+TikHub 全量计划升级先执行 [migrations/versions/20261002_0079_tikhub_plan_full_comments.py](../../migrations/versions/20261002_0079_tikhub_plan_full_comments.py)，再启动同版本 Scheduler/Worker/API/前端。旧 Worker 不支持新的 v4 快照及全量策略，不能对新工作直接切回旧镜像。该 Migration 在存在全量计划、历史 `fetch_full` 审计动作或排队/运行中的 v4 Run 时拒绝降级；即使停用计划、任务已结束，历史全量动作仍阻止删除其执行语义。应用排空、计划切回自适应不等于已经获得安全 Schema 降级条件，不得为通过降级篡改历史动作或 Run。确需回到不支持全量的旧版本时，按批准且已验证的 Backup Set 恢复边界处理；本功能的本地验证不代表生产迁移或恢复已执行。
+
 浏览器安全策略的回滚要单独处理：CSP/Permissions-Policy 回归可以回退应用镜像后重新验证；HSTS 已被浏览器从 HTTPS 响应接受后会在 `max-age` 内持久存在，不能把“回退镜像”当成立即撤销 HSTS。确需撤销时必须在可用 HTTPS 入口返回 `Strict-Transport-Security: max-age=0`，因此当前不启用 `includeSubDomains` 或 `preload`。
 
 ---

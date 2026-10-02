@@ -306,7 +306,8 @@ def _scheduled_run_snapshot(
 ) -> dict[str, object]:
     """冻结调度时可安全持久化的 Plan/Provider/词包执行事实，不复制 Secret 值。"""
     return {
-        "schema_version": "collection-run-config.v2",
+        "schema_version": "collection-run-config.v4",
+        "plan_type": plan.plan_type,
         "plan_id": str(plan.id),
         "plan_name": plan.name,
         "schedule_version": plan.schedule_version,

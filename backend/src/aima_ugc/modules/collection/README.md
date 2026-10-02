@@ -421,6 +421,8 @@ skip / refresh
 
 具体平台能力和采集策略见 Blueprint 08。
 
+计划父事实显式保存 `plan_type=tikhub`，TikHub 配置支持默认 `adaptive` 和 `full`；创建/更新保证评论策略与 Decision Policy 一致，Scheduler 冻结新 v4 Run，编辑不会启动历史补采。类型和历史快照兼容检查由 [backend/src/aima_ugc/modules/collection/run_policy.py](run_policy.py) 统一执行。全量完整度从 Content Owner 的根/线程 Coverage 聚合；动作保存本次决策的输入，恢复不会重新解释已有动作。全量计划复用 Supplement 生产分页及 Raw/Lease/Fencing/取消边界，精确决策见 [backend/src/aima_ugc/modules/collection/decision.py](decision.py)，用户规则见 [docs/blueprint/08_采集策略与平台能力.md](../../../../../docs/blueprint/08_采集策略与平台能力.md#10-comment-coverage-如何影响后续刷新)。
+
 统一日期/已选内容及旧 Batch/Campaign 辅助补采与普通 Discovery 的采样目的不同：已批准的 typed `note_id/aweme_id/status_id/av_id/bv_id/photo_id` 才能作为评论目标。小红书与抖音已验证短链先经独立 Detail Attempt/Raw 精确解析；零个或多个候选、以及解析 ID 已归属于另一条 Content 时阻断评论请求，分别保留不可获取、歧义或 `identity_conflict` 原因。摄取事务对目标 typed ID 加锁并复核归属，避免两个补采 Scope 在检查与写入之间同时认领该身份。资格读取保留五平台直采、待精确解析和缺身份数量；统一补采为所有已确认内容创建 Scope，显式所选内容不重筛 AI，缺身份 Scope 明确失败且不发送 Provider 请求。辅助补采对已请求的一级评论和回复按 Provider 分页终止判断覆盖，回复不足会使内容 Coverage 与 Run 为部分完成。Scope 检查点持久保存身份状态、评论阶段及一级评论/回复分项计数，供网页轮询。`imports_test` 使用同一身份解析边界。
 
 ---

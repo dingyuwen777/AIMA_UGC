@@ -1128,6 +1128,14 @@ export interface CollectionPlanCopyRequest {
   name: string;
 }
 
+export type CollectionPlanCreateRequestCommentPolicy = typeof CollectionPlanCreateRequestCommentPolicy[keyof typeof CollectionPlanCreateRequestCommentPolicy];
+
+
+export const CollectionPlanCreateRequestCommentPolicy = {
+  adaptive: 'adaptive',
+  full: 'full',
+} as const;
+
 /**
  * Plan 逐平台提交 Provider-neutral 搜索配置，不接收 Provider 私有参数。
  */
@@ -1143,6 +1151,7 @@ export interface CollectionPlanPlatformRequest {
 export interface CollectionPlanCreateRequest {
   /** @maxItems 100 */
   brand_ids?: string[];
+  comment_policy?: CollectionPlanCreateRequestCommentPolicy;
   enabled?: boolean;
   /** @maxItems 20 */
   keyword_pack_ids?: string[];
@@ -1151,6 +1160,7 @@ export interface CollectionPlanCreateRequest {
      * @maxLength 200
      */
   name: string;
+  plan_type?: 'tikhub';
   /**
      * @minItems 1
      * @maxItems 5
@@ -1163,15 +1173,26 @@ export interface CollectionPlanCreateRequest {
   schedule_expr: string;
 }
 
+export type CollectionPlanResponseCommentPolicy = typeof CollectionPlanResponseCommentPolicy[keyof typeof CollectionPlanResponseCommentPolicy];
+
+
+export const CollectionPlanResponseCommentPolicy = {
+  adaptive: 'adaptive',
+  full: 'full',
+} as const;
+
 export interface CollectionPlanPlatformResponse {
   platform: CollectionPlatform;
   provider_config_id: string;
   search_config: CollectionSearchConfig;
 }
 
+/**
+ * 当前唯一详情类型；保留既有扁平字段，plan_type 是显式类型事实。
+ */
 export interface CollectionPlanResponse {
   brand_ids?: string[];
-  comment_policy: 'adaptive';
+  comment_policy: CollectionPlanResponseCommentPolicy;
   created_at: string;
   detail_policy: 'on_change';
   enabled: boolean;
@@ -1180,6 +1201,7 @@ export interface CollectionPlanResponse {
   last_scheduled_at?: string | null;
   name: string;
   next_run_at?: string | null;
+  plan_type: 'tikhub';
   platforms: CollectionPlanPlatformResponse[];
   schedule_expr: string;
   /** @exclusiveMinimum 0 */
@@ -1203,12 +1225,21 @@ export interface CollectionPlanListResponse {
   total: number;
 }
 
+export type CollectionPlanUpdateRequestCommentPolicy = typeof CollectionPlanUpdateRequestCommentPolicy[keyof typeof CollectionPlanUpdateRequestCommentPolicy];
+
+
+export const CollectionPlanUpdateRequestCommentPolicy = {
+  adaptive: 'adaptive',
+  full: 'full',
+} as const;
+
 /**
  * 完整替换一个计划的下一版本配置；历史 Run/Occurrence 继续保留旧版本事实。
  */
 export interface CollectionPlanUpdateRequest {
   /** @maxItems 100 */
   brand_ids?: string[];
+  comment_policy?: CollectionPlanUpdateRequestCommentPolicy;
   enabled: boolean;
   /** @exclusiveMinimum 0 */
   expected_version: number;
@@ -1219,6 +1250,7 @@ export interface CollectionPlanUpdateRequest {
      * @maxLength 200
      */
   name: string;
+  plan_type?: 'tikhub';
   /**
      * @minItems 1
      * @maxItems 5

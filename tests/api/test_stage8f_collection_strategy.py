@@ -44,6 +44,7 @@ def _pack(enabled: bool = True) -> dict[str, object]:
 def _plan(enabled: bool = True) -> dict[str, object]:
     return {
         "id": str(PLAN_ID),
+        "plan_type": "tikhub",
         "name": "爱玛新品周期采集",
         "enabled": enabled,
         "schedule_expr": "0 9 * * *",

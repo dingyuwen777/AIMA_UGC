@@ -64,7 +64,9 @@
 
 <a id="AC28"></a>AC28：合并后main-fresh和原生Change归档/同ID done得到确认，按直接Evidence回写Issue AC并重读关闭、安全清理任务资源；无Release/Deploy/生产Migration授权，未验证边界如实报告。
 
-## 已批准方案原文
+## 已批准方案正文
+
+正文保留全部设计细节；唯一平台缩写规范化为正式标识 `xiaohongshu`，完整逐字原文另保存在 Issue #694。当前实现已有定向补采 v3 快照，因此新计划使用显式类型的 v4，并保留该既有补采兼容边界，不重写历史。
 
 可以。结合前面所有决定，我建议把这次任务定义为一个完整的 **“TikHub 采集计划产品化改造”**，而不是单独改弹窗或评论开关。
 
@@ -1626,7 +1628,7 @@ complete + count unchanged
 partial + count unchanged
 → continue
 
-complete + count increased + XHS/Bilibili
+complete + count increased + xiaohongshu/Bilibili
 → safe incremental
 
 complete + count increased + Douyin/Weibo/Kuaishou

@@ -247,7 +247,8 @@ def test_date_selection_excludes_current_irrelevant_and_freezes_unavailable_sibl
         )
     assert set(scope_ids) == {str(ids[0]), str(ids[2])}
     assert run["import_batch_id"] is None and run["data_import_campaign_id"] is None
-    assert run["config_snapshot"]["schema_version"] == "collection-run-config.v3"
+    assert run["config_snapshot"]["schema_version"] == "collection-run-config.v4"
+    assert run["config_snapshot"]["plan_type"] == "tikhub"
     assert run["config_snapshot"]["supplement_selection"] == {
         "kind": "published_date_range",
         "target_count": 2,

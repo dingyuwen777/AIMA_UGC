@@ -129,6 +129,9 @@ def test_completed_http_400_is_not_resent_after_worker_takeover(
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
+                    "schema_version": "collection-run-config.v4",
+                    "plan_type": "tikhub",
+                    "decision_policy": {"comment_mode": "adaptive"},
                     **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",

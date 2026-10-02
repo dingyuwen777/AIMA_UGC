@@ -214,6 +214,8 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
+                    "schema_version": "collection-run-config.v4",
+                    "plan_type": "tikhub",
                     **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",

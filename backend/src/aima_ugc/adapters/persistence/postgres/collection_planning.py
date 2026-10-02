@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import String, func, insert, or_, select, update
@@ -50,6 +50,7 @@ class PostgresCollectionPlanningRepository:
             insert(collection_plans_table).values(
                 id=plan_id,
                 name=definition.name,
+                plan_type=definition.plan_type,
                 enabled=definition.enabled,
                 schedule_expr=definition.schedule_expr,
                 timezone=definition.timezone,
@@ -425,6 +426,7 @@ def _row_to_plan(
     return CollectionPlanRecord(
         id=cast(UUID, row["id"]),
         name=cast(str, row["name"]),
+        plan_type=cast(Literal["tikhub"], row["plan_type"]),
         enabled=cast(bool, row["enabled"]),
         schedule_expr=cast(str | None, row["schedule_expr"]),
         timezone=cast(str, row["timezone"]),

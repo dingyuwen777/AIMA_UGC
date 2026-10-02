@@ -321,6 +321,13 @@ Index(
     comments_table.c.last_seen_at,
 )
 Index(
+    "ix_comment_coverage_latest_capture",
+    comment_coverage_observations_table.c.content_id,
+    comment_coverage_observations_table.c.observed_at.desc(),
+    comment_coverage_observations_table.c.id.desc(),
+    postgresql_where=comment_coverage_observations_table.c.coverage != "not_requested",
+)
+Index(
     "ix_comments_content_roots_published_desc",
     comments_table.c.content_id,
     comments_table.c.published_at.desc().nulls_last(),

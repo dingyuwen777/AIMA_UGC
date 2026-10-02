@@ -154,6 +154,10 @@ class CollectionExecutionService:
                 "manual/api/backfill run must not reference occurrence_id"
             )
 
+        from .run_policy import validate_new_run_snapshot
+
+        validate_new_run_snapshot(config_snapshot)
+
         scope_sequence = tuple(scopes)
         identities = [scope.identity for scope in scope_sequence]
         if len(identities) != len(set(identities)):

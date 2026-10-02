@@ -107,6 +107,10 @@ from aima_ugc.modules.collection.providers import (
     RawArtifactService,
     raw_storage_key,
 )
+from aima_ugc.modules.collection.run_policy import (
+    requires_full_comment_capture,
+    validate_run_decision_policy,
+)
 from aima_ugc.modules.ingestion.brand_vehicle_filter import (
     BrandVehicleFilterSnapshot,
     resolve_canonical_brand_vehicle,
@@ -128,6 +132,7 @@ from aima_ugc.platform.time import beijing_now
 
 _COMMENT_FETCH_ACTIONS = {
     "fetch_adaptive",
+    "fetch_full",
     "fetch_incremental",
     "refresh_controlled",
     "probe_first_page",
@@ -370,12 +375,12 @@ class TikHubCollectionScopeExecutor:
         if not is_discovery and not is_enrichment:
             raise ValueError("TikHub Scope Runtime 不支持当前 source_type/operation_group")
 
+        _validate_decision_policy(run)
         self._reconciler.recover_inherited(context.fence)
         platform = _tikhub_platform(scope.platform)
         runtime_config = _platform_runtime_config(run, scope.platform)
         provider_config = self._provider_config_for_run(run, runtime_config)
         capability = _capability(platform)
-        _validate_decision_policy(run)
         policy = _decision_policy(run)
         if is_enrichment:
             return self._execute_content_enrichment(
@@ -679,7 +684,11 @@ class TikHubCollectionScopeExecutor:
                 progress=scope.progress,
                 stats=stats.payload(),
             )
-            prior = self._content_state.evaluate(latest)
+            prior = (
+                self._content_state.evaluate(latest, include_comment_coverage=True)
+                if policy.comment_mode == "full"
+                else self._content_state.evaluate(latest)
+            )
             if prior is None:
                 raise ValueError("补采目标 Content 在执行期不存在")
             decision = self._decision_service.decide(
@@ -702,6 +711,7 @@ class TikHubCollectionScopeExecutor:
                 search_observed_at=latest.observed_at,
                 previous_exists=True,
                 previous_comment_count=prior.previous.comment_count,
+                previous_capture_complete=prior.previous.full_comment_capture_complete,
                 initial_business_changed=prior.business_changed,
                 decision=decision,
                 resolved_comment_count=_observed_comment_count(latest),
@@ -767,6 +777,7 @@ class TikHubCollectionScopeExecutor:
                     comment_action=action.decision.comment_action,
                     comment_target=action.decision.comment_target,
                     reported_total_override=action.resolved_comment_count,
+                    previous_comment_count=action.previous_comment_count,
                 )
                 technical_partial = outcome.technical_partial
                 stats.comment_coverage = outcome.coverage
@@ -792,8 +803,7 @@ class TikHubCollectionScopeExecutor:
                     fence=context.fence,
                 )
             if (
-                run.config_snapshot.get("mode")
-                in {"batch_supplement", "content_supplement", "date_supplement"}
+                requires_full_comment_capture(run)
                 and policy.comments_enabled
                 and stats.comment_coverage in {"partial", "unavailable"}
             ):
@@ -1062,7 +1072,11 @@ class TikHubCollectionScopeExecutor:
             fence=context.fence,
         )
         if action is None:
-            prior = self._content_state.evaluate(content)
+            prior = (
+                self._content_state.evaluate(content, include_comment_coverage=True)
+                if policy.comment_mode == "full"
+                else self._content_state.evaluate(content)
+            )
             search_comment_count = _observed_comment_count(content)
             decision = self._decision_service.decide(
                 CollectionDecisionRequestV1(
@@ -1088,6 +1102,9 @@ class TikHubCollectionScopeExecutor:
                 previous_exists=prior is not None,
                 previous_comment_count=(
                     prior.previous.comment_count if prior is not None else None
+                ),
+                previous_capture_complete=(
+                    prior.previous.full_comment_capture_complete if prior is not None else False
                 ),
                 initial_business_changed=(prior.business_changed if prior is not None else False),
                 decision=decision,
@@ -1210,6 +1227,7 @@ class TikHubCollectionScopeExecutor:
                 comment_action=decision.comment_action,
                 comment_target=decision.comment_target,
                 reported_total_override=action.resolved_comment_count,
+                previous_comment_count=action.previous_comment_count,
             )
             if outcome.technical_partial:
                 stats.technical_partial_results += 1
@@ -1500,14 +1518,11 @@ class TikHubCollectionScopeExecutor:
         comment_action: str,
         comment_target: int | None,
         reported_total_override: int | None,
+        previous_comment_count: int | None = None,
     ) -> _CommentFetchOutcome:
         platform = _tikhub_platform(scope.platform)
         link_lookup_id = _link_backed_lookup_id(content)
-        full_capture = run.config_snapshot.get("mode") in {
-            "batch_supplement",
-            "content_supplement",
-            "date_supplement",
-        }
+        full_capture = requires_full_comment_capture(run)
         if full_capture:
             target = resolve_comment_target(
                 platform=platform,
@@ -1547,6 +1562,9 @@ class TikHubCollectionScopeExecutor:
             else frozenset()
         )
         technical_partial = False
+        thread_states = (
+            self._content_state.thread_capture_states(content_id) if full_capture else {}
+        )
 
         for _page_no in range(1, MAX_COMMENT_PAGES + 1):
             if context.cancel_requested():
@@ -1654,6 +1672,16 @@ class TikHubCollectionScopeExecutor:
                 reply_decision = self._decision_service.decide_reply(
                     ReplyDecisionRequestV1(
                         reply_count=_observed_reply_count(comment),
+                        previous_reply_count=(
+                            thread_states[comment.external_comment_id].reported_total
+                            if comment.external_comment_id in thread_states
+                            else None
+                        ),
+                        previous_capture_complete=(
+                            thread_states[comment.external_comment_id].complete
+                            if comment.external_comment_id in thread_states
+                            else False
+                        ),
                         policy=policy,
                         capability=capability,
                     )
@@ -1704,7 +1732,8 @@ class TikHubCollectionScopeExecutor:
                     if (
                         full_capture
                         and _include_sub_comments(run)
-                        and reply_decision.reason != "reply_count_zero"
+                        and reply_decision.reason
+                        not in {"reply_count_zero", "reply_count_unchanged_complete"}
                     ):
                         technical_partial = True
 
@@ -1761,24 +1790,37 @@ class TikHubCollectionScopeExecutor:
                 page_comment_ids,
                 known_comment_ids,
             ):
-                self._record_comment_coverage(
-                    content_id=content_id,
-                    platform=platform,
-                    executed=executed,
-                    context=context,
-                    coverage="partial",
-                    reported_total=reported_total,
-                    collected_count=len(seen_comment_ids),
-                    sample_mode=sample_mode,
-                    sort_mode=sort_mode,
-                    target_count=comment_target,
-                    stop_reason="known_comment_reached",
+                combined_ids = known_comment_ids | seen_comment_ids
+                proven_complete = (
+                    full_capture
+                    and not technical_partial
+                    and previous_comment_count == len(known_comment_ids)
+                    and reported_total is not None
+                    and len(combined_ids) == reported_total
+                    and self._content_state.necessary_threads_complete(content_id)
                 )
-                return _CommentFetchOutcome(
-                    completed=True,
-                    technical_partial=technical_partial,
-                    coverage="partial",
-                )
+                if not full_capture or proven_complete:
+                    coverage = "complete" if proven_complete else "partial"
+                    self._record_comment_coverage(
+                        content_id=content_id,
+                        platform=platform,
+                        executed=executed,
+                        context=context,
+                        coverage=coverage,
+                        reported_total=reported_total,
+                        collected_count=len(combined_ids)
+                        if proven_complete
+                        else len(seen_comment_ids),
+                        sample_mode="full_incremental" if proven_complete else sample_mode,
+                        sort_mode=sort_mode,
+                        target_count=comment_target,
+                        stop_reason="known_comment_reached",
+                    )
+                    return _CommentFetchOutcome(
+                        completed=True,
+                        technical_partial=technical_partial,
+                        coverage=coverage,
+                    )
             if comment_action == "probe_first_page" and not full_capture:
                 self._record_comment_coverage(
                     content_id=content_id,
@@ -1960,11 +2002,7 @@ class TikHubCollectionScopeExecutor:
     ) -> _ReplyFetchOutcome:
         platform = _tikhub_platform(scope.platform)
         link_lookup_id = _link_backed_lookup_id(content)
-        full_capture = run.config_snapshot.get("mode") in {
-            "batch_supplement",
-            "content_supplement",
-            "date_supplement",
-        }
+        full_capture = requires_full_comment_capture(run)
         pagination_state: dict[str, object] = {}
         reply_ids: set[str] = set()
         last_executed: _ExecutedCall | None = None
@@ -2401,7 +2439,10 @@ def _previous_from_action(
 ) -> PreviousContentStateV1 | None:
     if not action.previous_exists:
         return None
-    return PreviousContentStateV1(comment_count=action.previous_comment_count)
+    return PreviousContentStateV1(
+        comment_count=action.previous_comment_count,
+        full_comment_capture_complete=action.previous_capture_complete,
+    )
 
 
 def _canonical_source_ids(
@@ -2439,6 +2480,8 @@ def _comment_sample_mode(
     comment_target: int | None,
     reported_total: int | None,
 ) -> str:
+    if comment_action == "fetch_full":
+        return "full"
     if comment_action == "probe_first_page":
         return "probe"
     if (
@@ -2612,7 +2655,7 @@ def _discovery_filter(
     """严格恢复当前 Collection Run 的冻结品牌车型过滤。"""
 
     schema_version = run.config_snapshot.get("schema_version")
-    if schema_version != "collection-run-config.v2":
+    if schema_version not in {"collection-run-config.v2", "collection-run-config.v4"}:
         raise ValueError(f"Collection Run Snapshot 版本不受支持: {schema_version}")
     snapshot = BrandVehicleFilterSnapshot.model_validate(
         run.config_snapshot.get("brand_vehicle_filter")
@@ -2636,18 +2679,7 @@ def _include_sub_comments(run: CollectionRunRecord) -> bool:
 
 
 def _validate_decision_policy(run: CollectionRunRecord) -> None:
-    detail_policy = run.config_snapshot.get(
-        "detail_policy",
-        "on_change",
-    )
-    comment_policy = run.config_snapshot.get(
-        "comment_policy",
-        "adaptive",
-    )
-    if detail_policy != "on_change":
-        raise ValueError("Collection Scope Runtime 当前只支持 detail_policy=on_change")
-    if comment_policy != "adaptive":
-        raise ValueError("Collection Scope Runtime 当前只支持 comment_policy=adaptive")
+    validate_run_decision_policy(run.config_snapshot)
 
 
 def _capability(

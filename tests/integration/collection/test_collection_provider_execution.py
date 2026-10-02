@@ -87,7 +87,12 @@ def _claimed_scope(
             ).create_run(
                 job_id=job.id,
                 trigger_type="api",
-                config_snapshot={"schema_version": "collection-run-config.v2"},
+                config_snapshot={
+                    "plan_type": "tikhub",
+                    "comment_policy": "adaptive",
+                    "decision_policy": {"comment_mode": "adaptive"},
+                    "schema_version": "collection-run-config.v4",
+                },
                 scopes=(
                     CollectionScopeDefinition(
                         platform="xiaohongshu",

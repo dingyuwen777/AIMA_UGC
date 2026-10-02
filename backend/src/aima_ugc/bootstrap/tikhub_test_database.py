@@ -401,7 +401,8 @@ class TikHubDebugDatabaseSession:
                     job_id=job.id,
                     trigger_type="manual",
                     config_snapshot={
-                        "schema_version": "collection-run-config.v2",
+                        "schema_version": "collection-run-config.v4",
+                        "plan_type": "tikhub",
                         "detail_policy": "on_change",
                         "comment_policy": "adaptive",
                         "decision_policy": policy.model_dump(mode="json"),

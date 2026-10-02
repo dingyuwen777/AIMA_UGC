@@ -29,6 +29,7 @@ from aima_ugc.bootstrap.collection_strategy_http import (
     _validate_execution_surface,
 )
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
+from aima_ugc.contracts.collection import CollectionDecisionPolicyV1
 from aima_ugc.contracts.http import (
     CollectionPlanResponse,
     HttpErrorResponse,
@@ -50,6 +51,7 @@ from aima_ugc.modules.collection.planning import (
     CollectionPlanDefinition,
     CollectionPlanningService,
     PlanPlatformDefinition,
+    require_tikhub_plan,
 )
 from aima_ugc.modules.collection.scheduler import ScheduleExpressionError, next_schedule_time
 from aima_ugc.modules.collection.strategy_http import (
@@ -461,6 +463,7 @@ class PostgresResourceLifecycleHttpService:
                     current = planning.get_plan_for_update(plan_id)
                     if current is None or current.schedule_expr is None:
                         raise CollectionStrategyResourceNotFound
+                    require_tikhub_plan(current)
                     candidate = _plan_definition_from_update(body, current.created_by)
                     _validate_execution_surface(
                         session,
@@ -484,6 +487,8 @@ class PostgresResourceLifecycleHttpService:
                         platforms=candidate.platforms,
                         keyword_pack_ids=body.keyword_pack_ids,
                         brand_ids=body.brand_ids,
+                        comment_policy=candidate.comment_policy,
+                        decision_policy=candidate.decision_policy,
                     )
                     _audit(
                         session,
@@ -524,7 +529,9 @@ class PostgresResourceLifecycleHttpService:
                     source = repository.get_plan(plan_id)
                     if source is None or source.schedule_expr is None:
                         raise CollectionStrategyResourceNotFound
+                    require_tikhub_plan(source)
                     definition = CollectionPlanDefinition(
+                        plan_type=source.plan_type,
                         name=body.name,
                         enabled=False,
                         schedule_expr=source.schedule_expr,
@@ -1018,6 +1025,7 @@ def _plan_definition_from_update(
     """把公开更新 Contract 转换为与创建路径相同的领域计划定义。"""
 
     return CollectionPlanDefinition(
+        plan_type=body.plan_type,
         name=body.name,
         enabled=body.enabled,
         schedule_expr=body.schedule_expr,
@@ -1026,7 +1034,8 @@ def _plan_definition_from_update(
         misfire_policy="latest_only",
         max_catch_up_runs=0,
         detail_policy="on_change",
-        comment_policy="adaptive",
+        comment_policy=body.comment_policy,
+        decision_policy=CollectionDecisionPolicyV1(comment_mode=body.comment_policy),
         created_by=created_by,
         platforms=tuple(
             PlanPlatformDefinition(

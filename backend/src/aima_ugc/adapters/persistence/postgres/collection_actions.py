@@ -41,6 +41,7 @@ class CollectionContentActionRecord:
     resolved_comment_count: int | None
     detail_completed: bool
     comments_completed: bool
+    previous_capture_complete: bool = False
 
 
 class PostgresCollectionContentActionRepository:
@@ -89,6 +90,7 @@ class PostgresCollectionContentActionRepository:
         decision: CollectionDecisionV1,
         resolved_comment_count: int | None,
         fence: JobExecutionFence,
+        previous_capture_complete: bool = False,
     ) -> CollectionContentActionRecord:
         if search_observed_at.utcoffset() is None:
             raise ValueError("Content action search_observed_at 必须包含时区")
@@ -111,6 +113,7 @@ class PostgresCollectionContentActionRepository:
                     "search_observed_at": search_observed_at,
                     "previous_exists": previous_exists,
                     "previous_comment_count": previous_comment_count,
+                    "previous_capture_complete": previous_capture_complete,
                     "initial_business_changed": initial_business_changed,
                     "detail_action": decision.detail_action,
                     "detail_reason": decision.detail_reason,
@@ -309,6 +312,7 @@ def _row_to_action(row: RowMapping) -> CollectionContentActionRecord:
         resolved_comment_count=cast(int | None, row["resolved_comment_count"]),
         detail_completed=cast(bool, row["detail_completed"]),
         comments_completed=cast(bool, row["comments_completed"]),
+        previous_capture_complete=cast(bool, row["previous_capture_complete"]),
     )
 
 
