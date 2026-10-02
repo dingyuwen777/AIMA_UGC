@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20261002-174500-tikhub-plan-full-comments
 title: TikHub采集计划产品化与全量评论采集
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/694-tikhub-plan-full-comments
 created: 2026-10-02T17:45:00+08:00
-updated: 2026-10-02T19:47:28+08:00
+updated: 2026-10-02
 completion_gate: required
 depends_on: []
 affected_areas:
