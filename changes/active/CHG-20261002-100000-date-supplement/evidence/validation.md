@@ -20,6 +20,7 @@ Windows 本机独立 worktree；Python 3.14.7、Node 24.19.0，依赖由当前�
 | changed Python 的 `ruff check` 与 `ruff format --check` | exit 0 | 当前改动的 Python 格式与静态规则 |
 | `npm run lint` 与 `npm run build`，frontend 目录 | exit 0 | ESLint、两种 TypeScript/Vue 检查与生产构建 |
 | `scripts/dev/validate_changed.py --base origin/main` | exit 0；profile full | 与正式 CI 同一 classifier，未增加 Workflow 或另建影响面映射 |
+| `scripts/quality/scan_secrets.py`、`check_docs.py`、`check_docs_facts.py` | exit 0 | Secret 边界、全仓当前文档链接和机器事实同步；修正开发基线对已重命名组件的三处链接 |
 
 完整本地日志保留在 worktree 的 `.runtime/date-tests/`；平台 CI 的范围更广，结果以 PR 当前 head 的 Checks 为准。保留既有 Pydantic/Starlette 弃用提示及前端大 chunk 提示，未为取得通过修改依赖或提高阈值。
 
@@ -35,7 +36,7 @@ Contract Red：日期创建测试在实现前 1 failed / 10 passed，现有模�
 
 ## 两阶段本地复核
 
-第一阶段重新读取用户批准方案和 live #690，核对全部 AC1–AC6，不从当前 Change 推定需求完整。反向核对日期资格、创建、运行/Scope 状态和结果能力与页面入口；检查所有前端操作对应正式支持。`docs/blueprint/04` 仍是有效通用任务边界，无需修改；同步 Blueprint 08、Product 02、Collection 导航及模块 README。
+第一阶段重新读取用户批准方案和 live #690，核对全部 AC1–AC6，不从当前 Change 推定需求完整。反向核对日期资格、创建、运行/Scope 状态和结果能力与页面入口；检查所有前端操作对应正式支持。`docs/blueprint/04` 仍是有效通用任务边界，无需修改；同步 Blueprint 08、Product 02、Collection 导航、模块 README 与运行中心开发基线。开发基线明确用户确认的日期弹窗决定及原 Figma 节点仍为此前设计参照，本轮未修改 Figma 文件。
 
 第二阶段检查日期/相关性冻结、共享身份、全量评论覆盖、Provider Raw 恢复、fencing、事务、参数上限、旧模式和生成兼容。发现并修正大范围参数上限、详情旧批次文案与测试 Fixture 的唯一父 Job/相关性情感约束；重新验证后没有范围内阻塞项。既有 `_discovery_filter` 的 v2 检查仅用于 Discovery，不阻断 v3 日期任务；没有为日期模式放宽它。
 
