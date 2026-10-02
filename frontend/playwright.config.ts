@@ -11,6 +11,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4173',
     channel: 'chrome',
+    // 无头 Chromium 默认隐藏滚动条；验收必须覆盖用户实际可见的滚动和几何。
+    launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] },
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     viewport: { width: 1600, height: 1000 },

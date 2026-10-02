@@ -262,8 +262,8 @@ data_changes:
 | V3 | 最终后端实现 | uv run ruff format --check / ruff check changed Python；uv run mypy backend/src | PASS；435 files | 格式、静态检查与类型 |
 | V4 | 最终生成物/文档 | scripts/contracts/generate.py --check；check_compatibility.py；check_docs.py；check_docs_facts.py | 全 PASS | Pydantic→OpenAPI/Client 一致，文档导航与机器事实一致 |
 | V5 | 最终前端实现；Chrome | npm run lint；npm run test -- --run；npm run build | 295 Unit；lint、双 typecheck、生产 build PASS | 前端完整回归与产物 |
-| V6 | 最终前端实现；Chrome | npx playwright test --workers=3 | 193 passed | 全页面 Browser，六 Resize 尺寸、九标签、延迟/503/草稿/scroll/bbox/deep-link 与其他轮询路径 |
-| V7 | 最终样式；本机 Microsoft Edge | 三个相同 scrollbar Browser 场景，channel=msedge | 3 passed | Workbench/Voice/Admin/配置三状态实际样式、视觉与几何；原测试源码复用 |
+| V6 | 最终前端实现；Chrome；正式显示原生 scrollbar | npx playwright test --workers=3；npx playwright test e2e/voice-plaza-design.spec.ts | 首轮隐藏原生 scrollbar 时 193 passed；正式显示后完整回归 185 passed / 8 几何 oracle failed；修正实际可用画布宽度后受影响 design spec 18 passed | 正式配置移除 Chromium 的 --hide-scrollbars 默认参数；8项失败均为旧断言把 window.innerWidth 当作 documentElement.clientWidth，差4px。修正仅测试，保留 ±1px、固定列/最小宽度、页面无横向溢出和局部滚动 fallback；其余185项正式配置全绿，最终全量 current-head CI 仍必需 |
+| V7 | 最终样式；本机 Microsoft Edge；实际显示原生 scrollbar | 三个相同 scrollbar Browser 场景，channel=msedge、ignoreDefaultArgs=[--hide-scrollbars] | 3 passed | Workbench/Voice/Admin/配置三状态实际像素与几何；normal/hover/active 的真实 thumb 像素颜色逐步增强，仅4–5px区域变化，bbox/clientWidth不变；原测试源码复用，父/独立Review均读取截图核验 |
 | V8 | 隔离 PostgreSQL 18.4 | test_workbench_runtime.py + test_workbench_scheme_bootstrap.py；test_stage8d_voice_plaza_runtime.py | 5+9 passed | 缺作者/多帖/多标签/active Scheme、历史布局/旧 snapshot、plural 投影与回退查询 |
 | V9 | 最终 API 重新启动；隔离 PG/真实 Worker/本机 Fake LLM | npm run test:e2e:fullstack -- e2e-fullstack/analysis-streaming.spec.ts | 1 passed | 同作者两帖 AI→持久结果→心智2/2=100%→声音广场钻取真实闭环 |
 | V10 | 唯一 CI classifier | scripts/dev/validate_changed.py --base origin/main --json | profile=full | 全 Backend/Frontend、PG、Full-stack、Runtime/Package 等远程 current-head CI 必需；Windows npm.cmd 适配下逐条执行同源本地命令，无第二套映射 |
