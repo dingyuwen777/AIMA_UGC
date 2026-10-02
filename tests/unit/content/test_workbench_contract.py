@@ -3,7 +3,12 @@
 from datetime import date
 
 import pytest
-from aima_ugc.bootstrap.workbench_http import _pending_snapshot_response, _previous_period
+from aima_ugc.bootstrap.workbench_http import (
+    _layout_response,
+    _pending_snapshot_response,
+    _previous_period,
+    _snapshot_query_hash,
+)
 from aima_ugc.contracts.administration import AnalysisSchemeDefinitionRequest
 from aima_ugc.contracts.workbench import (
     WorkbenchLayoutModule,
@@ -116,3 +121,72 @@ def test_cold_snapshot_response_reports_preparing_without_claiming_zero_is_final
     assert response.source_revision is None
     assert response.date_from == date(2026, 9, 1)
     assert response.date_to == date(2026, 9, 2)
+
+
+@pytest.mark.parametrize("columns", [4, 5])
+def test_new_layout_rejects_width_below_six(columns: int) -> None:
+    """六列是正式最小可读尺寸，新布局不能再保存旧宽度。"""
+
+    with pytest.raises(ValidationError):
+        WorkbenchLayoutModule(module_id="brand-mind", order=1, column_span=columns, row_units=48)
+
+
+def test_new_layout_rejects_hidden_sound_stream() -> None:
+    """全局筛选由声音流承载，因此不能隐藏声音流。"""
+
+    with pytest.raises(ValidationError):
+        WorkbenchLayoutUpdateRequest(
+            revision=0,
+            modules=tuple(
+                WorkbenchLayoutModule(
+                    module_id=module,
+                    visible=module != "sound-stream",
+                    order=index,
+                    column_span=6,
+                    row_units=48,
+                )
+                for index, module in enumerate(("sound-stream", "brand-mind", "ugc-trend"))
+            ),
+        )
+
+
+def test_legacy_layout_read_normalizes_width_and_sound_visibility() -> None:
+    """只在持久读取边界兼容旧偏好，不改变版本或写入规则。"""
+
+    response = _layout_response(
+        {
+            "revision": 7,
+            "updated_at": None,
+            "layout": [
+                {
+                    "module_id": module,
+                    "visible": False,
+                    "order": index,
+                    "column_span": 4 + index,
+                    "row_units": 48,
+                }
+                for index, module in enumerate(("sound-stream", "brand-mind", "ugc-trend"))
+            ],
+        }
+    )
+    assert response.revision == 7
+    assert [module.column_span for module in response.modules] == [6, 6, 6]
+    assert [module.visible for module in response.modules] == [True, False, False]
+
+
+def test_content_semantics_has_a_new_snapshot_identity() -> None:
+    """已有作者口径 JSONB 不能按新的内容口径读取或改名后复用。"""
+
+    import hashlib
+    import json
+
+    query = WorkbenchQuery(date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
+    legacy = hashlib.sha256(
+        json.dumps(
+            {"module": "mind", "query": query.model_dump(mode="json")},
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    assert _snapshot_query_hash("mind", query) != legacy

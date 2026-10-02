@@ -69,10 +69,13 @@ type AnalysisScope = 'selected' | 'query' | 'all'
 export interface VoicePlazaFilters {
   search: string
   platform: '' | PlatformName
+  platforms: PlatformName[]
   analysisStatus: '' | ContentAnalysisStatus
   relevance: '' | ContentRelevance
   voiceType: string
   sentiment: string
+  voiceTypes: string[]
+  sentiments: string[]
   primaryLabels: string[]
   secondaryLabels: string[]
   publishedFrom: string
@@ -86,10 +89,13 @@ export interface VoicePlazaFilters {
 const EMPTY_FILTERS: VoicePlazaFilters = {
   search: '',
   platform: '',
+  platforms: [],
   analysisStatus: '',
   relevance: '',
   voiceType: '',
   sentiment: '',
+  voiceTypes: [],
+  sentiments: [],
   primaryLabels: [],
   secondaryLabels: [],
   publishedFrom: '',
@@ -119,6 +125,9 @@ interface PersistedVoicePlazaSearch {
 function copyFilters(source: VoicePlazaFilters): VoicePlazaFilters {
   return {
     ...source,
+    platforms: [...source.platforms],
+    voiceTypes: [...source.voiceTypes],
+    sentiments: [...source.sentiments],
     brandIds: [...source.brandIds],
     vehicleModelIds: [...source.vehicleModelIds],
     competitionScopes: [...source.competitionScopes],
@@ -224,10 +233,14 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     const filters: VoicePlazaFilters = {
       search: stringValue('search'),
       platform,
+      platforms: isStringArray(values.platforms)
+        ? values.platforms.filter((value): value is PlatformName => Object.values(PlatformNameValues).includes(value as PlatformName)) : [],
       analysisStatus,
       relevance,
       voiceType: stringValue('voiceType'),
       sentiment: stringValue('sentiment'),
+      voiceTypes: isStringArray(values.voiceTypes) ? values.voiceTypes : [],
+      sentiments: isStringArray(values.sentiments) ? values.sentiments : [],
       primaryLabels: isStringArray(values.primaryLabels)
         ? values.primaryLabels
         : typeof values.primaryLabel === 'string' && values.primaryLabel ? [values.primaryLabel] : [],
@@ -314,6 +327,9 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const commentReplies = reactive<Record<string, ContentCommentResponse[]>>({})
   const commentReplyStates = reactive<Record<string, CommentReplyState>>({})
   let detailRevision = 0
+  let detailRequestRevision = 0
+  let commentWindowRevision = 0
+  let taxonomyRevision = 0
   let listRevision = 0
   let analysisPreviewRevision = 0
   const selectedIds = ref<string[]>([])
@@ -382,7 +398,6 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       if (revision !== pollRevision) return
       const currentDetail = detailId.value
       if (currentDetail) {
-        await openDetail(currentDetail)
         if (revision !== pollRevision || detailError.value || commentsError.value) return
       }
       terminal.forEach((runId) => supplementRunIds.delete(runId))
@@ -430,11 +445,13 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   function filterSnapshot(): ContentFilterSnapshot {
     return {
       search: appliedFilters.search.trim() || undefined,
-      platforms: appliedFilters.platform ? [appliedFilters.platform] : undefined,
+      platforms: appliedFilters.platforms.length ? [...appliedFilters.platforms] : appliedFilters.platform ? [appliedFilters.platform] : undefined,
       analysis_status: appliedFilters.analysisStatus || undefined,
       relevance: appliedFilters.relevance || undefined,
       voice_type: appliedFilters.voiceType.trim() || undefined,
       sentiment: appliedFilters.sentiment.trim() || undefined,
+      voice_types: appliedFilters.voiceTypes.length ? [...appliedFilters.voiceTypes] : undefined,
+      sentiments: appliedFilters.sentiments.length ? [...appliedFilters.sentiments] : undefined,
       primary_labels: appliedFilters.primaryLabels.length ? [...appliedFilters.primaryLabels] : undefined,
       secondary_labels: appliedFilters.secondaryLabels.length ? [...appliedFilters.secondaryLabels] : undefined,
       published_from: beijingDayBoundary(appliedFilters.publishedFrom, 'start'),
@@ -453,7 +470,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
 
   /** 提交一个完整列表页，并提前读取下一 Cursor 页以缩短“加载更多”的等待。 */
   function commitListPage(page: ContentListResponse, revision: number): void {
-    items.value = page.items
+    replaceWindow(page.items)
     nextCursor.value = page.next_cursor ?? null
     hasMore.value = page.has_more
     selectedIds.value = selectedIds.value.filter((id) => page.items.some((item) => item.id === id))
@@ -503,6 +520,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
 
   /** 提交筛选草稿；用户主动改变 legacy 标签后立即回到当前层级规则。 */
   function applyFilters(): void {
+    const previousQuery = JSON.stringify(appliedFilters)
     const legacy = legacyLabelCompatibility.value
     if (legacy && !sameLabelSelection(filters, legacy)) {
       legacyLabelCompatibility.value = null
@@ -514,6 +532,13 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       )
     }
     Object.assign(appliedFilters, copyFilters(filters))
+    if (JSON.stringify(appliedFilters) !== previousQuery) {
+      listRevision += 1
+      items.value = []
+      loading.value = true
+      loadingNext.value = false
+      closeDetail()
+    }
     selectedIds.value = []
     nextCursor.value = null
     hasMore.value = false
@@ -606,7 +631,7 @@ async function refreshLoadedWindow(): Promise<boolean> {
       cursor = pageNext
     }
     if (revision !== listRevision || filtersAtStart !== JSON.stringify(listParams())) return false
-    items.value = refreshed
+    replaceWindow(refreshed)
     nextCursor.value = pageNext
     hasMore.value = pageHasMore
     selectedIds.value = selectedIds.value.filter((id) => seenIds.has(id))
@@ -628,23 +653,23 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       const capability = await fetchContentAnalysisCapabilities()
       analysisConfigured.value = capability.configured
     } catch (reason) {
-      analysisConfigured.value = null
       error.value = errorMessage(reason)
     }
   }
 
   /** 读取当前 Prompt Taxonomy；该目录只供人工纠正，不决定历史结果筛选。 */
   async function refreshTaxonomy(): Promise<void> {
+    const revision = ++taxonomyRevision
     taxonomyLoading.value = true
     taxonomyError.value = null
     try {
       const loaded = await fetchContentAnalysisTaxonomy()
-      taxonomy.value = loaded
+      if (revision !== taxonomyRevision) return
+      if (JSON.stringify(taxonomy.value) !== JSON.stringify(loaded)) taxonomy.value = loaded
     } catch (reason) {
-      taxonomy.value = null
-      taxonomyError.value = errorMessage(reason)
+      if (revision === taxonomyRevision) taxonomyError.value = errorMessage(reason)
     } finally {
-      taxonomyLoading.value = false
+      if (revision === taxonomyRevision) taxonomyLoading.value = false
     }
   }
 
@@ -656,33 +681,9 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     try {
       const loaded = await fetchContentFilterOptions()
       if (revision !== filterOptionsRevision) return
-      filterOptions.value = loaded
-      const previousApplied = JSON.stringify({
-        primaryLabels: appliedFilters.primaryLabels,
-        secondaryLabels: appliedFilters.secondaryLabels,
-      })
-      const previousCompatibility = JSON.stringify(legacyLabelCompatibility.value)
-      Object.assign(
-        filters,
-        sanitizeLabelFilters(filters, loaded, legacyLabelCompatibility.value),
-      )
-      Object.assign(
-        appliedFilters,
-        sanitizeLabelFilters(appliedFilters, loaded, legacyLabelCompatibility.value),
-      )
-      const currentApplied = JSON.stringify({
-        primaryLabels: appliedFilters.primaryLabels,
-        secondaryLabels: appliedFilters.secondaryLabels,
-      })
-      const compatibilityChanged = JSON.stringify(legacyLabelCompatibility.value) !== previousCompatibility
-      if (currentApplied !== previousApplied) {
-        selectedIds.value = []
-        nextCursor.value = null
-        hasMore.value = false
-        listPageCache.clear()
-        persistAppliedSearch()
-        void refreshResults()
-      } else if (compatibilityChanged || legacyLabelCompatibility.value !== null) {
+      if (JSON.stringify(filterOptions.value) !== JSON.stringify(loaded)) filterOptions.value = loaded
+      // 服务器目录不是用户草稿；失效候选只在显式 apply 时按当前目录清理。
+      if (legacyLabelCompatibility.value !== null) {
         // 旧版 Session 首次恢复时也写回显式 compatibility marker，后续重载不再依赖旧字段形状猜来源。
         persistAppliedSearch()
       }
@@ -758,6 +759,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   function resetComments(): void {
+    commentWindowRevision += 1
     commentRoots.value = []
     commentsNextCursor.value = null
     commentsHasMore.value = false
@@ -770,9 +772,51 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     for (const key of Object.keys(commentReplyStates)) delete commentReplyStates[key]
   }
 
+  /** 同一窗口按 Content 身份提交；相同 payload 复用对象，保留行和交互 DOM。 */
+  function replaceWindow(next: ContentListItemResponse[]): void {
+    const previous = new Map(items.value.map((item) => [item.id, item]))
+    const merged = next.map((item) => {
+      const old = previous.get(item.id)
+      return old && JSON.stringify(old) === JSON.stringify(item) ? old : item
+    })
+    if (merged.length !== items.value.length || merged.some((item, index) => item !== items.value[index])) items.value = merged
+  }
+
+  /** 后台详情重读保留已展开回复和评论页，只在成功后替换当前根评论窗口。 */
+  async function refreshCommentWindow(revision: number): Promise<void> {
+    const contentId = detailId.value
+    if (!contentId || commentsLoading.value || commentsLoadingNext.value) return
+    const windowRevision = ++commentWindowRevision
+    const targetCount = Math.max(10, commentRoots.value.length)
+    const refreshed: ContentCommentResponse[] = []
+    const seenCursors = new Set<string>()
+    let cursor: string | undefined
+    try {
+      while (true) {
+        const page = await fetchContentComments(contentId, { cursor, limit: 10 })
+        if (revision !== detailRevision || detailId.value !== contentId || windowRevision !== commentWindowRevision) return
+        refreshed.push(...page.items)
+        if (!page.has_more || !page.next_cursor || refreshed.length >= targetCount || seenCursors.has(page.next_cursor)) {
+          commentRoots.value = refreshed
+          commentsNextCursor.value = page.next_cursor ?? null
+          commentsHasMore.value = page.has_more
+          commentsTotalCount.value = page.total_count
+          commentsIngestedTotalCount.value = page.ingested_total_count
+          commentsError.value = null
+          return
+        }
+        seenCursors.add(page.next_cursor)
+        cursor = page.next_cursor
+      }
+    } catch (reason) {
+      if (revision === detailRevision && detailId.value === contentId && windowRevision === commentWindowRevision) commentsError.value = errorMessage(reason)
+    }
+  }
+
   async function loadCommentRoots(reset = false, revision = detailRevision): Promise<void> {
     const contentId = detailId.value
     if (!contentId || (!reset && (!commentsHasMore.value || commentsLoadingNext.value))) return
+    commentWindowRevision += 1
     if (reset) resetComments()
     const cursor = reset ? undefined : commentsNextCursor.value ?? undefined
     if (reset) commentsLoading.value = true
@@ -846,8 +890,11 @@ async function refreshAnalysisCapabilities(): Promise<void> {
 
   async function openDetail(contentId: string): Promise<void> {
     // 详情与评论独立失败；任一迟到响应都不能覆盖关闭或切换后的抽屉。
-    const revision = ++detailRevision
-    if (detailId.value !== contentId) {
+    const changed = detailId.value !== contentId
+    if (changed) detailRevision += 1
+    const revision = detailRevision
+    const requestRevision = ++detailRequestRevision
+    if (changed) {
       const summary = items.value.find((item) => item.id === contentId)
       detail.value = summary ? { ...summary, source_records: [summary.source] } : null
     }
@@ -858,14 +905,15 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     const detailTask = (async () => {
       try {
         const result = await fetchContentDetail(contentId)
-        if (revision === detailRevision) detail.value = result
+        if (revision === detailRevision && requestRevision === detailRequestRevision
+          && JSON.stringify(detail.value) !== JSON.stringify(result)) detail.value = result
       } catch (reason) {
-        if (revision === detailRevision) detailError.value = errorMessage(reason)
+        if (revision === detailRevision && requestRevision === detailRequestRevision) detailError.value = errorMessage(reason)
       } finally {
-        if (revision === detailRevision) loadingDetail.value = false
+        if (revision === detailRevision && requestRevision === detailRequestRevision) loadingDetail.value = false
       }
     })()
-    await Promise.all([detailTask, loadCommentRoots(true, revision)])
+    await Promise.all([detailTask, changed ? loadCommentRoots(true, revision) : refreshCommentWindow(revision)])
   }
 
   function closeDetail(): void {
@@ -1107,6 +1155,13 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   function resetFilters(): void {
+    listRevision += 1
+    items.value = []
+    loading.value = true
+    loadingNext.value = false
+    nextCursor.value = null
+    hasMore.value = false
+    closeDetail()
     Object.assign(filters, copyFilters(EMPTY_FILTERS))
     Object.assign(appliedFilters, copyFilters(EMPTY_FILTERS))
     legacyLabelCompatibility.value = null

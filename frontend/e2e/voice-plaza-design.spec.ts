@@ -363,7 +363,7 @@ test('keeps terminal analysis history out of the formal data canvas and availabl
   await expect(page.locator('.pagination')).toContainText('当前已加载 3 条')
   await expect(page.getByRole('button', { name: '加载更多 →' })).toBeEnabled()
 
-  await page.getByRole('button', { name: /任务中心/ }).click()
+  await page.getByRole('button', { name: '任务中心', exact: true }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
   await expect(taskCenter).toContainText('AI 分析任务 12')
@@ -492,7 +492,7 @@ test('renders the formal error banner and recoverable list error state', async (
   await expect(pageError).not.toContainText('req_voice_plaza_figma_error')
   await expect(page.locator('.table-state--error')).toContainText('检查网络或服务状态后点击“刷新数据”重试。')
   await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
-  expectNear((await page.locator('.table-state--error').boundingBox())?.height, 306)
+  expectNear((await page.locator('.table-state--error').boundingBox())?.height, 376)
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-error.png', fullPage: true })

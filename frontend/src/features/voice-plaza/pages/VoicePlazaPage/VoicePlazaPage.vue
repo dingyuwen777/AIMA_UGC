@@ -102,7 +102,7 @@ function hydrateRouteFilters(): void {
     void router.replace({ query })
   }
   const deepLinkKeys = [
-    'source_identifier', 'sentiment', 'voice_type',
+    'source_identifier', 'sentiment', 'voice_type', 'sentiments', 'voice_types', 'platforms',
     'primary_labels', 'secondary_labels', 'primary_label', 'secondary_label',
     'published_from', 'published_to', 'platform', 'brand_ids', 'vehicle_model_ids', 'content_id',
   ]
@@ -148,6 +148,12 @@ function hydrateRouteFilters(): void {
     store.filters.platform = platform as PlatformName
     changed = true
   }
+  const platforms = routeValues(route.query.platforms).filter((value): value is PlatformName => Object.values(PlatformName).includes(value as PlatformName))
+  if (platforms.length) { store.filters.platform = ''; store.filters.platforms = platforms; changed = true }
+  const sentiments = routeValues(route.query.sentiments)
+  if (sentiments.length) { store.filters.sentiment = ''; store.filters.sentiments = sentiments; changed = true }
+  const voiceTypes = routeValues(route.query.voice_types)
+  if (voiceTypes.length) { store.filters.voiceType = ''; store.filters.voiceTypes = voiceTypes; changed = true }
 
   const brandIds = routeValues(route.query.brand_ids)
   if (brandIds.length) {
@@ -168,13 +174,17 @@ watch(() => route.query.content_id, (value) => {
   const contentId = routeValues(value)[0]
   if (!contentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contentId)) return
   if (store.detailId !== contentId) void store.openDetail(contentId)
-}, { immediate: true })
+})
 
+let disposed = false
 onMounted(() => {
   hydrateRouteFilters()
-  void refreshPage().finally(() => store.startPolling())
+  const contentId = routeValues(route.query.content_id)[0]
+  if (contentId && /^[0-9a-f-]{36}$/i.test(contentId)) void store.openDetail(contentId)
+  void refreshPage().finally(() => { if (!disposed) store.startPolling() })
 })
 onBeforeUnmount(() => {
+  disposed = true
   store.cancelCount()
   store.stopPolling()
 })
@@ -182,6 +192,7 @@ onBeforeUnmount(() => {
 /** 首先展示最新倒序第一页，再在后台加载不会影响首屏的目录与任务资源。 */
 async function refreshPage(): Promise<void> {
   await store.refreshResults()
+  if (disposed) return
   void Promise.allSettled([
     store.refreshTaxonomy(),
     store.refreshFilterOptions(),
@@ -345,10 +356,13 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       <VoicePlazaFilters
         v-model:search="store.filters.search"
         v-model:platform="store.filters.platform"
+        v-model:platforms="store.filters.platforms"
         v-model:analysis-status="store.filters.analysisStatus"
         v-model:relevance="store.filters.relevance"
         v-model:voice-type="store.filters.voiceType"
         v-model:sentiment="store.filters.sentiment"
+        v-model:sentiments="store.filters.sentiments"
+        v-model:voice-types="store.filters.voiceTypes"
         v-model:primary-labels="store.filters.primaryLabels"
         v-model:secondary-labels="store.filters.secondaryLabels"
         v-model:published-from="store.filters.publishedFrom"
@@ -364,63 +378,68 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         @reset="reset"
       />
 
-      <AimaFeedbackBanner
-        v-if="store.analysisConfigured === false"
-        class="capability-warning"
-        tone="warning"
+      <aside
+        class="page-notices"
+        aria-label="声音广场状态"
       >
-        <strong>AI 分析暂不可用：管理员尚未完成 AI 模型配置。</strong>
-        <span>请联系管理员完成模型配置后重试；内容浏览、筛选和人工复核不受影响。</span>
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
-        v-if="store.filterOptionsError"
-        class="taxonomy-warning"
-        tone="warning"
-        role="alert"
-      >
-        <strong>部分动态筛选项暂不可用</strong>
-        <span>平台、相关性和状态仍可筛选；情感、标签等动态目录可稍后重试。</span>
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
-        v-if="store.taxonomyError"
-        class="taxonomy-warning"
-        tone="warning"
-        role="alert"
-      >
-        <strong>当前 AI 分析规则暂不可用</strong>
-        <span>分析结果人工纠正已暂时停用；内容浏览与筛选仍可使用。</span>
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
-        v-if="reviewNote"
-        class="review-note"
-        tone="info"
-      >
-        {{ reviewNote }}
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
-        v-if="store.listError || store.error"
-        class="page-error"
-        tone="error"
-        role="alert"
-      >
-        <strong>{{ store.listError && store.items.length === 0 ? '暂时无法加载声音记录' : '操作未完成' }}</strong>
-        <span>{{ store.listError && store.items.length === 0 ? '请检查网络或服务状态后重试。' : '当前页面状态已保留，请稍后重试。' }}</span>
-        <AimaButton
-          size="small"
-          @click="refreshPage"
+        <AimaFeedbackBanner
+          v-if="store.analysisConfigured === false"
+          class="capability-warning"
+          tone="warning"
         >
-          刷新数据
-        </AimaButton>
-      </AimaFeedbackBanner>
+          <strong>AI 分析暂不可用：管理员尚未完成 AI 模型配置。</strong>
+          <span>请联系管理员完成模型配置后重试；内容浏览、筛选和人工复核不受影响。</span>
+        </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="store.filterOptionsError"
+          class="taxonomy-warning"
+          tone="warning"
+          role="alert"
+        >
+          <strong>部分动态筛选项暂不可用</strong>
+          <span>平台、相关性和状态仍可筛选；情感、标签等动态目录可稍后重试。</span>
+        </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="store.taxonomyError"
+          class="taxonomy-warning"
+          tone="warning"
+          role="alert"
+        >
+          <strong>当前 AI 分析规则暂不可用</strong>
+          <span>分析结果人工纠正已暂时停用；内容浏览与筛选仍可使用。</span>
+        </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="reviewNote"
+          class="review-note"
+          tone="info"
+        >
+          {{ reviewNote }}
+        </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="store.listError || store.error"
+          class="page-error"
+          tone="error"
+          role="alert"
+        >
+          <strong>{{ store.listError && store.items.length === 0 ? '暂时无法加载声音记录' : '操作未完成' }}</strong>
+          <span>{{ store.listError && store.items.length === 0 ? '请检查网络或服务状态后重试。' : '当前页面状态已保留，请稍后重试。' }}</span>
+          <AimaButton
+            size="small"
+            @click="refreshPage"
+          >
+            刷新数据
+          </AimaButton>
+        </AimaFeedbackBanner>
+      </aside>
 
       <section
-        v-if="activeAnalysisRuns.length && (!store.listError || store.items.length > 0)"
         class="active-analysis-runs"
+        :class="{ 'active-analysis-runs--empty': !activeAnalysisRuns.length }"
         aria-label="AI 分析活动任务"
       >
         <header class="active-analysis-heading">
           <div>
-            <strong>AI 分析任务</strong>
+            <strong>AI 分析任务{{ activeAnalysisRuns.length ? '' : ' · 暂无活动任务' }}</strong>
             <span>{{ activeAnalysisRuns.length }} 个任务正在处理；历史任务统一在任务中心查看。</span>
           </div>
           <button
@@ -461,7 +480,6 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </section>
 
       <div
-        v-if="store.contentCount || store.countLoading || store.countError"
         class="list-heading"
       >
         <div class="selection-actions">
@@ -625,7 +643,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 </template>
 
 <style scoped>
-.voice-plaza-page { display: grid; gap: 20px; }
+.voice-plaza-page { position: relative; display: grid; gap: 20px; }
+.page-notices { position: absolute; z-index: 40; top: 84px; right: 0; display: grid; gap: 4px; max-width: min(560px, 100%); }
 .voice-plaza-page :deep(.aima-page-header) { flex-wrap: nowrap; align-items: center; }
 .voice-plaza-page :deep(.aima-page-header h1) { font-weight: 700; }
 .voice-plaza-page :deep(.aima-page-header p) { margin-top: 6px; }
@@ -653,7 +672,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .capability-warning span,
 .taxonomy-warning span,
 .page-error span { font-size: 10px; }
-.active-analysis-runs { display: grid; gap: 7px; padding: 10px 14px; border: 1px solid #dbe7ff; border-radius: var(--aima-radius-control); background: #fbfdff; }
+.active-analysis-runs { display: grid; height: 96px; min-height: 0; align-content: start; gap: 7px; padding: 10px 14px; overflow: auto; border: 1px solid #dbe7ff; border-radius: var(--aima-radius-control); background: #fbfdff; }
 .active-analysis-heading { display: flex; min-height: 22px; align-items: center; justify-content: space-between; gap: 16px; }
 .active-analysis-heading > div { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
 .active-analysis-heading strong { color: var(--aima-text); font-size: 12px; }

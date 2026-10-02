@@ -5790,6 +5790,17 @@
             ],
             "title": "Sentiment"
           },
+          "sentiments": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Sentiments",
+            "type": "array"
+          },
           "source_identifier": {
             "anyOf": [
               {
@@ -5821,6 +5832,15 @@
                 "type": "null"
               }
             ]
+          },
+          "voice_types": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentVoiceType"
+            },
+            "maxItems": 100,
+            "title": "Voice Types",
+            "type": "array"
           }
         },
         "title": "ContentFilterSnapshot",
@@ -11085,7 +11105,7 @@
         "properties": {
           "column_span": {
             "maximum": 12.0,
-            "minimum": 4.0,
+            "minimum": 6.0,
             "title": "Column Span",
             "type": "integer"
           },
@@ -11194,6 +11214,28 @@
             "title": "Change Summary",
             "type": "string"
           },
+          "content_count": {
+            "minimum": 0.0,
+            "title": "Content Count",
+            "type": "integer"
+          },
+          "content_share": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Content Share",
+            "type": "number"
+          },
+          "content_share_change_pp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Share Change Pp"
+          },
           "positive_rate": {
             "anyOf": [
               {
@@ -11217,34 +11259,12 @@
             },
             "title": "Secondary Labels",
             "type": "array"
-          },
-          "user_count": {
-            "minimum": 0.0,
-            "title": "User Count",
-            "type": "integer"
-          },
-          "user_share": {
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "User Share",
-            "type": "number"
-          },
-          "user_share_change_pp": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Share Change Pp"
           }
         },
         "required": [
           "primary_label",
-          "user_count",
-          "user_share",
+          "content_count",
+          "content_share",
           "secondary_labels",
           "change_summary"
         ],
@@ -11304,11 +11324,6 @@
             "title": "Dimensions",
             "type": "array"
           },
-          "identified_user_count": {
-            "minimum": 0.0,
-            "title": "Identified User Count",
-            "type": "integer"
-          },
           "previous_date_from": {
             "format": "date",
             "title": "Previous Date From",
@@ -11318,6 +11333,11 @@
             "format": "date",
             "title": "Previous Date To",
             "type": "string"
+          },
+          "relevant_content_count": {
+            "minimum": 0.0,
+            "title": "Relevant Content Count",
+            "type": "integer"
           },
           "snapshot_status": {
             "default": "fresh",
@@ -11361,7 +11381,7 @@
           "date_to",
           "previous_date_from",
           "previous_date_to",
-          "identified_user_count",
+          "relevant_content_count",
           "unidentified_content_count",
           "analyzed_count",
           "analysis_coverage_rate",
@@ -11373,19 +11393,19 @@
       "WorkbenchMindSecondaryResponse": {
         "additionalProperties": false,
         "properties": {
+          "content_count": {
+            "minimum": 0.0,
+            "title": "Content Count",
+            "type": "integer"
+          },
           "secondary_label": {
             "title": "Secondary Label",
             "type": "string"
-          },
-          "user_count": {
-            "minimum": 0.0,
-            "title": "User Count",
-            "type": "integer"
           }
         },
         "required": [
           "secondary_label",
-          "user_count"
+          "content_count"
         ],
         "title": "WorkbenchMindSecondaryResponse",
         "type": "object"
@@ -15913,6 +15933,36 @@
                 }
               ],
               "title": "Sentiment"
+            }
+          },
+          {
+            "in": "query",
+            "name": "voice_types",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "$ref": "#/components/schemas/ContentVoiceType"
+              },
+              "maxItems": 100,
+              "title": "Voice Types",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sentiments",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Sentiments",
+              "type": "array"
             }
           },
           {

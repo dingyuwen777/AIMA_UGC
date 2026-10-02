@@ -298,7 +298,7 @@ onBeforeUnmount(() => {
 .task-center-header span { color: var(--aima-text-muted); font-size: 10px; }
 .task-center-close { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 6px; color: var(--aima-text-secondary); background: transparent; cursor: pointer; }
 .task-center-close:hover { background: #f0f2f6; }
-.task-center-warning { margin: 14px 18px 0; padding: 9px 11px; border: 1px solid #f3d59b; border-radius: 7px; color: #835600; background: #fff9ea; font-size: 10px; line-height: 1.5; }
+.task-center-warning { position: absolute; z-index: 3; top: 66px; right: 18px; left: 18px; margin: 0; padding: 9px 11px; border: 1px solid #f3d59b; border-radius: 7px; color: #835600; background: #fff9ea; font-size: 10px; line-height: 1.5; }
 .task-center-section { display: grid; gap: 10px; padding: 18px; }
 .task-center-section--recent { padding-top: 4px; }
 .task-center-section-heading { display: flex; align-items: center; justify-content: space-between; }

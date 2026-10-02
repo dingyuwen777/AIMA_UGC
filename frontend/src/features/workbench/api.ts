@@ -4,8 +4,6 @@ import {
   getWorkbenchMind,
   getWorkbenchStream,
   getWorkbenchTrend,
-  listVehicleBrands,
-  listVehicleModels,
   updateWorkbenchLayout,
   type BrandResponse,
   type ContentAnalysisTaxonomyResponse,
@@ -20,6 +18,7 @@ import {
   type WorkbenchTrendResponse,
 } from '../../generated/api/client'
 import { unwrapResponse } from '../../shared/api/http'
+import { useVehicleCatalogStore } from '../../shared/domain/vehicleCatalog'
 
 /** 读取当前 active Analysis Scheme 的安全 Taxonomy 投影。 */
 export async function fetchWorkbenchTaxonomy(): Promise<ContentAnalysisTaxonomyResponse> {
@@ -61,24 +60,10 @@ export async function saveWorkbenchLayout(
 
 /** 分页读取全部 active 品牌，避免 200 条 API 页上限静默截断选择器。 */
 export async function fetchActiveBrands(): Promise<BrandResponse[]> {
-  const items: BrandResponse[] = []
-  let offset = 0
-  while (true) {
-    const page = unwrapResponse(await listVehicleBrands({ status: 'active', offset, limit: 200 }))
-    items.push(...page.items)
-    offset += page.items.length
-    if (offset >= page.total || page.items.length === 0) return items
-  }
+  return useVehicleCatalogStore().loadBrands('active', true)
 }
 
 /** 分页读取全部 active 车型，筛选器不把首个 Offset 页误当完整目录。 */
 export async function fetchActiveVehicleModels(): Promise<VehicleModelResponse[]> {
-  const items: VehicleModelResponse[] = []
-  let offset = 0
-  while (true) {
-    const page = unwrapResponse(await listVehicleModels({ status: 'active', offset, limit: 200 }))
-    items.push(...page.items)
-    offset += page.items.length
-    if (offset >= page.total || page.items.length === 0) return items
-  }
+  return useVehicleCatalogStore().loadVehicles('active', true)
 }

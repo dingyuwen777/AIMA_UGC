@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AimaDialog from './ui/AimaDialog.vue'
 
-import { listVehicleModels, type VehicleModelResponse } from '../generated/api/client'
-import { apiErrorMessage, unwrapResponse } from './api/http'
+import { useVehicleCatalogStore } from './domain/vehicleCatalog'
 import AimaButton from './ui/AimaButton.vue'
 
 const props = withDefaults(defineProps<{
@@ -12,12 +11,16 @@ const props = withDefaults(defineProps<{
   disabled?: boolean
   includeDeprecated?: boolean
   compact?: boolean
-}>(), { label: '车型', disabled: false, includeDeprecated: false, compact: false })
+  brandIds?: string[]
+}>(), { label: '车型', disabled: false, includeDeprecated: false, compact: false, brandIds: () => [] })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
-const options = ref<VehicleModelResponse[]>([])
-const loading = ref(false)
-const error = ref<string | null>(null)
+const catalog = useVehicleCatalogStore()
+const scope = computed(() => props.includeDeprecated ? 'all' : 'active')
+const options = computed(() => (catalog.vehicles[scope.value] ?? [])
+  .filter((item) => !props.brandIds.length || (item.brand_id != null && props.brandIds.includes(item.brand_id))))
+const loading = computed(() => catalog.vehicleLoading[scope.value] && catalog.vehicles[scope.value] === null)
+const error = computed(() => catalog.vehicles[scope.value] === null ? catalog.vehicleErrors[scope.value] : null)
 const selected = computed(() => new Set(props.modelValue))
 const open = ref(false)
 const draft = ref<string[]>([])
@@ -31,39 +34,16 @@ const matching = computed(() => options.value.filter((item) => {
 }))
 const selectedLabel = computed(() => {
   if (!props.modelValue.length) return '全部车型'
-  if (props.modelValue.length === 1) return options.value.find((item) => item.id === props.modelValue[0])?.display_name ?? '已选 1 项'
+  if (props.modelValue.length === 1) return catalog.knownVehicles[props.modelValue[0] ?? '']?.display_name ?? '已选 1 项'
   return `已选 ${props.modelValue.length} 项`
 })
 
-onMounted(load)
+onMounted(() => { void load() })
+watch(scope, () => { void load() })
 
 /** 按后端 offset/limit 契约读取完整车型目录；默认只暴露 active 创建候选。 */
-async function load(): Promise<void> {
-  if (loading.value) return
-  loading.value = true
-  error.value = null
-  try {
-    const items: VehicleModelResponse[] = []
-    let offset = 0
-    while (true) {
-      const response = unwrapResponse(await listVehicleModels({
-        status: props.includeDeprecated ? undefined : 'active',
-        offset,
-        limit: 200,
-      }))
-      if (!Array.isArray(response.items)) {
-        throw new Error('车型目录响应无效，请稍后重试。')
-      }
-      items.push(...response.items)
-      offset += response.items.length
-      if (offset >= response.total || response.items.length === 0) break
-    }
-    options.value = items
-  } catch (reason) {
-    error.value = apiErrorMessage(reason)
-  } finally {
-    loading.value = false
-  }
+async function load(force = false): Promise<void> {
+  try { await catalog.loadVehicles(scope.value, force) } catch { /* 目录 Owner 保留错误和最近成功值。 */ }
 }
 
 /** 切换一个车型选择，只修改当前组件的选择集合。 */
@@ -95,7 +75,9 @@ function selectMatching(): void {
 
 /** 确认本次临时选择并关闭弹窗。 */
 function confirm(): void {
-  emit('update:modelValue', [...draft.value])
+  if (catalog.vehicles[scope.value] === null) return
+  const allowed = new Set(options.value.map((item) => item.id))
+  emit('update:modelValue', draft.value.filter((id) => allowed.has(id)))
   open.value = false
 }
 </script>
@@ -143,7 +125,7 @@ function confirm(): void {
         class="vehicle-picker-state"
         role="alert"
       >
-        <span>{{ error }}</span><AimaButton @click="load">
+        <span>{{ error }}</span><AimaButton @click="load(true)">
           重试
         </AimaButton>
       </div>
@@ -215,6 +197,7 @@ function confirm(): void {
           </AimaButton><AimaButton
             variant="primary"
             size="small"
+            :disabled="catalog.vehicles[scope] === null"
             @click="confirm"
           >
             确定
@@ -240,7 +223,7 @@ function confirm(): void {
       <span>{{ error }}</span>
       <button
         type="button"
-        @click="load"
+        @click="load(true)"
       >
         重试
       </button>

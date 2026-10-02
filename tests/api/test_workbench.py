@@ -82,7 +82,7 @@ class FakeWorkbenchService:
             date_to=date(2026, 9, 27),
             previous_date_from=date(2026, 9, 14),
             previous_date_to=date(2026, 9, 20),
-            identified_user_count=0,
+            relevant_content_count=0,
             unidentified_content_count=0,
             analyzed_count=0,
             analysis_coverage_rate=0,

@@ -121,6 +121,37 @@ function installSessionStorage(): Storage {
 }
 
 describe('voice plaza', () => {
+  it('新查询立即隔离旧结果，同查询刷新保留原行直到成功提交', async () => {
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    const store = useVoicePlazaStore()
+    await store.refresh()
+    let finish!: (value: unknown) => void
+    generated.listContents.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    const refreshing = store.refresh()
+    expect(store.items[0]?.id).toBe(item.id)
+    finish({ items: [item], has_more: false })
+    await refreshing
+    store.filters.search = '另一查询'
+    store.applyFilters()
+    expect(store.items).toEqual([])
+  })
+
+  it('动态目录后台刷新不改未提交标签草稿，同值保持身份，失败保留成功taxonomy', async () => {
+    generated.getContentFilterOptions.mockResolvedValue(filterOptions)
+    generated.getContentAnalysisTaxonomy.mockResolvedValue(taxonomy)
+    const store = useVoicePlazaStore()
+    await store.refreshFilterOptions()
+    const previousOptions = store.filterOptions
+    store.filters.primaryLabels = ['正在选择的标签']
+    await store.refreshFilterOptions()
+    expect(store.filters.primaryLabels).toEqual(['正在选择的标签'])
+    expect(store.filterOptions).toBe(previousOptions)
+    await store.refreshTaxonomy()
+    generated.getContentAnalysisTaxonomy.mockRejectedValue(new Error('暂时失败'))
+    await store.refreshTaxonomy()
+    expect(store.taxonomy?.taxonomy_sha256).toBe(taxonomy.taxonomy_sha256)
+  })
+
   it.each(['succeeded', 'partial_success', 'failed', 'cancelled'])('补采 %s 后刷新服务器窗口、已打开详情和评论，随后停止跟进', async (status) => {
     vi.stubGlobal('document', { visibilityState: 'visible' })
     generated.listContents.mockResolvedValue({ items: [item], has_more: false })
@@ -691,7 +722,7 @@ describe('voice plaza', () => {
     expect(html).toContain('已选 1 个二级标签')
   })
 
-  it('keeps stable filters enabled while disabling dynamic controls during catalog loading', async () => {
+  it('后台目录刷新保留成功候选可用，只有未选父级的二级标签保持禁用', async () => {
     const html = await renderToString(
       createSSRApp({
         render: () => h(VoicePlazaFilters, {
@@ -713,9 +744,10 @@ describe('voice plaza', () => {
       }),
     )
 
-    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(2)
+    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBe(0)
     expect(html).not.toContain('aria-label="内容类型"')
-    expect(html.match(/aria-disabled="true"/g)?.length ?? 0).toBe(2)
+    expect(html.match(/aria-disabled="true"/g)?.length ?? 0).toBe(1)
+    expect(html).not.toContain('筛选项加载中')
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
@@ -1166,6 +1198,33 @@ describe('voice plaza', () => {
     expect(preview).toBeNull()
     expect(store.error).toContain('AI 模型未配置')
     expect(generated.previewContentAnalysisRun).not.toHaveBeenCalled()
+  })
+
+  it('多选筛选在列表、计数、AI 预览创建与导出使用同一快照', async () => {
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    generated.countContents.mockResolvedValue({ count: 1, count_kind: 'exact', count_mode: 'estimated' })
+    generated.previewContentAnalysisRun.mockResolvedValue({ target_count: 1, configuration_hash: 'd'.repeat(64) })
+    generated.createContentAnalysisRun.mockResolvedValue({ run_id: 'run-plural', planner_job_id: 'job-plural', target_count: 1, status: 'queued' })
+    generated.createDataExport.mockResolvedValue({ export_id: 'export-plural', job_id: 'job-export', target_count: 1 })
+    generated.getDataExport.mockRejectedValue(new Error('仅核验导出请求'))
+    const store = useVoicePlazaStore()
+    store.filters.platforms = ['xiaohongshu', 'douyin']
+    store.filters.sentiments = ['正面', '负面']
+    store.filters.voiceTypes = ['真实用户发声', '媒体机构发声']
+    store.filters.primaryLabels = ['产品体验']
+    store.filters.secondaryLabels = ['续航表现']
+    store.applyFilters()
+    await store.refreshResults()
+    await store.refreshAnalysisCapabilities()
+    await store.previewAnalysis('query')
+    await store.confirmAnalysis()
+    await store.createExport('query')
+    const expected = { platforms: ['xiaohongshu', 'douyin'], sentiments: ['正面', '负面'], voice_types: ['真实用户发声', '媒体机构发声'], primary_labels: ['产品体验'], secondary_labels: ['续航表现'] }
+    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject(expected)
+    expect(generated.countContents.mock.lastCall?.[0].filters).toMatchObject(expected)
+    expect(generated.previewContentAnalysisRun.mock.lastCall?.[0].targets.filters).toMatchObject(expected)
+    expect(generated.createContentAnalysisRun.mock.lastCall?.[0].targets.filters).toMatchObject(expected)
+    expect(generated.createDataExport.mock.lastCall?.[0].targets.filters).toMatchObject(expected)
   })
 
   it('previews and confirms an analysis run with the exact frozen target selection', async () => {

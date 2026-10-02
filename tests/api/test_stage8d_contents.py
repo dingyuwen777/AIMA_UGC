@@ -334,6 +334,28 @@ def test_list_route_accepts_repeated_brand_and_competition_filters() -> None:
     assert service.last_query.competition_scopes == ("owned_only", "mixed")
 
 
+def test_list_route_preserves_plural_voice_sentiment_and_legacy_values() -> None:
+    """深链多选经真实 HTTP Query 边界进入生产查询，兼容旧单值。"""
+
+    service = _ContentService()
+    response = _client(service).get(
+        "/api/v1/contents",
+        params=[
+            ("voice_types", "真实用户发声"),
+            ("voice_types", "媒体机构发声"),
+            ("sentiments", "正面"),
+            ("sentiments", "负面"),
+            ("voice_type", "无法判断"),
+            ("sentiment", "中性"),
+        ],
+    )
+    assert response.status_code == 200
+    assert service.last_query.voice_types == ("真实用户发声", "媒体机构发声")
+    assert service.last_query.sentiments == ("正面", "负面")
+    assert service.last_query.voice_type == "无法判断"
+    assert service.last_query.sentiment == "中性"
+
+
 def test_list_route_accepts_repeated_label_filters_and_legacy_singular_values() -> None:
     """标签 plural Query 保留数组，legacy singular 在 Contract 边界归一化。"""
 

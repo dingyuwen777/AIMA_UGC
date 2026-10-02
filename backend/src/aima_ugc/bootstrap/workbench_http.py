@@ -258,35 +258,34 @@ class PostgresWorkbenchHttpService:
                 secondary[cast(str, row["primary_label"])].append(
                     WorkbenchMindSecondaryResponse(
                         secondary_label=cast(str, row["secondary_label"]),
-                        user_count=int(row["user_count"]),
+                        content_count=int(row["content_count"]),
                     )
                 )
 
-            current_users = int(current_summary["identified_user_count"])
-            previous_users = int(previous_summary["identified_user_count"])
+            current_contents = int(current_summary["relevant_content_count"])
+            previous_contents = int(previous_summary["relevant_content_count"])
             dimensions = []
             for primary in configuration.taxonomy.primary_labels:
                 if primary == "无法分类":
                     continue
                 current_row = current.get(primary)
-                user_count = 0 if current_row is None else int(current_row["user_count"])
                 content_count = 0 if current_row is None else int(current_row["content_count"])
                 positive_count = (
                     0 if current_row is None else int(current_row["positive_content_count"])
                 )
-                user_share = _ratio(user_count, current_users) or 0.0
+                content_share = _ratio(content_count, current_contents) or 0.0
                 previous_row = previous.get(primary)
-                previous_count = 0 if previous_row is None else int(previous_row["user_count"])
-                previous_share = _ratio(previous_count, previous_users) or 0.0
+                previous_count = 0 if previous_row is None else int(previous_row["content_count"])
+                previous_share = _ratio(previous_count, previous_contents) or 0.0
                 secondary_items = tuple(secondary.get(primary, ()))
-                change_pp = round((user_share - previous_share) * 100, 2)
+                change_pp = round((content_share - previous_share) * 100, 2)
                 dimensions.append(
                     WorkbenchMindDimensionResponse(
                         primary_label=primary,
-                        user_count=user_count,
-                        user_share=user_share,
+                        content_count=content_count,
+                        content_share=content_share,
                         positive_rate=_ratio(positive_count, content_count),
-                        user_share_change_pp=change_pp,
+                        content_share_change_pp=change_pp,
                         secondary_labels=secondary_items,
                         change_summary=_mind_summary(
                             primary=primary,
@@ -295,7 +294,7 @@ class PostgresWorkbenchHttpService:
                         ),
                     )
                 )
-            dimensions.sort(key=lambda item: (-item.user_share, item.primary_label))
+            dimensions.sort(key=lambda item: (-item.content_share, item.primary_label))
             total = int(current_summary["total_count"])
             response = WorkbenchMindResponse(
                 analysis_scheme_version_id=configuration.scheme.id,
@@ -305,7 +304,7 @@ class PostgresWorkbenchHttpService:
                 date_to=date_to,
                 previous_date_from=previous_from,
                 previous_date_to=previous_to,
-                identified_user_count=current_users,
+                relevant_content_count=current_contents,
                 unidentified_content_count=int(current_summary["unidentified_content_count"]),
                 analyzed_count=int(current_summary["analyzed_count"]),
                 analysis_coverage_rate=_ratio(int(current_summary["analyzed_count"]), total) or 0.0,
@@ -455,7 +454,8 @@ def _snapshot_query_hash(module: WorkbenchSnapshotModule, query: WorkbenchQuery)
         if isinstance(value, list):
             payload[key] = sorted(value)
     encoded = json.dumps(
-        {"module": module, "query": payload},
+        # 聚合口径和响应结构升级后重算，禁止将旧作者口径 JSONB 解释成内容口径。
+        {"version": "content-mind.v2", "module": module, "query": payload},
         ensure_ascii=True,
         sort_keys=True,
         separators=(",", ":"),
@@ -507,7 +507,7 @@ def _pending_snapshot_response(
             date_to=date_to,
             previous_date_from=previous_from,
             previous_date_to=previous_to,
-            identified_user_count=0,
+            relevant_content_count=0,
             unidentified_content_count=0,
             analyzed_count=0,
             analysis_coverage_rate=0,
@@ -656,7 +656,7 @@ def _mind_summary(
 ) -> str:
     direction = "上升" if change_pp > 0 else "下降" if change_pp < 0 else "持平"
     detail = f"；当前讨论集中在“{secondary[0].secondary_label}”" if secondary else ""
-    return f"{primary}用户占比较紧邻等长上期{direction} {abs(change_pp):.2f}pp{detail}。"
+    return f"{primary}帖子占比较紧邻等长上期{direction} {abs(change_pp):.2f}pp{detail}。"
 
 
 def _stream_item(row: RowMapping) -> WorkbenchStreamItemResponse:
@@ -696,7 +696,16 @@ def _layout_response(row: RowMapping | None) -> WorkbenchLayoutResponse:
     return WorkbenchLayoutResponse(
         schema_version=1,
         revision=int(row["revision"]),
-        modules=tuple(WorkbenchLayoutModule.model_validate(item) for item in row["layout"]),
+        modules=tuple(
+            WorkbenchLayoutModule.model_validate(
+                {
+                    **item,
+                    "column_span": max(6, item["column_span"]),
+                    "visible": True if item["module_id"] == "sound-stream" else item["visible"],
+                }
+            )
+            for item in row["layout"]
+        ),
         updated_at=cast(datetime, row["updated_at"]),
     )
 

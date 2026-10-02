@@ -142,10 +142,18 @@ export interface ContentFilterSnapshot {
      */
   secondary_labels?: string[];
   sentiment?: string | null;
+  /**
+     * @maxItems 100
+     * @items.minLength 1
+     * @items.maxLength 128
+     */
+  sentiments?: string[];
   source_identifier?: string | null;
   /** @maxItems 100 */
   vehicle_model_ids?: string[];
   voice_type?: ContentVoiceType | null;
+  /** @maxItems 100 */
+  voice_types?: ContentVoiceType[];
 }
 
 export type AnalysisRunTargetSelectionScope = typeof AnalysisRunTargetSelectionScope[keyof typeof AnalysisRunTargetSelectionScope];
@@ -3623,7 +3631,7 @@ export const WorkbenchModuleId = {
 
 export interface WorkbenchLayoutModule {
   /**
-     * @minimum 4
+     * @minimum 6
      * @maximum 12
      */
   column_span: number;
@@ -3664,24 +3672,24 @@ export interface WorkbenchLayoutUpdateRequest {
 }
 
 export interface WorkbenchMindSecondaryResponse {
-  secondary_label: string;
   /** @minimum 0 */
-  user_count: number;
+  content_count: number;
+  secondary_label: string;
 }
 
 export interface WorkbenchMindDimensionResponse {
   change_summary: string;
-  positive_rate?: number | null;
-  primary_label: string;
-  secondary_labels: WorkbenchMindSecondaryResponse[];
   /** @minimum 0 */
-  user_count: number;
+  content_count: number;
   /**
      * @minimum 0
      * @maximum 1
      */
-  user_share: number;
-  user_share_change_pp?: number | null;
+  content_share: number;
+  content_share_change_pp?: number | null;
+  positive_rate?: number | null;
+  primary_label: string;
+  secondary_labels: WorkbenchMindSecondaryResponse[];
 }
 
 export type WorkbenchMindResponseSnapshotStatus = typeof WorkbenchMindResponseSnapshotStatus[keyof typeof WorkbenchMindResponseSnapshotStatus];
@@ -3708,10 +3716,10 @@ export interface WorkbenchMindResponse {
   date_from: string;
   date_to: string;
   dimensions: WorkbenchMindDimensionResponse[];
-  /** @minimum 0 */
-  identified_user_count: number;
   previous_date_from: string;
   previous_date_to: string;
+  /** @minimum 0 */
+  relevant_content_count: number;
   snapshot_status?: WorkbenchMindResponseSnapshotStatus;
   source_revision?: number | null;
   /** @pattern ^[0-9a-f]{64}$ */
@@ -3877,6 +3885,16 @@ analysis_status?: ContentAnalysisStatus | null;
 relevance?: ContentRelevance | null;
 voice_type?: ContentVoiceType | null;
 sentiment?: string | null;
+/**
+ * @maxItems 100
+ */
+voice_types?: ContentVoiceType[];
+/**
+ * @maxItems 100
+ * @items.minLength 1
+ * @items.maxLength 128
+ */
+sentiments?: string[];
 primary_label?: string | null;
 secondary_label?: string | null;
 /**
@@ -6014,7 +6032,7 @@ export const getListContentsUrl = (params?: ListContentsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-    const explodeParameters = ["platforms","content_types","primary_labels","secondary_labels","brand_ids","vehicle_model_ids","competition_scopes"];
+    const explodeParameters = ["platforms","content_types","voice_types","sentiments","primary_labels","secondary_labels","brand_ids","vehicle_model_ids","competition_scopes"];
 
     if (Array.isArray(value) && explodeParameters.includes(key)) {
       value.forEach((v) => {

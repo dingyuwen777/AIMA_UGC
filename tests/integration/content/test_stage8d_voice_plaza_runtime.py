@@ -670,6 +670,29 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             )
         )
         assert [item.id for item in fallback_cross_pair.items] == [content_ids[0]]
+        # 新数组和旧单值在维度内 OR，维度之间 AND；投影与回退必须同义。
+        for projection_status in ("pending", "ready"):
+            with runtime.database.engine.begin() as connection:
+                connection.execute(
+                    update(voice_plaza_projection_state_table).values(status=projection_status)
+                )
+            plural = content_service.list_contents(
+                ContentListQuery(
+                    voice_type="真实用户发声",
+                    voice_types=("媒体机构发声",),
+                    sentiment="负面",
+                    sentiments=("正面",),
+                    relevance="relevant",
+                )
+            )
+            assert [item.id for item in plural.items] == [content_ids[0]]
+            excluded = content_service.list_contents(
+                ContentListQuery(
+                    voice_types=("真实用户发声", "媒体机构发声"),
+                    sentiments=("正面",),
+                )
+            )
+            assert excluded.items == ()
         with runtime.database.engine.begin() as connection:
             connection.execute(update(voice_plaza_projection_state_table).values(status="ready"))
 

@@ -173,7 +173,7 @@ test(`Failed Analysis Run 在全局任务中心解释 ${errorCode}`, async ({ pa
   await page.goto('/voice-plaza')
 
   await expect(page.getByLabel('AI Analysis Run 历史')).toHaveCount(0)
-  await page.getByRole('button', { name: /任务中心/ }).click()
+  await page.getByRole('button', { name: '任务中心', exact: true }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
   await expect(taskCenter).toContainText('AI 分析任务 13')

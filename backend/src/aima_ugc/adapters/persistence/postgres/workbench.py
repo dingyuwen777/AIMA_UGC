@@ -228,18 +228,16 @@ class PostgresWorkbenchRepository:
                                      AND effective_relevance = 'relevant'
                                      AND author_account_id IS NULL
                                )::bigint AS unidentified_content_count,
-                               COUNT(DISTINCT author_account_id) FILTER (
+                               COUNT(DISTINCT content_id) FILTER (
                                    WHERE result_id IS NOT NULL
                                      AND effective_relevance = 'relevant'
-                                     AND author_account_id IS NOT NULL
-                               )::bigint AS identified_user_count
+                               )::bigint AS relevant_content_count
                         FROM base
                         WHERE effective_relevance IS DISTINCT FROM 'irrelevant'
                         GROUP BY is_current
                     ), expanded AS MATERIALIZED (
                         SELECT base.is_current,
                                base.content_id,
-                               base.author_account_id,
                                base.effective_sentiment,
                                label.item ->> 'primary_label' AS primary_label,
                                label.item ->> 'secondary_label' AS secondary_label
@@ -252,9 +250,6 @@ class PostgresWorkbenchRepository:
                     ), primary_counts AS (
                         SELECT is_current,
                                primary_label,
-                               COUNT(DISTINCT author_account_id) FILTER (
-                                   WHERE author_account_id IS NOT NULL
-                               )::bigint AS user_count,
                                COUNT(DISTINCT content_id)::bigint AS content_count,
                                COUNT(DISTINCT content_id) FILTER (
                                    WHERE effective_sentiment = '正面'
@@ -264,9 +259,7 @@ class PostgresWorkbenchRepository:
                     ), secondary_counts AS (
                         SELECT primary_label,
                                secondary_label,
-                               COUNT(DISTINCT author_account_id) FILTER (
-                                   WHERE author_account_id IS NOT NULL
-                               )::bigint AS user_count
+                               COUNT(DISTINCT content_id)::bigint AS content_count
                         FROM expanded
                         WHERE is_current
                         GROUP BY primary_label, secondary_label
@@ -282,7 +275,7 @@ class PostgresWorkbenchRepository:
                                    'total_count', 0,
                                    'analyzed_count', 0,
                                    'unidentified_content_count', 0,
-                                   'identified_user_count', 0
+                                   'relevant_content_count', 0
                                )
                            ) AS current_summary,
                            COALESCE(
@@ -295,14 +288,14 @@ class PostgresWorkbenchRepository:
                                    'total_count', 0,
                                    'analyzed_count', 0,
                                    'unidentified_content_count', 0,
-                                   'identified_user_count', 0
+                                   'relevant_content_count', 0
                                )
                            ) AS previous_summary,
                            COALESCE(
                                (
                                    SELECT jsonb_agg(
                                        to_jsonb(primary_counts) - 'is_current'
-                                       ORDER BY user_count DESC, primary_label
+                                       ORDER BY content_count DESC, primary_label
                                    )
                                    FROM primary_counts
                                    WHERE is_current
@@ -313,7 +306,7 @@ class PostgresWorkbenchRepository:
                                (
                                    SELECT jsonb_agg(
                                        to_jsonb(primary_counts) - 'is_current'
-                                       ORDER BY user_count DESC, primary_label
+                                       ORDER BY content_count DESC, primary_label
                                    )
                                    FROM primary_counts
                                    WHERE NOT is_current
@@ -324,7 +317,7 @@ class PostgresWorkbenchRepository:
                                (
                                    SELECT jsonb_agg(
                                        to_jsonb(secondary_counts)
-                                       ORDER BY primary_label, user_count DESC, secondary_label
+                                       ORDER BY primary_label, content_count DESC, secondary_label
                                    )
                                    FROM secondary_counts
                                ),

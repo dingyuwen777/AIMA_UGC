@@ -82,6 +82,33 @@ describe('import batches store', () => {
     expect(store.loading).toBe(false)
   })
 
+  it('does not reopen a closed detail when its background response arrives late', async () => {
+    featureApi.fetchImportBatchDetail.mockResolvedValueOnce({ id: 'batch-1', status: 'running' })
+    const store = useImportBatchesStore()
+    await store.openBatchDetail('batch-1')
+    let resolve!: (value: unknown) => void
+    featureApi.fetchImportBatchDetail.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
+    const pending = store.refresh(true)
+    store.closeDetail()
+    resolve({ id: 'batch-1', status: 'succeeded' })
+    await pending
+    expect(store.selectedBatch).toBeNull()
+  })
+
+  it('rejects old historical live responses across close and reopen of the same ID', async () => {
+    const store = useImportBatchesStore()
+    await store.refreshHistoricalCampaign('campaign-1')
+    let resolve!: (value: unknown) => void
+    featureApi.fetchHistoricalCampaign.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
+    const pending = store.refreshHistoricalCampaignLive('campaign-1')
+    store.invalidateHistoricalDetailRequests()
+    featureApi.fetchHistoricalCampaign.mockResolvedValueOnce({ id: 'campaign-1', status: 'running', processed_count: 5 })
+    await store.refreshHistoricalCampaign('campaign-1')
+    resolve({ id: 'campaign-1', status: 'succeeded', processed_count: 2 })
+    await pending
+    expect(store.selectedHistoricalCampaign).toMatchObject({ status: 'running', processed_count: 5 })
+  })
+
   it('treats a timed-out cancellation response as unconfirmed until state is visible', async () => {
     const store = useImportBatchesStore()
     store.openCanonicalReplayDetail(replayItem('active'))

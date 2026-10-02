@@ -14,11 +14,20 @@ const api = vi.hoisted(() => ({
   fetchActiveBrands: vi.fn(),
   fetchActiveVehicleModels: vi.fn(),
 }))
-vi.mock('../src/features/workbench/api', () => api)
+vi.mock('../src/features/workbench/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/features/workbench/api')>()
+  return { ...actual, ...api, fetchActiveBrands: actual.fetchActiveBrands, fetchActiveVehicleModels: actual.fetchActiveVehicleModels }
+})
+vi.mock('../src/generated/api/client', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/generated/api/client')>(),
+  listVehicleBrands: async () => { const items = await api.fetchActiveBrands(); return { items, total: items.length } },
+  listVehicleModels: async () => { const items = await api.fetchActiveVehicleModels(); return { items, total: items.length } },
+}))
 
 import WorkbenchPage from '../src/features/workbench/pages/WorkbenchPage.vue'
 import { useWorkbenchStore } from '../src/features/workbench/store'
 import { AimaApiError } from '../src/shared/api/http'
+import { useVehicleCatalogStore } from '../src/shared/domain/vehicleCatalog'
 
 const schemeId = '11111111-1111-4111-8111-111111111111'
 const taxonomyHash = 'a'.repeat(64)
@@ -61,27 +70,27 @@ const mind = {
   date_to: '2026-09-27',
   previous_date_from: '2026-07-30',
   previous_date_to: '2026-08-28',
-  identified_user_count: 100,
+  relevant_content_count: 100,
   unidentified_content_count: 2,
   analyzed_count: 80,
   analysis_coverage_rate: 0.8,
   dimensions: [
     {
       primary_label: '外观设计',
-      user_count: 35,
-      user_share: 0.35,
+      content_count: 35,
+      content_share: 0.35,
       positive_rate: 0.7,
-      user_share_change_pp: 2.2,
-      secondary_labels: [{ secondary_label: '颜色与配色', user_count: 20 }],
+      content_share_change_pp: 2.2,
+      secondary_labels: [{ secondary_label: '颜色与配色', content_count: 20 }],
       change_summary: '外观设计用户占比较紧邻等长上期上升 2.20pp。',
     },
     {
       primary_label: '电池、续航与充电',
-      user_count: 28,
-      user_share: 0.28,
+      content_count: 28,
+      content_share: 0.28,
       positive_rate: 0.55,
-      user_share_change_pp: -1.1,
-      secondary_labels: [{ secondary_label: '续航里程', user_count: 18 }],
+      content_share_change_pp: -1.1,
+      secondary_labels: [{ secondary_label: '续航里程', content_count: 18 }],
       change_summary: '电池、续航与充电用户占比较紧邻等长上期下降 1.10pp。',
     },
   ],
@@ -130,7 +139,63 @@ beforeEach(() => {
   }))
 })
 
+it('shares reactive catalog updates and keeps the name when active candidates no longer contain a selected ID', async () => {
+  const brand = { id: 'aima', code: 'AIMA', display_name: '爱玛', catalog_version: 1, version: 1, aliases: [] }
+  api.fetchActiveBrands.mockResolvedValueOnce([brand])
+  const store = useWorkbenchStore()
+  await store.initialize()
+  const catalog = useVehicleCatalogStore()
+  api.fetchActiveBrands.mockResolvedValueOnce([{ ...brand, display_name: '爱玛新名称', catalog_version: 2, version: 2 }])
+  await catalog.loadBrands('active', true)
+  expect(store.brands[0]?.display_name).toBe('爱玛新名称')
+  expect(store.brandLabel).toBe('爱玛新名称')
+  api.fetchActiveBrands.mockResolvedValueOnce([])
+  await catalog.loadBrands('active', true)
+  expect(store.brands).toEqual([])
+  expect(store.filters.brandIds).toEqual(['aima'])
+  expect(store.brandLabel).toBe('爱玛新名称')
+})
+
 describe('工作台状态与 Figma 基线', () => {
+  it('等待目录后只发一次昨日结束的爱玛七日查询，目录刷新不覆盖用户品牌', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-02T00:30:00Z'))
+    api.fetchActiveBrands.mockResolvedValue([{ id: 'aima-id', code: 'AIMA', display_name: '爱玛', aliases: [] }])
+    let finish!: (value: unknown[]) => void
+    api.fetchActiveBrands.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    const store = useWorkbenchStore()
+    const initialization = store.initialize()
+    await Promise.resolve()
+    expect(api.fetchWorkbenchStream).not.toHaveBeenCalled()
+    finish([{ id: 'aima-id', code: 'AIMA', display_name: '爱玛', aliases: [] }])
+    await initialization
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(1)
+    expect(api.fetchWorkbenchStream).toHaveBeenLastCalledWith(expect.objectContaining({
+      date_from: '2026-09-25', date_to: '2026-10-01', brand_ids: ['aima-id'],
+    }))
+    store.setFilters({ ...store.filters, brandIds: [] })
+    await store.refreshReferenceData()
+    expect(store.filters.brandIds).toEqual([])
+    store.resetFilters()
+    expect(store.filters.brandIds).toEqual(['aima-id'])
+    expect(store.filters.dateFrom).toBe('2026-09-25')
+    vi.useRealTimers()
+  })
+
+  it('品牌集合变化清理不属于任一当前品牌的车型，声音流不能隐藏或缩到六列以下', async () => {
+    api.fetchActiveVehicleModels.mockResolvedValue([
+      { id: 'v1', brand_id: 'b1' }, { id: 'v2', brand_id: 'b2' }, { id: 'v3', brand_id: 'b3' },
+    ])
+    const store = useWorkbenchStore()
+    await store.initialize()
+    store.setFilters({ ...store.filters, brandIds: ['b1', 'b2'], vehicleModelIds: ['v1', 'v2', 'v3'] })
+    expect(store.filters.vehicleModelIds).toEqual(['v1', 'v2'])
+    store.startEditing()
+    store.setModuleVisible('sound-stream', false)
+    store.resizeModule('sound-stream', 4, 48)
+    expect(store.currentModules.find((item) => item.module_id === 'sound-stream')).toMatchObject({ visible: true, column_span: 6 })
+  })
+
   it('动态消费 active Taxonomy，并保持三个模块同一 Scheme Version', async () => {
     const store = useWorkbenchStore()
     await store.initialize()
@@ -381,7 +446,7 @@ describe('工作台状态与 Figma 基线', () => {
       expect.objectContaining({ column_span: 8, row_units: 64 }),
     )
     expect(store.currentModules.find((item) => item.module_id === 'sound-stream')).toEqual(
-      expect.objectContaining({ column_span: 4, row_units: 55 }),
+      expect.objectContaining({ column_span: 6, row_units: 55 }),
     )
     expect(store.currentModules.find((item) => item.module_id === 'brand-mind')).toEqual(
       expect.objectContaining({ column_span: 11, row_units: 73 }),
@@ -449,13 +514,13 @@ describe('工作台状态与 Figma 基线', () => {
     const staleRetry = store.refreshModule('mind')
     await Promise.resolve()
 
-    const newerMind = { ...mind, identified_user_count: 200 }
+    const newerMind = { ...mind, relevant_content_count: 200 }
     api.fetchWorkbenchMind.mockResolvedValue(newerMind)
     await store.refreshData()
-    finishRetry({ ...mind, identified_user_count: 50 })
+    finishRetry({ ...mind, relevant_content_count: 50 })
     await staleRetry
 
-    expect(store.mind?.identified_user_count).toBe(200)
+    expect(store.mind?.relevant_content_count).toBe(200)
   })
 
   it('active Scheme 切换时不会展示混合口径的三个模块', async () => {

@@ -54,4 +54,30 @@ test('从页面提交两条内容并通过真实 Worker 保存两份合法打标
     expect(item.analysis.voice_type).toBe('真实用户发声')
     expect(item.analysis.labels).toEqual([{ primary_label: '骑行性能', secondary_label: '舒适性' }])
   }
+
+  // 同一作者的两条帖子必须分别进入心智分子与分母；通过真实后台快照完成 UI 闭环。
+  const params = { date_from: '2026-09-04', date_to: '2026-09-04', brand_ids: brand.id }
+  await page.goto('/')
+  await page.getByRole('button', { name: '工作台时间范围' }).click()
+  const range = page.getByRole('dialog', { name: '选择工作台时间范围' })
+  // 日期面板从已确认范围的结束月份打开，使用正式月份导航到 Fixture 日期。
+  for (let month = 0; month < 36 && await range.getByRole('button', { name: '2026-09-04', exact: true }).count() === 0; month += 1) {
+    await range.getByRole('button', { name: '上个月', exact: true }).click()
+  }
+  await range.getByRole('button', { name: '2026-09-04', exact: true }).click()
+  await range.getByRole('button', { name: '2026-09-04', exact: true }).click()
+  await range.getByRole('button', { name: '确定', exact: true }).click()
+  await expect.poll(async () => {
+    const response = await request.get('/api/v1/workbench/mind', { params })
+    expect(response.status()).toBe(200)
+    const result = await response.json()
+    return { status: result.snapshot_status, count: result.relevant_content_count,
+      dimension: result.dimensions.find((item: { primary_label: string }) => item.primary_label === '骑行性能')?.content_count }
+  }, { timeout: 30_000 }).toEqual({ status: 'fresh', count: 2, dimension: 2 })
+  await expect(page.locator('.radar-chart svg text').filter({ hasText: '骑行性能 100%' })).toBeVisible({ timeout: 20_000 })
+  await page.locator('.radar-accessible-list').getByRole('button', { name: '骑行性能 100%' }).focus()
+  await page.keyboard.press('Enter')
+  await page.getByRole('button', { name: '查看该心智的用户原声 →' }).click()
+  await expect(page).toHaveURL(/primary_labels=%E9%AA%91%E8%A1%8C%E6%80%A7%E8%83%BD/)
+  await expect(page.getByRole('region', { name: '声音广场内容列表' }).getByTitle('骑行性能 / 舒适性', { exact: true })).toHaveCount(2)
 })
