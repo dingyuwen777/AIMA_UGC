@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20261002-211727-manual-full-comments-workbench
 title: 主动采集默认全量评论与工作台交互修复
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: codex/manual-full-comments-workbench
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-03
 completion_gate: required
 depends_on: []
 affected_areas:
