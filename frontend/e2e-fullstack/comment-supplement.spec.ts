@@ -88,7 +88,7 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   expect(run.scopes.map((scope) => scope.stats.reply_count).sort()).toEqual([0, 0, 0, 0, 2])
 
   await page.goto('/collection-runtime')
-  const runRow = page.locator('.table-row').filter({ hasText: '按发布时间范围' }).first()
+  const runRow = page.locator('.table-row').filter({ hasText: '日期补采' }).first()
   await expect(runRow).toBeVisible()
   await runRow.getByRole('button', { name: '查看详情' }).click()
   const runDetail = page.getByRole('dialog', { name: '辅助补采运行详情' })

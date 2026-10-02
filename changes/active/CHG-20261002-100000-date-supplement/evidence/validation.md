@@ -14,7 +14,7 @@
 | `.venv/Scripts/python.exe -m pytest tests/integration/collection/test_collection_content_supplement.py tests/integration/collection/test_collection_date_supplement.py tests/integration/collection/test_collection_repository.py tests/integration/collection/test_collection_run_execution_gateway.py tests/integration/collection/test_stage8e_collection_http_runtime.py tests/integration/collection/test_collection_supplement_target_eligibility.py -q --tb=short` | exit 0；117 passed | 日期边界/NULL/全来源/身份；显式 AI irrelevant；同数量换目标和选项 409 零写入；冻结、历史兼容、七万候选、万条 Scope/末批回滚；五平台评论/回复/恢复/fencing |
 | `npm.cmd --prefix frontend run test -- --run` | exit 0；37 files、284 passed | 共享表单竞态、409 手动确认、选项与 Capability；Voice 四种终态、退出迟到响应；既有前端行为 |
 | `npm.cmd --prefix frontend run test:e2e -- --config .runtime/content-playwright.config.ts` | exit 0；175 passed（3.4 min） | 日期弹窗、平台保留、加载/空/失败/重开、窄窗口、既有页面流程；配置仅替换端口/noReuse/workers/输出目录 |
-| `npm.cmd --prefix frontend run test:e2e:fullstack -- --config .runtime/content-fullstack.config.ts fullstack/comment-supplement.spec.ts` | exit 0；2 passed（57.7 s） | 日期五平台→真实 API/DB/Job/Worker→详情/评论/回复；Voice 两条勾选→4 个请求/无未选目标和回复→终态自动刷新→重复评论不新增 |
+| `npm.cmd --prefix frontend run test:e2e:fullstack -- --config .runtime/content-fullstack.config.ts fullstack/comment-supplement.spec.ts` | exit 0；2 passed（41.3 s） | 日期五平台→真实 API/DB/Job/Worker→详情/评论/回复；Voice 两条勾选→4 个请求/无未选目标和回复→终态自动刷新→重复评论不新增 |
 | `uv run mypy backend/src` | exit 0；435 files | 后端类型检查 |
 | changed Python `ruff format --check`、`ruff check` | exit 0 | 当前 Python 格式与静态规则 |
 | `uv run python scripts/contracts/generate.py --check`、`scripts/contracts/check_compatibility.py` | exit 0 | Contract/OpenAPI/Schema 一致与旧接口兼容；TypeScript Client 正式生成 |
@@ -36,6 +36,8 @@
 本轮测试实际发现并修正日期范围分步更新丢失平台、Selected 打开 watch 竞态、partial_success 终态缺口及重排轮询清空刚创建任务。全栈旧断言曾读取公开 Scope 不存在的 source_value 字段，改为正式 Content source_identifier 和 Provider Request 数量证明精确目标；旧品牌回归的源码断言改为同时约束 Discovery 提交品牌、补采分支不提交品牌，未放宽业务行为。
 
 首次全部浏览器回归 174 passed / 1 failed，单独复核确认历史导入断言等待五秒恰等于现有轮询周期。用 Playwright 受控时钟明确触发该周期，保留原等待预算和断言，八项历史导入及最终全部 175 项通过。最终 Review 还修正统一类型的列表副标题，避免将显式评论补采描述成日期补采。
+
+正式全量 Full-stack 首次 16 passed / 1 failed：日期任务和 Worker 已成功，但日期用例仍按此前副标题定位运行行。修正为公开的“日期补采”任务名称，继续检查创建的 Run ID、日期、五平台详情/评论/回复和范围外反例；没有放宽任何结果断言。其余实链（包括显式补采）通过，最终平台结果以修正后的当前 head 为准。
 
 ## 两阶段本地复核与文档
 

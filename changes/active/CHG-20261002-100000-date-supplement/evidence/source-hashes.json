@@ -17,7 +17,7 @@
   "docs/collection/README.md": "8c659b8c096796307c91e0f1a3bbcb2f898aefe81ecfff7aa749a7b16c11f510",
   "docs/guides/07_采集运行中心Figma开发基线.md": "8cbfde0c86ba56c7723151966cf7ffd140e5b5222a88526316ba1552bd29387b",
   "docs/product/02_当前产品能力与用户流程.md": "4eb678f5cc33ab0e91acffed6c8c618a06673b29df8e066d0c012c3530a269a4",
-  "frontend/e2e-fullstack/comment-supplement.spec.ts": "fcdc897e3d2624e77b910677caeb0f263c397962809b75aff12bf059dee1e57b",
+  "frontend/e2e-fullstack/comment-supplement.spec.ts": "0f329d8bf716288248f06e85dcbd062faab459a46284b419a36eac64d6a17dfb",
   "frontend/e2e/collection-runtime.spec.ts": "77894da0deff0e7a67c7b7ae02d6f0375319a0707bc680f7cf5e139420c50fc6",
   "frontend/e2e/historical-migration.spec.ts": "fd21a1a26361efe9c04f40e03b3cc2d70659d48e8acbc98936ea87c57933b47d",
   "frontend/src/features/collection-supplement/CollectionSupplementOptions.vue": "8746cf468d869366c78cb2c42635356e512a3dd2815b54d87f2250e399da068a",
