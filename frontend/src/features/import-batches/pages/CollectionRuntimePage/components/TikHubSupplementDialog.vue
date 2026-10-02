@@ -415,7 +415,7 @@ async function submit(): Promise<void> {
           tone="warning"
           role="status"
         >
-          即将采集 {{ normalizedAccounts.length }} 个账号，发布时间 {{ publishedFrom }} 至 {{ publishedTo }}。
+          即将采集 {{ platforms.length }} 个平台，共 {{ normalizedAccounts.length }} 个账号，发布时间 {{ publishedFrom }} 至 {{ publishedTo }}。
           {{ includeComments ? includeSubComments ? '包含全部可访问评论与二级回复。' : '包含全部可访问一级评论。' : '仅采集作品详情。' }}
           请求次数取决于作品与评论分页，会产生接口费用。确认后创建任务。
         </AimaFeedbackBanner>

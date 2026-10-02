@@ -9,13 +9,29 @@ import pytest
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
 from aima_ugc.bootstrap.collection_http import PostgresCollectionHttpService
-from aima_ugc.contracts.http import CollectionRunCreateRequest, CollectionRuntimeListQuery
+from aima_ugc.bootstrap.content_http import PostgresContentHttpService
+from aima_ugc.contracts.http import (
+    CollectionRunCreateRequest,
+    CollectionRuntimeListQuery,
+    ContentListQuery,
+)
 from aima_ugc.entrypoints.worker_main import create_collection_job_registry, create_job_worker
+from aima_ugc.modules.collection.candidate_tables import (
+    collection_candidate_ingestions_table,
+    collection_candidates_table,
+)
 from aima_ugc.modules.collection.providers import ProviderTransportResponse
-from aima_ugc.modules.collection.tables import collection_runs_table, collection_scopes_table
+from aima_ugc.modules.collection.tables import (
+    collection_runs_table,
+    collection_scopes_table,
+    provider_request_attempts_table,
+    provider_requests_table,
+)
 from aima_ugc.modules.content.tables import (
     comment_coverage_observations_table,
+    comment_versions_table,
     comments_table,
+    content_versions_table,
     contents_table,
 )
 from aima_ugc.platform.time import beijing_now
@@ -755,6 +771,164 @@ def test_account_cancel_after_run_commit_converges_to_job_terminal(runtime, monk
         assert session.scalar(select(func.count()).select_from(contents_table)) == 1
 
 
+@pytest.mark.parametrize("boundary", ["content", "root", "reply"])
+@pytest.mark.parametrize("terminal", ["cancelled", "failed"])
+def test_account_terminal_counts_include_committed_ingestion_before_checkpoint(
+    runtime, monkeypatch, boundary, terminal
+):
+    """业务与来源账本提交后取消/Deadline 胜出，结算仍从 durable 事实恢复统计。"""
+    from aima_ugc.adapters.persistence.postgres.collection_content import (
+        PostgresFencedCollectionIngestionWriter,
+    )
+    from aima_ugc.entrypoints.worker_main import create_job_reaper
+    from aima_ugc.platform.jobs.tables import jobs_table
+    from sqlalchemy import text
+
+    config_id, _ = _seed_config_and_search_pack(runtime)
+    identities = ("a-healthy", "z-interrupted")
+    details = {
+        identity: _xiaohongshu_detail(identity, f"note-{identity}", 2) for identity in identities
+    }
+    template = tikhub_runtime.extract_comment_items(
+        "xiaohongshu",
+        json.loads(
+            Path(
+                "tests/fixtures/providers/tikhub/xiaohongshu/comments_page1.sanitized.json"
+            ).read_text(encoding="utf-8")
+        ),
+    )[0]
+    service, created = _xiaohongshu_account_run(runtime, config_id, identities)
+
+    class Transport:
+        def __init__(self):
+            self.seen = []
+
+        def send(self, request):
+            self.seen.append(request.path)
+            if request.path.endswith("get_user_info"):
+                body = {"data": {"user": {"user_id": request.params["user_id"]}}}
+            elif request.path.endswith("get_user_posted_notes"):
+                detail = details[request.params["user_id"]]
+                body = {
+                    "data": {
+                        "notes": list(tikhub_runtime.extract_detail_items("xiaohongshu", detail)),
+                        "has_more": False,
+                    }
+                }
+            elif request.path.endswith("get_image_note_detail"):
+                body = details[request.params["note_id"].removeprefix("note-")]
+            else:
+                is_reply = request.path.endswith("get_note_sub_comments")
+                root_id = 9101 if request.params["note_id"] == "note-a-healthy" else 9201
+                row = _comment_row(
+                    "xiaohongshu",
+                    template,
+                    request.params["note_id"],
+                    root_id + int(is_reply),
+                    root=root_id if is_reply else None,
+                    replies=0 if is_reply else 1,
+                )
+                body = _comment_envelope("xiaohongshu", [row], 0, more=False, replies=is_reply)
+            return ProviderTransportResponse(status_code=200, body=body)
+
+    transport = Transport()
+    registry = create_collection_job_registry(
+        runtime=runtime,
+        transport_factory=lambda _config: transport,
+        secret_resolver=lambda _ref: SecretStr("fixture-secret"),
+    )
+    original = getattr(
+        PostgresFencedCollectionIngestionWriter,
+        "ingest_content" if boundary == "content" else "ingest_comment",
+    )
+    interrupted = False
+
+    def commit_then_terminate(self, *, canonical, **kwargs):
+        nonlocal interrupted
+        result = original(self, canonical=canonical, **kwargs)
+        is_boundary = boundary == "content" or (canonical.parent_comment_id is not None) == (
+            boundary == "reply"
+        )
+        if (
+            canonical.external_content_id == "note-z-interrupted"
+            and is_boundary
+            and not interrupted
+        ):
+            interrupted = True
+            if terminal == "cancelled":
+                service.cancel_run(created.run_id)
+            with runtime.database.new_session() as session, session.begin():
+                session.execute(
+                    text(
+                        "UPDATE jobs "
+                        "SET lease_expires_at = clock_timestamp() - interval '2 seconds', "
+                        "attempt_deadline_at = clock_timestamp() - interval '1 second', "
+                        "max_attempts = attempt WHERE id=:id"
+                    ),
+                    {"id": created.job_id},
+                )
+            assert create_job_reaper(
+                runtime=runtime, registry=registry, retry_delay_seconds=0
+            ).run_once()
+        return result
+
+    monkeypatch.setattr(
+        PostgresFencedCollectionIngestionWriter,
+        "ingest_content" if boundary == "content" else "ingest_comment",
+        commit_then_terminate,
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=registry,
+        worker_id="terminal-checkpoint",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+    assert worker.run_once()
+    assert interrupted
+    run = service.get_run(created.run_id)
+    scopes = {scope.account.account_id: scope for scope in run.scopes}
+    healthy, stopped = scopes["a-healthy"], scopes["z-interrupted"]
+    roots, replies = int(boundary != "content"), int(boundary == "reply")
+    assert run.status == terminal
+    assert healthy.status == "succeeded"
+    assert (
+        healthy.stats.content_count,
+        healthy.stats.root_comment_count,
+        healthy.stats.reply_count,
+    ) == (1, 1, 1)
+    assert stopped.status == terminal
+    assert (
+        stopped.stats.content_count,
+        stopped.stats.root_comment_count,
+        stopped.stats.reply_count,
+        stopped.stats.comment_count,
+    ) == (1, roots, replies, roots + replies)
+    assert stopped.posts_admitted == 1
+    assert (
+        run.stats.content_count,
+        run.stats.root_comment_count,
+        run.stats.reply_count,
+        run.stats.comment_count,
+    ) == (2, 1 + roots, 1 + replies, 2 + roots + replies)
+    assert run.stats.requested_count == run.stats.succeeded_count == len(transport.seen)
+    with runtime.database.new_session() as session:
+        assert (
+            session.scalar(select(jobs_table.c.status).where(jobs_table.c.id == created.job_id))
+            == terminal
+        )
+        assert session.scalar(select(func.count()).select_from(contents_table)) == 2
+        assert (
+            session.scalar(select(func.count()).select_from(comments_table)) == 2 + roots + replies
+        )
+        state = session.scalar(
+            select(collection_scopes_table.c.pagination_state).where(
+                collection_scopes_table.c.id == stopped.id
+            )
+        )
+        assert state["_account_identity"]["stable_id"] == "z-interrupted"
+
+
 def test_manual_retry_detail_conflict_keeps_page_canonical_and_continues_next_post(runtime):
     """详情恢复后的准入变化不改变作品 Raw 的 Canonical 集合，也不截断其他作品。"""
     config_id, _ = _seed_config_and_search_pack(runtime)
@@ -773,10 +947,15 @@ def test_manual_retry_detail_conflict_keeps_page_canonical_and_continues_next_po
             if request.path.endswith("get_user_info"):
                 body = {"data": {"user": {"user_id": identity}}}
             elif request.path.endswith("get_user_posted_notes"):
-                body = {"data": {"notes": [
-                    tikhub_runtime.extract_detail_items("xiaohongshu", detail)[0]
-                    for detail in details.values()
-                ], "has_more": False}}
+                body = {
+                    "data": {
+                        "notes": [
+                            tikhub_runtime.extract_detail_items("xiaohongshu", detail)[0]
+                            for detail in details.values()
+                        ],
+                        "has_more": False,
+                    }
+                }
             elif not self.recovered:
                 return ProviderTransportResponse(status_code=400, body={"error": "unavailable"})
             else:
@@ -802,6 +981,163 @@ def test_manual_retry_detail_conflict_keeps_page_canonical_and_continues_next_po
     assert sum(path.endswith("get_user_posted_notes") for path, _ in transport.seen) == 1
     with runtime.database.new_session() as session:
         assert session.scalar(select(func.count()).select_from(contents_table)) == 2
+
+
+@pytest.mark.parametrize("new_reply", [False, True])
+def test_keyword_and_account_runs_share_content_comments_and_preserve_both_sources(
+    runtime, new_reply
+):
+    """正式关键词与账号来源重复命中同一作品及评论树，业务身份与版本只维护一份。"""
+    config_id, pack_id = _seed_config_and_search_pack(runtime)
+    identity, note_id = "cross-source-user", "cross-source-note"
+    detail = _xiaohongshu_detail(identity, note_id, 2)
+    item = tikhub_runtime.extract_detail_items("xiaohongshu", detail)[0]
+    item["title"] = "爱玛跨来源骑行体验"
+    template = tikhub_runtime.extract_comment_items(
+        "xiaohongshu",
+        json.loads(
+            Path(
+                "tests/fixtures/providers/tikhub/xiaohongshu/comments_page1.sanitized.json"
+            ).read_text(encoding="utf-8")
+        ),
+    )[0]
+
+    class Transport:
+        account_phase = False
+
+        def __init__(self):
+            self.reply_calls = 0
+
+        def send(self, request):
+            if request.path.endswith("get_user_info"):
+                body = {"data": {"user": {"user_id": identity}}}
+            elif request.path.endswith("get_user_posted_notes"):
+                body = {"data": {"notes": [item], "has_more": False}}
+            elif request.path.endswith("search_notes"):
+                body = {
+                    "data": {
+                        "data": {
+                            "items": [{"model_type": "note", "note": item}],
+                            "has_more": False,
+                            "search_id": "cross-source-search",
+                        }
+                    }
+                }
+            elif request.path.endswith("get_image_note_detail"):
+                body = detail
+            else:
+                is_reply = request.path.endswith("get_note_sub_comments")
+                assert is_reply or request.path.endswith("get_note_comments")
+                self.reply_calls += int(is_reply)
+                reply_total = 2 if self.account_phase and new_reply else 1
+                comment = _comment_row(
+                    "xiaohongshu",
+                    template,
+                    note_id,
+                    9102 if is_reply else 9101,
+                    root=9101 if is_reply else None,
+                    replies=0 if is_reply else reply_total,
+                )
+                rows = [comment]
+                if is_reply and self.account_phase and new_reply:
+                    rows.append(
+                        _comment_row(
+                            "xiaohongshu",
+                            template,
+                            note_id,
+                            9103,
+                            root=9101,
+                            replies=0,
+                        )
+                    )
+                body = _comment_envelope("xiaohongshu", rows, 0, more=False, replies=is_reply)
+            return ProviderTransportResponse(status_code=200, body=deepcopy(body))
+
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"a" * 32)
+    keyword = service.create_run(
+        CollectionRunCreateRequest(
+            mode="discovery",
+            keyword_pack_ids=(pack_id,),
+            platforms=({"platform": "xiaohongshu", "provider_config_id": config_id},),
+        ),
+        request_id="cross-keyword-source",
+    )
+    transport = Transport()
+    worker = _account_worker(runtime, transport)
+    assert worker.run_once()
+    assert service.get_run(keyword.run_id).status == "succeeded"
+    transport.account_phase = True
+    if new_reply:
+        item["comments_count"] = 3
+    _, account = _xiaohongshu_account_run(runtime, config_id, (identity,))
+    assert worker.run_once()
+    assert service.get_run(account.run_id).status == "succeeded"
+    assert not worker.run_once()
+    assert transport.reply_calls == (2 if new_reply else 1)
+
+    with runtime.database.new_session() as session:
+        content_id = session.scalar(select(contents_table.c.id))
+        assert session.scalar(select(func.count()).select_from(contents_table)) == 1
+        assert session.scalar(select(func.count()).select_from(comments_table)) == (
+            3 if new_reply else 2
+        )
+        assert session.scalar(select(func.count()).select_from(content_versions_table)) == 1
+        assert session.scalar(select(func.count()).select_from(comment_versions_table)) == (
+            3 if new_reply else 2
+        )
+        comment_ids = dict(
+            session.execute(
+                select(
+                    comments_table.c.external_comment_id,
+                    comments_table.c.id,
+                )
+            ).all()
+        )
+        ledger = session.execute(
+            select(
+                collection_scopes_table.c.run_id,
+                collection_candidate_ingestions_table.c.content_id,
+                collection_candidate_ingestions_table.c.comment_id,
+            ).select_from(
+                collection_candidate_ingestions_table.join(
+                    collection_candidates_table,
+                    collection_candidates_table.c.id
+                    == collection_candidate_ingestions_table.c.candidate_id,
+                )
+                .join(
+                    provider_request_attempts_table,
+                    provider_request_attempts_table.c.id
+                    == collection_candidates_table.c.provider_request_attempt_id,
+                )
+                .join(
+                    provider_requests_table,
+                    provider_requests_table.c.id
+                    == provider_request_attempts_table.c.provider_request_id,
+                )
+                .join(
+                    collection_scopes_table,
+                    collection_scopes_table.c.id == provider_requests_table.c.scope_id,
+                )
+            )
+        ).all()
+        for run_id in (keyword.run_id, account.run_id):
+            assert {
+                row.content_id for row in ledger if row.run_id == run_id and row.content_id
+            } == {content_id}
+            expected_comments = (
+                {comment_ids["9101"], comment_ids["9102"]}
+                if run_id == keyword.run_id
+                else set(comment_ids.values())
+                if new_reply
+                else {comment_ids["9101"]}
+            )
+            assert {
+                row.comment_id for row in ledger if row.run_id == run_id and row.comment_id
+            } == expected_comments
+    content_service = PostgresContentHttpService(runtime, cursor_signing_secret=b"c" * 32)
+    for run_id in (keyword.run_id, account.run_id):
+        page = content_service.list_contents(ContentListQuery(source_identifier=run_id))
+        assert [row.id for row in page.items] == [content_id]
 
 
 def _comment_row(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
@@ -20,6 +21,8 @@ from aima_ugc.modules.collection.execution import (
     CollectionScopeRecord,
 )
 from aima_ugc.modules.collection.tables import collection_runs_table, collection_scopes_table
+
+from .collection_provider_execution import read_collection_scope_execution_counts
 
 _RUN_TERMINAL_STATUSES = frozenset({"partial_success", "succeeded", "failed", "cancelled"})
 _SCOPE_TERMINAL_STATUSES = frozenset({"partial_success", "succeeded", "failed", "cancelled"})
@@ -192,6 +195,21 @@ class PostgresCollectionRepository:
         if status not in {"failed", "cancelled"}:
             return
         scopes = self.list_scopes(run.id)
+        # Writer 与统计 checkpoint 是独立短事务；Job 终态锁阻止旧 Fence 再写，
+        # 此时必须用已提交的 Attempt/来源账本恢复计数，不能固化旧 checkpoint。
+        scope_stats = []
+        for scope in scopes:
+            stats = {
+                **scope.stats,
+                **asdict(read_collection_scope_execution_counts(self._session, scope_id=scope.id)),
+            }
+            stats["posts_admitted"] = stats["content_count"]
+            scope_stats.append(stats)
+            self._session.execute(
+                update(collection_scopes_table)
+                .where(collection_scopes_table.c.id == scope.id)
+                .values(stats=stats)
+            )
         self._session.execute(
             update(collection_scopes_table)
             .where(
@@ -205,8 +223,8 @@ class PostgresCollectionRepository:
         counts = {
             key: sum(
                 value
-                for scope in scopes
-                if isinstance(value := scope.stats.get(key), int)
+                for stats in scope_stats
+                if isinstance(value := stats.get(key), int)
                 and not isinstance(value, bool)
                 and value >= 0
             )

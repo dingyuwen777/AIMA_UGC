@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
 import { expect, test, type Locator } from '@playwright/test'
 import { ensureStage3FilterBrand } from './stage3-brand-support'
 
@@ -100,7 +102,28 @@ test('第三个账号入口执行四个独立 Scope 并进入声音广场、导�
     { timeout: 60_000 }).toBe('succeeded')
   const downloaded = await request.get(`/api/v1/data-exports/${exported.export_id}/download`)
   expect(downloaded.status()).toBe(200)
-  expect((await downloaded.body()).subarray(0, 2).toString()).toBe('PK')
+  const repo = resolve(process.cwd(), '..')
+  const python = resolve(repo, process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python')
+  const workbook = JSON.parse(execFileSync(python, ['-X', 'utf8', '-c', `
+import json, sys
+from io import BytesIO
+from zipfile import ZipFile
+from openpyxl import load_workbook
+body = sys.stdin.buffer.read()
+with ZipFile(BytesIO(body)) as archive:
+    assert archive.testzip() is None
+    assert 'xl/workbook.xml' in archive.namelist()
+book = load_workbook(BytesIO(body), read_only=True, data_only=True)
+rows = list(book['内容'].iter_rows(values_only=True))
+headers = rows[0]
+titles = [row[headers.index('标题')] for row in rows[1:]]
+comments = list(book['评论'].iter_rows(values_only=True))
+print(json.dumps({'sheets': book.sheetnames, 'titles': titles, 'comment_count': len(comments) - 1}, ensure_ascii=False))
+book.close()
+`], { cwd: repo, encoding: 'utf8', input: await downloaded.body() }))
+  expect(workbook.sheets).toEqual(expect.arrayContaining(['内容', '评论', '标签明细']))
+  expect(workbook.titles.sort()).toEqual(contents.map((content: { title: string }) => content.title).sort())
+  expect(workbook.comment_count).toBe(8)
 
   const preflightResponse = await request.post('/api/v1/reports/preflight', {
     data: { brand_id: brand.id, start_date: '2026-09-18', end_date: '2026-09-18' },

@@ -542,6 +542,7 @@ test('validates five-platform account targets and confirms fees without a paid p
   await dialog.getByRole('textbox', { name: '微博账号 ID', exact: true }).fill('123')
   await submit.click()
   const confirmation = dialog.getByRole('status').filter({ hasText: '即将采集' })
+  await expect(confirmation).toContainText('5 个平台')
   await expect(confirmation).toContainText('6 个账号')
   await expect(confirmation).toContainText('费用')
   const created = page.waitForRequest(request => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
