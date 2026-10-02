@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261003-001137-account-discovery-five-platforms
 title: 五平台按账号补采正式集成与完整分页核验
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
 branch: codex/account-discovery-five-platforms
 created: 2026-10-03
@@ -94,7 +94,7 @@ data_changes: []
 
 ## 成功标准
 
-- [ ] #698 AC1–AC12 全部有直接实现、验证和文档证据。
+- [x] #698 AC1–AC12 的实现、分层技术验收与文档全部有直接证据；最终交付结果按下方独立门禁继续跟踪。
 - [ ] 当前 head/base Review/CI 和完整交付收尾通过。
 
 ## 范围
@@ -154,10 +154,10 @@ Raw/Canonical/Owner、Job Fencing/恢复、业务身份/来源、历史快照、
 | R6 | 无品牌词入库与单一身份/来源 | #698 / AC6 | satisfied | 五平台无品牌词正式 Worker 入库；关键词/账号跨来源2个 PG 场景，Content/Comment身份与版本一份、来源可查询 |
 | R7 | 默认 Full、500/30、真实 partial | #698 / AC7 | satisfied | v5冻结 Full；五平台真实 PG Full500/30及回复恢复；一级+回复合计覆盖差额保留 partial，100页保护沿用生产Owner |
 | R8 | 账号运行类型、进度、失败隔离 | #698 / AC8 | satisfied | runtime queries/cursor、HTTP、运行列表/详情生成Client；PG 持续503后健康账号完成、人工重试只重开失败Scope、取消/超时 durable计数 |
-| R9 | 第三 Tab 多账号和确认交互 | #698 / AC9 + 用户最新并列入口指示 | satisfied | TikHubSupplementDialog、collection-supplement Feature、Vitest/Browser；原两个入口保留，平台/账号数量与日期/费用确认，无付费Preview |
+| R9 | 第三 Tab 多账号和确认交互 | #698 / AC9 | satisfied | TikHubSupplementDialog、collection-supplement Feature、Vitest/Browser；用户最新并列入口指示已核对，原两个入口保留，平台/账号数量与日期/费用确认，无付费Preview |
 | R10 | 声音广场/详情/导出/报告/工作台及主动分析 | #698 / AC10 | satisfied | 正式Full-stack账号4Scope Journey：源Run筛选4内容/8评论、详情、解析Excel4条/8评论、报告预检、主动AI4条/工作台4条；按既有资格/品牌筛选，无自动AI |
 | R11 | 本机真实 Provider 证据及边界 | #698 / AC11 | satisfied | 五平台本机有界真实响应/生产Mapper；小红书40、快手46评论合计相符，微博官方非空10回复正确映射；其他差额/网络未知/HTTP400明确 partial，无Secret入Git |
-| R12 | 分层验收、文档、Review 与交付 | #698 / AC12 | not_satisfied | 当前完整后端2044、前端305、Browser199、Full-stack18均通过；独立StageA/StageB问题已关闭；完整PG/Final Ready/CI与交付收尾继续取得，不先报完成 |
+| R12 | 分层验收、文档、Review 与交付 | #698 / AC12 | satisfied | 分层技术验收/文档/完成审计及独立两阶段返修复核已满足提交评审的完成定义：后端2044、前端305、Browser199、Full-stack18、PG731/2skip；当前head/base最终审查、required CI、merge与收尾仍是下方强制交付门禁。本状态不宣称尚未发生的交付动作已完成 |
 
 # 计划改动
 
@@ -174,8 +174,8 @@ Raw/Canonical/Owner、Job Fencing/恢复、业务身份/来源、历史快照、
 - [x] 行为变化建立失败证据
 - [x] 完成最小充分实现
 - [x] 同步受影响长期文档
-- [ ] 取得当前版本验证证据
-- [ ] 完成需求追溯、完成审计和适用复核
+- [x] 取得当前版本验证证据
+- [x] 完成需求追溯、完成审计和适用复核；最终head/base增量Review另绑定本次metadata提交
 
 # 验证矩阵
 
@@ -215,9 +215,9 @@ pytest unit/contracts/api、目标真实 PG、frontend test/lint/typecheck/build
 # 完成审计
 
 - [x] upstream_re_read：2026-10-03 重新读取 live #698 AC1–AC12、用户第三入口并列指示，以及已取得引用方案正文1–48节/49节片段；与当前正式Product/Blueprint/Provider/Contract/Schema/Job/CI逐项交叉核对。未取得尾部不冒充已读取。
-- [ ] change_coverage：AC1–AC11已逐项核对实现/测试/文档；AC12完整PG和最终交付门禁待取得新鲜结果。
+- [x] change_coverage：AC1–AC12逐项对应实现、分层测试与正式文档；完整PG已取得。交付生命周期CI/merge/main-fresh/Archive/Closure/cleanup继续在交付状态独立跟踪，未执行项保持未完成，禁止以Requirement表状态代替这些门禁。
 - [x] reverse_audit：后端能力→前端动作→任务→入库→声音广场/评论/导出/报告/工作台；基础内容按既有读模型与筛选读取，AI 派生统计必须经过用户主动 Analysis Run，不强制无品牌 Evidence 的内容进入爱玛默认筛选。
-- [ ] unresolved_cleared：所有 not_satisfied 清零。
+- [x] unresolved_cleared：实现及技术验收的not_satisfied清零，未扩大范围或无依据延期。所有独立Finding已关闭；当前metadata最终Review及远程required CI/交付收尾仍必须真实取得后才能声称整体交付。
 
 # 完成证据与状态
 
@@ -239,15 +239,21 @@ pytest unit/contracts/api、目标真实 PG、frontend test/lint/typecheck/build
 | V11 | 当前返修工作树，锁定工具链 | mypy backend/src；CI范围ruff/format；generate/check_compatibility；Docs/DocsFacts/Architecture/TableOwner/SecretScan；validate_changed --base origin/main | 440 source PASS；913 formatted；其余PASS；73 changed paths/full profile | 生成物与真实代码一致，无依赖/Migration变更；唯一CI分类结果，非伪造已执行全部CI |
 | V12 | 当前工作树构建wheel / 本机正式启动进程 | uv build、隔离venv锁定依赖安装、wheel导入account_runtime/HTTP账号Contract；正式check_local_stack --require-ready | PASS | wheel内真实模块/Contract可用，Backend/Frontend/PostgreSQL readiness与Vite代理通过；最后生产返修仍须远程当前head构建 |
 
+| V13 | 实现head d94769badd53b92c3114232b7bc4b943db2fb460 / base624d3178e8d0fde43066c142f5f9c3a5b5e16c00；一次性本机PostgreSQL18.4 | 按CI逐组独立pytest与正式清库边界：platform/database/jobs/collection/content/ingestion/vehicles；专用55437报告库 | 56+120+22+237+171+111+5+9=731 passed；2 skipped | 全部业务集成Green。报告原55434端口10skip不作通过证据，转符合门禁的55437/aima_report_test后9PASS/1专用浏览器skip；另1为平台进程条件skip，不改安全判断/断言 |
+| V14 | d94769ba / 另一独立临时空库 | upgrade head → verify_migration_compatibility.py | PASS；head20261002_0079、alembic check无新upgrade | 历史迁移兼容与当前Schema无新增Migration；原始空库直接downgrade错误为未满足前置步骤，记录后按正式CI顺序重跑 |
+| V15 | d94769ba / base624d3178 | 独立提交一致性、上游完成定义与反向审计增量复核 | NO_FINDINGS_WITHIN_SCOPE | 所有返修进入提交且与先前审查工作树一致；R1–R11无需求遗漏；R12全PG完成后本次仅更新审计metadata，最终head另复核 |
+
+验证资产冗余检查：clean。生产身份/分页/Mapper/Raw/计数Owner没有在Probe或测试重新实现；Contract、纯行为、真实PG、Browser与Full-stack分别证明不同边界。新增取消/超时场景复用生产Writer/Job/Reaper，跨来源场景区分完整线程复用与新增回复观察，不为测试制造重发；全栈解析真实下载文件。没有放宽断言/预算/timeout或依赖升级。
+
 ## 未验证内容与剩余风险
 
-本 Change 实现和返修已通过上述本机分层验证，完整 PostgreSQL 分组回归/最终提交 Review/远程 CI 与合并收尾仍待取得。Human Local Acceptance 为 USER_WAIVED，依据本范围用户明确“所有平台都检查和修复…你自己测试功能没问题之后直接合并”，不冒充 PASSED；仍完成技术验收和全部交付门禁。
+本 Change 实现和返修已通过完整本机分层验证。远程Draft阶段edited事件只运行轻量治理，因Draft/未Ready状态失败不作产品验收；本次metadata最终Review后触发正式Ready事件，必须取得当前head/base全部required CI后才能merge。main-fresh、原生Archive、IssueClosure与cleanup随后继续执行，当前未取得，不声称整体交付。Human Local Acceptance 为 USER_WAIVED，依据本范围用户明确“所有平台都检查和修复…你自己测试功能没问题之后直接合并”，不冒充 PASSED；仍完成技术验收和全部交付门禁。
 
 ## 交付状态
 
 - 提交：治理/Red247a1ac3、实现ae2f7b58；本次返修/完成审计形成后续checkpoint。
-- 拉取请求：#699 Draft，关联 #698；实现未 Ready。
-- CI：未取得。
+- 拉取请求：#699，关联#698；本次达到本地技术Ready，最终metadata Review后提交正式评审并触发全量CI。
+- CI：最终实现当前head/base的正式全量CI未取得；先前Draft轻量治理失败不冒充产品Green。
 - 合并：未合并。
 - Change 归档：合并后原生 Workflow。
 - 发布 / 部署：不适用，无生产操作。
