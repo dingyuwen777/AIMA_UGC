@@ -229,16 +229,17 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 | V10 | 返修工作树 / 本地锁定工具链 | pytest tests/unit tests/contracts tests/api -q；mypy backend/src；frontend test/lint/typecheck | 2014 passed、16 skipped、12 subtests；437 source files PASS；305 passed；lint/typecheck PASS | 来源查询与目录加载失败返修未破坏其他行为 |
 | V11 | e42b39c6 / 隔离 PostgreSQL 18.4 / 锁定本地工具链 | import_campaign_revocation_postgres.py；frontend build；generate.py --check；check_compatibility.py；ruff format --check/check；check_docs.py；validate_changed.py --base origin/main | 6 passed；构建/生成/兼容/静态/文档 PASS；classifier 输出 27 个 changed paths 与 contract profile | 当前来源修复未绕过撤销可见性；生成物/类型/构建及正式文档一致，复用 CI 唯一范围分类 |
 | V12 | reviewed head e42b39c61750cf4004d73064b4f2ed9a38a34dd8 / base 77060d1c49303ebf95542c2bb049159f2d7f4be5 | 独立 phase1_acceptance_review：First Assembly → REPAIR_VERIFY | NO_FINDINGS_WITHIN_SCOPE；F-P1-01/F-P1-02 CLOSED | 原阻塞问题及新增成功入库来源关联均已按实际代码/消费者/证据复核，无本轮阻塞 Finding |
+| V13 | reviewed head 139752e3446bc3172c4a40a3e4effeb695a01795 / base 77060d1c49303ebf95542c2bb049159f2d7f4be5 | 独立 phase1_acceptance_review：Final Ready 增量审查 | NO_FINDINGS_WITHIN_SCOPE | 相对返修版本仅有 Change 完成审计与元数据修正，原验证保持代表性；CI 和人工验收不由审查结论替代 |
 
 ## 未验证内容与剩余风险
 
-人工本地验收为 PENDING，已向用户提供免等待选择与本地入口；未收到免等待或通过事实前不推送实现。独立 REPAIR_VERIFY 已通过，Final Ready 与 current-head/current-base CI 尚未取得。第一阶段功能验证的 TikHub 请求使用 Fake，不冒充真实 Provider 结构探测。新增来源条件未做生产大规模性能实测，不据既有索引宣称容量已验证。现有 Pydantic/Starlette deprecated 与构建 chunk size 警告保留，无本轮升级或断言放宽。
+第一阶段人工本地验收等待按用户 2026-10-02 最新指示“第一阶段做完了就提交远程分析啊”及“你自己测试功能没问题之后直接合并到远程主分支就行”记为 USER_WAIVED：用户明确要求自行测试后直接提交和合并，因此不再以尚未人工操作页面阻塞第一阶段实现推送；该覆盖不冒充 PASSED，不跳过技术验证、独立 Review 或 current-head/current-base CI。独立 REPAIR_VERIFY 及 139752e3 的 Final Ready 增量审查已通过；本次只更新交付事实，远程 CI 仍待推送后取得。第一阶段功能验证的 TikHub 请求使用 Fake，不冒充真实 Provider 结构探测。新增来源条件未做生产大规模性能实测，不据既有索引宣称容量已验证。现有 Pydantic/Starlette deprecated 与构建 chunk size 警告保留，无本轮升级或断言放宽。
 
 ## 交付状态
 
-- 提交：治理/Red 6ea6481；实现 checkpoint d5cffdfe；返修 checkpoint e42b39c6。
-- 拉取请求：#697 早期 Draft，仅治理/Red commit 已推送。
-- CI：早期 Draft Red 状态，尚无当前实现 CI 证据。
+- 提交：治理/Red 6ea6481；实现 checkpoint d5cffdfe；返修 checkpoint e42b39c6；完成审计 139752e3；本次交付事实更新后推送。
+- 拉取请求：#697，本次按用户新指示推送第一阶段实现并更新 PR；进入 Ready 前继续核对最终 head 的增量审查与必要门禁。
+- CI：既有远程结果只对应早期治理/Red head，不代表当前实现；推送后取得本次 head/base 的新鲜 CI。
 - 合并：尚未合并。
 - Change 归档：合并后由原生 Workflow 完成。
 - 发布 / 部署：不适用，本轮仅要求 merge main。
