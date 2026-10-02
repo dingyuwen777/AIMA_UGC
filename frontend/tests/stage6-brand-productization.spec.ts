@@ -40,7 +40,7 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
   it('Excel 与 TikHub Discovery 都提交品牌过滤，补采不携带搜索或过滤范围', async () => {
     const [dataImport, discovery] = await Promise.all([
       readSource('features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue'),
-      readSource('features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDrawer.vue'),
+      readSource('features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDialog.vue'),
     ])
 
     expect(dataImport).toContain('不适用于 Excel 文件导入')

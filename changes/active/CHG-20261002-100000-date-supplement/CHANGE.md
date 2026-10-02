@@ -3,16 +3,25 @@ schema: coding-change/v1
 id: CHG-20261002-100000-date-supplement
 title: 按发布时间补采与辅助补采弹窗
 level: L3
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: feature/date-supplement
 created: 2026-10-02
 updated: 2026-10-02
 completion_gate: required
 depends_on: []
-affected_areas: [collection, frontend]
-affected_paths: [backend/src/aima_ugc, frontend/src/features/collection-runtime, tests, contracts, docs]
-contracts: [http, generated-client]
+affected_areas:
+  - "collection"
+  - "frontend"
+affected_paths:
+  - "backend/src/aima_ugc"
+  - "frontend/src/features/import-batches"
+  - "tests"
+  - "contracts"
+  - "docs"
+contracts:
+  - "http"
+  - "generated-client"
 data_changes: []
 ---
 
@@ -32,7 +41,8 @@ Target Reader 已统一处理直接身份、可解析链接和当前明确不相
 | --- | --- | --- | --- |
 | E1 | 日期模式和日期字段不受现有 Contract 支持 | tests/contracts/test_collection_date_supplement.py 本轮 1 failed / 10 passed | 先增加契约 |
 | E2 | 补采共享身份校验及 Scope Runtime | backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py；backend/src/aima_ugc/bootstrap/collection_scope.py | 复用现有链路 |
-| E3 | 日期语义和居中弹窗已有共享组件 | frontend/src/shared/time/beijingTime.ts；AimaDateRange；AimaModalContainer | 不复制日历和弹窗机制 |
+| E3 | 日期语义和居中弹窗已有共享组件 | frontend/src/shared/domain/beijingTime.ts；AimaDateRange；AimaModalContainer | 不复制日历和弹窗机制 |
+| E4 | 大范围 Scope 单条插入及逐 ID IN 查询会超过 PostgreSQL 65,535 个绑定参数 | 本轮万条 Scope 容量 Red；七万条候选读取 Red | Repository 使用驱动自动分批、Reader 使用 UUID 数组参数，保持同一事务 |
 
 # 目标、成功标准与非目标
 
@@ -57,12 +67,12 @@ Target Reader 已统一处理直接身份、可解析链接和当前明确不相
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 日期资格与共享身份规则 | #690 / AC1 | not_satisfied | 待实现 |
-| R2 | 原子冻结和兼容契约 | #690 / AC2 | not_satisfied | 待实现 |
-| R3 | 冻结执行、详情评论回复 | #690 / AC3 | not_satisfied | 待实现 |
-| R4 | 居中弹窗、状态与竞态 | #690 / AC4 | not_satisfied | 待实现 |
-| R5 | 运行展示和生成客户端 | #690 / AC5 | not_satisfied | 待实现 |
-| R6 | 分层验证、容量与文档 | #690 / AC6 | not_satisfied | 待验证 |
+| R1 | 日期资格与共享身份规则 | #690 / AC1 | satisfied | 日期 Target Reader；test_collection_date_supplement.py：五平台、闭区间、NULL、范围外、全来源、直接/解析/阻塞及当前不相关 |
+| R2 | 原子冻结和兼容契约 | #690 / AC2 | satisfied | collection_http.py 与 Contract；契约/API 回归；test_collection_repository.py：万条目标成功及末批失败整体回滚 |
+| R3 | 冻结执行、详情评论回复 | #690 / AC3 | satisfied | collection_scope.py；日期和 AI 状态变更后的冻结读取；date/batch 共用 Worker 测试及五平台真实全栈 |
+| R4 | 居中弹窗、状态与竞态 | #690 / AC4 | satisfied | TikHubSupplementDialog.vue、Store；组件及浏览器：加载/空/错误/重开、A→B→A 请求、平台选择收敛、宽窄窗口 |
+| R5 | 运行展示和生成客户端 | #690 / AC5 | satisfied | Runtime Query/Cursor、列表筛选及详情日期/评论选项；生成和兼容检查；全栈运行详情→补采结果→评论/回复 |
+| R6 | 分层验证、容量与文档 | #690 / AC6 | satisfied | evidence/validation.md、evidence/capacity.json；本轮分层 Green、两阶段本地复核及 targeted 文档同步；正式 CI 作为 PR 合入前门禁 |
 
 # 计划改动
 
@@ -91,13 +101,17 @@ Docs Impact: targeted。只同步补采行为的正式说明；不改受管治�
 
 # 完成审计
 
-- [ ] upstream_re_read：重新读取用户方案和 live Issue。
-- [ ] change_coverage：上游要求完整覆盖。
-- [ ] reverse_audit：后端能力、前端入口、异步结果双向审计。
-- [ ] unresolved_cleared：未满足要求清零。
+- [x] upstream_re_read：2026-10-02 重新读取引用方案和 live #690，按 AC1–AC6 独立重建完成定义，未使用 Change 自证。
+- [x] change_coverage：日期选择、资格、冻结、Worker、弹窗状态、运行投影、生成、兼容、容量和文档均有对应实现和验证。
+- [x] reverse_audit：从日期资格/创建/Run/Scope/结果后端能力检查页面入口、失败/空/加载及详情；从日期控件/平台/评论选择/结果按钮反查正式 API 和 Worker 支持；全栈实际读取新评论与回复。
+- [x] unresolved_cleared：本地阻塞项清零；容量参数上限、详情旧批次文案和测试 Fixture 约束已修正；平台正式 CI 与外部审批仍按 PR 当前状态核验，未宣称已合入或上线。
+
+Validation Asset Redundancy: clean。复用既有 date/batch Worker 参数化资产；Store 竞态、浏览器用户状态、PostgreSQL 持久边界、全栈实链和容量分别承担独立证明，不复制 Provider 规则。
+
+两阶段本地复核：第一阶段完成上游→Change→实现/测试/文档覆盖；第二阶段复核时间、身份、Raw 恢复/fencing、异常、原子事务、参数上限、兼容和 Secret 边界。修正后未发现范围内阻塞项；这不等于 GitHub 外部审批。
 
 # 完成证据与状态
 
 Red：工作目录 .venv/Scripts/python.exe -m pytest tests/contracts/test_collection_date_supplement.py -q，1 failed / 10 passed，失败原因是现有契约拒绝日期模式和字段。
 
-实现、Review、CI 尚未完成；未 merge、归档、关闭 Issue 或部署。
+Green 及环境、命令、容量、Review 边界见 [evidence/validation.md](evidence/validation.md)。正式 CI 状态以 PR #691 当前 head 的 Checks 为事实源。未 merge、归档、关闭 Issue 或部署；保留任务分支和 worktree 供审查。

@@ -72,6 +72,8 @@ from aima_ugc.contracts.http import (
     CollectionBatchSupplementEligibilityResponse,
     CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
+    CollectionDateSupplementEligibilityResponse,
+    CollectionDateSupplementQuery,
     CollectionPlanCreateRequest,
     CollectionPlanListQuery,
     CollectionPlanListResponse,
@@ -1231,6 +1233,18 @@ def create_app(
         campaign_id: UUID,
     ) -> CollectionCampaignSupplementEligibilityResponse:
         return current_collection_service().get_campaign_supplement_eligibility(campaign_id)
+
+    @application.get(
+        "/api/v1/collection-supplement-eligibility",
+        operation_id="getCollectionDateSupplementEligibility",
+        response_model=CollectionDateSupplementEligibilityResponse,
+        responses={422: {"model": HttpErrorResponse}, 500: {"model": HttpErrorResponse}},
+        tags=["collection"],
+    )
+    def get_collection_date_supplement_eligibility(
+        query: Annotated[CollectionDateSupplementQuery, Query()],
+    ) -> CollectionDateSupplementEligibilityResponse:
+        return current_collection_service().get_date_supplement_eligibility(query)
 
     @application.post(
         "/api/v1/collection-runs",

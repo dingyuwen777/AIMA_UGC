@@ -2527,6 +2527,44 @@
         "title": "CollectionCapabilityResponse",
         "type": "object"
       },
+      "CollectionDateSupplementEligibilityResponse": {
+        "additionalProperties": false,
+        "description": "日期范围内的可执行目标和身份缺口，不公开 Provider 私有身份。",
+        "properties": {
+          "diagnostics": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CollectionSupplementPlatformDiagnosticResponse"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "published_from": {
+            "format": "date-time",
+            "title": "Published From",
+            "type": "string"
+          },
+          "published_to": {
+            "format": "date-time",
+            "title": "Published To",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionBatchSupplementTargetResponse"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "published_from",
+          "published_to",
+          "targets"
+        ],
+        "title": "CollectionDateSupplementEligibilityResponse",
+        "type": "object"
+      },
       "CollectionPlanCopyRequest": {
         "additionalProperties": false,
         "description": "复制计划只要求新名称；副本默认停用并重新进入人工启用流程。",
@@ -2977,6 +3015,30 @@
             "minItems": 1,
             "title": "Platforms",
             "type": "array"
+          },
+          "published_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published From"
+          },
+          "published_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published To"
           }
         },
         "required": [
@@ -3021,6 +3083,30 @@
           "mode": {
             "$ref": "#/components/schemas/CollectionRunMode"
           },
+          "published_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published From"
+          },
+          "published_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published To"
+          },
           "run_id": {
             "format": "uuid",
             "title": "Run Id",
@@ -3044,7 +3130,8 @@
       "CollectionRunMode": {
         "enum": [
           "discovery",
-          "batch_supplement"
+          "batch_supplement",
+          "date_supplement"
         ],
         "type": "string"
       },
@@ -3158,6 +3245,28 @@
             ],
             "title": "Import Batch Id"
           },
+          "include_comments": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Comments"
+          },
+          "include_sub_comments": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Sub Comments"
+          },
           "job_id": {
             "format": "uuid",
             "title": "Job Id",
@@ -3191,6 +3300,30 @@
             "minimum": 0.0,
             "title": "Progress",
             "type": "integer"
+          },
+          "published_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published From"
+          },
+          "published_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published To"
           },
           "run_id": {
             "format": "uuid",
@@ -3561,6 +3694,7 @@
           "data_import_campaign",
           "tikhub_discovery",
           "tikhub_batch_supplement",
+          "tikhub_date_supplement",
           "canonical_replay"
         ],
         "type": "string"
@@ -14821,7 +14955,7 @@
               "items": {
                 "$ref": "#/components/schemas/CollectionRuntimeRecordType"
               },
-              "maxItems": 5,
+              "maxItems": 6,
               "title": "Record Types",
               "type": "array"
             }
@@ -15019,6 +15153,69 @@
           }
         },
         "summary": "Get Collection Runtime Summary",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
+    "/api/v1/collection-supplement-eligibility": {
+      "get": {
+        "operationId": "getCollectionDateSupplementEligibility",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "published_from",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Published From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "published_to",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Published To",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionDateSupplementEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Collection Date Supplement Eligibility",
         "tags": [
           "collection"
         ]

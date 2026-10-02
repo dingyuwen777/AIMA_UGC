@@ -1,0 +1,9 @@
+{
+  "backend/src/aima_ugc/adapters/persistence/postgres/collection.py": "b4435491500ba8c3ff5533ac733f68492504370d9f9a825c2949186f9bd732d4",
+  "backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py": "8981440a522e8b8b504d84867719b82818dd5ccd716bd80480d17a964c5f2b99",
+  "backend/src/aima_ugc/bootstrap/collection_http.py": "41a4689c4e80f282e577208a1ca09baf79927e455cc53be24c5a68707bd491d9",
+  "backend/src/aima_ugc/bootstrap/collection_scope.py": "4cb2d76c29f5a0f6da3f87edaca875248ce9d314c0885ffd30a21ecf7224a482",
+  "backend/src/aima_ugc/contracts/http.py": "58c04b441726261d48195825a8cc0dc7d67d65bfd80ee6e6c0d86cc8d8fe23bf",
+  "frontend/src/features/import-batches/store.ts": "e4fdde19509d7f99b34b7afad8f14e5b7514044964e6023ed62dd974eb6dc0b9",
+  "frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDialog.vue": "2c05e5cd33ad6f21f56ffcae65b5baf94c75f876eecc1ad63ae660331fabc888"
+}

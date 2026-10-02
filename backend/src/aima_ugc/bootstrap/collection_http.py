@@ -47,6 +47,8 @@ from aima_ugc.contracts.http import (
     CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
     CollectionCapabilityResponse,
+    CollectionDateSupplementEligibilityResponse,
+    CollectionDateSupplementQuery,
     CollectionPlatform,
     CollectionProviderConfigResponse,
     CollectionRunCreatedResponse,
@@ -275,6 +277,47 @@ class PostgresCollectionHttpService:
         finally:
             session.close()
 
+    def get_date_supplement_eligibility(
+        self,
+        query: CollectionDateSupplementQuery,
+    ) -> CollectionDateSupplementEligibilityResponse:
+        """读取日期候选的共享身份资格，预览不创建业务任务。"""
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                reader = PostgresCollectionTargetReader(session)
+                targets, _, diagnostics = reader.list_date_range_selection(
+                    published_from=query.published_from,
+                    published_to=query.published_to,
+                    platforms=_ALL_COLLECTION_PLATFORMS,
+                )
+                counts: dict[CollectionPlatform, int] = {}
+                for target in targets:
+                    counts[target.platform] = counts.get(target.platform, 0) + 1
+                return CollectionDateSupplementEligibilityResponse(
+                    published_from=query.published_from,
+                    published_to=query.published_to,
+                    targets=tuple(
+                        CollectionBatchSupplementTargetResponse(
+                            platform=platform, target_count=counts[platform]
+                        )
+                        for platform in _ALL_COLLECTION_PLATFORMS
+                        if platform in counts
+                    ),
+                    diagnostics=tuple(
+                        CollectionSupplementPlatformDiagnosticResponse(
+                            platform=item.platform,
+                            direct_target_count=item.direct_target_count,
+                            resolution_candidate_count=item.resolution_candidate_count,
+                            blocked_count=item.blocked_count,
+                            block_reasons=item.block_reasons,
+                        )
+                        for item in diagnostics
+                    ),
+                )
+        finally:
+            session.close()
+
     def create_run(
         self,
         request: CollectionRunCreateRequest,
@@ -324,7 +367,23 @@ class PostgresCollectionHttpService:
                     job_id=job.id,
                     trigger_type="api",
                     config_snapshot={
-                        "schema_version": "collection-run-config.v2",
+                        "schema_version": (
+                            "collection-run-config.v3"
+                            if request.mode == "date_supplement"
+                            else "collection-run-config.v2"
+                        ),
+                        **(
+                            {
+                                "supplement_selection": {
+                                    "type": "published_date_range",
+                                    "published_from": request.published_from.isoformat(),
+                                    "published_to": request.published_to.isoformat(),
+                                }
+                            }
+                            if request.published_from is not None
+                            and request.published_to is not None
+                            else {}
+                        ),
                         "mode": request.mode,
                         "keyword_pack_ids": [str(item) for item in request.keyword_pack_ids],
                         "keyword_packs": list(keyword_pack_snapshot),
@@ -373,6 +432,8 @@ class PostgresCollectionHttpService:
                     run_id=execution.run.id,
                     job_id=job.id,
                     mode=request.mode,
+                    published_from=request.published_from,
+                    published_to=request.published_to,
                     import_batch_id=request.import_batch_id,
                     data_import_campaign_id=request.data_import_campaign_id,
                 )
@@ -393,15 +454,26 @@ class PostgresCollectionHttpService:
                 scopes = tuple(repository.list_scopes(run.id))
                 snapshot = run.config_snapshot
                 mode_value = snapshot.get("mode", "discovery")
-                if mode_value not in {"discovery", "batch_supplement"}:
+                if mode_value not in {"discovery", "batch_supplement", "date_supplement"}:
                     raise CollectionConflict
-                mode: CollectionRunMode = (
-                    "discovery" if mode_value == "discovery" else "batch_supplement"
-                )
+                mode: CollectionRunMode = mode_value
+                selection = _snapshot_date_selection(snapshot)
                 return CollectionRunResponse(
                     run_id=run.id,
                     job_id=run.job_id,
                     mode=mode,
+                    published_from=selection.published_from if selection else None,
+                    published_to=selection.published_to if selection else None,
+                    include_comments=(
+                        cast(bool, snapshot["include_comments"])
+                        if isinstance(snapshot.get("include_comments"), bool)
+                        else None
+                    ),
+                    include_sub_comments=(
+                        cast(bool, snapshot["include_sub_comments"])
+                        if isinstance(snapshot.get("include_sub_comments"), bool)
+                        else None
+                    ),
                     import_batch_id=run.import_batch_id,
                     data_import_campaign_id=run.data_import_campaign_id,
                     status=_public_run_status(run, job.status),
@@ -628,7 +700,14 @@ class PostgresCollectionHttpService:
             ).identity,
         )
         selected_platforms = tuple(selection.platform for selection in request.platforms)
-        if request.data_import_campaign_id is not None:
+        if request.mode == "date_supplement":
+            assert request.published_from is not None and request.published_to is not None
+            targets, source_items, _ = reader.list_date_range_selection(
+                published_from=request.published_from,
+                published_to=request.published_to,
+                platforms=selected_platforms,
+            )
+        elif request.data_import_campaign_id is not None:
             if not reader.campaign_exists(request.data_import_campaign_id):
                 raise CollectionResourceNotFound
             if not reader.campaign_is_supplement_ready(request.data_import_campaign_id):
@@ -718,8 +797,22 @@ def _run_stage(run: CollectionRunRecord) -> str:
         return run.status
     return (
         "content_enrichment"
-        if run.config_snapshot.get("mode") == "batch_supplement"
+        if run.config_snapshot.get("mode") in {"batch_supplement", "date_supplement"}
         else "content_discovery"
+    )
+
+
+def _snapshot_date_selection(snapshot: dict[str, object]) -> CollectionDateSupplementQuery | None:
+    if snapshot.get("mode") != "date_supplement":
+        return None
+    selection = snapshot.get("supplement_selection")
+    if not isinstance(selection, dict) or selection.get("type") != "published_date_range":
+        raise CollectionConflict
+    return CollectionDateSupplementQuery.model_validate(
+        {
+            "published_from": selection.get("published_from"),
+            "published_to": selection.get("published_to"),
+        }
     )
 
 
@@ -988,6 +1081,14 @@ def _runtime_display_name(record: CollectionRuntimeReadRecord) -> str:
     if record.record_type == "data_import_campaign":
         suffix = f" · {record.source_filename}" if record.source_filename else ""
         return f"数据导入{suffix}"
+    if record.record_type == "tikhub_date_supplement":
+        selection = _snapshot_date_selection(record.config_snapshot or {})
+        if selection is None:
+            raise CollectionConflict
+        return (
+            f"TikHub 日期补采 · {selection.published_from:%Y-%m-%d}"
+            f" ~ {selection.published_to:%Y-%m-%d}"
+        )
     if record.record_type == "tikhub_batch_supplement":
         suffix = f" · {record.source_filename}" if record.source_filename else ""
         return f"TikHub 批次补采{suffix}"

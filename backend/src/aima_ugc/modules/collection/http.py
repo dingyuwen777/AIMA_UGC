@@ -9,6 +9,8 @@ from aima_ugc.contracts.http import (
     CollectionBatchSupplementEligibilityResponse,
     CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
+    CollectionDateSupplementEligibilityResponse,
+    CollectionDateSupplementQuery,
     CollectionRunCreatedResponse,
     CollectionRunCreateRequest,
     CollectionRunResponse,
@@ -38,6 +40,11 @@ class CollectionHttpService(Protocol):
     """Router 可调用的 Stage 8E 最小 Application Service。"""
 
     def get_capabilities(self) -> CollectionCapabilitiesResponse: ...
+
+    def get_date_supplement_eligibility(
+        self,
+        query: CollectionDateSupplementQuery,
+    ) -> CollectionDateSupplementEligibilityResponse: ...
 
     def get_batch_supplement_eligibility(
         self,

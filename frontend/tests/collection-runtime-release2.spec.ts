@@ -84,7 +84,7 @@ describe('采集运行中心 release-2 Figma 基线', () => {
       readSharedUiSource('AimaEmptyState.vue'),
       readRuntimeSource('components/ImportBatchDetailDrawer.vue'),
       readRuntimeSource('components/CollectionRunDetailDrawer.vue'),
-      readRuntimeSource('components/TikHubSupplementDrawer.vue'),
+      readRuntimeSource('components/TikHubSupplementDialog.vue'),
       readRuntimeSource('components/DataImportDialog.vue'),
     ])
 
@@ -95,7 +95,7 @@ describe('采集运行中心 release-2 Figma 基线', () => {
     expect(emptyState).toContain('class="aima-empty-state"')
     expect(importDetail).toContain('<AimaDrawer')
     expect(runDetail).toContain('<AimaDrawer')
-    expect(supplement).toContain('<AimaDrawer')
+    expect(supplement).toContain('<AimaModalContainer')
     expect(dataImport).toContain('<AimaModalContainer')
   })
 

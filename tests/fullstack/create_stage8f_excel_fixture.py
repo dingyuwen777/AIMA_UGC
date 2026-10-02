@@ -111,6 +111,16 @@ def main() -> int:
                         url,
                     ]
                 )
+            sheet.append(
+                [
+                    "小红书",
+                    "爱玛日期范围外测试",
+                    "这条内容早于所选日期，不应创建补采 Scope",
+                    "全栈测试账号",
+                    "2026-09-16 12:00:00",
+                    "https://www.xiaohongshu.com/explore/6a85c701000000001d0040e3",
+                ]
+            )
         else:
             sheet.append(
                 [

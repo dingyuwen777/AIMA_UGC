@@ -5,6 +5,7 @@ const generated = vi.hoisted(() => ({
   listCollectionRuntimeRuns: vi.fn(),
   getCollectionRuntimeSummary: vi.fn(),
   getCollectionCapabilities: vi.fn(),
+  getCollectionDateSupplementEligibility: vi.fn(),
   getCollectionBatchSupplementEligibility: vi.fn(),
   getCollectionCampaignSupplementEligibility: vi.fn(),
   createCollectionRun: vi.fn(),
@@ -28,34 +29,6 @@ import {
 } from '../src/features/import-batches/api'
 import { useImportBatchesStore } from '../src/features/import-batches/store'
 import { runtimeStageLabel } from '../src/features/import-batches/format'
-
-function batch(id: string, status: 'succeeded' | 'failed', rowsIngested: number) {
-  return {
-    id,
-    input_artifact_id: `artifact-${id}`,
-    source_filename: `${id}.xlsx`,
-    status,
-    stage: status,
-    stats: {
-      rows_seen: 1,
-      rows_matched: 1,
-      rows_filtered_out: 0,
-      duplicates_removed: 0,
-      rows_ingested: rowsIngested,
-      rows_rejected: status === 'failed' ? 1 : 0,
-    },
-    created_at: '2026-08-21T00:00:00Z',
-    job: {
-      id: `job-${id}`,
-      job_type: 'ingestion.import-excel.v2',
-      status,
-      attempt: 1,
-      max_attempts: 10,
-      progress: status === 'succeeded' ? 100 : 40,
-      created_at: '2026-08-21T00:00:00Z',
-    },
-  }
-}
 
 describe('collection runtime feature', () => {
   beforeEach(() => {
@@ -144,25 +117,27 @@ describe('collection runtime feature', () => {
     expect(generated.listDataImportCampaignItems).toHaveBeenCalledWith('campaign-1')
   })
 
-  it('keeps an older selected usable Import Batch available in the supplement drawer', async () => {
+  it('loads creation capabilities and packs without importing source catalogs', async () => {
     generated.getCollectionCapabilities.mockResolvedValue({ provider_configs: [], capabilities: [] })
-    generated.listImportBatches.mockResolvedValue({ items: [], next_cursor: null, has_more: false })
-    generated.getImportBatch.mockResolvedValue(batch('older-batch', 'succeeded', 1))
-    const store = useImportBatchesStore()
-    await store.loadCreationOptions({ kind: 'batch', id: 'older-batch' })
-    expect(generated.getImportBatch).toHaveBeenCalledWith('older-batch')
-    expect(store.batchOptions.map((item) => item.id)).toEqual(['older-batch'])
-  })
-
-  it('offers only succeeded Import Batches that actually ingested content for supplement', async () => {
-    generated.getCollectionCapabilities.mockResolvedValue({ provider_configs: [], capabilities: [] })
-    generated.listImportBatches.mockResolvedValue({
-      items: [batch('usable-batch', 'succeeded', 2), batch('empty-batch', 'succeeded', 0), batch('failed-batch', 'failed', 0)],
-      next_cursor: null, has_more: false,
-    })
     const store = useImportBatchesStore()
     await store.loadCreationOptions()
-    expect(store.batchOptions.map((item) => item.id)).toEqual(['usable-batch'])
+    expect(generated.getCollectionCapabilities).toHaveBeenCalledOnce()
+    expect(generated.listImportBatches).not.toHaveBeenCalled()
+    expect(generated.listDataImportCampaigns).not.toHaveBeenCalled()
+    expect(generated.getImportBatch).not.toHaveBeenCalled()
+  })
+
+  it('loads date target counts and diagnostics from the generated client', async () => {
+    const range = { published_from: '2026-09-01T00:00:00+08:00', published_to: '2026-09-01T23:59:59.999+08:00' }
+    generated.getCollectionDateSupplementEligibility.mockResolvedValue({
+      ...range, targets: [{ platform: 'douyin', target_count: 2 }], diagnostics: [],
+    })
+    const store = useImportBatchesStore()
+    await store.loadSupplementPlatforms(range)
+    expect(generated.getCollectionDateSupplementEligibility).toHaveBeenCalledWith(range)
+    expect(store.supplementContentPlatforms).toEqual(['douyin'])
+    expect(store.supplementTargets).toEqual([{ platform: 'douyin', target_count: 2 }])
+    expect(store.supplementEligibilityReady).toBe(true)
   })
 
   it('uses backend supplement eligibility instead of probing Voice Plaza content', async () => {
@@ -179,31 +154,50 @@ describe('collection runtime feature', () => {
     expect(generated.getCollectionBatchSupplementEligibility).toHaveBeenCalledWith('batch-1')
   })
 
-  it('offers completed Data Import Campaigns and resolves unchanged rows through Campaign eligibility', async () => {
-    generated.getCollectionCapabilities.mockResolvedValue({ provider_configs: [], capabilities: [] })
-    generated.listImportBatches.mockResolvedValue({ items: [], next_cursor: null, has_more: false })
-    generated.listDataImportCampaigns.mockResolvedValue({
-      items: [{
-        id: 'campaign-1',
-        status: 'succeeded',
-        root_relative_path: 'campaign.xlsx',
-        stats: { unchanged: 2 },
-      }],
-    })
+  it('retains legacy Campaign eligibility API compatibility', async () => {
     generated.getCollectionCampaignSupplementEligibility.mockResolvedValue({
-      campaign_id: 'campaign-1',
-      targets: [{ platform: 'douyin', target_count: 2 }],
+      campaign_id: 'campaign-1', targets: [{ platform: 'douyin', target_count: 2 }],
     })
+    await expect(fetchCampaignContentPlatforms('campaign-1', ['xiaohongshu', 'douyin']))
+      .resolves.toEqual({ platforms: ['douyin'], diagnostics: [] })
+  })
+
+  it('ignores stale A to B to A responses and close/reopen responses', async () => {
+    const deferred: ((value: unknown) => void)[] = []
+    generated.getCollectionDateSupplementEligibility.mockImplementation(() => new Promise((resolve) => deferred.push(resolve)))
     const store = useImportBatchesStore()
-
-    await store.loadCreationOptions({ kind: 'campaign', id: 'campaign-1' })
-
-    expect(store.campaignOptions.map((item) => item.id)).toEqual(['campaign-1'])
+    const a = { published_from: '2026-09-01T00:00:00+08:00', published_to: '2026-09-01T23:59:59+08:00' }
+    const b = { ...a, published_to: '2026-09-02T23:59:59+08:00' }
+    const oldA = store.loadSupplementPlatforms(a)
+    const oldB = store.loadSupplementPlatforms(b)
+    const newA = store.loadSupplementPlatforms(a)
+    deferred[2]!({ ...a, targets: [{ platform: 'douyin', target_count: 2 }], diagnostics: [] })
+    await newA
+    deferred[0]!({ ...a, targets: [{ platform: 'weibo', target_count: 1 }], diagnostics: [] })
+    deferred[1]!({ ...b, targets: [{ platform: 'bilibili', target_count: 1 }], diagnostics: [] })
+    await Promise.all([oldA, oldB])
     expect(store.supplementContentPlatforms).toEqual(['douyin'])
-    await expect(
-      fetchCampaignContentPlatforms('campaign-1', ['xiaohongshu', 'douyin']),
-    ).resolves.toEqual({ platforms: ['douyin'], diagnostics: [] })
-    expect(generated.getCollectionCampaignSupplementEligibility).toHaveBeenCalledWith('campaign-1')
+    const closing = store.loadSupplementPlatforms(b)
+    store.resetSupplementEligibility()
+    deferred[3]!({ ...b, targets: [{ platform: 'weibo', target_count: 1 }], diagnostics: [] })
+    await closing
+    expect(store.supplementContentPlatforms).toEqual([])
+    expect(store.supplementEligibilityReady).toBe(false)
+    expect(store.loadingSupplementPlatforms).toBe(false)
+  })
+
+  it('distinguishes failed and empty date eligibility and can recover', async () => {
+    const range = { published_from: '2026-09-01T00:00:00+08:00', published_to: '2026-09-01T23:59:59+08:00' }
+    const store = useImportBatchesStore()
+    generated.getCollectionDateSupplementEligibility.mockRejectedValueOnce(new Error('资格查询失败'))
+    await store.loadSupplementPlatforms(range)
+    expect(store.supplementEligibilityError).toBe('资格查询失败')
+    expect(store.supplementEligibilityReady).toBe(false)
+    generated.getCollectionDateSupplementEligibility.mockResolvedValueOnce({ ...range, targets: [], diagnostics: [] })
+    await store.loadSupplementPlatforms(range)
+    expect(store.supplementEligibilityError).toBeNull()
+    expect(store.supplementEligibilityReady).toBe(true)
+    expect(store.supplementContentPlatforms).toEqual([])
   })
 
   it('does not offer a platform when backend eligibility excludes its current irrelevant content', async () => {

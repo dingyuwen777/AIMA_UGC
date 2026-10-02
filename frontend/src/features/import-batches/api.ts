@@ -9,6 +9,9 @@ import {
   getCollectionCampaignSupplementEligibility,
   getCollectionBatchSupplementEligibility,
   getCollectionCapabilities,
+  getCollectionDateSupplementEligibility,
+  type GetCollectionDateSupplementEligibilityParams,
+  type CollectionDateSupplementEligibilityResponse,
   getCollectionRun,
   getCollectionRuntimeSummary,
   getDataImportCampaign,
@@ -162,6 +165,12 @@ export async function createTikHubCollectionRun(
 
 export async function fetchCollectionRunDetail(runId: string): Promise<CollectionRunResponse> {
   return unwrap(await getCollectionRun(runId))
+}
+
+export async function fetchDateSupplementEligibility(
+  params: GetCollectionDateSupplementEligibilityParams,
+): Promise<CollectionDateSupplementEligibilityResponse> {
+  return unwrap(await getCollectionDateSupplementEligibility(params))
 }
 
 export interface SupplementEligibilitySnapshot {

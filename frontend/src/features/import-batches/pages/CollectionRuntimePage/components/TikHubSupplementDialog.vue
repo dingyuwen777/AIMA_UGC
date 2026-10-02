@@ -10,35 +10,37 @@ import type {
   CollectionSearchCapabilityResponse,
   CollectionSearchConfig,
   CollectionSupplementPlatformDiagnosticResponse,
-  HistoricalCampaignResponse,
-  ImportBatchResponse,
+  CollectionBatchSupplementTargetResponse,
+  GetCollectionDateSupplementEligibilityParams,
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
 import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
 import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
 import { isCollectionSearchConfigComplete } from '../../../../../shared/collectionSearchConfig'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
-import AimaDrawer from '../../../../../shared/ui/AimaDrawer.vue'
+import AimaModalContainer from '../../../../../shared/ui/AimaModalContainer.vue'
+import AimaDateRange from '../../../../../shared/ui/AimaDateRange.vue'
+import { beijingDayBoundary } from '../../../../../shared/domain/beijingTime'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
-import { platformLabels, shortId } from '../../../format'
-import type { SupplementSourceSelection } from '../../../store'
+import { platformLabels } from '../../../format'
 
 const props = defineProps<{
   modelValue: boolean
   capabilities: CollectionCapabilitiesResponse | null
-  campaigns: HistoricalCampaignResponse[]
-  batches: ImportBatchResponse[]
   keywordPacks: KeywordPackSummaryResponse[]
   supplementContentPlatforms: CollectionPlatform[]
   supplementDiagnostics: CollectionSupplementPlatformDiagnosticResponse[]
   loadingSupplementPlatforms: boolean
   creating: boolean
-  initialSource?: SupplementSourceSelection | null
+  supplementTargets: CollectionBatchSupplementTargetResponse[]
+  eligibilityReady: boolean
+  eligibilityError: string | null
+  error: string | null
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   submit: [request: CollectionRunCreateRequest]
-  sourceChange: [source: SupplementSourceSelection]
+  dateChange: [range: GetCollectionDateSupplementEligibilityParams | null]
 }>()
 
 const mode = ref<CollectionRunMode>('discovery')
@@ -47,12 +49,12 @@ const brandScope = ref<'all_active' | 'selected'>('all_active')
 const selectedBrandIds = ref<string[]>([])
 const platforms = ref<CollectionPlatform[]>([])
 const providerConfigId = ref('')
-const supplementSourceValue = ref('')
+const publishedFrom = ref('')
+const publishedTo = ref('')
 const includeComments = ref(true)
 const includeSubComments = ref(false)
 const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
 const validation = ref<string | null>(null)
-const lastRequestedSourceValue = ref('')
 const supportedPlatforms: CollectionPlatform[] = [
   'xiaohongshu',
   'douyin',
@@ -61,19 +63,26 @@ const supportedPlatforms: CollectionPlatform[] = [
   'kuaishou',
 ]
 
-function encodeSource(source: SupplementSourceSelection | null | undefined): string {
-  return source ? `${source.kind}:${source.id}` : ''
+const dateSelection = computed<GetCollectionDateSupplementEligibilityParams | null>(() => {
+  const from = beijingDayBoundary(publishedFrom.value, 'start')
+  const to = beijingDayBoundary(publishedTo.value, 'end')
+  return from && to && from <= to ? { published_from: from, published_to: to } : null
+})
+
+/** 日期组件一次提交完整范围，避免中间半选日期触发资格查询。 */
+function updateDateRange(range: { from: string; to: string }): void {
+  publishedFrom.value = range.from
+  publishedTo.value = range.to
+  validation.value = null
+  emit('dateChange', dateSelection.value)
 }
 
-function decodeSource(value: string): SupplementSourceSelection | null {
-  const separator = value.indexOf(':')
-  if (separator <= 0 || separator === value.length - 1) return null
-  const kind = value.slice(0, separator)
-  if (kind !== 'campaign' && kind !== 'batch') return null
-  return { kind, id: value.slice(separator + 1) }
-}
-
-const selectedSupplementSource = computed(() => decodeSource(supplementSourceValue.value))
+const selectedScopeCount = computed(() => props.supplementDiagnostics
+  .filter((item) => platforms.value.includes(item.platform))
+  .reduce((total, item) => total + item.direct_target_count + item.resolution_candidate_count + item.blocked_count, 0))
+const eligibleTargetCount = computed(() => props.supplementTargets
+  .filter((item) => platforms.value.includes(item.platform))
+  .reduce((total, item) => total + item.target_count, 0))
 
 function isCollectionPlatform(value: string): value is CollectionPlatform {
   return supportedPlatforms.includes(value as CollectionPlatform)
@@ -100,13 +109,13 @@ const availablePlatforms = computed(() => {
       .filter((item) => requiredOperations.value.every((operation) => item.operations.includes(operation)))
       .map((item) => item.platform)
       .filter(isCollectionPlatform)
-      .filter((platform) => mode.value !== 'batch_supplement' || props.supplementContentPlatforms.includes(platform))
+      .filter((platform) => mode.value !== 'date_supplement' || props.supplementContentPlatforms.includes(platform))
       .filter((value, index, values) => values.indexOf(value) === index) ?? []
   )
 })
 
 const unavailablePlatforms = computed(() =>
-  mode.value === 'batch_supplement'
+  mode.value === 'date_supplement'
     ? props.supplementDiagnostics.filter((item) => !availablePlatforms.value.includes(item.platform))
     : [],
 )
@@ -121,9 +130,9 @@ function unavailableReason(item: CollectionSupplementPlatformDiagnosticResponse)
   if (!selectedProvider.value) return '先选择采集渠道'
   if (item.direct_target_count > 0) return '当前渠道不支持所选采集内容'
   if (item.resolution_candidate_count > 0) return `有 ${item.resolution_candidate_count} 条受支持的分享链接，创建任务后将解析原生 ID`
-  if (item.block_reasons.exact_resolution_unavailable) return `有 ${item.block_reasons.exact_resolution_unavailable} 条分享链接无法确认对应内容；请在导入来源补充平台原生 ID`
+  if (item.block_reasons.exact_resolution_unavailable) return `有 ${item.block_reasons.exact_resolution_unavailable} 条分享链接无法确认对应内容；请在原始内容补充平台原生 ID`
   if (item.platform === 'weibo') return `有 ${item.blocked_count} 条内容不可补采；微博长文章不支持评论补采，其他内容请补充平台原生 ID`
-  return `有 ${item.blocked_count} 条内容缺少可验证的原生 ID；请在导入来源补充原始内容链接`
+  return `有 ${item.blocked_count} 条内容缺少可验证的原生 ID；请在原始内容补充原始内容链接`
 }
 
 function searchCapability(platform: CollectionPlatform): CollectionSearchCapabilityResponse | null {
@@ -149,23 +158,16 @@ const canSubmit = computed(() => {
       })
     )
   }
-  return selectedSupplementSource.value !== null && !props.loadingSupplementPlatforms
+  return dateSelection.value !== null && props.eligibilityReady && !props.eligibilityError && !props.loadingSupplementPlatforms
 })
-
-function requestSupplementPlatforms(value: string): void {
-  const source = decodeSource(value)
-  if (!source || lastRequestedSourceValue.value === value) return
-  lastRequestedSourceValue.value = value
-  emit('sourceChange', source)
-}
 
 watch(
   () => props.modelValue,
   (open) => {
     if (!open) return
-    supplementSourceValue.value = encodeSource(props.initialSource)
-    lastRequestedSourceValue.value = supplementSourceValue.value
-    mode.value = props.initialSource ? 'batch_supplement' : 'discovery'
+    publishedFrom.value = ''
+    publishedTo.value = ''
+    mode.value = 'date_supplement'
     selectedPackIds.value = []
     brandScope.value = 'all_active'
     selectedBrandIds.value = []
@@ -185,20 +187,7 @@ watch(mode, () => {
   platforms.value = []
   clearSearchConfigs()
   validation.value = null
-  if (mode.value === 'batch_supplement') {
-    requestSupplementPlatforms(supplementSourceValue.value)
-  } else {
-    lastRequestedSourceValue.value = ''
-  }
-})
-
-watch(supplementSourceValue, (sourceValue, previous) => {
-  platforms.value = []
-  clearSearchConfigs()
-  validation.value = null
-  if (mode.value === 'batch_supplement' && sourceValue !== previous) {
-    requestSupplementPlatforms(sourceValue)
-  }
+  emit('dateChange', mode.value === 'date_supplement' ? dateSelection.value : null)
 })
 
 watch(providerConfigId, () => {
@@ -207,7 +196,8 @@ watch(providerConfigId, () => {
   validation.value = null
 })
 
-watch([includeComments, includeSubComments, availablePlatforms], () => {
+watch([includeComments, includeSubComments, availablePlatforms, () => props.loadingSupplementPlatforms], () => {
+  if (mode.value === 'date_supplement' && props.loadingSupplementPlatforms) return
   platforms.value = platforms.value.filter((platform) => availablePlatforms.value.includes(platform))
   for (const platform of supportedPlatforms) {
     if (!platforms.value.includes(platform)) delete searchConfigByPlatform[platform]
@@ -244,12 +234,12 @@ function submit(): void {
     validation.value = '请选择本次运行使用的采集渠道配置。'
     return
   }
-  if (mode.value === 'batch_supplement' && props.loadingSupplementPlatforms) {
-    validation.value = '正在核对该导入来源可补采的平台，请稍后。'
+  if (mode.value === 'date_supplement' && props.loadingSupplementPlatforms) {
+    validation.value = '正在核对该日期范围可补采的平台，请稍后。'
     return
   }
   if (platforms.value.length === 0) {
-    validation.value = '当前批次、采集渠道与采集内容组合没有可执行的平台。'
+    validation.value = '当前日期范围、采集渠道与采集内容组合没有可执行的平台。'
     return
   }
   if (mode.value === 'discovery' && selectedPackIds.value.length === 0) {
@@ -260,22 +250,16 @@ function submit(): void {
     validation.value = '请至少选择一个品牌，或改为全部启用品牌。'
     return
   }
-  if (mode.value === 'batch_supplement' && !selectedSupplementSource.value) {
-    validation.value = '请选择要补采的数据导入来源。'
+  if (mode.value === 'date_supplement' && (!dateSelection.value || !props.eligibilityReady || props.eligibilityError)) {
+    validation.value = props.eligibilityError || '请选择发布时间范围，并等待资格查询完成。'
     return
   }
   validation.value = null
-  const source = selectedSupplementSource.value
   emit('submit', {
     mode: mode.value,
     keyword_pack_ids: mode.value === 'discovery' ? selectedPackIds.value : [],
     brand_ids: mode.value === 'discovery' && brandScope.value === 'selected' ? selectedBrandIds.value : [],
-    import_batch_id: mode.value === 'batch_supplement' && source?.kind === 'batch'
-      ? source.id
-      : null,
-    data_import_campaign_id: mode.value === 'batch_supplement' && source?.kind === 'campaign'
-      ? source.id
-      : null,
+    ...(mode.value === 'date_supplement' ? dateSelection.value : {}),
     platforms: platforms.value.map((platform) => ({
       platform,
       provider_config_id: providerConfigId.value,
@@ -290,19 +274,22 @@ function submit(): void {
 </script>
 
 <template>
-  <AimaDrawer
+  <AimaModalContainer
     :model-value="modelValue"
     label="新建辅助补采"
-    width="510px"
+    width="840px"
+    height="800px"
+    :close-disabled="creating"
     @update:model-value="emit('update:modelValue', $event)"
   >
     <template #header>
-      <header class="drawer-header">
+      <header class="dialog-header">
         <div><strong>新建辅助补采</strong><span>创建辅助补采任务</span></div>
         <AimaButton
           variant="text"
           size="small"
           aria-label="关闭"
+          :disabled="creating"
           @click="emit('update:modelValue', false)"
         >
           关闭
@@ -310,7 +297,14 @@ function submit(): void {
       </header>
     </template>
 
-    <div class="drawer-body">
+    <div class="dialog-body">
+      <AimaFeedbackBanner
+        v-if="error"
+        tone="error"
+        role="alert"
+      >
+        {{ error }}
+      </AimaFeedbackBanner>
       <nav class="mode-tabs">
         <button
           type="button"
@@ -321,17 +315,17 @@ function submit(): void {
         </button>
         <button
           type="button"
-          :class="{ active: mode === 'batch_supplement' }"
-          @click="mode = 'batch_supplement'"
+          :class="{ active: mode === 'date_supplement' }"
+          @click="mode = 'date_supplement'"
         >
-          基于已有批次补采
+          按发布时间补采
         </button>
       </nav>
 
       <AimaFeedbackBanner tone="info">
         {{ mode === 'discovery'
           ? '关键词包提供 Provider 搜索词；内容入库前按冻结的品牌与车型目录过滤。'
-          : '选择已有导入来源后，可补充其中已收录内容的信息和评论；可选平台以当前来源和采集渠道为准。' }}
+          : '按北京时间选择已入库内容的发布时间范围，任务创建时固定内容清单，再补充详情和评论。' }}
       </AimaFeedbackBanner>
 
       <section
@@ -365,39 +359,14 @@ function submit(): void {
         v-else
         class="form-card"
       >
-        <label for="supplement-source-select">数据导入来源</label>
-        <select
-          id="supplement-source-select"
-          v-model="supplementSourceValue"
-        >
-          <option value="">
-            请选择已完成的数据导入
-          </option>
-          <optgroup
-            v-if="campaigns.length"
-            label="统一数据导入"
-          >
-            <option
-              v-for="campaign in campaigns"
-              :key="campaign.id"
-              :value="`campaign:${campaign.id}`"
-            >
-              {{ campaign.root_relative_path || '本地上传' }} · {{ shortId(campaign.id) }}
-            </option>
-          </optgroup>
-          <optgroup
-            v-if="batches.length"
-            label="兼容旧 Excel 批次"
-          >
-            <option
-              v-for="batch in batches"
-              :key="batch.id"
-              :value="`batch:${batch.id}`"
-            >
-              {{ batch.source_filename || '未记录文件名' }} · {{ shortId(batch.id) }}
-            </option>
-          </optgroup>
-        </select>
+        <label>内容发布时间 · 北京时间</label>
+        <AimaDateRange
+          :from="publishedFrom"
+          :to="publishedTo"
+          label="内容发布时间"
+          @update:range="updateDateRange"
+        />
+        <small>包含开始日和结束日的全天；范围内没有发布时间的内容不会入选。</small>
       </section>
 
       <section
@@ -466,10 +435,10 @@ function submit(): void {
           <small>只显示当前采集渠道真实支持的平台</small>
         </div>
         <p
-          v-if="mode === 'batch_supplement' && loadingSupplementPlatforms"
+          v-if="mode === 'date_supplement' && loadingSupplementPlatforms"
           class="platform-state"
         >
-          正在核对该导入来源的真实内容平台…
+          正在核对该日期范围的真实内容平台…
         </p>
         <div
           v-else
@@ -489,7 +458,7 @@ function submit(): void {
               <span><strong>{{ platformLabels[platform] }}</strong><small v-if="!platforms.includes(platform)">点击选择</small></span>
               <span v-if="platforms.includes(platform)">{{ selectedProvider?.display_name }}</span>
             </button>
-            <small v-if="mode === 'batch_supplement' && platformDiagnostic(platform)">
+            <small v-if="mode === 'date_supplement' && platformDiagnostic(platform)">
               可直接补采 {{ platformDiagnostic(platform)?.direct_target_count }} 条；
               待解析 {{ platformDiagnostic(platform)?.resolution_candidate_count }} 条；
               不可补采 {{ platformDiagnostic(platform)?.blocked_count }} 条
@@ -520,6 +489,28 @@ function submit(): void {
           当前选择没有可直接补采的平台；请查看各平台的身份与渠道说明。
         </p>
       </section>
+
+      <AimaFeedbackBanner
+        v-if="mode === 'date_supplement' && eligibilityError"
+        tone="error"
+        role="alert"
+      >
+        {{ eligibilityError }}
+        <AimaButton
+          variant="text"
+          size="small"
+          @click="emit('dateChange', dateSelection)"
+        >
+          重试资格查询
+        </AimaButton>
+      </AimaFeedbackBanner>
+      <p
+        v-if="mode === 'date_supplement' && eligibilityReady"
+        class="platform-state"
+        role="status"
+      >
+        已选 {{ platforms.length }} 个平台 · 可补采 {{ eligibleTargetCount }} 条 · 预计处理 {{ selectedScopeCount }} 条内容（含身份缺口）
+      </p>
 
       <section class="form-card content-card">
         <label>采集内容</label>
@@ -566,9 +557,10 @@ function submit(): void {
     </div>
 
     <template #footer>
-      <footer class="drawer-footer">
+      <footer class="dialog-footer">
         <AimaButton
           variant="secondary"
+          :disabled="creating"
           size="small"
           @click="emit('update:modelValue', false)"
         >
@@ -583,15 +575,15 @@ function submit(): void {
         </AimaButton>
       </footer>
     </template>
-  </AimaDrawer>
+  </AimaModalContainer>
 </template>
 
 <style scoped>
-.drawer-header { display: flex; height: 76px; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--aima-border); background: var(--aima-surface); }
-.drawer-header strong, .drawer-header span { display: block; }
-.drawer-header strong { color: var(--aima-text); font-size: 18px; font-weight: 700; line-height: 24px; }
-.drawer-header span { margin-top: 4px; color: var(--aima-color-text-tertiary); font-size: 12px; line-height: 18px; }
-.drawer-body { display: flex; min-height: 978px; flex-direction: column; gap: 20px; padding: 16px 24px 12px; }
+.dialog-header { display: flex; height: 76px; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--aima-border); background: var(--aima-surface); }
+.dialog-header strong, .dialog-header span { display: block; }
+.dialog-header strong { color: var(--aima-text); font-size: 18px; font-weight: 700; line-height: 24px; }
+.dialog-header span { margin-top: 4px; color: var(--aima-color-text-tertiary); font-size: 12px; line-height: 18px; }
+.dialog-body { display: flex; min-height: 0; flex-direction: column; gap: 20px; padding: 16px 24px 12px; }
 .mode-tabs { display: flex; min-height: 40px; gap: 8px; }
 .mode-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; line-height: 20px; }
 .mode-tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
@@ -606,7 +598,7 @@ select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .section-title-row { display: flex; align-items: center; gap: 12px; }
 .section-title-row > label { margin-bottom: 0; }
 .section-title-row small { color: var(--aima-text-disabled); font-size: 11px; }
-.platform-grid { display: grid; gap: 8px; margin-top: 12px; }
+.platform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 .platform-option { padding: 10px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-lg); background: var(--aima-surface); }
 .platform-option.selected { border-color: var(--aima-primary); background: var(--aima-color-primary-light); }
 .platform-option.unavailable { background: var(--aima-surface-muted); }
@@ -626,7 +618,8 @@ select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .content-option { display: grid; min-height: 32px; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; color: var(--aima-text-secondary); font-size: 13px; }
 .content-option small { color: var(--aima-text-disabled); font-size: 11px; }
 .content-option.disabled { color: var(--aima-text-disabled); }
-.drawer-footer { display: flex; height: 72px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 24px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
-.drawer-footer :deep(.aima-button.is-primary) { min-width: 136px; }
-.drawer-footer :deep(.aima-button.is-secondary) { min-width: 88px; }
+.dialog-footer { display: flex; height: 72px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 24px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
+.dialog-footer :deep(.aima-button.is-primary) { min-width: 136px; }
+.dialog-footer :deep(.aima-button.is-secondary) { min-width: 88px; }
+@media (max-width: 600px) { .platform-grid, .content-options { grid-template-columns: 1fr; } .section-title-row { flex-wrap: wrap; } }
 </style>

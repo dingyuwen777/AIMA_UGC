@@ -1118,6 +1118,16 @@ export interface CollectionCapabilitiesResponse {
 }
 
 /**
+ * 日期范围内的可执行目标和身份缺口，不公开 Provider 私有身份。
+ */
+export interface CollectionDateSupplementEligibilityResponse {
+  diagnostics?: CollectionSupplementPlatformDiagnosticResponse[];
+  published_from: string;
+  published_to: string;
+  targets: CollectionBatchSupplementTargetResponse[];
+}
+
+/**
  * 复制计划只要求新名称；副本默认停用并重新进入人工启用流程。
  */
 export interface CollectionPlanCopyRequest {
@@ -1237,6 +1247,7 @@ export type CollectionRunMode = typeof CollectionRunMode[keyof typeof Collection
 export const CollectionRunMode = {
   discovery: 'discovery',
   batch_supplement: 'batch_supplement',
+  date_supplement: 'date_supplement',
 } as const;
 
 /**
@@ -1266,6 +1277,8 @@ export interface CollectionRunCreateRequest {
      * @maxItems 5
      */
   platforms: CollectionRunPlatformRequest[];
+  published_from?: string | null;
+  published_to?: string | null;
 }
 
 export interface CollectionRunCreatedResponse {
@@ -1273,6 +1286,8 @@ export interface CollectionRunCreatedResponse {
   import_batch_id?: string | null;
   job_id: string;
   mode: CollectionRunMode;
+  published_from?: string | null;
+  published_to?: string | null;
   run_id: string;
   status?: 'queued';
 }
@@ -1371,6 +1386,8 @@ export interface CollectionRunResponse {
   error_summary?: string | null;
   finished_at?: string | null;
   import_batch_id?: string | null;
+  include_comments?: boolean | null;
+  include_sub_comments?: boolean | null;
   job_id: string;
   keywords?: string[];
   /** @exclusiveMinimum 0 */
@@ -1382,6 +1399,8 @@ export interface CollectionRunResponse {
      * @maximum 100
      */
   progress: number;
+  published_from?: string | null;
+  published_to?: string | null;
   run_id: string;
   scopes: CollectionScopeResponse[];
   stage: string;
@@ -1413,6 +1432,7 @@ export const CollectionRuntimeRecordType = {
   data_import_campaign: 'data_import_campaign',
   tikhub_discovery: 'tikhub_discovery',
   tikhub_batch_supplement: 'tikhub_batch_supplement',
+  tikhub_date_supplement: 'tikhub_date_supplement',
   canonical_replay: 'canonical_replay',
 } as const;
 
@@ -3737,7 +3757,7 @@ limit?: number;
 export type ListCollectionRuntimeRunsParams = {
 search?: string | null;
 /**
- * @maxItems 5
+ * @maxItems 6
  */
 record_types?: CollectionRuntimeRecordType[];
 status?: CollectionRuntimeStatus | null;
@@ -3750,6 +3770,11 @@ cursor?: string | null;
  * @maximum 100
  */
 limit?: number;
+};
+
+export type GetCollectionDateSupplementEligibilityParams = {
+published_from: string;
+published_to: string;
 };
 
 export type ListContentsParams = {
@@ -5643,6 +5668,44 @@ export const getCollectionRuntimeSummary = async ( options?: RequestInit): Promi
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: CollectionRuntimeSummaryResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCollectionDateSupplementEligibilityUrl = (params: GetCollectionDateSupplementEligibilityParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/collection-supplement-eligibility?${stringifiedParams}` : `/api/v1/collection-supplement-eligibility`
+}
+
+/**
+ * @summary Get Collection Date Supplement Eligibility
+ */
+export const getCollectionDateSupplementEligibility = async (params: GetCollectionDateSupplementEligibilityParams, options?: RequestInit): Promise<CollectionDateSupplementEligibilityResponse> => {
+
+  const res = await fetch(getGetCollectionDateSupplementEligibilityUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionDateSupplementEligibilityResponse = body ? JSON.parse(body) : {}
   return data
 }
 

@@ -1365,8 +1365,9 @@ def test_batch_supplement_worker_reuses_detail_mapper_and_ingestion_without_refi
         ("kuaishou", "photo_id", "100003"),
     ],
 )
+@pytest.mark.parametrize("mode", ("batch_supplement", "date_supplement"))
 def test_batch_supplement_native_ids_reach_worker_and_persist_platform_comments(
-    runtime, platform: str, lookup_id_type: str, lookup_value: str
+    runtime, mode: str, platform: str, lookup_id_type: str, lookup_value: str
 ) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(
@@ -1380,8 +1381,7 @@ def test_batch_supplement_native_ids_reach_worker_and_persist_platform_comments(
     assert [(item.platform, item.target_count) for item in eligibility.targets] == [(platform, 1)]
     created = service.create_run(
         CollectionRunCreateRequest(
-            mode="batch_supplement",
-            import_batch_id=batch_id,
+            **_supplement_selection(runtime, mode, batch_id),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform=platform,
@@ -1526,8 +1526,9 @@ def test_batch_supplement_native_ids_reach_worker_and_persist_platform_comments(
         ("kuaishou", "photo_id", "100003", "sub_comments_page1.sanitized.json"),
     ],
 )
+@pytest.mark.parametrize("mode", ("batch_supplement", "date_supplement"))
 def test_batch_supplement_native_ids_persist_replies_under_their_root(
-    runtime, platform: str, lookup_id_type: str, lookup_value: str, reply_file: str
+    runtime, mode: str, platform: str, lookup_id_type: str, lookup_value: str, reply_file: str
 ) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(
@@ -1539,8 +1540,7 @@ def test_batch_supplement_native_ids_persist_replies_under_their_root(
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     created = service.create_run(
         CollectionRunCreateRequest(
-            mode="batch_supplement",
-            import_batch_id=batch_id,
+            **_supplement_selection(runtime, mode, batch_id),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform=platform,
@@ -1697,8 +1697,9 @@ def test_batch_supplement_native_ids_persist_replies_under_their_root(
         ("kuaishou", "photo_id", "100003"),
     ],
 )
+@pytest.mark.parametrize("mode", ("batch_supplement", "date_supplement"))
 def test_batch_supplement_native_id_comment_retry_reuses_detail_raw(
-    runtime, platform: str, lookup_id_type: str, lookup_value: str
+    runtime, mode: str, platform: str, lookup_id_type: str, lookup_value: str
 ) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(
@@ -1710,8 +1711,7 @@ def test_batch_supplement_native_id_comment_retry_reuses_detail_raw(
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     created = service.create_run(
         CollectionRunCreateRequest(
-            mode="batch_supplement",
-            import_batch_id=batch_id,
+            **_supplement_selection(runtime, mode, batch_id),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform=platform,
@@ -1801,8 +1801,10 @@ def test_batch_supplement_native_id_comment_retry_reuses_detail_raw(
     assert details == 1
 
 
+@pytest.mark.parametrize("mode", ("batch_supplement", "date_supplement"))
 def test_batch_supplement_resumes_second_comment_page_without_refetching_first(
     runtime,
+    mode: str,
 ) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(
@@ -1813,8 +1815,7 @@ def test_batch_supplement_resumes_second_comment_page_without_refetching_first(
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     created = service.create_run(
         CollectionRunCreateRequest(
-            mode="batch_supplement",
-            import_batch_id=batch_id,
+            **_supplement_selection(runtime, mode, batch_id),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform="xiaohongshu",
@@ -2564,7 +2565,8 @@ def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
     assert other_version_count == 1
 
 
-def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> None:  # type: ignore[no-untyped-def]
+@pytest.mark.parametrize("mode", ("batch_supplement", "date_supplement"))
+def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime, mode: str) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, content_id = _insert_import_content(runtime, current_comment_count=1)
     created = PostgresCollectionHttpService(
@@ -2572,8 +2574,7 @@ def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> No
         cursor_signing_secret=b"r" * 32,
     ).create_run(
         CollectionRunCreateRequest(
-            mode="batch_supplement",
-            import_batch_id=batch_id,
+            **_supplement_selection(runtime, mode, batch_id),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform="xiaohongshu",
@@ -2585,6 +2586,13 @@ def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> No
         ),
         request_id="stage8e-comments-without-replies",
     )
+    if mode == "date_supplement":
+        with runtime.database.engine.begin() as connection:
+            connection.execute(
+                update(contents_table)
+                .where(contents_table.c.id == content_id)
+                .values(published_at=datetime.fromisoformat("2020-01-01T00:00:00+08:00"))
+            )
     transport = FakeProviderTransport(
         (
             ProviderTransportResponse(
@@ -2683,14 +2691,14 @@ def test_batch_supplement_reply_shortfall_is_partial_in_run_and_coverage(runtime
     assert run.scopes[0].comment_coverage == "partial"
 
 
-def test_batch_supplement_does_not_stop_at_comment_sample_target(runtime) -> None:  # type: ignore[no-untyped-def]
+@pytest.mark.parametrize("mode", ("batch_supplement", "date_supplement"))
+def test_batch_supplement_does_not_stop_at_comment_sample_target(runtime, mode: str) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, _ = _insert_import_content(runtime, current_comment_count=1)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     created = service.create_run(
         CollectionRunCreateRequest(
-            mode="batch_supplement",
-            import_batch_id=batch_id,
+            **_supplement_selection(runtime, mode, batch_id),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform="xiaohongshu", provider_config_id=provider_config_id
@@ -2734,7 +2742,10 @@ def test_batch_supplement_does_not_stop_at_comment_sample_target(runtime) -> Non
     assert run.status == "succeeded"
 
 
-def test_batch_supplement_reports_unresolved_sibling_without_provider_request(runtime) -> None:  # type: ignore[no-untyped-def]
+@pytest.mark.parametrize("mode", ("batch_supplement", "date_supplement"))
+def test_batch_supplement_reports_unresolved_sibling_without_provider_request(
+    runtime, mode: str
+) -> None:  # type: ignore[no-untyped-def]
     provider_config_id, _ = _seed_config_and_search_pack(runtime)
     batch_id, _ = _insert_import_content(runtime)
     _, blocked_content_id = _insert_import_content(
@@ -2746,8 +2757,7 @@ def test_batch_supplement_reports_unresolved_sibling_without_provider_request(ru
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     created = service.create_run(
         CollectionRunCreateRequest(
-            mode="batch_supplement",
-            import_batch_id=batch_id,
+            **_supplement_selection(runtime, mode, batch_id),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform="xiaohongshu", provider_config_id=provider_config_id
@@ -2866,3 +2876,16 @@ def test_batch_supplement_retries_provider_5xx_with_new_attempt(runtime) -> None
     assert job["attempt"] == 2
     assert attempts == (1, 2)
     assert version_count == 2
+
+
+def _supplement_selection(runtime, mode: str, batch_id: UUID) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    if mode == "batch_supplement":
+        return {"mode": mode, "import_batch_id": batch_id}
+    published_at = datetime.fromisoformat("2026-09-01T12:00:00+08:00")
+    with runtime.database.engine.begin() as connection:
+        connection.execute(update(contents_table).values(published_at=published_at))
+    return {
+        "mode": mode,
+        "published_from": "2026-09-01T00:00:00+08:00",
+        "published_to": "2026-09-01T23:59:59.999+08:00",
+    }

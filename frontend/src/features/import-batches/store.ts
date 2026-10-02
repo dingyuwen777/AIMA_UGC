@@ -3,6 +3,8 @@ import { defineStore } from 'pinia'
 
 import type {
   CollectionCapabilitiesResponse,
+  CollectionDateSupplementEligibilityResponse,
+  GetCollectionDateSupplementEligibilityParams,
   CanonicalReplayAllOperationResponse,
   DataImportIngestionPolicy,
   DataImportRevocationPreviewResponse,
@@ -36,8 +38,7 @@ import {
   cancelHistoricalCampaign,
   createLocalCampaign,
   createHistoricalCampaign,
-  fetchBatchContentPlatforms,
-  fetchCampaignContentPlatforms,
+  fetchDateSupplementEligibility,
   fetchCollectionCapabilities,
   fetchCollectionRunDetail,
   fetchCollectionRuntimeList,
@@ -124,21 +125,6 @@ function errorMessage(error: unknown): string {
   return '请求失败，请稍后重试。'
 }
 
-function isSupplementBatch(batch: ImportBatchResponse): boolean {
-  return batch.status === 'succeeded' && (batch.stats.rows_ingested ?? 0) > 0
-}
-
-function isSupplementCampaign(campaign: HistoricalCampaignResponse): boolean {
-  if (!['succeeded', 'partial_failed'].includes(campaign.status)) return false
-  const stats = campaign.stats
-  return (
-    (stats?.created ?? 0) +
-    (stats?.filled ?? 0) +
-    (stats?.updated ?? 0) +
-    (stats?.unchanged ?? 0) +
-    (stats?.conflict ?? 0)
-  ) > 0
-}
 
 export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const filters = reactive<CollectionRuntimeFilters>({ ...EMPTY_FILTERS })
@@ -149,10 +135,11 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const selectedRun = ref<CollectionRunResponse | null>(null)
   const selectedCanonicalReplay = ref<CollectionRuntimeItemResponse | null>(null)
   const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
-  const campaignOptions = ref<HistoricalCampaignResponse[]>([])
-  const batchOptions = ref<ImportBatchResponse[]>([])
   const keywordPackOptions = ref<KeywordPackSummaryResponse[]>([])
   const supplementContentPlatforms = ref<CollectionPlatform[]>([])
+  const supplementEligibilityError = ref<string | null>(null)
+  const supplementTargets = ref<CollectionDateSupplementEligibilityResponse['targets']>([])
+  const supplementEligibilityReady = ref(false)
   const supplementDiagnostics = ref<CollectionSupplementPlatformDiagnosticResponse[]>([])
   const historicalDirectoryPath = ref('')
   const historicalDirectoryEntries = ref<HistoricalDirectoryEntryResponse[]>([])
@@ -234,11 +221,12 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     if (activeTab.value === 'tikhub') {
       if (
         filters.recordType === 'tikhub_discovery' ||
-        filters.recordType === 'tikhub_batch_supplement'
+        filters.recordType === 'tikhub_batch_supplement' ||
+        filters.recordType === 'tikhub_date_supplement'
       ) {
         return [filters.recordType]
       }
-      return ['tikhub_discovery', 'tikhub_batch_supplement']
+      return ['tikhub_discovery', 'tikhub_batch_supplement', 'tikhub_date_supplement']
     }
     return filters.recordType ? [filters.recordType] : undefined
   }
@@ -387,6 +375,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       '',
       'tikhub_discovery',
       'tikhub_batch_supplement',
+      'tikhub_date_supplement',
     ].includes(filters.recordType)) filters.recordType = ''
     await refresh()
   }
@@ -538,86 +527,51 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
-  async function loadSupplementPlatforms(source: SupplementSourceSelection): Promise<void> {
-    const version = ++supplementPlatformVersion
+  /** 失效旧请求，防止日期往返或弹窗关闭重开时旧响应覆盖当前选择。 */
+  function resetSupplementEligibility(): void {
+    supplementPlatformVersion++
+    supplementEligibilityReady.value = false
+    supplementEligibilityError.value = null
     supplementContentPlatforms.value = []
     supplementDiagnostics.value = []
-    if (!source.id) return
+    supplementTargets.value = []
+    loadingSupplementPlatforms.value = false
+  }
+
+  /** 日期资格按请求序号提交；过期响应不能恢复已失效的数量和诊断。 */
+  async function loadSupplementPlatforms(params: GetCollectionDateSupplementEligibilityParams | null): Promise<void> {
+    resetSupplementEligibility()
+    if (!params) return
+    const version = supplementPlatformVersion
     loadingSupplementPlatforms.value = true
-    error.value = null
     try {
-      const eligibility = source.kind === 'campaign'
-        ? await fetchCampaignContentPlatforms(source.id, SUPPORTED_PLATFORMS)
-        : await fetchBatchContentPlatforms(source.id, SUPPORTED_PLATFORMS)
-      if (version === supplementPlatformVersion) {
-        supplementContentPlatforms.value = eligibility.platforms
-        supplementDiagnostics.value = eligibility.diagnostics
-      }
+      const eligibility = await fetchDateSupplementEligibility(params)
+      if (version !== supplementPlatformVersion) return
+      supplementTargets.value = eligibility.targets
+      supplementContentPlatforms.value = eligibility.targets.map((item) => item.platform)
+      supplementDiagnostics.value = eligibility.diagnostics ?? []
+      supplementEligibilityReady.value = true
     } catch (reason) {
-      if (version === supplementPlatformVersion) error.value = errorMessage(reason)
+      if (version === supplementPlatformVersion) supplementEligibilityError.value = errorMessage(reason)
     } finally {
       if (version === supplementPlatformVersion) loadingSupplementPlatforms.value = false
     }
   }
 
-  /** 读取全部可用于辅助补采的历史导入批次，避免固定首屏截断。 */
-  async function fetchAllSupplementBatches(): Promise<ImportBatchResponse[]> {
-    const batches: ImportBatchResponse[] = []
-    const seenCursors = new Set<string>()
-    let cursor: string | undefined
-    while (true) {
-      const page = await fetchImportBatchList(cursor ? { limit: 100, cursor } : { limit: 100 })
-      batches.push(...page.items)
-      const next = page.next_cursor ?? undefined
-      if (!page.has_more || !next || seenCursors.has(next)) break
-      seenCursors.add(next)
-      cursor = next
-    }
-    return batches.filter(isSupplementBatch)
-  }
-
-  /** 加载新建补采所需能力、Campaign、兼容批次和完整启用词包目录。 */
-  async function loadCreationOptions(
-    selectedSource?: SupplementSourceSelection | null,
-  ): Promise<void> {
+  /** 新建只读取真实渠道能力与完整启用词包，不加载导入来源目录。 */
+  async function loadCreationOptions(): Promise<void> {
     error.value = null
-    supplementContentPlatforms.value = []
-    supplementDiagnostics.value = []
+    resetSupplementEligibility()
     try {
-      const [providerCapabilities, campaigns, batches, packs] = await Promise.all([
-        fetchCollectionCapabilities(),
-        fetchHistoricalCampaigns(),
-        fetchAllSupplementBatches(),
-        fetchEnabledKeywordPacks(),
+      const [providerCapabilities, packs] = await Promise.all([
+        fetchCollectionCapabilities(), fetchEnabledKeywordPacks(),
       ])
       capabilities.value = providerCapabilities
       keywordPackOptions.value = packs
-      campaignOptions.value = campaigns.items.filter(isSupplementCampaign)
-      batchOptions.value = batches
-      if (
-        selectedSource?.kind === 'campaign' &&
-        !campaignOptions.value.some((campaign) => campaign.id === selectedSource.id)
-      ) {
-        const selected = await fetchHistoricalCampaign(selectedSource.id)
-        if (isSupplementCampaign(selected)) {
-          campaignOptions.value = [selected, ...campaignOptions.value]
-        }
-      }
-      if (
-        selectedSource?.kind === 'batch' &&
-        !batchOptions.value.some((batch) => batch.id === selectedSource.id)
-      ) {
-        const selected = await fetchImportBatchDetail(selectedSource.id)
-        if (isSupplementBatch(selected)) batchOptions.value = [selected, ...batchOptions.value]
-      }
-      const sourceExists = selectedSource?.kind === 'campaign'
-        ? campaignOptions.value.some((campaign) => campaign.id === selectedSource.id)
-        : batchOptions.value.some((batch) => batch.id === selectedSource?.id)
-      if (selectedSource && sourceExists) {
-        await loadSupplementPlatforms(selectedSource)
-      }
     } catch (reason) {
       error.value = errorMessage(reason)
+      capabilities.value = null
+      keywordPackOptions.value = []
     }
   }
 
@@ -965,11 +919,13 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedCanonicalReplayCancellationUnconfirmed,
     selectedCanonicalReplayCancellationPending,
     capabilities,
-    campaignOptions,
-    batchOptions,
     keywordPackOptions,
     supplementContentPlatforms,
     supplementDiagnostics,
+    supplementTargets,
+    supplementEligibilityError,
+    supplementEligibilityReady,
+    resetSupplementEligibility,
     historicalDirectoryPath,
     historicalDirectoryEntries,
     historicalDirectoryNextCursor,

@@ -67,23 +67,22 @@ class PostgresCollectionRepository:
 
         scope_records: tuple[CollectionScopeRecord, ...] = ()
         if scopes:
+            # 参数集交由 SQLAlchemy insertmanyvalues 按驱动上限分批；
+            # 单条多 VALUES 会在大范围补采时超过 PostgreSQL 参数上限。
             scope_rows = self._session.execute(
-                insert(collection_scopes_table)
-                .values(
-                    [
-                        {
-                            "id": uuid4(),
-                            "run_id": run_id,
-                            "platform": scope.platform,
-                            "source_type": scope.source_type,
-                            "source_value": scope.source_value,
-                            "operation_group": scope.operation_group,
-                            "status": "queued",
-                        }
-                        for scope in scopes
-                    ]
-                )
-                .returning(*collection_scopes_table.c)
+                insert(collection_scopes_table).returning(*collection_scopes_table.c),
+                [
+                    {
+                        "id": uuid4(),
+                        "run_id": run_id,
+                        "platform": scope.platform,
+                        "source_type": scope.source_type,
+                        "source_value": scope.source_value,
+                        "operation_group": scope.operation_group,
+                        "status": "queued",
+                    }
+                    for scope in scopes
+                ],
             ).mappings()
             scope_records = tuple(_row_to_scope(row) for row in scope_rows)
 

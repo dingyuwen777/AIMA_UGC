@@ -1,5 +1,19 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 import { ensureStage3FilterBrand } from './stage3-brand-support'
+
+
+/** 从共享日历公开控件选择单日，覆盖与生产相同的北京时间边界。 */
+async function selectPublishedDay(dialog: Locator, day: string): Promise<void> {
+  await dialog.getByRole('button', { name: '内容发布时间', exact: true }).click()
+  const calendar = dialog.getByRole('dialog', { name: '选择内容发布时间', exact: true })
+  for (let step = 0; step < 24; step++) {
+    if (await calendar.locator(`[data-date="${day}"]`).count()) break
+    const visibleDay = await calendar.locator('[data-date]').first().getAttribute('data-date')
+    await calendar.getByRole('button', { name: visibleDay! > day ? '上个月' : '下个月' }).click()
+  }
+  await calendar.locator(`[data-date="${day}"]`).click()
+  await calendar.getByRole('button', { name: '确定', exact: true }).click()
+}
 
 const labels = ['小红书', '抖音', '微博', 'B站', '快手'] as const
 
@@ -20,7 +34,7 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   await importDialog.getByRole('button', { name: '创建并预检' }).click()
   const campaignCreated = await campaignResponse
   expect(campaignCreated.status()).toBe(201)
-  const { campaign_id: campaignId } = await campaignCreated.json() as { campaign_id: string }
+  expect((await campaignCreated.json()).campaign_id).toBeTruthy()
   await expect(importDialog.locator('.campaign-status')).toHaveText('预检完成', { timeout: 60_000 })
   await importDialog.getByRole('button', { name: '开始导入' }).click()
   await expect(importDialog.locator('.campaign-status')).toHaveText('导入完成', { timeout: 60_000 })
@@ -28,12 +42,15 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '新建辅助补采' }).click()
   const drawer = page.getByRole('dialog', { name: '新建辅助补采' })
-  await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
-  await drawer.getByLabel('数据导入来源').selectOption(`campaign:${campaignId}`)
+  await selectPublishedDay(drawer, '2026-09-17')
   for (const label of labels) {
     await drawer.getByRole('button', { name: new RegExp(label) }).click()
   }
   await drawer.getByLabel('二级回复').check()
+  await test.info().attach('日期补采弹窗', {
+    body: await page.screenshot({ path: test.info().outputPath('date-dialog.png') }),
+    contentType: 'image/png',
+  })
   const runResponse = page.waitForResponse((response) =>
     response.request().method() === 'POST' &&
     new URL(response.url()).pathname === '/api/v1/collection-runs',
@@ -42,8 +59,9 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   const runCreated = await runResponse
   expect(runCreated.status()).toBe(202)
   expect(runCreated.request().postDataJSON()).toMatchObject({
-    mode: 'batch_supplement',
-    data_import_campaign_id: campaignId,
+    mode: 'date_supplement',
+    published_from: '2026-09-16T16:00:00.000Z',
+    published_to: '2026-09-17T15:59:59.999Z',
     include_comments: true,
     include_sub_comments: true,
   })
@@ -59,6 +77,7 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
     scopes: { identity_status: string; comment_stage: string; stats: { root_comment_count: number; reply_count: number } }[]
   }
   expect(run.scopes).toHaveLength(5)
+  expect(runCreated.request().postDataJSON()).not.toHaveProperty('data_import_campaign_id')
   for (const scope of run.scopes) {
     expect(scope.identity_status).toBe('resolved')
     expect(scope.comment_stage).toBe('finished')
@@ -67,11 +86,15 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   expect(run.scopes.map((scope) => scope.stats.reply_count).sort()).toEqual([0, 0, 0, 0, 2])
 
   await page.goto('/collection-runtime')
-  const runRow = page.locator('.table-row').filter({ hasText: '基于已有导入数据' }).first()
+  const runRow = page.locator('.table-row').filter({ hasText: '按发布时间范围' }).first()
   await expect(runRow).toBeVisible()
   await runRow.getByRole('button', { name: '查看详情' }).click()
   const runDetail = page.getByRole('dialog', { name: '辅助补采运行详情' })
   await expect(runDetail).toContainText(runId)
+  await expect(runDetail).toContainText('2026/09/17')
+  await expect(runDetail).toContainText('日期范围内容补采')
+  await expect(runDetail).not.toContainText('已关联导入来源')
+  await expect(runDetail).toContainText('采集内容：详情、一级评论、二级回复')
   for (const label of labels) {
     await expect(runDetail.getByRole('region', { name: '平台评论覆盖' })).toContainText(label)
   }
@@ -94,6 +117,7 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
     url.pathname === '/voice-plaza' && url.searchParams.get('source_identifier') === runId,
   )
   await expect(page.getByRole('region', { name: '声音广场筛选条件' }).getByLabel('平台')).toBeEnabled()
+  await expect(page.getByText('爱玛日期范围外测试', { exact: true })).toHaveCount(0)
 
   for (const label of labels) {
     const title = `爱玛评论补采全栈${label}`

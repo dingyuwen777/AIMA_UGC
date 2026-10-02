@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import type {
@@ -12,7 +12,6 @@ import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
 import { useTransientNotice } from '../../../../shared/ui/useTransientNotice'
 import {
-  type SupplementSourceSelection,
   useImportBatchesStore,
 } from '../../store'
 import CanonicalReplayDetailDrawer from './components/CanonicalReplayDetailDrawer.vue'
@@ -22,14 +21,14 @@ import CollectionRuntimeKpiCards from './components/CollectionRuntimeKpiCards.vu
 import CollectionRuntimeTable from './components/CollectionRuntimeTable.vue'
 import DataImportDialog from './components/DataImportDialog.vue'
 import ImportBatchDetailDrawer from './components/ImportBatchDetailDrawer.vue'
-import TikHubSupplementDrawer from './components/TikHubSupplementDrawer.vue'
+import TikHubSupplementDialog from './components/TikHubSupplementDialog.vue'
 
 const store = useImportBatchesStore()
 const route = useRoute()
 const router = useRouter()
 const dataImportOpen = ref(false)
 const supplementOpen = ref(false)
-const initialSupplementSource = ref<SupplementSourceSelection | null>(null)
+watch(supplementOpen, (open) => { if (!open) store.resetSupplementEligibility() })
 const { message: notice, show: showNotice } = useTransientNotice()
 const persistentNotice = ref<string | null>(null)
 const batchDetailOpen = computed({
@@ -91,10 +90,9 @@ async function openDataImport(): Promise<void> {
   await store.openHistoricalWorkspace()
 }
 
-/** 打开辅助补采；从列表发起时可把当前导入来源作为初始补采来源。 */
-async function openCreate(source: SupplementSourceSelection | null = null): Promise<void> {
-  initialSupplementSource.value = source
-  await store.loadCreationOptions(source)
+/** 新建补采按发布时间选择已入库内容，复用共享居中弹窗。 */
+async function openCreate(): Promise<void> {
+  await store.loadCreationOptions()
   supplementOpen.value = true
 }
 
@@ -294,18 +292,19 @@ async function viewRunResults(runId: string): Promise<void> {
       v-model="dataImportOpen"
       @view-contents="viewContents"
     />
-    <TikHubSupplementDrawer
+    <TikHubSupplementDialog
       v-model="supplementOpen"
       :capabilities="store.capabilities"
-      :campaigns="store.campaignOptions"
-      :batches="store.batchOptions"
       :keyword-packs="store.keywordPackOptions"
       :supplement-content-platforms="store.supplementContentPlatforms"
       :supplement-diagnostics="store.supplementDiagnostics"
+      :supplement-targets="store.supplementTargets"
+      :eligibility-ready="store.supplementEligibilityReady"
+      :eligibility-error="store.supplementEligibilityError"
+      :error="store.error"
       :loading-supplement-platforms="store.loadingSupplementPlatforms"
       :creating="store.creating"
-      :initial-source="initialSupplementSource"
-      @source-change="store.loadSupplementPlatforms"
+      @date-change="store.loadSupplementPlatforms"
       @submit="createRun"
     />
     <div

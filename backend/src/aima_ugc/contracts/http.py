@@ -352,12 +352,13 @@ def _normalize_platform_inputs(value: object) -> object:
     return value
 
 
-type CollectionRunMode = Literal["discovery", "batch_supplement"]
+type CollectionRunMode = Literal["discovery", "batch_supplement", "date_supplement"]
 type CollectionRuntimeRecordType = Literal[
     "excel_import",
     "data_import_campaign",
     "tikhub_discovery",
     "tikhub_batch_supplement",
+    "tikhub_date_supplement",
     "canonical_replay",
 ]
 type CollectionRuntimeStatus = Literal[
@@ -385,6 +386,30 @@ class CollectionRunPlatformRequest(BaseModel):
         return _normalize_platform_input(value)
 
 
+class CollectionDateSupplementQuery(BaseModel):
+    """按已入库内容发布时间查询补采资格，边界为带时区闭区间。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    published_from: datetime
+    published_to: datetime
+
+    @field_validator("published_from", "published_to")
+    @classmethod
+    def validate_aware_datetime(cls, value: datetime) -> datetime:
+        """拒绝无时区时间，并统一使用北京时间边界。"""
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("发布时间筛选必须包含时区")
+        return to_beijing(value)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> CollectionDateSupplementQuery:
+        """保留闭区间语义，允许单个时间点。"""
+        if self.published_from > self.published_to:
+            raise ValueError("published_from 不能晚于 published_to")
+        return self
+
+
 class CollectionRunCreateRequest(BaseModel):
     """一次性发现冻结 Search Terms 与 Brand Filter；补采只处理既有内容。"""
 
@@ -395,6 +420,8 @@ class CollectionRunCreateRequest(BaseModel):
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
+    published_from: datetime | None = None
+    published_to: datetime | None = None
     platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
     include_comments: bool = True
     include_sub_comments: bool = False
@@ -408,12 +435,27 @@ class CollectionRunCreateRequest(BaseModel):
             raise ValueError("同一次 Collection Run 的词包不得重复")
         if len(self.brand_ids) != len(set(self.brand_ids)):
             raise ValueError("同一次 Collection Run 的品牌不得重复")
+        if self.mode == "date_supplement":
+            if self.published_from is None or self.published_to is None:
+                raise ValueError("日期补采必须提供发布时间范围")
+            query = CollectionDateSupplementQuery(
+                published_from=self.published_from, published_to=self.published_to
+            )
+            self.published_from, self.published_to = query.published_from, query.published_to
+            if self.import_batch_id is not None or self.data_import_campaign_id is not None:
+                raise ValueError("日期补采不能关联数据导入来源")
+            if self.keyword_pack_ids or self.brand_ids:
+                raise ValueError("日期补采不能提交词包或品牌范围")
+            if any(item.search_config is not None for item in self.platforms):
+                raise ValueError("日期补采不能提交关键词搜索配置")
+        elif self.published_from is not None or self.published_to is not None:
+            raise ValueError("仅日期补采可以提交发布时间范围")
         if self.mode == "discovery":
             if not self.keyword_pack_ids:
                 raise ValueError("主动发现必须选择至少一个 Keyword Pack 作为 Search Terms")
             if self.import_batch_id is not None or self.data_import_campaign_id is not None:
                 raise ValueError("主动发现不能关联数据导入来源")
-        else:
+        elif self.mode == "batch_supplement":
             if (self.import_batch_id is None) == (self.data_import_campaign_id is None):
                 raise ValueError(
                     "基于数据导入补采必须且只能提供 import_batch_id 或 data_import_campaign_id"
@@ -437,6 +479,8 @@ class CollectionRunCreatedResponse(BaseModel):
     mode: CollectionRunMode
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
+    published_from: datetime | None = None
+    published_to: datetime | None = None
     status: Literal["queued"] = "queued"
 
 
@@ -483,6 +527,10 @@ class CollectionRunResponse(BaseModel):
     mode: CollectionRunMode
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
+    published_from: datetime | None = None
+    published_to: datetime | None = None
+    include_comments: bool | None = None
+    include_sub_comments: bool | None = None
     status: CollectionRuntimeStatus
     stage: str
     progress: int = Field(ge=0, le=100)
@@ -577,11 +625,18 @@ class CollectionCampaignSupplementEligibilityResponse(BaseModel):
     diagnostics: tuple[CollectionSupplementPlatformDiagnosticResponse, ...] = ()
 
 
+class CollectionDateSupplementEligibilityResponse(CollectionDateSupplementQuery):
+    """日期范围内的可执行目标和身份缺口，不公开 Provider 私有身份。"""
+
+    targets: tuple[CollectionBatchSupplementTargetResponse, ...]
+    diagnostics: tuple[CollectionSupplementPlatformDiagnosticResponse, ...] = ()
+
+
 class CollectionRuntimeListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: str | None = Field(default=None, min_length=1, max_length=500)
-    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=5)
+    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=6)
     status: CollectionRuntimeStatus | None = None
     stage: str | None = Field(default=None, min_length=1, max_length=100)
     created_from: datetime | None = None
@@ -1942,6 +1997,8 @@ __all__ = [
     "CollectionRunCreateRequest",
     "CollectionRunCreatedResponse",
     "CollectionRunMode",
+    "CollectionDateSupplementQuery",
+    "CollectionDateSupplementEligibilityResponse",
     "CollectionRunPlatformRequest",
     "CollectionRunResponse",
     "CollectionRunStatsResponse",

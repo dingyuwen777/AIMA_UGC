@@ -46,6 +46,13 @@ class _FakeCollectionService:
             "targets": [{"platform": "xiaohongshu", "target_count": 3}],
         }
 
+    def get_date_supplement_eligibility(self, query):  # type: ignore[no-untyped-def]
+        return {
+            **query.model_dump(mode="json"),
+            "targets": [{"platform": "douyin", "target_count": 2}],
+            "diagnostics": [],
+        }
+
     def create_run(self, request, *, request_id):  # type: ignore[no-untyped-def]
         assert request.mode == "discovery"
         assert request.keyword_pack_ids == (PACK_ID,)
@@ -164,6 +171,8 @@ def test_create_discovery_collection_run_returns_202() -> None:
         "mode": "discovery",
         "import_batch_id": None,
         "data_import_campaign_id": None,
+        "published_from": None,
+        "published_to": None,
         "status": "queued",
     }
 
@@ -231,3 +240,30 @@ def test_collection_run_detail_and_runtime_summary_are_queryable() -> None:
     assert summary.json()["contents_ingested_today"] == 3
     assert listing.status_code == 200
     assert listing.json() == {"items": [], "next_cursor": None, "has_more": False}
+
+
+@pytest.mark.parametrize(
+    "published_from,published_to,status",
+    [
+        ("2026-09-01T00:00:00+08:00", "2026-09-01T23:59:59.999+08:00", 200),
+        ("2026-09-01T00:00:00", "2026-09-01T23:59:59+08:00", 422),
+        ("2026-09-02T00:00:00+08:00", "2026-09-01T23:59:59+08:00", 422),
+    ],
+)
+def test_date_supplement_eligibility_http(
+    published_from: str, published_to: str, status: int
+) -> None:
+    client = TestClient(create_app(collection_service=_FakeCollectionService()))
+    response = client.get(
+        "/api/v1/collection-supplement-eligibility",
+        params={
+            "published_from": published_from,
+            "published_to": published_to,
+        },
+    )
+    assert response.status_code == status
+    if status == 200:
+        assert response.json()["targets"] == [{"platform": "douyin", "target_count": 2}]
+        assert response.json()["published_from"] == published_from
+    else:
+        assert response.json()["request_id"]

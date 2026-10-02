@@ -444,7 +444,7 @@ describe('采集运行中心正式 Figma 基线', () => {
 
   it('辅助补采文案保持产品化，平台和搜索配置继续由 Capability 动态驱动', async () => {
     const [drawerSource, pageSource] = await Promise.all([
-      readCollectionRuntimeSource('components/TikHubSupplementDrawer.vue'),
+      readCollectionRuntimeSource('components/TikHubSupplementDialog.vue'),
       readCollectionRuntimeSource('CollectionRuntimePage.vue'),
     ])
 

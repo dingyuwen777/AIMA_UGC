@@ -32,6 +32,7 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
   if (item.record_type === 'tikhub_discovery' && item.keywords?.length) {
     return `关键词：${item.keywords.slice(0, 2).join(' / ')}`
   }
+  if (item.record_type === 'tikhub_date_supplement') return '按发布时间范围'
   if (item.record_type === 'tikhub_batch_supplement') return '基于已有导入数据'
   return recordTypeLabels[item.record_type]
 }
