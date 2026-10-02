@@ -267,6 +267,7 @@ data_changes:
 | V8 | 隔离 PostgreSQL 18.4 | test_workbench_runtime.py + test_workbench_scheme_bootstrap.py；test_stage8d_voice_plaza_runtime.py | 5+9 passed | 缺作者/多帖/多标签/active Scheme、历史布局/旧 snapshot、plural 投影与回退查询 |
 | V9 | 最终 API 重新启动；隔离 PG/真实 Worker/本机 Fake LLM | npm run test:e2e:fullstack -- e2e-fullstack/analysis-streaming.spec.ts | 1 passed | 同作者两帖 AI→持久结果→心智2/2=100%→声音广场钻取真实闭环 |
 | V10 | 唯一 CI classifier | scripts/dev/validate_changed.py --base origin/main --json | profile=full | 全 Backend/Frontend、PG、Full-stack、Runtime/Package 等远程 current-head CI 必需；Windows npm.cmd 适配下逐条执行同源本地命令，无第二套映射 |
+| V11 | head5b3cbc7f 远程 CI + 最终测试修正；隔离本机 API/PG/Worker | 远程 Full-stack 17项；本机完整 stage12-historical-analysis.spec.ts | 远程16 passed/1旧终态region消失断言 failed；修正后本机1 passed，40.4s | 原用例与固定96px活动区防位移的新语义冲突；改验收为0活动卡、idle文案、96px保持，以及真实任务中心对应sequenceNo已完成。API历史身份、selected/all scope、正负结果、导入/retry/revocation原断言全部保留；不改生产、不扩大超时，新的current-head完整CI仍必需 |
 
 ## Review Repair Package
 
