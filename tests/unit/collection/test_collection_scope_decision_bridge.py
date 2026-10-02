@@ -249,7 +249,7 @@ def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion
 
     prepared = executor._prepare_search_content(
         run=SimpleNamespace(),  # type: ignore[arg-type]
-        scope=SimpleNamespace(platform="bilibili"),  # type: ignore[arg-type]
+        scope=SimpleNamespace(platform="bilibili", source_type="keyword_search"),  # type: ignore[arg-type]
         content=search_content,
         search_candidate_id=search_candidate_id,
         provider_config=SimpleNamespace(),  # type: ignore[arg-type]
@@ -259,7 +259,7 @@ def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion
     )
     executor._process_search_content(
         run=SimpleNamespace(),  # type: ignore[arg-type]
-        scope=SimpleNamespace(platform="bilibili"),  # type: ignore[arg-type]
+        scope=SimpleNamespace(platform="bilibili", source_type="keyword_search"),  # type: ignore[arg-type]
         prepared=prepared,
         content=prepared.final_content,
         search_executed=SimpleNamespace(),  # type: ignore[arg-type]

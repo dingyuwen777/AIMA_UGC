@@ -42,6 +42,8 @@ GET /api/v1/weibo/web_v2/fetch_post_sub_comments
 
 ## 3. Search Capability
 
+账号补采使用数字 `uid` 和 Web V2 `fetch_user_posts`。请求同时维护页号及返回的 since_id；非空页的 since_id 为空时仍递增页号，直到真实空页、明确耗尽或技术保护，不把空游标当成已抓完。日期过滤逐条执行，不依据某一页出现旧作品提前停止。后续详情、一级评论和回复继续复用上述主链。
+
 当前业务搜索模式：
 
 ```text

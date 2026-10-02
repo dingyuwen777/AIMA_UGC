@@ -29,7 +29,7 @@ def test_stage8e_openapi_exposes_collection_runtime_productization() -> None:
     )
 
 
-def test_stage8e_create_contract_is_strict_and_discriminates_three_modes() -> None:
+def test_stage8e_create_contract_is_strict_and_discriminates_four_modes() -> None:
     spec = create_app().openapi()
     schemas = spec["components"]["schemas"]
     request_schema = schemas["CollectionRunCreateRequest"]
@@ -41,6 +41,7 @@ def test_stage8e_create_contract_is_strict_and_discriminates_three_modes() -> No
         "discovery",
         "batch_supplement",
         "content_supplement",
+        "account_discovery",
     }
     assert "keywords" not in request_schema["properties"]
     keyword_pack_ids = request_schema["properties"]["keyword_pack_ids"]

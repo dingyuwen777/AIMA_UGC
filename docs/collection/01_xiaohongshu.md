@@ -13,7 +13,7 @@
 账号 Search / User Info / User Notes Operation / Pagination
 → backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu_accounts.py
 
-账号人工调试 Runtime
+账号正式发现与人工调试共用 Runtime
 → backend/src/aima_ugc/adapters/providers/tikhub/account_runtime.py
 
 Mapper
@@ -36,7 +36,7 @@ Capability
 
 账号入口复用正式 TikHub Transport、已有小红书 Mapper、Detail/Comments/SubComments Runtime、Canonical JSONL 和共享 Excel Exporter；它不是第二套采集器。
 
-## 2. 当前生产主链与账号人工 Discovery
+## 2. 当前生产主链与账号 Discovery
 
 ### 2.1 生产 Collection 主链
 
@@ -57,26 +57,26 @@ SubComments
 GET /api/v1/xiaohongshu/app_v2/get_note_sub_comments
 ```
 
-当前正式 Collection 主链是 App V2 关键词发现。
+当前正式 Collection 既支持 App V2 关键词发现，也支持指定账号发现。
 
 代码里还存在 App V1 / Web V3 的显式 Search Candidate Builder，用于 A/B 验证；它们没有进入自动 fallback。
 
-### 2.2 指定账号人工 Discovery
+### 2.2 指定账号 Discovery
 
-人工文件采集另外复用以下 App V2 Operation：
+正式账号补采与人工文件采集共同复用以下 App V2 Operation：
 
 ```text
 Search Users
 GET /api/v1/xiaohongshu/app_v2/search_users
 
-User Info（可选身份复核）
+User Info（正式任务必须身份复核）
 GET /api/v1/xiaohongshu/app_v2/get_user_info
 
 User Posted Notes
 GET /api/v1/xiaohongshu/app_v2/get_user_posted_notes
 ```
 
-这三条 Operation 当前用于 `tikhub_test` 指定账号人工采集，不等于已经开放为生产 Collection Capability、Scheduler Source 或数据库 Dispatch 能力。
+公开账号类型为 `red_id` 和 `user_id`。前者通过 `search_users` 连续搜索并精确核验，后者直接读取资料；二者均通过 `get_user_info` 复核实际返回的稳定身份，再用 `get_user_posted_notes` 遍历可访问笔记。搜索昵称不作为身份，资料缺失、歧义或冲突明确失败。
 
 当前边界：
 
@@ -86,11 +86,13 @@ GET /api/v1/xiaohongshu/app_v2/get_user_posted_notes
 → get_user_posted_notes 全页遍历
 → 北京时间日期过滤
 → 复用既有 Detail / Comments / SubComments
-→ 复用 Mapper / Canonical / Excel
-→ 文件输出
+→ 复用 Mapper / Canonical / Ingestion Owner
+→ 正式 PostgreSQL 内容与来源账本
 ```
 
-人工账号 Runner 固定 `write_to_database=False`。因此新账号 Discovery Operation 当前不需要伪造 Pricing Registry 条目；若未来要进入正式数据库 Dispatch/Collection Capability，必须先独立完成价格核验、真实 Probe、Fixture/Contract 和调度设计门禁。
+正式账号入口使用持久 Request/Attempt/Raw 和账号 Scope，价格由已核验的 Pricing Registry 提供。人工账号 Runner 仍固定 `write_to_database=False`，复用相同 Operation、身份 Owner、分页和 Mapper 后输出文件。账号补采是一次性任务，未加入周期 Scheduler。
+
+详情响应可能同时带推荐笔记。已确定目标的正式 Detail 按请求 note ID 精确选择，推荐内容不会成为该账号作品，也不会使目标详情因多项返回而失败。未知目标的短链解析仍执行既有唯一身份规则。
 
 ## 3. Search 当前支持什么
 

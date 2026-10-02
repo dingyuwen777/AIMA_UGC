@@ -68,19 +68,30 @@ def test_fullstack_fake_llm_alternates_frozen_prompt_sentiments(
         {"messages": [{"content": prompt}, {"content": json.dumps({"items": [item]})}]}
     ).encode("utf-8")
     responses: list[dict[str, object]] = []
-    monkeypatch.setattr(fake_openai_llm._Handler, "request_no", 0)
+    monkeypatch.setattr(fake_openai_llm._Handler, "item_request_counts", {})
     monkeypatch.setattr(
         fake_openai_llm._Handler, "_send_json", lambda _self, response: responses.append(response)
     )
 
     for _ in range(2):
+        unrelated = dict(item, title="爱玛账号补采全栈独立内容")
+        unrelated_body = json.dumps(
+            {"messages": [{"content": prompt}, {"content": json.dumps({"items": [unrelated]})}]}
+        ).encode("utf-8")
+        unrelated_handler = object.__new__(fake_openai_llm._Handler)
+        unrelated_handler.path = "/v1/chat/completions"
+        unrelated_handler.headers = {"content-length": str(len(unrelated_body))}
+        unrelated_handler.rfile = BytesIO(unrelated_body)
+        unrelated_handler.do_POST()
         handler = object.__new__(fake_openai_llm._Handler)
         handler.path = "/v1/chat/completions"
         handler.headers = {"content-length": str(len(body))}
         handler.rfile = BytesIO(body)
         handler.do_POST()
 
-    actual = [json.loads(response["choices"][0]["message"]["content"]) for response in responses]
+    actual = [
+        json.loads(response["choices"][0]["message"]["content"]) for response in responses[1::2]
+    ]
     expected = ["积极", "消极"] if renamed else ["正面", "负面"]
     assert [payload["items"][0]["sentiment"] for payload in actual] == expected
     model_item = ContentLabelingModelItem(

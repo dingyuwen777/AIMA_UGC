@@ -8,7 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from aima_ugc.contracts.provider.base import OperationName, PlatformName, ProviderName, StableCode
 
-BusinessOperation = Literal["keyword_search", "content_detail", "comments", "sub_comments"]
+from .accounts import ProviderAccountCapabilityV1
+
+BusinessOperation = Literal[
+    "keyword_search", "account_discovery", "content_detail", "comments", "sub_comments"
+]
 DetailAction = Literal["fetch", "skip"]
 CommentAction = Literal[
     "skip",
@@ -98,6 +102,7 @@ class ProviderPlatformCapabilityV1(CollectionBaseModel):
     provider: ProviderName
     platform: PlatformName
     operations: tuple[ProviderOperationCapabilityV1, ...] = Field(min_length=1)
+    account: ProviderAccountCapabilityV1 | None = None
 
     @model_validator(mode="after")
     def validate_unique_business_operations(self) -> Self:

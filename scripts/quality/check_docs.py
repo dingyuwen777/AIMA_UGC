@@ -53,6 +53,16 @@ def _fallback_repository_files(root: Path) -> tuple[Path, ...]:
 
 def _repository_files(root: Path) -> tuple[Path, ...]:
     """优先用 Git 受控文件建立索引，避免扫描运行时生成目录和外部软链。"""
+    owner = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    # 仓库内的隔离测试目录会继承上级 Git；该索引不属于测试目录。
+    if owner.returncode != 0 or Path(owner.stdout.strip()).resolve() != root:
+        return _fallback_repository_files(root)
     result = subprocess.run(
         ["git", "-C", str(root), "ls-files", "-z"],
         check=False,

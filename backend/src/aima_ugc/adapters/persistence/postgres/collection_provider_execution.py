@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -44,6 +45,104 @@ class CollectionScopeExecutionCounts:
     comment_count: int
     root_comment_count: int
     reply_count: int
+
+
+def read_collection_scope_execution_counts(
+    session: Session, *, scope_id: UUID
+) -> CollectionScopeExecutionCounts:
+    """聚合已提交的执行事实；调用方负责持有当前 Job 或终态结算事务锁。"""
+    attempts = session.execute(
+        select(
+            provider_request_attempts_table.c.dispatch_status,
+            provider_request_attempts_table.c.error_code,
+        )
+        .select_from(
+            provider_request_attempts_table.join(
+                provider_requests_table,
+                provider_request_attempts_table.c.provider_request_id
+                == provider_requests_table.c.id,
+            )
+        )
+        .where(provider_requests_table.c.scope_id == scope_id)
+    ).all()
+    requested_count = sum(status != "reserved" for status, _ in attempts)
+    succeeded_count = sum(
+        status == "completed" and error_code is None for status, error_code in attempts
+    )
+    failed_count = sum(
+        status in {"not_sent", "unknown"} or (status == "completed" and error_code is not None)
+        for status, error_code in attempts
+    )
+
+    def target_count(kind: str, *, reply: bool | None = None) -> int:
+        target_column = (
+            collection_candidate_ingestions_table.c.content_id
+            if kind == "content"
+            else collection_candidate_ingestions_table.c.comment_id
+        )
+        source = (
+            collection_candidate_ingestions_table.join(
+                collection_candidates_table,
+                collection_candidate_ingestions_table.c.candidate_id
+                == collection_candidates_table.c.id,
+            )
+            .join(
+                provider_request_attempts_table,
+                collection_candidates_table.c.provider_request_attempt_id
+                == provider_request_attempts_table.c.id,
+            )
+            .join(
+                provider_requests_table,
+                provider_request_attempts_table.c.provider_request_id
+                == provider_requests_table.c.id,
+            )
+        )
+        if reply is not None:
+            source = source.join(
+                comments_table,
+                collection_candidate_ingestions_table.c.comment_id == comments_table.c.id,
+            )
+        query = (
+            select(func.count(func.distinct(target_column)))
+            .select_from(source)
+            .where(
+                provider_requests_table.c.scope_id == scope_id,
+                collection_candidates_table.c.item_kind == kind,
+                collection_candidate_ingestions_table.c.result.in_(("ingested", "duplicate")),
+                target_column.is_not(None),
+            )
+        )
+        if reply is not None:
+            is_reply = or_(
+                comments_table.c.parent_comment_id.is_not(None),
+                and_(
+                    comments_table.c.root_comment_id.is_not(None),
+                    comments_table.c.root_comment_id != comments_table.c.external_comment_id,
+                ),
+            )
+            query = query.where(
+                is_reply
+                if reply
+                else and_(
+                    comments_table.c.parent_comment_id.is_(None),
+                    or_(
+                        comments_table.c.root_comment_id.is_(None),
+                        comments_table.c.root_comment_id == comments_table.c.external_comment_id,
+                    ),
+                )
+            )
+        value = session.scalar(query)
+        return int(value or 0)
+
+    return CollectionScopeExecutionCounts(
+        requested_count=requested_count,
+        succeeded_count=succeeded_count,
+        failed_count=failed_count,
+        content_count=target_count("content"),
+        comment_count=target_count("comment"),
+        root_comment_count=target_count("comment", reply=False),
+        reply_count=target_count("comment", reply=True),
+    )
 
 
 class PostgresFencedProviderAttemptPreparer:
@@ -165,8 +264,22 @@ class PostgresFencedProviderAttemptPreparer:
 
                 if attempts:
                     latest_attempt = max(attempts, key=lambda item: item.attempt_no)
-                    if latest_attempt.dispatch_status != "reserved" and not _attempt_allows_retry(
-                        latest_attempt
+                    state = (
+                        session.scalar(
+                            select(collection_scopes_table.c.pagination_state).where(
+                                collection_scopes_table.c.id == request.scope_id
+                            )
+                        )
+                        or {}
+                    )
+                    manual_after = state.get("_account_manual_retry_after")
+                    manual_retry = isinstance(
+                        manual_after, str
+                    ) and latest_attempt.created_at < datetime.fromisoformat(manual_after)
+                    if (
+                        latest_attempt.dispatch_status != "reserved"
+                        and not _attempt_allows_retry(latest_attempt)
+                        and not manual_retry
                     ):
                         return PreparedProviderAttempt(
                             request=persisted_request,
@@ -215,104 +328,7 @@ class PostgresFencedProviderAttemptPreparer:
                 if ownership != fence.job_id:
                     raise LeaseLostError("Collection Scope 不属于当前 Job Fence")
 
-                attempts = session.execute(
-                    select(
-                        provider_request_attempts_table.c.dispatch_status,
-                        provider_request_attempts_table.c.error_code,
-                    )
-                    .select_from(
-                        provider_request_attempts_table.join(
-                            provider_requests_table,
-                            provider_request_attempts_table.c.provider_request_id
-                            == provider_requests_table.c.id,
-                        )
-                    )
-                    .where(provider_requests_table.c.scope_id == scope_id)
-                ).all()
-                requested_count = sum(status != "reserved" for status, _ in attempts)
-                succeeded_count = sum(
-                    status == "completed" and error_code is None for status, error_code in attempts
-                )
-                failed_count = sum(
-                    status in {"not_sent", "unknown"}
-                    or (status == "completed" and error_code is not None)
-                    for status, error_code in attempts
-                )
-
-                def target_count(kind: str, *, reply: bool | None = None) -> int:
-                    target_column = (
-                        collection_candidate_ingestions_table.c.content_id
-                        if kind == "content"
-                        else collection_candidate_ingestions_table.c.comment_id
-                    )
-                    source = (
-                        collection_candidate_ingestions_table.join(
-                            collection_candidates_table,
-                            collection_candidate_ingestions_table.c.candidate_id
-                            == collection_candidates_table.c.id,
-                        )
-                        .join(
-                            provider_request_attempts_table,
-                            collection_candidates_table.c.provider_request_attempt_id
-                            == provider_request_attempts_table.c.id,
-                        )
-                        .join(
-                            provider_requests_table,
-                            provider_request_attempts_table.c.provider_request_id
-                            == provider_requests_table.c.id,
-                        )
-                    )
-                    if reply is not None:
-                        source = source.join(
-                            comments_table,
-                            collection_candidate_ingestions_table.c.comment_id
-                            == comments_table.c.id,
-                        )
-                    query = (
-                        select(func.count(func.distinct(target_column)))
-                        .select_from(source)
-                        .where(
-                            provider_requests_table.c.scope_id == scope_id,
-                            collection_candidates_table.c.item_kind == kind,
-                            collection_candidate_ingestions_table.c.result.in_(
-                                ("ingested", "duplicate")
-                            ),
-                            target_column.is_not(None),
-                        )
-                    )
-                    if reply is not None:
-                        is_reply = or_(
-                            comments_table.c.parent_comment_id.is_not(None),
-                            and_(
-                                comments_table.c.root_comment_id.is_not(None),
-                                comments_table.c.root_comment_id
-                                != comments_table.c.external_comment_id,
-                            ),
-                        )
-                        query = query.where(
-                            is_reply
-                            if reply
-                            else and_(
-                                comments_table.c.parent_comment_id.is_(None),
-                                or_(
-                                    comments_table.c.root_comment_id.is_(None),
-                                    comments_table.c.root_comment_id
-                                    == comments_table.c.external_comment_id,
-                                ),
-                            )
-                        )
-                    value = session.scalar(query)
-                    return int(value or 0)
-
-                return CollectionScopeExecutionCounts(
-                    requested_count=requested_count,
-                    succeeded_count=succeeded_count,
-                    failed_count=failed_count,
-                    content_count=target_count("content"),
-                    comment_count=target_count("comment"),
-                    root_comment_count=target_count("comment", reply=False),
-                    reply_count=target_count("comment", reply=True),
-                )
+                return read_collection_scope_execution_counts(session, scope_id=scope_id)
         finally:
             session.close()
 

@@ -431,6 +431,10 @@ class PostgresCollectionRuntimeQueryRepository:
                 job.c.id.label("job_id"),
                 case(
                     (
+                        run.c.config_snapshot["mode"].astext == "account_discovery",
+                        "tikhub_account_discovery",
+                    ),
+                    (
                         run.c.config_snapshot["mode"].astext == "batch_supplement",
                         "tikhub_batch_supplement",
                     ),
@@ -475,6 +479,7 @@ class PostgresCollectionRuntimeQueryRepository:
                     batch.c.stats["source_filename"].astext,
                     campaign.c.root_relative_path,
                     run.c.config_snapshot["keywords"].astext,
+                    run.c.config_snapshot["account_selection"].astext,
                     sql_cast(run.c.id, Text),
                     sql_cast(job.c.id, Text),
                 ).label("search_text"),

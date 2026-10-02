@@ -221,6 +221,7 @@ class CollectionRunExecutor:
         failed_stop_reasons: set[str] = set()
         partial_scopes = 0
         total_scopes = len(execution.scopes)
+        retry_error: str | None = None
         log_event(
             logger,
             logging.INFO,
@@ -307,7 +308,27 @@ class CollectionRunExecutor:
                     content_count=exc.content_count,
                     comment_count=exc.comment_count,
                 )
-                return JobHandlerResult.retry(exc.error_code)
+                if scope.source_type != "account":
+                    return JobHandlerResult.retry(exc.error_code)
+                if execution.retry_available:
+                    # 一个账号等待重试时，先完成其他账号；下次跳过已终态的 Scope。
+                    retry_error = retry_error or exc.error_code
+                else:
+                    status = "partial_success" if exc.content_count else "failed"
+                    finished_scope = self._gateway.finish_scope(
+                        scope.id,
+                        fence=fence,
+                        status=status,
+                        stop_reason=exc.error_code,
+                        pagination_state=exc.pagination_state,
+                        stats=exc.stats,
+                    )
+                    totals.add_persisted_scope(finished_scope)
+                    if status == "failed":
+                        failed_scopes += 1
+                        failed_stop_reasons.add(exc.error_code)
+                    else:
+                        partial_scopes += 1
             except Exception as exc:
                 failed_scopes += 1
                 failed_stop_reasons.add("scope_execution_failed")
@@ -368,6 +389,9 @@ class CollectionRunExecutor:
                     return JobHandlerResult.cancelled()
 
             context.heartbeat(progress=((index + 1) * 100) // total_scopes)
+
+        if retry_error is not None:
+            return JobHandlerResult.retry(retry_error)
 
         if failed_scopes == total_scopes:
             run_status = "failed"

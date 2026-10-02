@@ -31,6 +31,7 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
     return `关键词：${item.keywords.slice(0, 2).join(' / ')}`
   }
   if (item.record_type === 'tikhub_content_supplement') return '按确认的内容范围'
+  if (item.record_type === 'tikhub_account_discovery') return '按账号与作品发布时间'
   if (item.record_type === 'tikhub_batch_supplement') return '基于已有导入数据'
   return recordTypeLabels[item.record_type]
 }

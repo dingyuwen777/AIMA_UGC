@@ -2374,6 +2374,93 @@
         "title": "CatalogVehicleSnapshotItem",
         "type": "object"
       },
+      "CollectionAccountDiscoverySelection": {
+        "additionalProperties": false,
+        "description": "账号 Discovery 按北京时间日期筛选，扫描不依赖作品返回顺序。",
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionAccountTargetRequest"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Accounts",
+            "type": "array"
+          },
+          "kind": {
+            "const": "accounts",
+            "title": "Kind",
+            "type": "string"
+          },
+          "published_from": {
+            "format": "date-time",
+            "title": "Published From",
+            "type": "string"
+          },
+          "published_to": {
+            "format": "date-time",
+            "title": "Published To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "published_from",
+          "published_to",
+          "kind",
+          "accounts"
+        ],
+        "title": "CollectionAccountDiscoverySelection",
+        "type": "object"
+      },
+      "CollectionAccountIdType": {
+        "enum": [
+          "red_id",
+          "user_id",
+          "unique_id",
+          "sec_uid",
+          "uid",
+          "kuaishou_id",
+          "eid"
+        ],
+        "type": "string"
+      },
+      "CollectionAccountTargetRequest": {
+        "additionalProperties": false,
+        "description": "明确声明平台及 ID 类型，昵称不能作为独立账号身份。",
+        "properties": {
+          "account_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Account Id",
+            "type": "string"
+          },
+          "account_id_type": {
+            "$ref": "#/components/schemas/CollectionAccountIdType"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/CollectionPlatform"
+          }
+        },
+        "required": [
+          "platform",
+          "account_id_type",
+          "account_id"
+        ],
+        "title": "CollectionAccountTargetRequest",
+        "type": "object"
+      },
       "CollectionBatchSupplementEligibilityResponse": {
         "additionalProperties": false,
         "description": "前端 Batch Supplement 平台资格；不公开 Provider 私有身份或 AI 结果正文。",
@@ -2486,10 +2573,21 @@
       "CollectionCapabilityResponse": {
         "additionalProperties": false,
         "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderAccountCapabilityV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "operations": {
             "items": {
               "enum": [
                 "keyword_search",
+                "account_discovery",
                 "content_detail",
                 "comments",
                 "sub_comments"
@@ -2952,6 +3050,16 @@
         "additionalProperties": false,
         "description": "一次性发现冻结 Search Terms 与 Brand Filter；补采只处理既有内容。",
         "properties": {
+          "account_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionAccountDiscoverySelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "brand_ids": {
             "default": [],
             "items": {
@@ -3063,6 +3171,16 @@
       "CollectionRunCreatedResponse": {
         "additionalProperties": false,
         "properties": {
+          "account_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionAccountDiscoverySelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "data_import_campaign_id": {
             "anyOf": [
               {
@@ -3152,6 +3270,7 @@
       "CollectionRunMode": {
         "enum": [
           "discovery",
+          "account_discovery",
           "batch_supplement",
           "content_supplement"
         ],
@@ -3190,6 +3309,16 @@
       "CollectionRunResponse": {
         "additionalProperties": false,
         "properties": {
+          "account_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionAccountDiscoverySelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "attempt": {
             "minimum": 0.0,
             "title": "Attempt",
@@ -3725,6 +3854,7 @@
           "excel_import",
           "data_import_campaign",
           "tikhub_discovery",
+          "tikhub_account_discovery",
           "tikhub_batch_supplement",
           "tikhub_content_supplement",
           "canonical_replay"
@@ -3779,6 +3909,32 @@
         "additionalProperties": false,
         "description": "Provider-neutral Scope 进度；不公开 Provider 私有分页状态。",
         "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionAccountTargetRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "account_stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "resolving",
+                  "posts",
+                  "finished"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Stage"
+          },
           "comment_coverage": {
             "anyOf": [
               {
@@ -3853,6 +4009,18 @@
           },
           "platform": {
             "$ref": "#/components/schemas/CollectionPlatform"
+          },
+          "posts_admitted": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Posts Admitted",
+            "type": "integer"
+          },
+          "posts_discovered": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Posts Discovered",
+            "type": "integer"
           },
           "progress": {
             "maximum": 100.0,
@@ -9530,6 +9698,34 @@
           "kuaishou"
         ],
         "type": "string"
+      },
+      "ProviderAccountCapabilityV1": {
+        "additionalProperties": false,
+        "description": "账号表单与创建校验使用同一 Provider 能力事实。",
+        "properties": {
+          "default_id_type": {
+            "$ref": "#/components/schemas/CollectionAccountIdType"
+          },
+          "nickname_supported": {
+            "default": true,
+            "title": "Nickname Supported",
+            "type": "boolean"
+          },
+          "supported_id_types": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionAccountIdType"
+            },
+            "minItems": 1,
+            "title": "Supported Id Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "supported_id_types",
+          "default_id_type"
+        ],
+        "title": "ProviderAccountCapabilityV1",
+        "type": "object"
       },
       "ProviderConfigCreateRequest": {
         "additionalProperties": false,
@@ -15212,6 +15408,152 @@
         ]
       }
     },
+    "/api/v1/collection-runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancelCollectionRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Cancel Collection Run",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
+    "/api/v1/collection-runs/{run_id}/retry-failed": {
+      "post": {
+        "operationId": "retryCollectionRunFailedAccounts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Retry Collection Run Failed Accounts",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
     "/api/v1/collection-runtime/runs": {
       "get": {
         "operationId": "listCollectionRuntimeRuns",
@@ -15243,7 +15585,7 @@
               "items": {
                 "$ref": "#/components/schemas/CollectionRuntimeRecordType"
               },
-              "maxItems": 6,
+              "maxItems": 7,
               "title": "Record Types",
               "type": "array"
             }

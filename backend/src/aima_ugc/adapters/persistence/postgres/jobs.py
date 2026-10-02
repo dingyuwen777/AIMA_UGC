@@ -643,6 +643,56 @@ class PostgresJobRepository:
         )
         return job
 
+    def request_retry(self, job_id: UUID, *, additional_attempts: int) -> JobRecord:
+        """显式用户重试续接同一审计链；保留 attempt，新增一个有界重试窗口。"""
+        if additional_attempts <= 0:
+            raise ValueError("additional_attempts must be positive")
+        row = (
+            self._session.execute(
+                select(jobs_table).where(jobs_table.c.id == job_id).with_for_update()
+            )
+            .mappings()
+            .one()
+        )
+        job = _row_to_job(row)
+        if job.status not in {"failed", "succeeded"}:
+            raise ValueError("only terminal failed or partially successful work can be retried")
+        row = (
+            self._session.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == job_id)
+                .values(
+                    status="queued",
+                    max_attempts=job.attempt + additional_attempts,
+                    progress=0,
+                    available_at=func.clock_timestamp(),
+                    result=None,
+                    attempt_started_at=None,
+                    attempt_deadline_at=None,
+                    lease_owner=None,
+                    lease_token=None,
+                    lease_expires_at=None,
+                    heartbeat_at=None,
+                    cancel_requested_at=None,
+                    finished_at=None,
+                    error_code=None,
+                    updated_at=func.clock_timestamp(),
+                )
+                .returning(*jobs_table.c)
+            )
+            .mappings()
+            .one()
+        )
+        restarted = _row_to_job(row)
+        self._append_event(
+            job=restarted,
+            event_type="retry_scheduled",
+            worker_id=None,
+            lease_token=None,
+            reason_code="user_requested_retry",
+        )
+        return restarted
+
     def request_cancel(self, job_id: UUID) -> JobRecord:
         """queued 立即取消；running 仅记录请求，等待协作或 Reaper 收敛。"""
         row = (

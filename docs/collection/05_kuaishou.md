@@ -54,6 +54,10 @@ Web = verified backup
 
 ## 3. Search Capability
 
+账号补采当前公开数字 `user_id`，使用 App `fetch_one_user_v2` 核验返回用户，再通过 `fetch_user_post_v2` 和 pcursor 遍历作品。账号资料仅从响应 data 提取，不能把 envelope 中请求参数的 user_id 回显当成身份成功。
+
+快手号搜索 Builder 的 `search_user_v2` 按当前官方 SDK 使用 keyword/page；本轮真实上游仍返回 400，且已取得的资料没有 eid。`kuaishou_id`、`eid` 的精确核验逻辑保留并失败关闭，但 Capability 暂不开放这两种输入；不能用数字账号的成功冒充别名路径已验证。数字账号的详情、评论和回复主链已有新鲜真实响应，具体完整性见当前验证台账。
+
 当前：
 
 ```text

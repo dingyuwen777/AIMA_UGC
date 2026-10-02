@@ -16,6 +16,11 @@ from aima_ugc.contracts.brand_vehicle import (
     BrandRole,
     competition_scope_for_brand_roles,
 )
+from aima_ugc.contracts.collection.accounts import (
+    ACCOUNT_ID_TYPES,
+    CollectionAccountIdType,
+    ProviderAccountCapabilityV1,
+)
 from aima_ugc.contracts.collection.models import BusinessOperation, CollectionSearchConfig
 from aima_ugc.contracts.platform import PlatformName, PlatformScope, normalize_platform_name
 from aima_ugc.platform.time import to_beijing
@@ -352,11 +357,14 @@ def _normalize_platform_inputs(value: object) -> object:
     return value
 
 
-type CollectionRunMode = Literal["discovery", "batch_supplement", "content_supplement"]
+type CollectionRunMode = Literal[
+    "discovery", "account_discovery", "batch_supplement", "content_supplement"
+]
 type CollectionRuntimeRecordType = Literal[
     "excel_import",
     "data_import_campaign",
     "tikhub_discovery",
+    "tikhub_account_discovery",
     "tikhub_batch_supplement",
     "tikhub_content_supplement",
     "canonical_replay",
@@ -473,6 +481,58 @@ class CollectionSupplementSelectionResponse(BaseModel):
     published_to: datetime | None = None
 
 
+class CollectionAccountTargetRequest(BaseModel):
+    """明确声明平台及 ID 类型，昵称不能作为独立账号身份。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platform: CollectionPlatform
+    account_id_type: CollectionAccountIdType
+    account_id: str = Field(min_length=1, max_length=256)
+    nickname: str | None = Field(default=None, max_length=256)
+
+    @field_validator("account_id", "nickname", mode="before")
+    @classmethod
+    def trim_input(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("platform", mode="before")
+    @classmethod
+    def normalize_platform(cls, value: object) -> object:
+        return _normalize_platform_input(value)
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> CollectionAccountTargetRequest:
+        if self.account_id_type not in ACCOUNT_ID_TYPES[self.platform]:
+            raise ValueError("账号 ID 类型与平台不一致")
+        if any(character.isspace() for character in self.account_id):
+            raise ValueError("账号 ID 不能包含空白")
+        if self.account_id_type == "uid" or (
+            self.platform == "kuaishou" and self.account_id_type == "user_id"
+        ):
+            if not self.account_id.isascii() or not self.account_id.isdecimal():
+                raise ValueError("该平台账号 ID 必须为数字")
+        return self
+
+
+class CollectionAccountDiscoverySelection(CollectionDateSupplementQuery):
+    """账号 Discovery 按北京时间日期筛选，扫描不依赖作品返回顺序。"""
+
+    kind: Literal["accounts"]
+    accounts: tuple[CollectionAccountTargetRequest, ...] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_unique_accounts(self) -> CollectionAccountDiscoverySelection:
+        identities = [
+            (item.platform, item.account_id_type, item.account_id) for item in self.accounts
+        ]
+        if len(identities) != len(set(identities)):
+            raise ValueError("同一平台和 ID 类型的账号不得重复")
+        return self
+
+
 class CollectionRunCreateRequest(BaseModel):
     """一次性发现冻结 Search Terms 与 Brand Filter；补采只处理既有内容。"""
 
@@ -484,6 +544,7 @@ class CollectionRunCreateRequest(BaseModel):
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
     supplement_targets: CollectionSupplementTargetSelection | None = None
+    account_selection: CollectionAccountDiscoverySelection | None = None
     expected_target_count: int | None = Field(default=None, ge=1)
     expected_target_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
@@ -526,6 +587,17 @@ class CollectionRunCreateRequest(BaseModel):
                 raise ValueError("主动发现必须选择至少一个 Keyword Pack 作为 Search Terms")
             if self.import_batch_id is not None or self.data_import_campaign_id is not None:
                 raise ValueError("主动发现不能关联数据导入来源")
+        elif self.mode == "account_discovery":
+            if self.account_selection is None:
+                raise ValueError("账号补采必须提供账号及发布时间范围")
+            if {item.platform for item in self.account_selection.accounts} != set(platforms):
+                raise ValueError("账号平台必须与所选平台一致，每个平台至少一个账号")
+            if self.keyword_pack_ids or self.brand_ids:
+                raise ValueError("账号补采不能提交词包或品牌准入范围")
+            if self.import_batch_id is not None or self.data_import_campaign_id is not None:
+                raise ValueError("账号补采不能关联数据导入来源")
+            if any(item.search_config is not None for item in self.platforms):
+                raise ValueError("账号补采不能提交关键词搜索配置")
         elif self.mode == "batch_supplement":
             if (self.import_batch_id is None) == (self.data_import_campaign_id is None):
                 raise ValueError(
@@ -539,6 +611,8 @@ class CollectionRunCreateRequest(BaseModel):
                 raise ValueError("基于 Batch 补采不能提交关键词搜索配置")
         if self.include_sub_comments and not self.include_comments:
             raise ValueError("采集二级回复时必须同时启用评论采集")
+        if self.mode != "account_discovery" and self.account_selection is not None:
+            raise ValueError("仅账号补采可以提交账号选择")
         return self
 
 
@@ -553,6 +627,7 @@ class CollectionRunCreatedResponse(BaseModel):
     published_from: datetime | None = None
     published_to: datetime | None = None
     supplement_selection: CollectionSupplementSelectionResponse | None = None
+    account_selection: CollectionAccountDiscoverySelection | None = None
     status: Literal["queued"] = "queued"
 
 
@@ -581,6 +656,10 @@ class CollectionScopeResponse(BaseModel):
     status: CollectionRuntimeStatus
     progress: int = Field(ge=0, le=100)
     stats: CollectionRunStatsResponse
+    account: CollectionAccountTargetRequest | None = None
+    account_stage: Literal["resolving", "posts", "finished"] | None = None
+    posts_discovered: int = Field(default=0, ge=0)
+    posts_admitted: int = Field(default=0, ge=0)
     comment_coverage: Literal["complete", "partial", "unavailable", "not_requested"] | None = None
     identity_status: (
         Literal["resolving", "resolved", "unavailable", "ambiguous", "conflict"] | None
@@ -602,6 +681,7 @@ class CollectionRunResponse(BaseModel):
     published_from: datetime | None = None
     published_to: datetime | None = None
     supplement_selection: CollectionSupplementSelectionResponse | None = None
+    account_selection: CollectionAccountDiscoverySelection | None = None
     include_comments: bool | None = None
     include_sub_comments: bool | None = None
     status: CollectionRuntimeStatus
@@ -648,6 +728,7 @@ class CollectionCapabilityResponse(BaseModel):
     platform: CollectionPlatform
     operations: tuple[BusinessOperation, ...] = Field(min_length=1)
     search: CollectionSearchCapabilityResponse | None
+    account: ProviderAccountCapabilityV1 | None = None
 
 
 class CollectionCapabilitiesResponse(BaseModel):
@@ -718,7 +799,7 @@ class CollectionRuntimeListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: str | None = Field(default=None, min_length=1, max_length=500)
-    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=6)
+    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=7)
     status: CollectionRuntimeStatus | None = None
     stage: str | None = Field(default=None, min_length=1, max_length=100)
     created_from: datetime | None = None
@@ -2086,6 +2167,8 @@ def _historical_relative_path(value: str) -> str:
 
 
 __all__ = [
+    "CollectionAccountDiscoverySelection",
+    "CollectionAccountTargetRequest",
     "CONTENT_ANALYSIS_STATUSES",
     "AnalysisRunTargetSelection",
     "CommentCoverageResponse",

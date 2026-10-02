@@ -33,6 +33,8 @@ import {
   createTikHubCollectionRun,
   cancelAndRevokeCanonicalReplay,
   cancelHistoricalCampaign,
+  cancelAccountCollectionRun,
+  retryAccountCollectionRun,
   createLocalCampaign,
   createHistoricalCampaign,
   fetchCollectionCapabilities,
@@ -152,6 +154,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const previewingHistoricalRevocation = ref(false)
   const revokingHistorical = ref(false)
   const actingCanonicalReplay = ref(false)
+  const actingCollectionRun = ref(false)
   const localUploadCompleted = ref(0)
   const localUploadTotal = ref(0)
   const error = ref<string | null>(null)
@@ -209,13 +212,14 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
     if (activeTab.value === 'tikhub') {
       if (
+        filters.recordType === 'tikhub_account_discovery' ||
         filters.recordType === 'tikhub_discovery' ||
         filters.recordType === 'tikhub_batch_supplement' ||
         filters.recordType === 'tikhub_content_supplement'
       ) {
         return [filters.recordType]
       }
-      return ['tikhub_discovery', 'tikhub_batch_supplement', 'tikhub_content_supplement']
+      return ['tikhub_discovery', 'tikhub_batch_supplement', 'tikhub_content_supplement', 'tikhub_account_discovery']
     }
     return filters.recordType ? [filters.recordType] : undefined
   }
@@ -366,6 +370,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     if (tab === 'tikhub' && ![
       '',
       'tikhub_discovery',
+      'tikhub_account_discovery',
       'tikhub_batch_supplement',
       'tikhub_content_supplement',
     ].includes(filters.recordType)) filters.recordType = ''
@@ -395,6 +400,26 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       if (version === detailVersion) selectedRun.value = detail
     } catch (reason) {
       if (version === detailVersion) error.value = errorMessage(reason)
+    }
+  }
+
+  async function actOnCollectionRun(action: 'retry' | 'cancel'): Promise<boolean> {
+    const run = selectedRun.value
+    if (!run || actingCollectionRun.value) return false
+    actingCollectionRun.value = true
+    error.value = null
+    try {
+      const result = action === 'retry'
+        ? await retryAccountCollectionRun(run.run_id)
+        : await cancelAccountCollectionRun(run.run_id)
+      if (selectedRun.value?.run_id === run.run_id) selectedRun.value = result
+      await refresh(true)
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      actingCollectionRun.value = false
     }
   }
 
@@ -921,6 +946,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     previewingHistoricalRevocation,
     revokingHistorical,
     actingCanonicalReplay,
+    actingCollectionRun,
     localUploadCompleted,
     localUploadTotal,
     error,
@@ -930,6 +956,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     setTab,
     openBatchDetail,
     openRunDetail,
+    actOnCollectionRun,
     openCanonicalReplayDetail,
     cancelAndRevokeSelectedCanonicalReplay,
     revokeSelectedCanonicalReplay,

@@ -64,14 +64,11 @@ def test_account_profile_and_user_posts_use_documented_v2_contracts() -> None:
     with pytest.raises(ValueError, match="纯数字"):
         build_user_posts_request(user_id="3xfixtureeid")
 
-    search = build_user_search_request(keyword="loveaima123", pcursor="next")
+    search = build_user_search_request(keyword="loveaima123", page=2)
     assert search.path == "/api/v1/kuaishou/app/search_user_v2"
     assert search.params == {
         "keyword": "loveaima123",
-        "pcursor": "next",
-        "user_relation": "all",
-        "user_gender": "all",
-        "fans_sort": "default",
+        "page": "2",
     }
 
 
@@ -123,11 +120,11 @@ def test_account_profile_and_posts_extractors_handle_nested_envelopes() -> None:
         },
     )
     user_search = KuaishouUserSearchPagination.from_response(
-        previous_cursor="",
+        current_page=1,
         body=search_body,
     )
     assert user_search.should_continue is True
-    assert user_search.next_cursor == "next-users"
+    assert user_search.next_page == 2
 
 
 def test_comment_count_extractor_accepts_integer_and_numeric_text() -> None:

@@ -73,6 +73,8 @@ tests/fixtures/providers/tikhub/
 
 ## 2. 当前生产主链
 
+“新建辅助补采”保留独立发现与日期补采，账号补采作为第三个并列入口。账号发现复用 [backend/src/aima_ugc/adapters/providers/tikhub/account_runtime.py](../../backend/src/aima_ugc/adapters/providers/tikhub/account_runtime.py) 和 [backend/src/aima_ugc/adapters/providers/tikhub/account_identity.py](../../backend/src/aima_ugc/adapters/providers/tikhub/account_identity.py)，公开 ID 类型由 Provider Capability 提供。每账号独立 Scope，作品按身份与北京时间日期准入，再进入统一内容/评论 Owner；未命中品牌词的指定账号作品仍入库。
+
 | 平台 | Search | Detail | Comments | Replies/Sub-comments |
 | --- | --- | --- | --- | --- |
 | 小红书 | App V2 `search_notes` | App V2 image/video detail | App V2 `get_note_comments` | App V2 `get_note_sub_comments` |

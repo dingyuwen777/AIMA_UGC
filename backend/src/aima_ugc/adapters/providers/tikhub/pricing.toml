@@ -1,8 +1,8 @@
 schema_version = "tikhub-pricing.v1"
 provider = "tikhub"
 currency = "USD"
-pricing_version = "2026-09-03.1"
-verified_at = "2026-09-03"
+pricing_version = "2026-10-02.1"
+verified_at = "2026-10-02"
 official_pricing_url = "https://docs.tikhub.io/4592751m0"
 official_endpoint_info_path = "/api/v1/tikhub/user/get_endpoint_info"
 
@@ -239,4 +239,74 @@ path = "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
 verification_status = "verified"
 base_price = "0.010000"
 verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/xiaohongshu/app_v2/search_users"
+verification_status = "verified"
+base_price = "0.01"
+verified_at = "2026-10-02"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/xiaohongshu/app_v2/get_user_info"
+verification_status = "verified"
+base_price = "0.01"
+verified_at = "2026-10-02"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/xiaohongshu/app_v2/get_user_posted_notes"
+verification_status = "verified"
+base_price = "0.01"
+verified_at = "2026-10-02"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/douyin/web/handler_user_profile_v2"
+verification_status = "verified"
+base_price = "0.001"
+verified_at = "2026-10-02"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/douyin/app/v3/fetch_user_post_videos"
+verification_status = "verified"
+base_price = "0.001"
+verified_at = "2026-10-02"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/weibo/web_v2/fetch_user_posts"
+verification_status = "verified"
+base_price = "0.001"
+verified_at = "2026-10-02"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/bilibili/web/fetch_user_post_videos_v2"
+verification_status = "verified"
+base_price = "0.001"
+verified_at = "2026-10-02"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/kuaishou/app/search_user_v2"
+verification_status = "verified"
+base_price = "0.01"
+verified_at = "2026-10-02"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/kuaishou/app/fetch_one_user_v2"
+verification_status = "verified"
+base_price = "0.01"
+verified_at = "2026-10-02"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/kuaishou/app/fetch_user_post_v2"
+verification_status = "verified"
+base_price = "0.01"
+verified_at = "2026-10-02"
 verified_via = "get_endpoint_info"

@@ -28,12 +28,16 @@ class PostgresCollectionRunExecutionGateway:
         session = self._session_factory()
         try:
             with session.begin():
-                PostgresJobRepository(session).lock_current_execution(fence)
+                job = PostgresJobRepository(session).lock_current_execution(fence)
                 repository = PostgresCollectionRepository(session)
                 run = repository.get_run_by_job_id(fence.job_id)
                 if run is None:
                     return None
-                return CollectionExecution(run=run, scopes=tuple(repository.list_scopes(run.id)))
+                return CollectionExecution(
+                    run=run,
+                    scopes=tuple(repository.list_scopes(run.id)),
+                    retry_available=job.attempt < job.max_attempts,
+                )
         finally:
             session.close()
 
@@ -86,6 +90,28 @@ class PostgresCollectionRunExecutionGateway:
                     scope_id,
                     pagination_state=pagination_state,
                     progress=progress,
+                    stats=stats,
+                )
+        finally:
+            session.close()
+
+    def checkpoint_scope_stats(
+        self,
+        scope_id: UUID,
+        *,
+        fence: JobExecutionFence,
+        stats: dict[str, object],
+    ) -> CollectionScopeRecord:
+        """仅刷新评论统计，保留当前 Fence 下最新的作品分页和单调进度。"""
+        session = self._session_factory()
+        try:
+            with session.begin():
+                repository = self._locked_repository(session, fence)
+                current = self._require_scope(repository, fence=fence, scope_id=scope_id)
+                return repository.checkpoint_scope(
+                    scope_id,
+                    pagination_state=dict(current.pagination_state),
+                    progress=current.progress,
                     stats=stats,
                 )
         finally:

@@ -83,13 +83,9 @@ class BilibiliCursorPagination:
         if returned_cursor is None:
             return cls(previous_cursor, False, "cursor_unavailable")
         returned = _pagination_cursor(returned_cursor, "returned_cursor")
-        if returned == previous or (
-            isinstance(previous, int)
-            and not isinstance(previous, bool)
-            and isinstance(returned, int)
-            and not isinstance(returned, bool)
-            and returned < previous
-        ):
+        # App 时间排序的 next 是评论位置，实测续页可以下降；只能按相等判定停滞。
+        # 重复内容页和遍历上限继续由正式采集 Runtime 保护。
+        if returned == previous:
             return cls(returned_cursor, False, "pagination_not_advanced")
         return cls(returned_cursor, True)
 

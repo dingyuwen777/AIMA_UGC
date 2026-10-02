@@ -67,7 +67,8 @@ def _build_v4_label_item(
 
 
 class _Handler(BaseHTTPRequestHandler):
-    request_no = 0
+    item_request_counts: dict[tuple[str, str], int] = {}
+    item_request_lock = Lock()
     streaming_lock = Lock()
     streaming_arrived = Event()
     streaming_requests = 0
@@ -97,14 +98,18 @@ class _Handler(BaseHTTPRequestHandler):
             if not type(self).streaming_arrived.wait(5):
                 self.send_error(500, "concurrent requests did not arrive")
                 return
-        type(self).request_no += 1
         taxonomy = PromptTaxonomyLoader.load_text(request["messages"][0]["content"])
-        # 全栈 Fixture 按第 1/3 行交替验证结果更新；改名后仍取冻结表实际值。
-        sentiment_index = 0 if type(self).request_no % 2 else min(2, len(taxonomy.sentiments) - 1)
-        sentiment = taxonomy.sentiments[sentiment_index]
         if len(user_payload["items"]) != 1 or "platform" not in user_payload["items"][0]:
             self.send_error(400, "formal request must contain one platform-aware item")
             return
+        item = user_payload["items"][0]
+        # 每条 Fixture 独立交替，其他验收内容的请求不能改变重复分析的预期结果。
+        item_key = (item["platform"], item["title"])
+        with type(self).item_request_lock:
+            request_no = type(self).item_request_counts.get(item_key, 0) + 1
+            type(self).item_request_counts[item_key] = request_no
+        sentiment_index = 0 if request_no % 2 else min(2, len(taxonomy.sentiments) - 1)
+        sentiment = taxonomy.sentiments[sentiment_index]
         items = [
             _build_v4_label_item(item, sentiment=sentiment, taxonomy=taxonomy)
             for item in user_payload["items"]

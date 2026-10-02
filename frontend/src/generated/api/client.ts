@@ -1021,6 +1021,19 @@ export interface CanonicalReplayRuntimeStatsResponse {
   succeeded_run_count: number;
 }
 
+export type CollectionAccountIdType = typeof CollectionAccountIdType[keyof typeof CollectionAccountIdType];
+
+
+export const CollectionAccountIdType = {
+  red_id: 'red_id',
+  user_id: 'user_id',
+  unique_id: 'unique_id',
+  sec_uid: 'sec_uid',
+  uid: 'uid',
+  kuaishou_id: 'kuaishou_id',
+  eid: 'eid',
+} as const;
+
 export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
 
 
@@ -1031,6 +1044,34 @@ export const CollectionPlatform = {
   bilibili: 'bilibili',
   kuaishou: 'kuaishou',
 } as const;
+
+/**
+ * 明确声明平台及 ID 类型，昵称不能作为独立账号身份。
+ */
+export interface CollectionAccountTargetRequest {
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  account_id: string;
+  account_id_type: CollectionAccountIdType;
+  nickname?: string | null;
+  platform: CollectionPlatform;
+}
+
+/**
+ * 账号 Discovery 按北京时间日期筛选，扫描不依赖作品返回顺序。
+ */
+export interface CollectionAccountDiscoverySelection {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  accounts: CollectionAccountTargetRequest[];
+  kind: 'accounts';
+  published_from: string;
+  published_to: string;
+}
 
 export type CollectionSupplementPlatformDiagnosticResponseBlockReasons = {[key: string]: number};
 
@@ -1075,11 +1116,22 @@ export interface CollectionCampaignSupplementEligibilityResponse {
   targets: CollectionBatchSupplementTargetResponse[];
 }
 
+/**
+ * 账号表单与创建校验使用同一 Provider 能力事实。
+ */
+export interface ProviderAccountCapabilityV1 {
+  default_id_type: CollectionAccountIdType;
+  nickname_supported?: boolean;
+  /** @minItems 1 */
+  supported_id_types: CollectionAccountIdType[];
+}
+
 export type CollectionCapabilityResponseOperationsItem = typeof CollectionCapabilityResponseOperationsItem[keyof typeof CollectionCapabilityResponseOperationsItem];
 
 
 export const CollectionCapabilityResponseOperationsItem = {
   keyword_search: 'keyword_search',
+  account_discovery: 'account_discovery',
   content_detail: 'content_detail',
   comments: 'comments',
   sub_comments: 'sub_comments',
@@ -1107,6 +1159,7 @@ export interface CollectionSearchCapabilityResponse {
 }
 
 export interface CollectionCapabilityResponse {
+  account?: ProviderAccountCapabilityV1 | null;
   /** @minItems 1 */
   operations: CollectionCapabilityResponseOperationsItem[];
   platform: CollectionPlatform;
@@ -1276,6 +1329,7 @@ export type CollectionRunMode = typeof CollectionRunMode[keyof typeof Collection
 
 export const CollectionRunMode = {
   discovery: 'discovery',
+  account_discovery: 'account_discovery',
   batch_supplement: 'batch_supplement',
   content_supplement: 'content_supplement',
 } as const;
@@ -1330,6 +1384,7 @@ export type CollectionSupplementTargetSelection = CollectionSupplementSelectedTa
  * 一次性发现冻结 Search Terms 与 Brand Filter；补采只处理既有内容。
  */
 export interface CollectionRunCreateRequest {
+  account_selection?: CollectionAccountDiscoverySelection | null;
   /** @maxItems 100 */
   brand_ids?: string[];
   data_import_campaign_id?: string | null;
@@ -1371,6 +1426,7 @@ export interface CollectionSupplementSelectionResponse {
 }
 
 export interface CollectionRunCreatedResponse {
+  account_selection?: CollectionAccountDiscoverySelection | null;
   data_import_campaign_id?: string | null;
   import_batch_id?: string | null;
   job_id: string;
@@ -1381,6 +1437,15 @@ export interface CollectionRunCreatedResponse {
   status?: 'queued';
   supplement_selection?: CollectionSupplementSelectionResponse | null;
 }
+
+export type CollectionScopeResponseAccountStage = typeof CollectionScopeResponseAccountStage[keyof typeof CollectionScopeResponseAccountStage] | null;
+
+
+export const CollectionScopeResponseAccountStage = {
+  resolving: 'resolving',
+  posts: 'posts',
+  finished: 'finished',
+} as const;
 
 export type CollectionScopeResponseCommentCoverage = typeof CollectionScopeResponseCommentCoverage[keyof typeof CollectionScopeResponseCommentCoverage] | null;
 
@@ -1447,6 +1512,8 @@ export const CollectionRuntimeStatus = {
  * Provider-neutral Scope 进度；不公开 Provider 私有分页状态。
  */
 export interface CollectionScopeResponse {
+  account?: CollectionAccountTargetRequest | null;
+  account_stage?: CollectionScopeResponseAccountStage;
   comment_coverage?: CollectionScopeResponseCommentCoverage;
   comment_stage?: CollectionScopeResponseCommentStage;
   finished_at?: string | null;
@@ -1454,6 +1521,10 @@ export interface CollectionScopeResponse {
   identity_status?: CollectionScopeResponseIdentityStatus;
   operation_group: string;
   platform: CollectionPlatform;
+  /** @minimum 0 */
+  posts_admitted?: number;
+  /** @minimum 0 */
+  posts_discovered?: number;
   /**
      * @minimum 0
      * @maximum 100
@@ -1467,6 +1538,7 @@ export interface CollectionScopeResponse {
 }
 
 export interface CollectionRunResponse {
+  account_selection?: CollectionAccountDiscoverySelection | null;
   /** @minimum 0 */
   attempt: number;
   brand_ids?: string[];
@@ -1522,6 +1594,7 @@ export const CollectionRuntimeRecordType = {
   excel_import: 'excel_import',
   data_import_campaign: 'data_import_campaign',
   tikhub_discovery: 'tikhub_discovery',
+  tikhub_account_discovery: 'tikhub_account_discovery',
   tikhub_batch_supplement: 'tikhub_batch_supplement',
   tikhub_content_supplement: 'tikhub_content_supplement',
   canonical_replay: 'canonical_replay',
@@ -3888,7 +3961,7 @@ limit?: number;
 export type ListCollectionRuntimeRunsParams = {
 search?: string | null;
 /**
- * @maxItems 6
+ * @maxItems 7
  */
 record_types?: CollectionRuntimeRecordType[];
 status?: CollectionRuntimeStatus | null;
@@ -5718,6 +5791,68 @@ export const getCollectionRun = async (runId: string, options?: RequestInit): Pr
   {
     ...options,
     method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionRunResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCancelCollectionRunUrl = (runId: string,) => {
+
+
+
+
+  return `/api/v1/collection-runs/${runId}/cancel`
+}
+
+/**
+ * @summary Cancel Collection Run
+ */
+export const cancelCollectionRun = async (runId: string, options?: RequestInit): Promise<CollectionRunResponse> => {
+
+  const res = await fetch(getCancelCollectionRunUrl(runId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionRunResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRetryCollectionRunFailedAccountsUrl = (runId: string,) => {
+
+
+
+
+  return `/api/v1/collection-runs/${runId}/retry-failed`
+}
+
+/**
+ * @summary Retry Collection Run Failed Accounts
+ */
+export const retryCollectionRunFailedAccounts = async (runId: string, options?: RequestInit): Promise<CollectionRunResponse> => {
+
+  const res = await fetch(getRetryCollectionRunFailedAccountsUrl(runId),
+  {
+    ...options,
+    method: 'POST'
 
 
   }

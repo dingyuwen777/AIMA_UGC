@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Literal, cast
 
 from pydantic import TypeAdapter
@@ -15,7 +16,68 @@ _JSON_OBJECT_ADAPTER = TypeAdapter(JsonObject)
 
 
 class TikHubAccountOperationCall(shared_runtime.TikHubOperationCall):
-    """沿用通用 TikHub 调用事实结构，但账号 Discovery 不进入公开 Collection Capability。"""
+    """账号 Debug 与正式采集共用通用 TikHub 调用事实结构。"""
+
+
+def as_account_discovery_call(
+    call: shared_runtime.TikHubOperationCall,
+) -> shared_runtime.TikHubOperationCall:
+    """正式业务 Operation 与底层账号搜索、资料、作品 Operation 分层记录。"""
+    return replace(call, business_operation="account_discovery")
+
+
+def build_account_posts_call(
+    platform: shared_runtime.TikHubPlatform,
+    stable_id: str,
+    *,
+    state: dict[str, object] | None = None,
+) -> shared_runtime.TikHubOperationCall:
+    """按已核验的稳定身份构造唯一批准的作品 API family。"""
+    if platform == "xiaohongshu":
+        call = build_user_notes_call(user_id=stable_id, state=state)
+    elif platform == "douyin":
+        call = build_douyin_user_posted_videos_call(account_value=stable_id, state=state)
+    elif platform == "kuaishou":
+        call = build_kuaishou_user_posts_call(user_id=stable_id, state=state)
+    elif platform == "weibo":
+        call = build_weibo_user_posts_call(uid=stable_id, state=state)
+    elif platform == "bilibili":
+        call = build_bilibili_user_posts_call(uid=stable_id, state=state)
+    else:
+        raise ValueError("unsupported account platform")
+    return as_account_discovery_call(call)
+
+
+def extract_account_post_items(
+    platform: shared_runtime.TikHubPlatform,
+    body: dict[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    """复用各平台生产 Extractor，不把未知结构伪装成空页。"""
+    extractors = {
+        "xiaohongshu": extract_user_note_items,
+        "douyin": extract_douyin_user_posted_videos,
+        "weibo": extract_weibo_user_posts,
+        "bilibili": extract_bilibili_user_posts,
+        "kuaishou": extract_kuaishou_user_posts,
+    }
+    return extractors[platform](body)
+
+
+def advance_account_posts(
+    *,
+    platform: shared_runtime.TikHubPlatform,
+    state: dict[str, object] | None,
+    body: dict[str, Any],
+) -> shared_runtime.TikHubPageAdvance:
+    """正式作品遍历和人工 Probe 复用相同结束判定。"""
+    advances = {
+        "xiaohongshu": advance_user_notes,
+        "douyin": advance_douyin_user_posted_videos,
+        "weibo": advance_weibo_user_posts,
+        "bilibili": advance_bilibili_user_posts,
+        "kuaishou": advance_kuaishou_user_posts,
+    }
+    return advances[platform](state=state, body=body)
 
 
 def build_user_search_call(
@@ -298,7 +360,7 @@ def build_kuaishou_user_search_call(
     paging = state or {}
     request = kuaishou.build_user_search_request(
         keyword=keyword,
-        pcursor=_str_state(paging, "pcursor", default=""),
+        page=_int_state(paging, "page", default=1),
     )
     return TikHubAccountOperationCall(
         platform="kuaishou",
@@ -541,14 +603,14 @@ def advance_kuaishou_user_search(
     state: dict[str, object] | None,
     body: dict[str, Any],
 ) -> shared_runtime.TikHubPageAdvance:
-    """推进快手用户搜索 V2 的 pcursor。"""
+    """推进快手用户搜索 V2 的官方页号。"""
     result = kuaishou.KuaishouUserSearchPagination.from_response(
-        previous_cursor=_str_state(state or {}, "pcursor", default=""),
+        current_page=_int_state(state or {}, "page", default=1),
         body=body,
     )
     if not result.should_continue:
         return shared_runtime.TikHubPageAdvance(None, result.stop_reason)
-    return shared_runtime.TikHubPageAdvance(_json_object({"pcursor": result.next_cursor}), None)
+    return shared_runtime.TikHubPageAdvance(_json_object({"page": result.next_page}), None)
 
 
 def extract_douyin_user_posted_videos(
