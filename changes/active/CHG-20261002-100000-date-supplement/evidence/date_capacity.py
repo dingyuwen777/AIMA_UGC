@@ -1,4 +1,4 @@
-"""仅在专用 aima_date_test 数据库运行的日期补采容量复现探针。"""
+"""仅在专用 aima_content_test 数据库运行的日期补采容量复现探针。"""
 
 import json
 import tracemalloc
@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from aima_ugc.bootstrap.collection_http import PostgresCollectionHttpService
 from aima_ugc.bootstrap.worker import create_worker_runtime
-from aima_ugc.contracts.http import CollectionRunCreateRequest
+from aima_ugc.contracts.http import CollectionRunCreateRequest, CollectionSupplementPreviewRequest
 from aima_ugc.modules.collection.tables import collection_scopes_table
 from aima_ugc.modules.content.extended_tables import content_external_ids_table
 from aima_ugc.modules.content.tables import contents_table
@@ -23,7 +23,7 @@ from tests.integration.collection.test_stage8e_collection_http_runtime import (
 print("phase: runtime", flush=True)
 runtime = create_worker_runtime()
 if (
-    runtime.settings.db_name != "aima_date_test"
+    runtime.settings.db_name != "aima_content_test"
     or runtime.settings.db_host != "127.0.0.1"
     or runtime.settings.db_port != 15479
 ):
@@ -101,10 +101,21 @@ try:
         ).scalar_one()
     print("phase: create 10000 scopes", flush=True)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    targets = {
+        "kind": "published_date_range",
+        "published_from": now.replace(hour=0),
+        "published_to": now.replace(hour=23, minute=59, second=59, microsecond=999000),
+    }
+    preview = service.preview_supplement(
+        CollectionSupplementPreviewRequest(
+            targets=targets, platforms=("xiaohongshu",), include_comments=False
+        )
+    )
     request = CollectionRunCreateRequest(
-        mode="date_supplement",
-        published_from=now.replace(hour=0),
-        published_to=now.replace(hour=23, minute=59, second=59, microsecond=999000),
+        mode="content_supplement",
+        supplement_targets=targets,
+        expected_target_count=preview.target_count,
+        expected_target_fingerprint=preview.target_fingerprint,
         platforms=({"platform": "xiaohongshu", "provider_config_id": config},),
         include_comments=False,
     )
@@ -131,7 +142,7 @@ try:
         "scope_count": count,
         "explain": plan,
     }
-    Path(".runtime/date-tests/capacity.json").write_text(
+    Path(".runtime/content-test-runtime/capacity.json").write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(json.dumps({k: v for k, v in result.items() if k != "explain"}))

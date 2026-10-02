@@ -5,7 +5,6 @@ const generated = vi.hoisted(() => ({
   listCollectionRuntimeRuns: vi.fn(),
   getCollectionRuntimeSummary: vi.fn(),
   getCollectionCapabilities: vi.fn(),
-  getCollectionDateSupplementEligibility: vi.fn(),
   getCollectionBatchSupplementEligibility: vi.fn(),
   getCollectionCampaignSupplementEligibility: vi.fn(),
   createCollectionRun: vi.fn(),
@@ -127,18 +126,6 @@ describe('collection runtime feature', () => {
     expect(generated.getImportBatch).not.toHaveBeenCalled()
   })
 
-  it('loads date target counts and diagnostics from the generated client', async () => {
-    const range = { published_from: '2026-09-01T00:00:00+08:00', published_to: '2026-09-01T23:59:59.999+08:00' }
-    generated.getCollectionDateSupplementEligibility.mockResolvedValue({
-      ...range, targets: [{ platform: 'douyin', target_count: 2 }], diagnostics: [],
-    })
-    const store = useImportBatchesStore()
-    await store.loadSupplementPlatforms(range)
-    expect(generated.getCollectionDateSupplementEligibility).toHaveBeenCalledWith(range)
-    expect(store.supplementContentPlatforms).toEqual(['douyin'])
-    expect(store.supplementTargets).toEqual([{ platform: 'douyin', target_count: 2 }])
-    expect(store.supplementEligibilityReady).toBe(true)
-  })
 
   it('uses backend supplement eligibility instead of probing Voice Plaza content', async () => {
     generated.getCollectionBatchSupplementEligibility.mockResolvedValue({
@@ -162,43 +149,7 @@ describe('collection runtime feature', () => {
       .resolves.toEqual({ platforms: ['douyin'], diagnostics: [] })
   })
 
-  it('ignores stale A to B to A responses and close/reopen responses', async () => {
-    const deferred: ((value: unknown) => void)[] = []
-    generated.getCollectionDateSupplementEligibility.mockImplementation(() => new Promise((resolve) => deferred.push(resolve)))
-    const store = useImportBatchesStore()
-    const a = { published_from: '2026-09-01T00:00:00+08:00', published_to: '2026-09-01T23:59:59+08:00' }
-    const b = { ...a, published_to: '2026-09-02T23:59:59+08:00' }
-    const oldA = store.loadSupplementPlatforms(a)
-    const oldB = store.loadSupplementPlatforms(b)
-    const newA = store.loadSupplementPlatforms(a)
-    deferred[2]!({ ...a, targets: [{ platform: 'douyin', target_count: 2 }], diagnostics: [] })
-    await newA
-    deferred[0]!({ ...a, targets: [{ platform: 'weibo', target_count: 1 }], diagnostics: [] })
-    deferred[1]!({ ...b, targets: [{ platform: 'bilibili', target_count: 1 }], diagnostics: [] })
-    await Promise.all([oldA, oldB])
-    expect(store.supplementContentPlatforms).toEqual(['douyin'])
-    const closing = store.loadSupplementPlatforms(b)
-    store.resetSupplementEligibility()
-    deferred[3]!({ ...b, targets: [{ platform: 'weibo', target_count: 1 }], diagnostics: [] })
-    await closing
-    expect(store.supplementContentPlatforms).toEqual([])
-    expect(store.supplementEligibilityReady).toBe(false)
-    expect(store.loadingSupplementPlatforms).toBe(false)
-  })
 
-  it('distinguishes failed and empty date eligibility and can recover', async () => {
-    const range = { published_from: '2026-09-01T00:00:00+08:00', published_to: '2026-09-01T23:59:59+08:00' }
-    const store = useImportBatchesStore()
-    generated.getCollectionDateSupplementEligibility.mockRejectedValueOnce(new Error('资格查询失败'))
-    await store.loadSupplementPlatforms(range)
-    expect(store.supplementEligibilityError).toBe('资格查询失败')
-    expect(store.supplementEligibilityReady).toBe(false)
-    generated.getCollectionDateSupplementEligibility.mockResolvedValueOnce({ ...range, targets: [], diagnostics: [] })
-    await store.loadSupplementPlatforms(range)
-    expect(store.supplementEligibilityError).toBeNull()
-    expect(store.supplementEligibilityReady).toBe(true)
-    expect(store.supplementContentPlatforms).toEqual([])
-  })
 
   it('does not offer a platform when backend eligibility excludes its current irrelevant content', async () => {
     generated.getCollectionBatchSupplementEligibility.mockResolvedValue({

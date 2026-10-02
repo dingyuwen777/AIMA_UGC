@@ -168,7 +168,7 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}/items/${dataImportItemId}/content`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ campaign_id: dataImportCampaignId, item_id: dataImportItemId, artifact_id: 'c2345678-1234-4678-9234-567812345678', sha256: 'a'.repeat(64), byte_size: 7 }) })
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}/finalize`) return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ ...dataImportCampaign, status: 'snapshotting', discovered_file_count: 1 }) })
     if (url.pathname === `/api/v1/data-import-campaigns/${dataImportCampaignId}/supplement-eligibility`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ campaign_id: dataImportCampaignId, targets: [{ platform: 'xiaohongshu', target_count: 2 }] }) })
-    if (url.pathname === '/api/v1/collection-supplement-eligibility') return route.fulfill({ json: { published_from: url.searchParams.get('published_from'), published_to: url.searchParams.get('published_to'), targets: [{ platform: 'xiaohongshu', target_count: 1 }], diagnostics: [{ platform: 'xiaohongshu', direct_target_count: 1, resolution_candidate_count: 0, blocked_count: 0, block_reasons: {} }] } })
+    if (url.pathname === '/api/v1/collection-supplements/preview') return route.fulfill({ json: { target_count: 1, target_fingerprint: 'a'.repeat(64), platforms: [{ platform: 'xiaohongshu', content_count: 1, direct_target_count: 1, resolution_candidate_count: 0, blocked_count: 0, block_reasons: {} }] } })
     if (url.pathname === '/api/v1/collection-runs' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ run_id: runId, job_id: collectionJobId, mode: 'discovery', status: 'queued' }) })
     if (url.pathname === `/api/v1/collection-runs/${runId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(runDetail) })
     if (url.pathname === '/api/v1/import-batches' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, job_id: importJobId, status: 'queued' }) })
@@ -507,12 +507,12 @@ test('creates a date supplement in the centered import-style modal', async ({ pa
   expect(geometry!.x).toBeCloseTo((1600 - 840) / 2, 0)
   await expect(dialog.getByRole('button', { name: '创建补采任务' })).toBeDisabled()
   await selectPublishedDay(dialog, '2026-09-01')
-  await dialog.getByRole('button', { name: /小红书/ }).click()
-  await expect(dialog).toContainText('可补采 1 条')
+  await dialog.getByLabel(/小红书/).check()
+  await expect(dialog).toContainText('预计处理 1 条')
   const created = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建补采任务' }).click()
   const body = (await created).postDataJSON()
-  expect(body).toMatchObject({ mode: 'date_supplement', published_from: '2026-08-31T16:00:00.000Z', published_to: '2026-09-01T15:59:59.999Z', platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }] })
+  expect(body).toMatchObject({ mode: 'content_supplement', supplement_targets: { kind: 'published_date_range', published_from: '2026-08-31T16:00:00.000Z', published_to: '2026-09-01T15:59:59.999Z' }, expected_target_count: 1, expected_target_fingerprint: 'a'.repeat(64), platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }] })
   expect(body).not.toHaveProperty('import_batch_id')
   expect(body).not.toHaveProperty('data_import_campaign_id')
   expect(body.platforms[0]).not.toHaveProperty('search_config')
@@ -524,39 +524,39 @@ test('submits all five date-eligible platforms with optional replies', async ({ 
     provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }],
     capabilities: platforms.map(platform => ({ platform, provider: 'tikhub', operations: ['content_detail', 'comments', 'sub_comments'], search: null })),
   } }))
-  await page.route('**/api/v1/collection-supplement-eligibility*', route => route.fulfill({ json: {
-    targets: platforms.map(platform => ({ platform, target_count: 1 })),
-    diagnostics: platforms.map(platform => ({ platform, direct_target_count: 1, resolution_candidate_count: 0, blocked_count: 0, block_reasons: {} })),
+  await page.route('**/api/v1/collection-supplements/preview*', route => route.fulfill({ json: {
+    target_count: route.request().postDataJSON().platforms?.length || 5, target_fingerprint: 'a'.repeat(64),
+    platforms: platforms.map(platform => ({ platform, content_count: 1, direct_target_count: 1, resolution_candidate_count: 0, blocked_count: 0, block_reasons: {} })),
   } }))
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '新建辅助补采' }).click()
   const dialog = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
   await selectPublishedDay(dialog, '2026-09-01')
-  for (const label of ['小红书', '抖音', '微博', 'B站', '快手']) await dialog.getByRole('button', { name: new RegExp(label) }).click()
+  for (const label of ['小红书', '抖音', '微博', 'B站', '快手']) await dialog.getByLabel(new RegExp(label)).check()
   await dialog.getByLabel('二级回复').check()
   await expect(dialog).toContainText('预计处理 5 条内容')
   const created = page.waitForRequest(request => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建补采任务' }).click()
-  expect((await created).postDataJSON()).toMatchObject({ mode: 'date_supplement', include_comments: true, include_sub_comments: true })
+  expect((await created).postDataJSON()).toMatchObject({ mode: 'content_supplement', include_comments: true, include_sub_comments: true })
   expect((await created).postDataJSON().platforms).toHaveLength(5)
 })
 
 test('retains valid selections across date refresh and removes unavailable ones', async ({ page }) => {
-  await page.route('**/api/v1/collection-supplement-eligibility*', async route => {
-    const day = new URL(route.request().url()).searchParams.get('published_from')!
+  await page.route('**/api/v1/collection-supplements/preview*', async route => {
+    const day = route.request().postDataJSON().targets.published_from as string
     const platform = day.startsWith('2026-09-01') ? 'douyin' : 'xiaohongshu'
-    return route.fulfill({ json: { targets: [{ platform, target_count: 1 }], diagnostics: [{ platform, direct_target_count: 1, resolution_candidate_count: 0, blocked_count: 0, block_reasons: {} }] } })
+    return route.fulfill({ json: { target_count: 1, target_fingerprint: 'a'.repeat(64), platforms: [{ platform, content_count: 1, direct_target_count: 1, resolution_candidate_count: 0, blocked_count: 0, block_reasons: {} }] } })
   })
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '新建辅助补采' }).click()
   const dialog = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
   await selectPublishedDay(dialog, '2026-09-01')
-  await dialog.getByRole('button', { name: /小红书/ }).click()
+  await dialog.getByLabel(/小红书/).check()
   await selectPublishedDay(dialog, '2026-09-03')
-  await expect(dialog.getByRole('button', { name: /小红书/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(dialog.getByLabel(/小红书/)).toBeChecked()
   await selectPublishedDay(dialog, '2026-09-02')
-  await expect(dialog.getByRole('button', { name: /抖音/ })).toHaveAttribute('aria-pressed', 'false')
-  await expect(dialog.getByRole('button', { name: /小红书/ })).toHaveCount(0)
+  await expect(dialog.getByLabel(/抖音/)).not.toBeChecked()
+  await expect(dialog.getByLabel(/小红书/)).toHaveCount(0)
   await expect(dialog.getByRole('button', { name: '创建补采任务' })).toBeDisabled()
 })
 
@@ -603,9 +603,9 @@ test('shows a Data Import Campaign without a synthetic Job and opens its persist
 
 test('shows date eligibility errors, empty results and resets on reopen', async ({ page }) => {
   let fail = true
-  await page.route('**/api/v1/collection-supplement-eligibility*', route => route.fulfill(fail ? {
+  await page.route('**/api/v1/collection-supplements/preview*', route => route.fulfill(fail ? {
     status: 503, json: { type: '/unavailable', title: '失败', status: 503, detail: '资格查询暂不可用', request_id: 'test-date-error' },
-  } : { json: { targets: [], diagnostics: [] } }))
+  } : { json: { target_count: 0, target_fingerprint: 'a'.repeat(64), platforms: [] } }))
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '新建辅助补采' }).click()
   const dialog = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
@@ -614,9 +614,9 @@ test('shows date eligibility errors, empty results and resets on reopen', async 
   await expect(dialog.getByRole('alert')).toBeInViewport()
   await expect(dialog.getByRole('button', { name: '创建补采任务' })).toBeDisabled()
   fail = false
-  await dialog.getByRole('button', { name: '重试资格查询' }).click()
+  await dialog.getByRole('button', { name: '重新预览' }).click()
   await expect(dialog.getByRole('alert')).toHaveCount(0)
-  await expect(dialog).toContainText('可补采 0 条')
+  await expect(dialog).toContainText('预计处理 0 条')
   await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '新建辅助补采' }).click()
   await expect(dialog.getByRole('button', { name: '内容发布时间', exact: true })).toContainText('开始时间')

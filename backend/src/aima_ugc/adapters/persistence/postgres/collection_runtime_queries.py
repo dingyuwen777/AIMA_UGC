@@ -414,7 +414,9 @@ class PostgresCollectionRuntimeQueryRepository:
         )
         running_stage = case(
             (
-                run.c.config_snapshot["mode"].astext.in_(["batch_supplement", "date_supplement"]),
+                run.c.config_snapshot["mode"].astext.in_(
+                    ["batch_supplement", "content_supplement", "date_supplement"]
+                ),
                 "content_enrichment",
             ),
             else_="content_discovery",
@@ -433,8 +435,10 @@ class PostgresCollectionRuntimeQueryRepository:
                         "tikhub_batch_supplement",
                     ),
                     (
-                        run.c.config_snapshot["mode"].astext == "date_supplement",
-                        "tikhub_date_supplement",
+                        run.c.config_snapshot["mode"].astext.in_(
+                            ["content_supplement", "date_supplement"]
+                        ),
+                        "tikhub_content_supplement",
                     ),
                     else_="tikhub_discovery",
                 ).label("record_type"),

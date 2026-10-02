@@ -148,6 +148,8 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('selects only server-relative files, preflights, and explicitly starts a campaign', async ({ page }) => {
+  // 用受控时钟触发生产的五秒轮询，避免断言与轮询周期恰好相等。
+  await page.clock.install()
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
@@ -201,6 +203,7 @@ test('selects only server-relative files, preflights, and explicitly starts a ca
       }),
     })
   })
+  await page.clock.fastForward(5_000)
   await expect(dialog.getByRole('button', { name: '查看导入内容' })).toBeVisible({ timeout: 5_000 })
   await dialog.getByRole('button', { name: '查看导入内容' }).click()
   await expect(page).toHaveURL((url) =>

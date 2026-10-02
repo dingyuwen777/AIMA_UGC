@@ -44,7 +44,7 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   const drawer = page.getByRole('dialog', { name: '新建辅助补采' })
   await selectPublishedDay(drawer, '2026-09-17')
   for (const label of labels) {
-    await drawer.getByRole('button', { name: new RegExp(label) }).click()
+    await drawer.getByLabel(new RegExp(label)).check()
   }
   await drawer.getByLabel('二级回复').check()
   await test.info().attach('日期补采弹窗', {
@@ -59,9 +59,11 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   const runCreated = await runResponse
   expect(runCreated.status()).toBe(202)
   expect(runCreated.request().postDataJSON()).toMatchObject({
-    mode: 'date_supplement',
+    mode: 'content_supplement',
+    supplement_targets: { kind: 'published_date_range',
     published_from: '2026-09-16T16:00:00.000Z',
-    published_to: '2026-09-17T15:59:59.999Z',
+    published_to: '2026-09-17T15:59:59.999Z' },
+    expected_target_count: 5,
     include_comments: true,
     include_sub_comments: true,
   })
@@ -92,7 +94,7 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   const runDetail = page.getByRole('dialog', { name: '辅助补采运行详情' })
   await expect(runDetail).toContainText(runId)
   await expect(runDetail).toContainText('2026/09/17')
-  await expect(runDetail).toContainText('日期范围内容补采')
+  await expect(runDetail).toContainText('按发布时间补采')
   await expect(runDetail).not.toContainText('已关联导入来源')
   await expect(runDetail).toContainText('采集内容：详情、一级评论、二级回复')
   for (const label of labels) {
@@ -142,4 +144,70 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
     }
     await contentDetail.getByRole('button', { name: '关闭' }).click()
   }
+})
+
+test('声音广场只补采勾选笔记，详情和评论在终态自动刷新且重复评论不新增', async ({ page, request }) => {
+  test.setTimeout(180_000)
+  await ensureStage3FilterBrand(request)
+  const fixturePath = process.env.AIMA_COMMENT_SUPPLEMENT_EXCEL_FIXTURE
+  expect(fixturePath).toBeTruthy()
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: '导入数据' }).click()
+  const importDialog = page.getByRole('dialog', { name: '导入数据' })
+  await importDialog.locator('input[type="file"]').first().setInputFiles(fixturePath!)
+  await importDialog.getByRole('button', { name: '创建并预检' }).click()
+  await expect(importDialog.locator('.campaign-status')).toHaveText('预检完成', { timeout: 60_000 })
+  await importDialog.getByRole('button', { name: '开始导入' }).click()
+  await expect(importDialog.locator('.campaign-status')).toHaveText('导入完成', { timeout: 60_000 })
+  await page.goto('/voice-plaza')
+  const action = page.getByRole('button', { name: '评论补采', exact: true })
+  await expect(action).toBeDisabled()
+  const chosen: string[] = []
+  for (const label of ['小红书', '抖音']) {
+    const row = page.locator('.content-row').filter({ hasText: `爱玛评论补采全栈${label}` })
+    await expect(row).toBeVisible()
+    await row.locator('input[type="checkbox"]').check()
+  }
+  await action.click()
+  const dialog = page.getByRole('dialog', { name: '评论补采', exact: true })
+  await expect(dialog).toHaveClass(/aima-modal-container/)
+  await expect(dialog.getByLabel('评论 · 固定执行', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel(/二级回复/)).not.toBeChecked()
+  await expect(dialog.getByLabel(/二级回复/)).toBeEnabled()
+  await expect(dialog).toContainText('预计处理 2 条内容')
+  const createdPromise = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/collection-runs')
+  await dialog.getByRole('button', { name: '创建补采任务' }).click()
+  const created = await createdPromise
+  expect(created.status()).toBe(202)
+  const body = created.request().postDataJSON()
+  expect(body).toMatchObject({ mode: 'content_supplement', supplement_targets: { kind: 'selected' }, expected_target_count: 2, include_comments: true, include_sub_comments: false })
+  chosen.push(...body.supplement_targets.content_ids)
+  const { run_id: runId } = await created.json()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByText('评论补采任务已创建，共 2 条内容。')).toBeVisible()
+  const row = page.locator('.content-row').filter({ hasText: '爱玛评论补采全栈小红书' })
+  await row.getByRole('button', { name: '查看详情' }).click()
+  const detail = page.getByRole('dialog', { name: '内容详情' })
+  // 在页面停留，依赖真实终态轮询刷新，无手动刷新或重新进入页面。
+  await expect(detail.getByText('脱敏一级评论')).toBeVisible({ timeout: 90_000 })
+  await expect.poll(async () => {
+    const value = await (await request.get(`/api/v1/collection-runs/${runId}`)).json()
+    return value.status
+  }, { timeout: 90_000 }).toBe('succeeded')
+  const run = await (await request.get(`/api/v1/collection-runs/${runId}`)).json()
+  const ingested = await (await request.get('/api/v1/contents', { params: { source_identifier: runId, limit: 20 } })).json()
+  expect(ingested.items.map((item: { id: string }) => item.id).sort()).toEqual(chosen.sort())
+  expect(run.scopes).toHaveLength(2)
+  expect(run.stats.requested_count).toBe(4)
+  expect(run.scopes.every((scope: { stats: { reply_count: number } }) => scope.stats.reply_count === 0)).toBe(true)
+  const identity = ingested.items.find((item: { platform: string }) => item.platform === 'xiaohongshu').id
+  const before = await (await request.get(`/api/v1/contents/${identity}/comments`)).json()
+  const preview = await (await request.post('/api/v1/collection-supplements/preview', { data: { targets: body.supplement_targets } })).json()
+  const repeatedResponse = await request.post('/api/v1/collection-runs', { data: { ...body, expected_target_count: preview.target_count, expected_target_fingerprint: preview.target_fingerprint } })
+  expect(repeatedResponse.status()).toBe(202)
+  const repeated = await repeatedResponse.json()
+  await expect.poll(async () => (await (await request.get(`/api/v1/collection-runs/${repeated.run_id}`)).json()).status, { timeout: 90_000 }).toBe('succeeded')
+  const after = await (await request.get(`/api/v1/contents/${identity}/comments`)).json()
+  expect(after.total_count).toBe(before.total_count)
+  expect(after.items.map((item: { id: string }) => item.id)).toEqual(before.items.map((item: { id: string }) => item.id))
 })

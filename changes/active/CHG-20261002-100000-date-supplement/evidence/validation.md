@@ -1,49 +1,50 @@
-# 日期补采验证与复核证据
+# 统一内容补采验证与复核证据
 
-日期：2026-10-02，北京时间。目标基线 `62e8cc7264d1f9ef5aa999aeff60e5e0404b2153`；最终文件身份见同目录 `source-hashes.json`。canonical Agent_Skills 源码固定为 `041c9b60aae0f566553002794eb5fde4ed614c7f`，未改写项目受管治理资产。
+日期：2026-10-02，北京时间。基线 main `62e8cc7264d1f9ef5aa999aeff60e5e0404b2153`；最终源文件的 LF 规范化 SHA-256 见 `source-hashes.json`。canonical Agent_Skills 当前源码 `041c9b60aae0f566553002794eb5fde4ed614c7f`，按其入口、Coding/Testing/Review/Docs 与 Delivery 规则执行，未改写受管资产。
 
 ## 环境与边界
 
-Windows 本机独立 worktree；Python 3.14.7、Node 24.19.0，依赖由当前锁文件恢复。PostgreSQL 18.4 使用本任务容器和独立数据库 `aima_date_test`；全栈使用独立 `aima_date_fullstack`、API 18090、浏览器 14174 和正式 Fake TikHub Worker。浏览器 Mock 回归使用独立端口 14173。没有接入业务库、真实 TikHub 或生产环境。
+直接在 `E:/work/03_Aima/code/AIMA_UGC` 修改，当前任务分支 `feature/date-supplement`。Python 3.14.7、Node 24.19.0、当前锁文件依赖。专用本机 PostgreSQL 18.4 容器 `aima-content-supplement-test` 使用数据库 `aima_content_test` 和 `aima_content_fullstack`，隔离业务库。API 18090、浏览器 14174、Mock 回归 14173；全栈使用生产 Worker 和既有 Fixture TikHub Transport。用户提供的 API Key 未保存、打印或使用，没有接入真实付费 Provider 或生产环境。
 
 ## 实际结果
 
 | 命令 / 检查 | 当前结果 | 证明范围 |
 | --- | --- | --- |
-| `.venv/Scripts/python.exe -m pytest tests/unit tests/contracts tests/api -q --tb=short` | exit 0；1945 passed、16 skipped、12 subtests passed | 全部后端单元、公开 Contract 与 API；跳过项不计作通过 |
-| `.venv/Scripts/python.exe -m pytest tests/integration/collection/test_collection_date_supplement.py tests/integration/collection/test_collection_repository.py tests/integration/collection/test_collection_run_execution_gateway.py tests/integration/collection/test_stage8e_collection_http_runtime.py tests/integration/collection/test_collection_supplement_target_eligibility.py -q --tb=short` | exit 0；95 passed | 日期边界/NULL/范围外/全来源、五平台身份、AI 与日期变化、万条 Scope 及末批回滚、旧模式、Worker 评论/回复/Raw 恢复与 fencing |
-| `npm run test -- --run`，frontend 目录 | exit 0；36 files、276 tests passed | Store 竞态、组件、生成 Client Mock 与已有前端行为 |
-| `npx playwright test --config .runtime/date-playwright.config.ts`，frontend 目录 | exit 0；175 passed | 全部现有浏览器 Mock 用户流程；专用配置只替换端口、禁止复用服务、workers 与输出目录 |
-| `npx playwright test --config .runtime/date-fullstack.config.ts comment-supplement.spec.ts`，frontend 目录 | exit 0；1 passed | 浏览器日期选择→真实 API/PostgreSQL/Job/Worker→五平台 Detail/Comments/可选 Replies→运行详情→声音广场；六条输入仅范围内五条形成 Scope |
-| `.venv/Scripts/python.exe -m mypy backend/src` | exit 0；435 files | 后端类型检查 |
-| `scripts/contracts/generate.py --check` 与 `scripts/contracts/check_compatibility.py` | exit 0 | 手写 Contract、OpenAPI/Schema 与兼容边界；客户端由正式生成命令刷新 |
-| changed Python 的 `ruff check` 与 `ruff format --check` | exit 0 | 当前改动的 Python 格式与静态规则 |
-| `npm run lint` 与 `npm run build`，frontend 目录 | exit 0 | ESLint、两种 TypeScript/Vue 检查与生产构建 |
-| `scripts/dev/validate_changed.py --base origin/main` | exit 0；profile full | 与正式 CI 同一 classifier，未增加 Workflow 或另建影响面映射 |
-| `scripts/quality/scan_secrets.py`、`check_docs.py`、`check_docs_facts.py` | exit 0 | Secret 边界、全仓当前文档链接和机器事实同步；修正开发基线对已重命名组件的三处链接 |
+| `uv run pytest tests/unit tests/contracts tests/api -q` | exit 0；1954 passed、16 skipped、12 subtests passed | 全部后端单元、公开 Contract/API；跳过项不计通过 |
+| `.venv/Scripts/python.exe -m pytest tests/integration/collection/test_collection_content_supplement.py tests/integration/collection/test_collection_date_supplement.py tests/integration/collection/test_collection_repository.py tests/integration/collection/test_collection_run_execution_gateway.py tests/integration/collection/test_stage8e_collection_http_runtime.py tests/integration/collection/test_collection_supplement_target_eligibility.py -q --tb=short` | exit 0；117 passed | 日期边界/NULL/全来源/身份；显式 AI irrelevant；同数量换目标和选项 409 零写入；冻结、历史兼容、七万候选、万条 Scope/末批回滚；五平台评论/回复/恢复/fencing |
+| `npm.cmd --prefix frontend run test -- --run` | exit 0；37 files、284 passed | 共享表单竞态、409 手动确认、选项与 Capability；Voice 四种终态、退出迟到响应；既有前端行为 |
+| `npm.cmd --prefix frontend run test:e2e -- --config .runtime/content-playwright.config.ts` | exit 0；175 passed（3.4 min） | 日期弹窗、平台保留、加载/空/失败/重开、窄窗口、既有页面流程；配置仅替换端口/noReuse/workers/输出目录 |
+| `npm.cmd --prefix frontend run test:e2e:fullstack -- --config .runtime/content-fullstack.config.ts fullstack/comment-supplement.spec.ts` | exit 0；2 passed（57.7 s） | 日期五平台→真实 API/DB/Job/Worker→详情/评论/回复；Voice 两条勾选→4 个请求/无未选目标和回复→终态自动刷新→重复评论不新增 |
+| `uv run mypy backend/src` | exit 0；435 files | 后端类型检查 |
+| changed Python `ruff format --check`、`ruff check` | exit 0 | 当前 Python 格式与静态规则 |
+| `uv run python scripts/contracts/generate.py --check`、`scripts/contracts/check_compatibility.py` | exit 0 | Contract/OpenAPI/Schema 一致与旧接口兼容；TypeScript Client 正式生成 |
+| `npm.cmd --prefix frontend run lint`、`npm.cmd --prefix frontend run build` | exit 0 | ESLint、TypeScript/Vue 类型及生产构建 |
+| `scripts/quality/check_docs.py`、`check_docs_facts.py`、`scan_secrets.py`、`check_change_completion.py --root . --require-active-ready` | exit 0 | 当前文档/机器事实、Secret 和全部 Active Change 完成门禁 |
 
-完整本地日志保留在 worktree 的 `.runtime/date-tests/`；平台 CI 的范围更广，结果以 PR 当前 head 的 Checks 为准。保留既有 Pydantic/Starlette 弃用提示及前端大 chunk 提示，未为取得通过修改依赖或提高阈值。
+正式 `scripts/dev/validate_changed.py --base origin/main --fix --execute` 在 Windows 无法解析 bare npm，未宣称该命令通过。忽略目录的本机启动器复用原 classifier/build_validation_commands，只解析为 npm.cmd；其后端/生成/ESLint 均通过，首次 frontend 单元失败于旧源码字符串断言。修正后按相同计划完成前端单元、构建和全部浏览器检查，没有改变 CI、影响面映射或断言强度。classifier 为 full；全量 PostgreSQL、全量 Full-stack、打包/Compose 等正式范围由 PR 当前 head 的现有 CI 完成。
 
-## 容量与 Red → Green
+本轮日志保留 `.runtime/content-test-runtime/`；截图 `.runtime/content-fullstack/results/`。保留既有 Pydantic/Starlette 弃用、Vite 大 chunk 及测试临时 configLoader 提示，没有调整依赖或阈值。
 
-Contract Red：日期创建测试在实现前 1 failed / 10 passed，现有模式拒绝日期请求；当前 Contract/API 全部 Green。
+## 容量与失败修复
 
-容量 Red：旧 Scope Repository 一条 SQL 创建 10,000 个 Scope 时，PostgreSQL 报绑定参数超过 65,535；新增七万候选读取回归在逐 ID `IN` 版本为 1 failed。分别改为 SQLAlchemy `insertmanyvalues` 自动分批和 PostgreSQL UUID 数组参数。当前回归证明 70,000 候选能返回完整阻塞诊断；10,000 Scope 完整保存，且最后一批唯一约束失败时 Job/Run/全部 Scope 整体回滚。
+最初日期 Contract Red 为 1 failed / 10 passed。大范围 Red 发现原单条 INSERT 的 PostgreSQL 参数上限、逐 ID IN 的七万候选参数上限，改为 SQLAlchemy 自动分批和 UUID 数组参数；相同事务末批失败仍全部回滚。
 
-`capacity.json` 记录 100,000 条测试内容中选择 10,000 条：生产形态日期 SQL 使用既有 `ix_contents_published_at_id_desc`，EXPLAIN 总执行 5.831 ms；正式创建包含资格读取、Job/Run/10,000 Scope，启用 tracemalloc 时耗时 3.855 s、Python 峰值 26.88 MiB。它是本机固定 Fixture 的测量，不是生产容量或 SLO 承诺；没有据此添加天数/条数限制或 Migration。
+最新 `capacity.json`：100,000 条内容中选择 10,000 条，既有 `ix_contents_published_at_id_desc`；EXPLAIN 总执行 7.189 ms。正式 Preview + 冻结创建的创建阶段在 tracemalloc 下 10.333 s，Python 峰值 26,536,575 bytes（25.31 MiB），10,000 Scopes 完整保存。本机固定 Fixture 测量不是生产容量或 SLO 承诺；未凭测量增加硬编码日期天数/条数上限。
 
-复现资产为 `date_capacity.py`，复用生产 Service/Repository 和既有测试 Fixture。只允许使用该专用本机数据库；从仓库根以 `python -c "import runpy; runpy.run_path('changes/active/CHG-20261002-100000-date-supplement/evidence/date_capacity.py')"` 运行。数据初始化和清理只作用于隔离测试库。
+复现 `date_capacity.py` 调用生产 Service/Repository，仅允许本机专用测试库；从仓库根 `python -c "import runpy; runpy.run_path('changes/active/CHG-20261002-100000-date-supplement/evidence/date_capacity.py')"`。运行脚本拒绝其他数据库地址/库名。
 
-## 两阶段本地复核
+本轮测试实际发现并修正日期范围分步更新丢失平台、Selected 打开 watch 竞态、partial_success 终态缺口及重排轮询清空刚创建任务。全栈旧断言曾读取公开 Scope 不存在的 source_value 字段，改为正式 Content source_identifier 和 Provider Request 数量证明精确目标；旧品牌回归的源码断言改为同时约束 Discovery 提交品牌、补采分支不提交品牌，未放宽业务行为。
 
-第一阶段重新读取用户批准方案和 live #690，核对全部 AC1–AC6，不从当前 Change 推定需求完整。反向核对日期资格、创建、运行/Scope 状态和结果能力与页面入口；检查所有前端操作对应正式支持。`docs/blueprint/04` 仍是有效通用任务边界，无需修改；同步 Blueprint 08、Product 02、Collection 导航、模块 README 与运行中心开发基线。开发基线明确用户确认的日期弹窗决定及原 Figma 节点仍为此前设计参照，本轮未修改 Figma 文件。
+首次全部浏览器回归 174 passed / 1 failed，单独复核确认历史导入断言等待五秒恰等于现有轮询周期。用 Playwright 受控时钟明确触发该周期，保留原等待预算和断言，八项历史导入及最终全部 175 项通过。最终 Review 还修正统一类型的列表副标题，避免将显式评论补采描述成日期补采。
 
-第二阶段检查日期/相关性冻结、共享身份、全量评论覆盖、Provider Raw 恢复、fencing、事务、参数上限、旧模式和生成兼容。发现并修正大范围参数上限、详情旧批次文案与测试 Fixture 的唯一父 Job/相关性情感约束；重新验证后没有范围内阻塞项。既有 `_discovery_filter` 的 v2 检查仅用于 Discovery，不阻断 v3 日期任务；没有为日期模式放宽它。
+## 两阶段本地复核与文档
 
-复用既有 Worker 参数化测试，不另建日期 Provider、分页或 Mapper。Store、浏览器、数据库、全栈和容量分别证明不同边界。没有调用真实付费 TikHub，Provider endpoint/payload/Mapper/外部分页协议未改变。
+第一阶段重新读取引用会话最新统一方案、本轮取消新建批次补采入口的要求与 live #690 AC1–AC11，独立重建完成定义；反查两个页面每个操作的正式支持与后端能力的页面入口。第二阶段检查日期/AI 冻结、显式目标保留、身份诊断、预览/409 原子边界、Capability、评论层级、Raw 恢复、fencing、状态投影和轮询退出。最终修复后范围内没有阻塞项。本记录是本地自查，不替代平台规则或外部审批。
 
-本记录属于本地两阶段自查；GitHub 外部审批和当前 head 的正式 CI 不由本记录替代。交付止于 PR，未 merge、Release、Deploy、生产 Migration、Change Archive 或 Issue Closure。
+Docs Impact: targeted。同步 Blueprint 08 §25、Product 02、Collection 导航、模块 README、代码导航和运行中心开发基线；Blueprint 04 通用 Job 边界仍有效。开发基线记录用户确认弹窗决定，Figma 文件未改。无 Provider endpoint/payload/Mapper/外部分页协议变化，无真实付费 Probe。
 
-## 用户追加的 Shell 换行修改
+## Shell 与交付状态
 
-根 `.gitattributes` 只增加 `*.sh text eol=lf`。全部 tracked `.sh` 为 `scripts/setup_dev_environment.sh` 与 `scripts/deploy/reset_keep_vehicle_catalog.sh`：索引和工作树均验证为 LF；索引原本已是 LF，本次修复的是 Windows checkout 换行及后续保持规则。逐字节验证除换行外内容不变；未发现其他扩展名的已有 Bash/sh shebang 脚本。此项未增加 CI、部署文档或独立治理流程。
+根属性只有 `*.sh text eol=lf`。tracked Shell 为 `scripts/setup_dev_environment.sh` 和 `scripts/deploy/reset_keep_vehicle_catalog.sh`，索引原本 LF，工作树修复为 LF并保持；除换行正文不变。未发现其他已有 Bash/sh shebang 文件；未新增 CI、部署文档或额外流程。
+
+无依赖/配置/Secret/Schema/Migration 变更；新任务使用 v3 审计与冻结 Scope，旧 v2/history 兼容。未来发布或回滚需 API/Worker/Frontend 同版本，并先结清新内容补采任务。本轮用户授权验证后合并 main、原生归档和 Issue Closure，未授权或执行 Release/Deploy/生产操作。提交本记录时正式 CI、merge、main-fresh、Archive 与 Closure 尚未完成，以 PR #691、Issue #690 及原生自动化实时状态和后续证据为准。

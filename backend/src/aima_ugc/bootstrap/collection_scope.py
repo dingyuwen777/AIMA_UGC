@@ -792,7 +792,8 @@ class TikHubCollectionScopeExecutor:
                     fence=context.fence,
                 )
             if (
-                run.config_snapshot.get("mode") in {"batch_supplement", "date_supplement"}
+                run.config_snapshot.get("mode")
+                in {"batch_supplement", "content_supplement", "date_supplement"}
                 and policy.comments_enabled
                 and stats.comment_coverage in {"partial", "unavailable"}
             ):
@@ -874,9 +875,12 @@ class TikHubCollectionScopeExecutor:
         run: CollectionRunRecord,
         scope: CollectionScopeRecord,
     ) -> CollectionEnrichmentTarget:
-        is_date_supplement = run.config_snapshot.get("mode") == "date_supplement"
+        is_content_supplement = run.config_snapshot.get("mode") in {
+            "content_supplement",
+            "date_supplement",
+        }
         if (
-            not is_date_supplement
+            not is_content_supplement
             and run.import_batch_id is None
             and run.data_import_campaign_id is None
         ):
@@ -889,7 +893,7 @@ class TikHubCollectionScopeExecutor:
         try:
             with session.begin():
                 reader = PostgresCollectionTargetReader(session)
-                if is_date_supplement:
+                if is_content_supplement:
                     target = reader.get_content_target(content_id=content_id)
                     unavailable_reason = (
                         reader.get_content_unavailable_reason(content_id=content_id)
@@ -928,7 +932,7 @@ class TikHubCollectionScopeExecutor:
         if target is None:
             if unavailable_reason is not None:
                 raise _CommentTargetUnavailable(unavailable_reason)
-            if is_date_supplement:
+            if is_content_supplement:
                 raise ValueError("补采目标与当前 Run 冻结目标不一致")
             raise ValueError("补采目标不属于 Run 关联的数据导入来源")
         if target.platform != scope.platform:
@@ -1499,7 +1503,11 @@ class TikHubCollectionScopeExecutor:
     ) -> _CommentFetchOutcome:
         platform = _tikhub_platform(scope.platform)
         link_lookup_id = _link_backed_lookup_id(content)
-        full_capture = run.config_snapshot.get("mode") in {"batch_supplement", "date_supplement"}
+        full_capture = run.config_snapshot.get("mode") in {
+            "batch_supplement",
+            "content_supplement",
+            "date_supplement",
+        }
         if full_capture:
             target = resolve_comment_target(
                 platform=platform,
@@ -1952,7 +1960,11 @@ class TikHubCollectionScopeExecutor:
     ) -> _ReplyFetchOutcome:
         platform = _tikhub_platform(scope.platform)
         link_lookup_id = _link_backed_lookup_id(content)
-        full_capture = run.config_snapshot.get("mode") in {"batch_supplement", "date_supplement"}
+        full_capture = run.config_snapshot.get("mode") in {
+            "batch_supplement",
+            "content_supplement",
+            "date_supplement",
+        }
         pagination_state: dict[str, object] = {}
         reply_ids: set[str] = set()
         last_executed: _ExecutedCall | None = None

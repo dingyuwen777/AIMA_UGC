@@ -20,6 +20,7 @@ from aima_ugc.adapters.persistence.postgres.collection_runtime_queries import (
     PostgresCollectionRuntimeQueryRepository,
 )
 from aima_ugc.adapters.persistence.postgres.collection_targets import (
+    CollectionSupplementSourceItem,
     PostgresCollectionTargetReader,
 )
 from aima_ugc.adapters.persistence.postgres.historical_import import (
@@ -47,7 +48,6 @@ from aima_ugc.contracts.http import (
     CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
     CollectionCapabilityResponse,
-    CollectionDateSupplementEligibilityResponse,
     CollectionDateSupplementQuery,
     CollectionPlatform,
     CollectionProviderConfigResponse,
@@ -65,6 +65,10 @@ from aima_ugc.contracts.http import (
     CollectionSearchCapabilityResponse,
     CollectionSearchConfig,
     CollectionSupplementPlatformDiagnosticResponse,
+    CollectionSupplementPreviewPlatformResponse,
+    CollectionSupplementPreviewRequest,
+    CollectionSupplementPreviewResponse,
+    CollectionSupplementSelectionResponse,
     ImportStatsResponse,
 )
 from aima_ugc.modules.collection.collection_run_job import (
@@ -89,6 +93,7 @@ from aima_ugc.modules.collection.http import (
     CollectionConflict,
     CollectionResourceNotFound,
     CollectionRuntimeCursorUnavailable,
+    CollectionSupplementTargetsChanged,
 )
 from aima_ugc.modules.collection.http import (
     InvalidCollectionRuntimeCursor as InvalidCollectionRuntimeCursorError,
@@ -277,46 +282,77 @@ class PostgresCollectionHttpService:
         finally:
             session.close()
 
-    def get_date_supplement_eligibility(
+    def preview_supplement(
         self,
-        query: CollectionDateSupplementQuery,
-    ) -> CollectionDateSupplementEligibilityResponse:
-        """读取日期候选的共享身份资格，预览不创建业务任务。"""
+        request: CollectionSupplementPreviewRequest,
+    ) -> CollectionSupplementPreviewResponse:
+        """预览统一候选、身份诊断与确认指纹，不创建业务任务或外部请求。"""
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                reader = PostgresCollectionTargetReader(session)
-                targets, _, diagnostics = reader.list_date_range_selection(
-                    published_from=query.published_from,
-                    published_to=query.published_to,
-                    platforms=_ALL_COLLECTION_PLATFORMS,
-                )
-                counts: dict[CollectionPlatform, int] = {}
-                for target in targets:
-                    counts[target.platform] = counts.get(target.platform, 0) + 1
-                return CollectionDateSupplementEligibilityResponse(
-                    published_from=query.published_from,
-                    published_to=query.published_to,
-                    targets=tuple(
-                        CollectionBatchSupplementTargetResponse(
-                            platform=platform, target_count=counts[platform]
-                        )
-                        for platform in _ALL_COLLECTION_PLATFORMS
-                        if platform in counts
-                    ),
-                    diagnostics=tuple(
-                        CollectionSupplementPlatformDiagnosticResponse(
-                            platform=item.platform,
-                            direct_target_count=item.direct_target_count,
-                            resolution_candidate_count=item.resolution_candidate_count,
-                            blocked_count=item.blocked_count,
-                            block_reasons=item.block_reasons,
-                        )
-                        for item in diagnostics
-                    ),
-                )
+                return self._read_supplement_selection(session, request)[1]
         finally:
             session.close()
+
+    def _read_supplement_selection(
+        self, session: Session, request: CollectionSupplementPreviewRequest
+    ) -> tuple[tuple[CollectionSupplementSourceItem, ...], CollectionSupplementPreviewResponse]:
+        """创建与预览用同一候选集合；指纹还保护身份诊断和采集选项。"""
+        reader = PostgresCollectionTargetReader(session)
+        selection = request.targets
+        if selection.kind == "selected":
+            _, sources, diagnostics = reader.list_selected_selection(
+                content_ids=selection.content_ids
+            )
+            if len(sources) != len(selection.content_ids):
+                raise CollectionResourceNotFound
+        else:
+            _, sources, diagnostics = reader.list_date_range_selection(
+                published_from=selection.published_from,
+                published_to=selection.published_to,
+                platforms=_ALL_COLLECTION_PLATFORMS,
+            )
+        platforms = request.platforms or _ALL_COLLECTION_PLATFORMS
+        sources = tuple(item for item in sources if item.platform in platforms)
+        public_diagnostics = tuple(
+            CollectionSupplementPreviewPlatformResponse(
+                platform=item.platform,
+                content_count=item.direct_target_count
+                + item.resolution_candidate_count
+                + item.blocked_count,
+                direct_target_count=item.direct_target_count,
+                resolution_candidate_count=item.resolution_candidate_count,
+                blocked_count=item.blocked_count,
+                block_reasons=item.block_reasons,
+            )
+            for item in diagnostics
+        )
+        identity = {
+            "kind": selection.kind,
+            "targets": sorted((str(item.content_id), item.platform) for item in sources),
+            "platforms": sorted(platforms),
+            "include_comments": request.include_comments,
+            "include_sub_comments": request.include_sub_comments,
+            "diagnostics": [
+                item.model_dump(mode="json")
+                for item in sorted(public_diagnostics, key=lambda item: item.platform)
+                if item.platform in platforms
+            ],
+            **(
+                {
+                    "published_from": selection.published_from.isoformat(),
+                    "published_to": selection.published_to.isoformat(),
+                }
+                if selection.kind == "published_date_range"
+                else {}
+            ),
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return sources, CollectionSupplementPreviewResponse(
+            target_count=len(sources), target_fingerprint=fingerprint, platforms=public_diagnostics
+        )
 
     def create_run(
         self,
@@ -328,8 +364,8 @@ class PostgresCollectionHttpService:
         try:
             with session.begin():
                 provider_snapshots = self._resolve_provider_snapshots(session, request)
-                scopes, keyword_pack_snapshot, filter_snapshot = self._build_scopes(
-                    session, request
+                scopes, keyword_pack_snapshot, filter_snapshot, supplement_selection = (
+                    self._build_scopes(session, request)
                 )
                 if not scopes:
                     raise CollectionConflict
@@ -369,19 +405,16 @@ class PostgresCollectionHttpService:
                     config_snapshot={
                         "schema_version": (
                             "collection-run-config.v3"
-                            if request.mode == "date_supplement"
+                            if request.mode == "content_supplement"
                             else "collection-run-config.v2"
                         ),
                         **(
                             {
-                                "supplement_selection": {
-                                    "type": "published_date_range",
-                                    "published_from": request.published_from.isoformat(),
-                                    "published_to": request.published_to.isoformat(),
-                                }
+                                "supplement_selection": supplement_selection.model_dump(
+                                    mode="json", exclude_none=True
+                                )
                             }
-                            if request.published_from is not None
-                            and request.published_to is not None
+                            if supplement_selection is not None
                             else {}
                         ),
                         "mode": request.mode,
@@ -432,8 +465,13 @@ class PostgresCollectionHttpService:
                     run_id=execution.run.id,
                     job_id=job.id,
                     mode=request.mode,
-                    published_from=request.published_from,
-                    published_to=request.published_to,
+                    published_from=supplement_selection.published_from
+                    if supplement_selection
+                    else None,
+                    published_to=supplement_selection.published_to
+                    if supplement_selection
+                    else None,
+                    supplement_selection=supplement_selection,
                     import_batch_id=request.import_batch_id,
                     data_import_campaign_id=request.data_import_campaign_id,
                 )
@@ -454,7 +492,9 @@ class PostgresCollectionHttpService:
                 scopes = tuple(repository.list_scopes(run.id))
                 snapshot = run.config_snapshot
                 mode_value = snapshot.get("mode", "discovery")
-                if mode_value not in {"discovery", "batch_supplement", "date_supplement"}:
+                if mode_value == "date_supplement":
+                    mode_value = "content_supplement"
+                if mode_value not in {"discovery", "batch_supplement", "content_supplement"}:
                     raise CollectionConflict
                 mode: CollectionRunMode = mode_value
                 selection = _snapshot_date_selection(snapshot)
@@ -464,6 +504,7 @@ class PostgresCollectionHttpService:
                     mode=mode,
                     published_from=selection.published_from if selection else None,
                     published_to=selection.published_to if selection else None,
+                    supplement_selection=_snapshot_supplement_selection(snapshot),
                     include_comments=(
                         cast(bool, snapshot["include_comments"])
                         if isinstance(snapshot.get("include_comments"), bool)
@@ -653,6 +694,7 @@ class PostgresCollectionHttpService:
         tuple[CollectionScopeDefinition, ...],
         tuple[dict[str, object], ...],
         dict[str, object],
+        CollectionSupplementSelectionResponse | None,
     ]:
         if request.mode == "discovery":
             if request.keyword_pack_ids:
@@ -692,6 +734,57 @@ class PostgresCollectionHttpService:
                     for pack in snapshot.keyword_packs
                 ),
                 filter_snapshot.model_dump(mode="json"),
+                None,
+            )
+        selected_platforms = tuple(selection.platform for selection in request.platforms)
+        if request.mode == "content_supplement":
+            assert request.supplement_targets is not None
+            target_selection = request.supplement_targets
+            try:
+                source_items, preview = self._read_supplement_selection(
+                    session,
+                    CollectionSupplementPreviewRequest(
+                        targets=target_selection,
+                        platforms=selected_platforms
+                        if target_selection.kind == "published_date_range"
+                        else (),
+                        include_comments=request.include_comments,
+                        include_sub_comments=request.include_sub_comments,
+                    ),
+                )
+            except CollectionResourceNotFound as exc:
+                raise CollectionSupplementTargetsChanged from exc
+            if (
+                preview.target_count != request.expected_target_count
+                or preview.target_fingerprint != request.expected_target_fingerprint
+            ):
+                raise CollectionSupplementTargetsChanged
+            if {item.platform for item in source_items} != set(selected_platforms):
+                raise CollectionConflict("每个已选内容平台都必须提供可用的采集渠道")
+            selection_snapshot = CollectionSupplementSelectionResponse(
+                kind=target_selection.kind,
+                target_count=preview.target_count,
+                target_fingerprint=preview.target_fingerprint,
+                published_from=target_selection.published_from
+                if target_selection.kind == "published_date_range"
+                else None,
+                published_to=target_selection.published_to
+                if target_selection.kind == "published_date_range"
+                else None,
+            )
+            return (
+                tuple(
+                    CollectionScopeDefinition(
+                        platform=item.platform,
+                        source_type="content",
+                        source_value=str(item.content_id),
+                        operation_group="content_enrichment",
+                    )
+                    for item in source_items
+                ),
+                (),
+                {},
+                selection_snapshot,
             )
         reader = PostgresCollectionTargetReader(
             session,
@@ -699,15 +792,7 @@ class PostgresCollectionHttpService:
                 session, self._runtime.settings
             ).identity,
         )
-        selected_platforms = tuple(selection.platform for selection in request.platforms)
-        if request.mode == "date_supplement":
-            assert request.published_from is not None and request.published_to is not None
-            targets, source_items, _ = reader.list_date_range_selection(
-                published_from=request.published_from,
-                published_to=request.published_to,
-                platforms=selected_platforms,
-            )
-        elif request.data_import_campaign_id is not None:
+        if request.data_import_campaign_id is not None:
             if not reader.campaign_exists(request.data_import_campaign_id):
                 raise CollectionResourceNotFound
             if not reader.campaign_is_supplement_ready(request.data_import_campaign_id):
@@ -747,6 +832,7 @@ class PostgresCollectionHttpService:
             ),
             (),
             {},
+            None,
         )
 
 
@@ -797,22 +883,40 @@ def _run_stage(run: CollectionRunRecord) -> str:
         return run.status
     return (
         "content_enrichment"
-        if run.config_snapshot.get("mode") in {"batch_supplement", "date_supplement"}
+        if run.config_snapshot.get("mode")
+        in {"batch_supplement", "content_supplement", "date_supplement"}
         else "content_discovery"
     )
 
 
 def _snapshot_date_selection(snapshot: dict[str, object]) -> CollectionDateSupplementQuery | None:
-    if snapshot.get("mode") != "date_supplement":
+    """日期展示从选择审计恢复，同时兼容未发布分支的旧日期快照。"""
+    if snapshot.get("mode") not in {"content_supplement", "date_supplement"}:
         return None
     selection = snapshot.get("supplement_selection")
-    if not isinstance(selection, dict) or selection.get("type") != "published_date_range":
+    if isinstance(selection, dict) and selection.get("kind") == "selected":
+        return None
+    if (
+        not isinstance(selection, dict)
+        or selection.get("kind", selection.get("type")) != "published_date_range"
+    ):
         raise CollectionConflict
     return CollectionDateSupplementQuery.model_validate(
         {
             "published_from": selection.get("published_from"),
             "published_to": selection.get("published_to"),
         }
+    )
+
+
+def _snapshot_supplement_selection(
+    snapshot: dict[str, object],
+) -> CollectionSupplementSelectionResponse | None:
+    """公共审计只读取正式新模式，不为旧快照编造指纹。"""
+    if snapshot.get("mode") != "content_supplement":
+        return None
+    return CollectionSupplementSelectionResponse.model_validate(
+        snapshot.get("supplement_selection")
     )
 
 
@@ -1081,7 +1185,10 @@ def _runtime_display_name(record: CollectionRuntimeReadRecord) -> str:
     if record.record_type == "data_import_campaign":
         suffix = f" · {record.source_filename}" if record.source_filename else ""
         return f"数据导入{suffix}"
-    if record.record_type == "tikhub_date_supplement":
+    if record.record_type == "tikhub_content_supplement":
+        supplement = _snapshot_supplement_selection(record.config_snapshot or {})
+        if supplement is not None and supplement.kind == "selected":
+            return f"评论补采 · {supplement.target_count} 条内容"
         selection = _snapshot_date_selection(record.config_snapshot or {})
         if selection is None:
             raise CollectionConflict

@@ -3,8 +3,6 @@ import { defineStore } from 'pinia'
 
 import type {
   CollectionCapabilitiesResponse,
-  CollectionDateSupplementEligibilityResponse,
-  GetCollectionDateSupplementEligibilityParams,
   CanonicalReplayAllOperationResponse,
   DataImportIngestionPolicy,
   DataImportRevocationPreviewResponse,
@@ -13,7 +11,6 @@ import type {
   CollectionRunCreateRequest,
   CollectionRunCreatedResponse,
   CollectionRunResponse,
-  CollectionSupplementPlatformDiagnosticResponse,
   CollectionRuntimeItemResponse,
   CollectionRuntimeRecordType,
   CollectionRuntimeStatus,
@@ -38,7 +35,6 @@ import {
   cancelHistoricalCampaign,
   createLocalCampaign,
   createHistoricalCampaign,
-  fetchDateSupplementEligibility,
   fetchCollectionCapabilities,
   fetchCollectionRunDetail,
   fetchCollectionRuntimeList,
@@ -78,13 +74,7 @@ export interface DataImportLocalFileSelection {
   relativePath: string
 }
 
-export type SupplementSourceKind = 'campaign' | 'batch'
 export type CanonicalReplayCancelResult = 'accepted' | 'unconfirmed' | 'rejected'
-
-export interface SupplementSourceSelection {
-  kind: SupplementSourceKind
-  id: string
-}
 
 const EMPTY_FILTERS: CollectionRuntimeFilters = {
   search: '',
@@ -136,11 +126,6 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const selectedCanonicalReplay = ref<CollectionRuntimeItemResponse | null>(null)
   const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
   const keywordPackOptions = ref<KeywordPackSummaryResponse[]>([])
-  const supplementContentPlatforms = ref<CollectionPlatform[]>([])
-  const supplementEligibilityError = ref<string | null>(null)
-  const supplementTargets = ref<CollectionDateSupplementEligibilityResponse['targets']>([])
-  const supplementEligibilityReady = ref(false)
-  const supplementDiagnostics = ref<CollectionSupplementPlatformDiagnosticResponse[]>([])
   const historicalDirectoryPath = ref('')
   const historicalDirectoryEntries = ref<HistoricalDirectoryEntryResponse[]>([])
   const historicalDirectoryNextCursor = ref<string | null>(null)
@@ -160,7 +145,6 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const loadingNext = ref(false)
   const uploading = ref(false)
   const creating = ref(false)
-  const loadingSupplementPlatforms = ref(false)
   const loadingKeywordPacks = ref(false)
   const loadingHistorical = ref(false)
   const creatingHistorical = ref(false)
@@ -176,7 +160,6 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   let refreshVersion = 0
   let refreshInFlight = false
   let appliedListParams: ListCollectionRuntimeRunsParams = { limit: 20 }
-  let supplementPlatformVersion = 0
   const unconfirmedReplayRequestId = ref<string | null>(null)
   const unconfirmedReplayInitialLifecycle = ref<string | null>(null)
   const acceptedReplayCancellationRequestId = ref<string | null>(null)
@@ -222,11 +205,11 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       if (
         filters.recordType === 'tikhub_discovery' ||
         filters.recordType === 'tikhub_batch_supplement' ||
-        filters.recordType === 'tikhub_date_supplement'
+        filters.recordType === 'tikhub_content_supplement'
       ) {
         return [filters.recordType]
       }
-      return ['tikhub_discovery', 'tikhub_batch_supplement', 'tikhub_date_supplement']
+      return ['tikhub_discovery', 'tikhub_batch_supplement', 'tikhub_content_supplement']
     }
     return filters.recordType ? [filters.recordType] : undefined
   }
@@ -375,7 +358,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       '',
       'tikhub_discovery',
       'tikhub_batch_supplement',
-      'tikhub_date_supplement',
+      'tikhub_content_supplement',
     ].includes(filters.recordType)) filters.recordType = ''
     await refresh()
   }
@@ -527,41 +510,9 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
-  /** 失效旧请求，防止日期往返或弹窗关闭重开时旧响应覆盖当前选择。 */
-  function resetSupplementEligibility(): void {
-    supplementPlatformVersion++
-    supplementEligibilityReady.value = false
-    supplementEligibilityError.value = null
-    supplementContentPlatforms.value = []
-    supplementDiagnostics.value = []
-    supplementTargets.value = []
-    loadingSupplementPlatforms.value = false
-  }
-
-  /** 日期资格按请求序号提交；过期响应不能恢复已失效的数量和诊断。 */
-  async function loadSupplementPlatforms(params: GetCollectionDateSupplementEligibilityParams | null): Promise<void> {
-    resetSupplementEligibility()
-    if (!params) return
-    const version = supplementPlatformVersion
-    loadingSupplementPlatforms.value = true
-    try {
-      const eligibility = await fetchDateSupplementEligibility(params)
-      if (version !== supplementPlatformVersion) return
-      supplementTargets.value = eligibility.targets
-      supplementContentPlatforms.value = eligibility.targets.map((item) => item.platform)
-      supplementDiagnostics.value = eligibility.diagnostics ?? []
-      supplementEligibilityReady.value = true
-    } catch (reason) {
-      if (version === supplementPlatformVersion) supplementEligibilityError.value = errorMessage(reason)
-    } finally {
-      if (version === supplementPlatformVersion) loadingSupplementPlatforms.value = false
-    }
-  }
-
   /** 新建只读取真实渠道能力与完整启用词包，不加载导入来源目录。 */
   async function loadCreationOptions(): Promise<void> {
     error.value = null
-    resetSupplementEligibility()
     try {
       const [providerCapabilities, packs] = await Promise.all([
         fetchCollectionCapabilities(), fetchEnabledKeywordPacks(),
@@ -920,12 +871,6 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedCanonicalReplayCancellationPending,
     capabilities,
     keywordPackOptions,
-    supplementContentPlatforms,
-    supplementDiagnostics,
-    supplementTargets,
-    supplementEligibilityError,
-    supplementEligibilityReady,
-    resetSupplementEligibility,
     historicalDirectoryPath,
     historicalDirectoryEntries,
     historicalDirectoryNextCursor,
@@ -944,7 +889,6 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     loadingNext,
     uploading,
     creating,
-    loadingSupplementPlatforms,
     loadingKeywordPacks,
     loadingHistorical,
     creatingHistorical,
@@ -967,7 +911,6 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     closeDetail,
     upload,
     loadKeywordPacks,
-    loadSupplementPlatforms,
     loadCreationOptions,
     createRun,
     openHistoricalWorkspace,

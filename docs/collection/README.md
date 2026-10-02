@@ -366,6 +366,6 @@ Candidate
 
 ## 辅助补采的范围与内容身份门禁
 
-新建辅助补采按北京时间自然日范围选择全部来源的已入库 Content，并在创建事务中冻结每条 Content 的 Scope。日期与 Batch/Campaign 补采共用 `content_external_ids` 中当前 Runtime 已验证的 typed Provider lookup identity；TikHub 原生历史 Content 可按平台安全解释既有 `external_content_id`。`source_article_id`、`url_sha256:*` 和尚未完成身份收敛的分享链接不直接作为原生 ID 发送给付费 Provider；当前正式支持的小红书与抖音分享链接先按已有精确解析链确认身份。
+新建辅助补采按北京时间自然日范围选择全部来源的已入库 Content，并在创建事务中冻结每条 Content 的 Scope。统一日期/已选内容及旧 Batch/Campaign 补采共用 `content_external_ids` 中当前 Runtime 已验证的 typed Provider lookup identity；TikHub 原生历史 Content 可按平台安全解释既有 `external_content_id`。`source_article_id`、`url_sha256:*` 和尚未完成身份收敛的分享链接不直接作为原生 ID 发送给付费 Provider；当前正式支持的小红书与抖音分享链接先按已有精确解析链确认身份。
 
-创建 Run 时排除当前内容版本的最新 AI 结果明确 `irrelevant` 的 Content；执行期不重新按日期或相关性改变已冻结 Scope 资格。首次补采固定先 Detail，再按用户选项决定 Comments/SubComments。旧 Batch/Campaign 接口、快照及任务继续兼容，前端新建入口使用共享居中弹窗和日期组件。详细行为见 [Blueprint 08 §25](../blueprint/08_采集策略与平台能力.md#25-辅助补采的范围冻结与身份资格)。
+日期创建排除当前内容版本的最新 AI 结果明确 `irrelevant` 的 Content；声音广场明确勾选则完整保留选择。预览和创建共用数量/指纹，变化时返回 409 并要求重新确认；执行期不重新按日期或相关性改变已冻结 Scope 资格。首次补采固定先 Detail，再按用户选项决定 Comments/SubComments。旧 Batch/Campaign 接口、快照及任务继续兼容，采集运行中心的新建入口使用居中日期弹窗，声音广场用同一补采能力处理勾选内容；旧来源不再提供新建按钮。详细行为见 [Blueprint 08 §25](../blueprint/08_采集策略与平台能力.md#25-辅助补采的范围冻结与身份资格)。

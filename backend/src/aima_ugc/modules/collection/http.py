@@ -9,14 +9,14 @@ from aima_ugc.contracts.http import (
     CollectionBatchSupplementEligibilityResponse,
     CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
-    CollectionDateSupplementEligibilityResponse,
-    CollectionDateSupplementQuery,
     CollectionRunCreatedResponse,
     CollectionRunCreateRequest,
     CollectionRunResponse,
     CollectionRuntimeListQuery,
     CollectionRuntimeListResponse,
     CollectionRuntimeSummaryResponse,
+    CollectionSupplementPreviewRequest,
+    CollectionSupplementPreviewResponse,
 )
 
 
@@ -26,6 +26,10 @@ class CollectionResourceNotFound(LookupError):
 
 class CollectionConflict(RuntimeError):
     """当前配置或业务状态不能创建 Collection Run。"""
+
+
+class CollectionSupplementTargetsChanged(CollectionConflict):
+    """预览后目标或身份诊断变化，必须再次确认而不能扩大费用范围。"""
 
 
 class InvalidCollectionRuntimeCursor(ValueError):
@@ -41,10 +45,10 @@ class CollectionHttpService(Protocol):
 
     def get_capabilities(self) -> CollectionCapabilitiesResponse: ...
 
-    def get_date_supplement_eligibility(
+    def preview_supplement(
         self,
-        query: CollectionDateSupplementQuery,
-    ) -> CollectionDateSupplementEligibilityResponse: ...
+        request: CollectionSupplementPreviewRequest,
+    ) -> CollectionSupplementPreviewResponse: ...
 
     def get_batch_supplement_eligibility(
         self,

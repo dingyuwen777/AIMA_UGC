@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import type {
   CollectionRunCreateRequest,
+  CollectionRunCreatedResponse,
   CollectionRuntimeItemResponse,
 } from '../../../../generated/api/client'
 import AppShell from '../../../../app/layouts/AppShell.vue'
@@ -14,6 +15,7 @@ import { useTransientNotice } from '../../../../shared/ui/useTransientNotice'
 import {
   useImportBatchesStore,
 } from '../../store'
+import { useTaskCenterStore } from '../../../task-center'
 import CanonicalReplayDetailDrawer from './components/CanonicalReplayDetailDrawer.vue'
 import CollectionRunDetailDrawer from './components/CollectionRunDetailDrawer.vue'
 import CollectionRuntimeFilters from './components/CollectionRuntimeFilters.vue'
@@ -28,7 +30,7 @@ const route = useRoute()
 const router = useRouter()
 const dataImportOpen = ref(false)
 const supplementOpen = ref(false)
-watch(supplementOpen, (open) => { if (!open) store.resetSupplementEligibility() })
+const taskCenter = useTaskCenterStore()
 const { message: notice, show: showNotice } = useTransientNotice()
 const persistentNotice = ref<string | null>(null)
 const batchDetailOpen = computed({
@@ -102,6 +104,13 @@ async function createRun(request: CollectionRunCreateRequest): Promise<void> {
   if (!created) return
   supplementOpen.value = false
   showNotice('辅助补采任务已创建，将在后台执行。')
+}
+
+/** 补采创建后立即同步运行中心与任务中心，不等待下一轮定时刷新。 */
+async function supplementCreated(created: CollectionRunCreatedResponse): Promise<void> {
+  supplementOpen.value = false
+  showNotice(`补采任务已创建，共 ${created.supplement_selection?.target_count ?? 0} 条内容。`)
+  await Promise.all([store.refresh(true), taskCenter.refresh(true), store.openRunDetail(created.run_id)])
 }
 
 /** 根据统一运行记录的真实 record_type 进入对应详情 Owner。 */
@@ -296,16 +305,10 @@ async function viewRunResults(runId: string): Promise<void> {
       v-model="supplementOpen"
       :capabilities="store.capabilities"
       :keyword-packs="store.keywordPackOptions"
-      :supplement-content-platforms="store.supplementContentPlatforms"
-      :supplement-diagnostics="store.supplementDiagnostics"
-      :supplement-targets="store.supplementTargets"
-      :eligibility-ready="store.supplementEligibilityReady"
-      :eligibility-error="store.supplementEligibilityError"
       :error="store.error"
-      :loading-supplement-platforms="store.loadingSupplementPlatforms"
       :creating="store.creating"
-      @date-change="store.loadSupplementPlatforms"
       @submit="createRun"
+      @created="supplementCreated"
     />
     <div
       v-if="notice"

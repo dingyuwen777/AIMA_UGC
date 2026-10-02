@@ -33,6 +33,7 @@ import {
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
 import { createClientIdempotencyKey } from '../../shared/idempotency'
 import { useTaskCenterStore } from '../task-center/store'
+import { fetchSupplementRun } from '../collection-supplement/api'
 import {
   VoicePlazaApiError,
   fetchContentAnalysisCapabilities,
@@ -353,6 +354,42 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   let exportsRefreshInFlight = false
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollRevision = 0
+  const supplementRunIds = new Set<string>()
+  let supplementPolling = false
+  let lastSupplementPollAt = 0
+
+  /** 仅跟进本页创建的补采，复用 Collection Run 状态，不维护第二份任务列表。 */
+  function trackSupplement(runId: string): void {
+    supplementRunIds.add(runId)
+    lastSupplementPollAt = 0
+  }
+
+  /** 终态重新读取服务器窗口；详情与评论失败时保留跟进以便重试。 */
+  async function pollSupplements(): Promise<void> {
+    if (supplementPolling || !supplementRunIds.size || pageIsHidden()
+      || Date.now() - lastSupplementPollAt < 5000) return
+    const revision = pollRevision
+    supplementPolling = true
+    lastSupplementPollAt = Date.now()
+    try {
+      const terminal: string[] = []
+      for (const runId of supplementRunIds) {
+        const run = await fetchSupplementRun(runId)
+        if (revision !== pollRevision) return
+        if (['succeeded', 'partial_success', 'partial_failed', 'failed', 'cancelled'].includes(run.status)) terminal.push(runId)
+      }
+      if (!terminal.length || loading.value || loadingNext.value || !await refreshLoadedWindow()) return
+      if (revision !== pollRevision) return
+      const currentDetail = detailId.value
+      if (currentDetail) {
+        await openDetail(currentDetail)
+        if (revision !== pollRevision || detailError.value || commentsError.value) return
+      }
+      terminal.forEach((runId) => supplementRunIds.delete(runId))
+    } catch (reason) {
+      if (revision === pollRevision) error.value = errorMessage(reason)
+    } finally { supplementPolling = false }
+  }
   let lastExportPollAt = 0
   let lastFilterOptionsPollAt = 0
   let displayedAnalysisSignature = '[]'
@@ -1101,6 +1138,8 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
     await taskCenter.pollAnalysisRuns()
     if (revision !== pollRevision || pageIsHidden()) return
+    await pollSupplements()
+    if (revision !== pollRevision || pageIsHidden()) return
     const signature = analysisSignature.value
     if (signature !== displayedAnalysisSignature && !loading.value && !loadingNext.value &&
       !filterOptionsLoading.value && await refreshLoadedWindow()) {
@@ -1115,7 +1154,9 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   }
 
   function startPolling(intervalMilliseconds = 1000): void {
-    stopPolling()
+    // 重排定时器保留本页刚创建的补采；页面退出时才清空跟进集合。
+    pollRevision += 1
+    if (pollHandle !== undefined) clearInterval(pollHandle)
     lastExportPollAt = Date.now()
     lastFilterOptionsPollAt = Date.now()
     pollHandle = setInterval(() => void poll(), intervalMilliseconds)
@@ -1123,6 +1164,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
 
   function stopPolling(): void {
     pollRevision += 1
+    supplementRunIds.clear()
     if (pollHandle !== undefined) clearInterval(pollHandle)
     pollHandle = undefined
   }
@@ -1206,5 +1248,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     resetFilters,
     startPolling,
     stopPolling,
+    trackSupplement,
+    pollSupplements,
   }
 })

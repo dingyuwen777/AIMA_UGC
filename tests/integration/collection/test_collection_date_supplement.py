@@ -7,9 +7,9 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.collection_targets import PostgresCollectionTargetReader
 from aima_ugc.bootstrap.collection_http import PostgresCollectionHttpService
 from aima_ugc.contracts.http import (
-    CollectionDateSupplementQuery,
     CollectionRunCreateRequest,
     CollectionRuntimeListQuery,
+    CollectionSupplementPreviewRequest,
 )
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
 from aima_ugc.modules.collection.http import CollectionConflict
@@ -203,14 +203,17 @@ def test_date_selection_excludes_current_irrelevant_and_freezes_unavailable_sibl
             update(contents_table).where(contents_table.c.id.in_(ids)).values(published_at=FROM)
         )
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
-    query = CollectionDateSupplementQuery(published_from=FROM, published_to=TO)
-    eligibility = service.get_date_supplement_eligibility(query)
-    assert eligibility.targets[0].target_count == 1
-    assert eligibility.diagnostics[0].blocked_count == 1
+    targets = {"kind": "published_date_range", "published_from": FROM, "published_to": TO}
+    eligibility = service.preview_supplement(
+        CollectionSupplementPreviewRequest(targets=targets, platforms=("xiaohongshu",))
+    )
+    assert eligibility.target_count == 2
+    assert eligibility.platforms[0].blocked_count == 1
     request = CollectionRunCreateRequest(
-        mode="date_supplement",
-        published_from=FROM,
-        published_to=TO,
+        mode="content_supplement",
+        supplement_targets=targets,
+        expected_target_count=eligibility.target_count,
+        expected_target_fingerprint=eligibility.target_fingerprint,
         platforms=({"platform": "xiaohongshu", "provider_config_id": config_id},),
     )
     created = service.create_run(request, request_id="date-freeze")
@@ -246,7 +249,9 @@ def test_date_selection_excludes_current_irrelevant_and_freezes_unavailable_sibl
     assert run["import_batch_id"] is None and run["data_import_campaign_id"] is None
     assert run["config_snapshot"]["schema_version"] == "collection-run-config.v3"
     assert run["config_snapshot"]["supplement_selection"] == {
-        "type": "published_date_range",
+        "kind": "published_date_range",
+        "target_count": 2,
+        "target_fingerprint": eligibility.target_fingerprint,
         "published_from": FROM.isoformat(),
         "published_to": TO.isoformat(),
     }
@@ -256,18 +261,19 @@ def test_date_selection_excludes_current_irrelevant_and_freezes_unavailable_sibl
         # 相关性只限制创建；执行期读取明确不相关内容也不重新筛选。
         assert reader.get_content_target(content_id=ids[1]) is not None
     detail = service.get_run(created.run_id)
-    assert detail.mode == "date_supplement" and detail.published_from == FROM
+    assert detail.mode == "content_supplement" and detail.published_from == FROM
     listing = service.list_runtime_runs(
-        CollectionRuntimeListQuery(record_types=("tikhub_date_supplement",), limit=1)
+        CollectionRuntimeListQuery(record_types=("tikhub_content_supplement",), limit=1)
     )
     assert listing.items[0].display_name == "TikHub 日期补采 · 2026-09-01 ~ 2026-09-01"
     assert listing.items[0].collection_run_id == created.run_id
     with pytest.raises(CollectionConflict):
         service.create_run(
             CollectionRunCreateRequest(
-                mode="date_supplement",
-                published_from=FROM,
-                published_to=TO,
+                mode="content_supplement",
+                supplement_targets=targets,
+                expected_target_count=eligibility.target_count,
+                expected_target_fingerprint=eligibility.target_fingerprint,
                 platforms=({"platform": "douyin", "provider_config_id": config_id},),
             ),
             request_id="empty-platform",

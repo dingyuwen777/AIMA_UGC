@@ -72,8 +72,6 @@ from aima_ugc.contracts.http import (
     CollectionBatchSupplementEligibilityResponse,
     CollectionCampaignSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
-    CollectionDateSupplementEligibilityResponse,
-    CollectionDateSupplementQuery,
     CollectionPlanCreateRequest,
     CollectionPlanListQuery,
     CollectionPlanListResponse,
@@ -84,6 +82,8 @@ from aima_ugc.contracts.http import (
     CollectionRuntimeListQuery,
     CollectionRuntimeListResponse,
     CollectionRuntimeSummaryResponse,
+    CollectionSupplementPreviewRequest,
+    CollectionSupplementPreviewResponse,
     ContentAnalysisCreatedResponse,
     ContentAnalysisSubmitRequest,
     ContentAnalysisTaxonomyResponse,
@@ -163,6 +163,7 @@ from aima_ugc.modules.collection.http import (
     CollectionHttpService,
     CollectionResourceNotFound,
     CollectionRuntimeCursorUnavailable,
+    CollectionSupplementTargetsChanged,
     InvalidCollectionRuntimeCursor,
 )
 from aima_ugc.modules.collection.strategy_http import (
@@ -1036,13 +1037,17 @@ def create_app(
         )
 
     @application.exception_handler(CollectionConflict)
-    async def collection_conflict(request: Request, _: CollectionConflict) -> JSONResponse:
+    async def collection_conflict(request: Request, exc: CollectionConflict) -> JSONResponse:
+        """确认目标变化有独立错误码，前端只重新预览而不自动重提。"""
+        changed = isinstance(exc, CollectionSupplementTargetsChanged)
         return _error_response(
             status_code=409,
             request_id=_request_id(request),
             title="采集运行无法创建",
-            detail="当前配置或资源状态不允许创建采集运行。",
-            code="collection_conflict",
+            detail="目标范围已变化，请重新预览并确认。"
+            if changed
+            else "当前配置或资源状态不允许创建采集运行。",
+            code="collection_supplement_targets_changed" if changed else "collection_conflict",
         )
 
     @application.exception_handler(InvalidCollectionRuntimeCursor)
@@ -1234,17 +1239,22 @@ def create_app(
     ) -> CollectionCampaignSupplementEligibilityResponse:
         return current_collection_service().get_campaign_supplement_eligibility(campaign_id)
 
-    @application.get(
-        "/api/v1/collection-supplement-eligibility",
-        operation_id="getCollectionDateSupplementEligibility",
-        response_model=CollectionDateSupplementEligibilityResponse,
-        responses={422: {"model": HttpErrorResponse}, 500: {"model": HttpErrorResponse}},
+    @application.post(
+        "/api/v1/collection-supplements/preview",
+        operation_id="previewCollectionSupplement",
+        response_model=CollectionSupplementPreviewResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
         tags=["collection"],
     )
-    def get_collection_date_supplement_eligibility(
-        query: Annotated[CollectionDateSupplementQuery, Query()],
-    ) -> CollectionDateSupplementEligibilityResponse:
-        return current_collection_service().get_date_supplement_eligibility(query)
+    def preview_collection_supplement(
+        body: CollectionSupplementPreviewRequest,
+    ) -> CollectionSupplementPreviewResponse:
+        """统一预览不访问 TikHub，也不创建任务。"""
+        return current_collection_service().preview_supplement(body)
 
     @application.post(
         "/api/v1/collection-runs",

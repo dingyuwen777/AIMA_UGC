@@ -40,7 +40,7 @@ def test_stage8e_create_contract_is_strict_and_discriminates_three_modes() -> No
     assert set(schemas[mode_schema_name]["enum"]) == {
         "discovery",
         "batch_supplement",
-        "date_supplement",
+        "content_supplement",
     }
     assert "keywords" not in request_schema["properties"]
     keyword_pack_ids = request_schema["properties"]["keyword_pack_ids"]

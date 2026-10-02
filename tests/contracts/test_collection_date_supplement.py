@@ -10,19 +10,27 @@ from pydantic import ValidationError
 def date_request(**options: object) -> CollectionRunCreateRequest:
     return CollectionRunCreateRequest.model_validate(
         {
-            "mode": "date_supplement",
-            "published_from": "2026-09-01T00:00:00+08:00",
-            "published_to": "2026-09-01T23:59:59.999+08:00",
+            "mode": "content_supplement",
+            "expected_target_count": 1,
+            "expected_target_fingerprint": "a" * 64,
+            "supplement_targets": {
+                "kind": "published_date_range",
+                "published_from": "2026-09-01T00:00:00+08:00",
+                "published_to": "2026-09-01T23:59:59.999+08:00",
+                **{k: v for k, v in options.items() if k.startswith("published_")},
+            },
             "platforms": [{"platform": "douyin", "provider_config_id": str(uuid4())}],
-            **options,
+            **{k: v for k, v in options.items() if not k.startswith("published_")},
         }
     )
 
 
 def test_date_supplement_accepts_beijing_closed_range() -> None:
     request = date_request()
-    assert request.mode == "date_supplement"
-    assert request.published_from.isoformat() == "2026-09-01T00:00:00+08:00"
+    assert request.mode == "content_supplement"
+    assert request.supplement_targets is not None
+    assert request.supplement_targets.kind == "published_date_range"
+    assert request.supplement_targets.published_from.isoformat() == "2026-09-01T00:00:00+08:00"
 
 
 @pytest.mark.parametrize(

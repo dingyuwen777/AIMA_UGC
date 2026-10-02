@@ -1,4 +1,4 @@
-"""Stage 8E Import Batch → 当前 Content 补采目标只读查询。"""
+"""日期、显式 Content 与历史导入来源共用的补采身份查询。"""
 
 from __future__ import annotations
 
@@ -98,7 +98,31 @@ class PostgresCollectionTargetReader:
         rows = self._content_rows(
             published_from=published_from, published_to=published_to, platforms=platforms
         )
-        source_items = self._source_items(rows)
+        return self._selection(rows, exclude_irrelevant=True)
+
+    def list_selected_selection(
+        self,
+        *,
+        content_ids: tuple[UUID, ...],
+    ) -> tuple[
+        tuple[CollectionEnrichmentTarget, ...],
+        tuple[CollectionSupplementSourceItem, ...],
+        tuple[CollectionSupplementPlatformDiagnostic, ...],
+    ]:
+        """用户明确选中的内容优先于 AI 筛选，缺失身份也保留为 Scope。"""
+        return self._selection(
+            self._content_rows(content_ids=content_ids), exclude_irrelevant=False
+        )
+
+    def _selection(
+        self, rows: tuple[RowMapping, ...], *, exclude_irrelevant: bool
+    ) -> tuple[
+        tuple[CollectionEnrichmentTarget, ...],
+        tuple[CollectionSupplementSourceItem, ...],
+        tuple[CollectionSupplementPlatformDiagnostic, ...],
+    ]:
+        """候选来源只决定相关性策略，身份和诊断保持一个实现。"""
+        source_items = self._source_items(rows, exclude_irrelevant=exclude_irrelevant)
         source_ids = {item.content_id for item in source_items}
         relevant_rows = tuple(row for row in rows if row["id"] in source_ids)
         return (
@@ -122,6 +146,7 @@ class PostgresCollectionTargetReader:
         self,
         *,
         content_id: UUID | None = None,
+        content_ids: tuple[UUID, ...] | None = None,
         published_from: datetime | None = None,
         published_to: datetime | None = None,
         platforms: tuple[PlatformName, ...] | None = None,
@@ -130,6 +155,8 @@ class PostgresCollectionTargetReader:
         conditions = []
         if content_id is not None:
             conditions.append(content.c.id == content_id)
+        if content_ids is not None:
+            conditions.append(content.c.id == any_(literal(list(content_ids), type_=ARRAY(Uuid()))))
         if published_from is not None:
             conditions.append(content.c.published_at >= published_from)
         if published_to is not None:
@@ -446,14 +473,14 @@ class PostgresCollectionTargetReader:
         )
 
     def _source_items(
-        self, rows: tuple[RowMapping, ...]
+        self, rows: tuple[RowMapping, ...], *, exclude_irrelevant: bool = True
     ) -> tuple[CollectionSupplementSourceItem, ...]:
         """Scope 只排除当前明确不相关内容，身份缺口留给执行期分类。"""
         irrelevant = (
             self._latest_current_irrelevant_content_ids(
                 tuple(cast(UUID, row["id"]) for row in rows)
             )
-            if rows
+            if rows and exclude_irrelevant
             else set()
         )
         return tuple(

@@ -14,7 +14,7 @@
 
 Figma 负责布局、视觉层级、组件复用、用户可见状态和交互意图。HTTP 字段、Capability、Cursor、Job/Run/Campaign 状态、资格条件和错误语义继续以当前 Contract、generated client、Store/API 与服务端实现为准。
 
-2026-10-02 用户确认新建辅助补采使用与“导入数据”相同的居中弹窗，并按已入库内容发布时间选择补采范围。当前代码复用 `AimaModalContainer`、`AimaDateRange` 和北京时间边界；原补采节点 `3500:4257`、`3500:4408` 保留为此前设计参照，本轮未修改 Figma 文件。日期补采的当前能力和验收以用户确认决定、[Blueprint 08 §25](../blueprint/08_采集策略与平台能力.md#25-辅助补采的范围冻结与身份资格) 与实际 Contract 为准。
+2026-10-02 用户确认新建辅助补采使用与“导入数据”相同的居中弹窗，并按已入库内容发布时间选择补采范围。当前代码复用 `AimaModalContainer`、`AimaDateRange` 和北京时间边界；日期与声音广场勾选补采共用 `features/collection-supplement` 的预览、渠道选项与创建规则；原补采节点 `3500:4257`、`3500:4408` 保留为此前设计参照，本轮未修改 Figma 文件。日期补采的当前能力和验收以用户确认决定、[Blueprint 08 §25](../blueprint/08_采集策略与平台能力.md#25-辅助补采的范围冻结与身份资格) 与实际 Contract 为准。
 
 ## 2. 四层 Owner 链路
 
