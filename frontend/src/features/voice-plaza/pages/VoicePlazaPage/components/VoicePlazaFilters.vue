@@ -15,6 +15,7 @@ import AimaDateRange from '../../../../../shared/ui/AimaDateRange.vue'
 import AimaMultiSelect, { type AimaSelectOption } from '../../../../../shared/ui/AimaMultiSelect.vue'
 import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
 import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
+import { useVehicleCatalogStore } from '../../../../../shared/domain/vehicleCatalog'
 import {
   analysisStatusLabel,
   platformLabel,
@@ -25,10 +26,13 @@ import type { LegacyLabelCompatibility } from '../../../store'
 const props = withDefaults(defineProps<{
   search: string
   platform: '' | PlatformName
+  platforms?: PlatformName[]
   analysisStatus: '' | ContentAnalysisStatus
   relevance: '' | ContentRelevance
   voiceType: string
   sentiment: string
+  sentiments?: string[]
+  voiceTypes?: string[]
   primaryLabels?: string[]
   secondaryLabels?: string[]
   publishedFrom: string
@@ -47,15 +51,21 @@ const props = withDefaults(defineProps<{
   primaryLabels: () => [],
   secondaryLabels: () => [],
   legacyLabelCompatibility: null,
+  platforms: () => [],
+  sentiments: () => [],
+  voiceTypes: () => [],
 })
 
 const emit = defineEmits<{
   'update:search': [value: string]
   'update:platform': [value: '' | PlatformName]
+  'update:platforms': [value: PlatformName[]]
   'update:analysisStatus': [value: '' | ContentAnalysisStatus]
   'update:relevance': [value: '' | ContentRelevance]
   'update:voiceType': [value: string]
   'update:sentiment': [value: string]
+  'update:sentiments': [value: string[]]
+  'update:voiceTypes': [value: string[]]
   'update:primaryLabels': [value: string[]]
   'update:secondaryLabels': [value: string[]]
   'update:publishedFrom': [value: string]
@@ -68,7 +78,18 @@ const emit = defineEmits<{
   reset: []
 }>()
 
-const labelOptionsDisabled = computed(() => props.filterOptionsLoading || !props.filterOptions)
+const labelOptionsDisabled = computed(() => !props.filterOptions)
+const catalog = useVehicleCatalogStore()
+
+/** 品牌确认是用户动作；目录后台变化不会改写正在编辑的草稿。 */
+function updateBrands(ids: string[]): void {
+  emit('update:brandIds', ids)
+  if (!ids.length) return
+  emit('update:vehicleModelIds', props.vehicleModelIds.filter((id) => {
+    const vehicle = catalog.knownVehicles[id]
+    return !vehicle || (vehicle.brand_id != null && ids.includes(vehicle.brand_id))
+  }))
+}
 const secondaryOptionsDisabled = computed(
   () => labelOptionsDisabled.value || props.primaryLabels.length === 0,
 )
@@ -98,7 +119,7 @@ const secondaryLabelOptions = computed(() => {
   return [...result.values()]
 })
 const primaryLabelSummary = computed(() => {
-  if (props.filterOptionsLoading) return '筛选项加载中'
+  if (props.filterOptionsLoading && !props.filterOptions) return '筛选项加载中'
   if (!props.filterOptions) return '筛选项暂不可用'
   return props.primaryLabels.length ? `已选 ${props.primaryLabels.length} 个一级标签` : '全部一级标签'
 })
@@ -210,9 +231,13 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
       ></label>
       <label class="field field--platform"><span>平台</span><select
         aria-label="平台"
-        :value="platform"
-        @change="emit('update:platform', value($event) as '' | PlatformName)"
-      ><option value="">全部平台</option><option
+        :value="platforms.length ? '__multiple' : platform"
+        @change="emit('update:platforms', []); emit('update:platform', value($event) as '' | PlatformName)"
+      ><option
+        v-if="platforms.length"
+        value="__multiple"
+        disabled
+      >{{ platforms.map(platformLabel).join('、') }}</option><option value="">全部平台</option><option
         v-for="item in platformOptions"
         :key="item"
         :value="item"
@@ -228,10 +253,14 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
       >{{ relevanceLabel(item) }}</option></select></label>
       <label class="field field--sentiment"><span>情感</span><select
         aria-label="情感"
-        :value="sentiment"
-        :disabled="filterOptionsLoading || !filterOptions"
-        @change="emit('update:sentiment', value($event))"
-      ><option value="">{{ filterOptionsLoading ? '筛选项加载中' : filterOptions ? '全部情感' : '筛选项暂不可用' }}</option><option
+        :value="sentiments.length ? '__multiple' : sentiment"
+        :disabled="!filterOptions"
+        @change="emit('update:sentiments', []); emit('update:sentiment', value($event))"
+      ><option
+        v-if="sentiments.length"
+        value="__multiple"
+        disabled
+      >{{ sentiments.join('、') }}</option><option value="">{{ filterOptions ? '全部情感' : filterOptionsLoading ? '筛选项加载中' : '筛选项暂不可用' }}</option><option
         v-for="item in filterOptions?.sentiments ?? []"
         :key="item.value"
         :value="item.value"
@@ -264,10 +293,11 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
         :model-value="brandIds"
         compact
         label="品牌"
-        @update:model-value="emit('update:brandIds', $event)"
+        @update:model-value="updateBrands"
       />
       <VehicleMultiSelect
         :model-value="vehicleModelIds"
+        :brand-ids="brandIds"
         compact
         label="车型"
         @update:model-value="emit('update:vehicleModelIds', $event)"
@@ -291,10 +321,14 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
       </div>
       <label class="field field--voice-type"><span>发声类型</span><select
         aria-label="发声类型"
-        :value="voiceType"
-        :disabled="filterOptionsLoading || !filterOptions"
-        @change="emit('update:voiceType', value($event))"
-      ><option value="">{{ filterOptionsLoading ? '筛选项加载中' : filterOptions ? '全部发声类型' : '筛选项暂不可用' }}</option><option
+        :value="voiceTypes.length ? '__multiple' : voiceType"
+        :disabled="!filterOptions"
+        @change="emit('update:voiceTypes', []); emit('update:voiceType', value($event))"
+      ><option
+        v-if="voiceTypes.length"
+        value="__multiple"
+        disabled
+      >{{ voiceTypes.join('、') }}</option><option value="">{{ filterOptions ? '全部发声类型' : filterOptionsLoading ? '筛选项加载中' : '筛选项暂不可用' }}</option><option
         v-for="item in filterOptions?.voice_types ?? []"
         :key="item.value"
         :value="item.value"
@@ -336,7 +370,7 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
 
     <footer class="filter-footer">
       <div class="filter-summary">
-        <span>当前条件：</span><span class="filter-chip filter-chip--primary">{{ platform ? platformLabel(platform) : '全部平台' }}</span><span class="filter-chip">{{ brandIds.length ? `已选 ${brandIds.length} 个品牌` : '全部品牌' }}</span><span class="filter-chip">{{ vehicleModelIds.length ? `已选 ${vehicleModelIds.length} 款车型` : '全部车型' }}</span><span class="filter-chip">{{ competitionLabel }}</span><span class="filter-chip">{{ primaryLabels.length ? `已选 ${primaryLabels.length} 个一级标签` : '全部一级标签' }}</span><span class="filter-chip">{{ secondaryLabels.length ? `已选 ${secondaryLabels.length} 个二级标签` : '全部二级标签' }}</span><button
+        <span>当前条件：</span><span class="filter-chip filter-chip--primary">{{ platforms.length ? platforms.map(platformLabel).join('、') : platform ? platformLabel(platform) : '全部平台' }}</span><span class="filter-chip">{{ sentiments.length ? sentiments.join('、') : sentiment || '全部情感' }}</span><span class="filter-chip">{{ voiceTypes.length ? voiceTypes.join('、') : voiceType || '全部发声类型' }}</span><span class="filter-chip">{{ brandIds.length ? `已选 ${brandIds.length} 个品牌` : '全部品牌' }}</span><span class="filter-chip">{{ vehicleModelIds.length ? `已选 ${vehicleModelIds.length} 款车型` : '全部车型' }}</span><span class="filter-chip">{{ competitionLabel }}</span><span class="filter-chip">{{ primaryLabels.length ? `已选 ${primaryLabels.length} 个一级标签` : '全部一级标签' }}</span><span class="filter-chip">{{ secondaryLabels.length ? `已选 ${secondaryLabels.length} 个二级标签` : '全部二级标签' }}</span><button
           v-if="sourceIdentifier"
           class="filter-chip"
           type="button"

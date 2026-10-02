@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import type {
   ContentLabelPairResponse,
   ContentListItemResponse,
@@ -35,6 +36,20 @@ const emit = defineEmits<{
   review: [contentId: string, decision: RelevanceReviewDecision]
   sort: [field: 'published_at' | 'follower_count']
 }>()
+const listElement = ref<HTMLElement | null>(null)
+const placeholderHeight = ref(0)
+const placeholderBodyHeight = ref(0)
+
+/** 新查询清空旧内容，但保留正在离开的窗口几何，避免占位期间推移页面。 */
+watch(() => props.items, (items, previous) => {
+  if (!items.length && previous.length) {
+    placeholderHeight.value = listElement.value?.offsetHeight ?? 0
+    placeholderBodyHeight.value = Math.max(0, placeholderHeight.value - (listElement.value?.querySelector('.table-head')?.clientHeight ?? 40))
+  }
+}, { flush: 'pre' })
+watch(() => props.loading, (loading) => {
+  if (!loading && props.items.length) placeholderHeight.value = 0
+})
 
 /** 将情感映射为表格中的稳定语义样式，不改变后端机器值。 */
 function sentimentClass(sentiment?: string | null): string {
@@ -168,7 +183,10 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
 
 <template>
   <section
-    class="content-list"
+    ref="listElement"
+    class="content-list aima-scroll-table"
+    :class="{ 'content-list--placeholder': !items.length && placeholderHeight > 0 }"
+    :style="!items.length && placeholderHeight ? { height: `${placeholderHeight}px`, '--placeholder-body-height': `${placeholderBodyHeight}px` } : undefined"
     aria-label="声音广场内容列表"
   >
     <div
@@ -393,7 +411,8 @@ time, .date-heading { text-align: right; }
 [aria-sort=ascending] .sort-button, [aria-sort=descending] .sort-button { color: var(--aima-primary); }
 .content-title:focus-visible, .detail-button:focus-visible, .review-button:focus-visible, .sort-button:focus-visible { outline: 2px solid var(--aima-primary); outline-offset: 3px; }
 .table-state { display: flex; min-height: 376px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--aima-text-muted); text-align: center; }
-.table-state--error { min-height: 306px; }
+.table-state--error { min-height: 376px; }
+.content-list--placeholder .table-state { height: var(--placeholder-body-height); min-height: 0; overflow: auto; }
 .table-state strong { color: var(--aima-text); font-size: 16px; }
 .table-state span { font-size: 12px; }
 .table-state small { color: var(--aima-text-disabled); font-size: 10px; }

@@ -221,7 +221,6 @@
   .app-shell .runtime-tabs {
     overflow-x: auto;
     overscroll-behavior-inline: contain;
-    scrollbar-width: thin;
   }
 
   .app-shell .admin-page .tabs button,

@@ -1,4 +1,5 @@
 import { expect, test } from './fixture'
+import { captureScrollbarEvidence } from './scrollbarEvidence'
 
 import {
   stubVoicePlazaTaxonomy,
@@ -862,6 +863,127 @@ test('标签多选使用不改变布局且可按常见方式关闭的互斥浮�
   await expect(primaryTrigger).toBeFocused()
 })
 
+test('后台筛选目录延迟和失败保留草稿、打开的面板和几何', async ({ page }) => {
+  await page.clock.install()
+  let reads = 0
+  let release!: () => void
+  const delayed = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/v1/content-filter-options', async (route) => {
+    reads += 1
+    if (reads === 1) return route.fulfill({ json: { ...voicePlazaFilterOptionsFixture, catalog_status: 'building' } })
+    await delayed
+    return route.fulfill({ status: 503, json: { status: 503, detail: '目录暂时不可用', request_id: 'warm-options', errors: [] } })
+  })
+  await page.goto('/voice-plaza')
+  const filters = page.locator('section.filters')
+  await expect(filters.getByLabel('情感', { exact: true })).toBeEnabled()
+  await filters.getByRole('button', { name: /^一级标签/ }).click()
+  const dialog = page.getByRole('dialog', { name: '选择一级标签', exact: true })
+  await dialog.getByRole('checkbox', { name: '产品体验', exact: true }).check()
+  const before = await filters.boundingBox()
+  const tableBefore = await page.locator('.content-list').boundingBox()
+  await page.clock.fastForward(15_000)
+  await expect.poll(() => reads).toBe(2)
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('checkbox', { name: '产品体验', exact: true })).toBeChecked()
+  await expect(filters.getByLabel('情感', { exact: true })).toBeEnabled()
+  expect(await filters.boundingBox()).toEqual(before)
+  expect(await page.locator('.content-list').boundingBox()).toEqual(tableBefore)
+  release()
+  await expect(page.getByText('部分动态筛选项暂不可用', { exact: true })).toBeVisible()
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('checkbox', { name: '产品体验', exact: true })).toBeChecked()
+  await expect(filters.getByLabel('情感', { exact: true })).toBeEnabled()
+  expect(await filters.boundingBox()).toEqual(before)
+  expect(await page.locator('.content-list').boundingBox()).toEqual(tableBefore)
+})
+
+test('详情后台失败保持人工纠正草稿、正文几何和滚动位置', async ({ page }) => {
+  await page.clock.install()
+  let changed = false
+  await page.route('**/api/v1/analysis/content-runs', (route) => route.fulfill({ json: { items: [{
+    ...analysisRun, stats: { ...analysisRun.stats, succeeded: changed ? 5 : 4 },
+  }] } }))
+  let detailReads = 0
+  let release!: () => void
+  const delayed = new Promise<void>((resolve) => { release = resolve })
+  await page.route(`**/api/v1/contents/${contentId}?*`, async (route) => {
+    detailReads += 1
+    if (detailReads === 1) return route.fallback()
+    await delayed
+    return route.fulfill({ status: 503, json: { status: 503, detail: '详情暂时不可用', request_id: 'detail-refresh', errors: [] } })
+  })
+  await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const detail = page.getByRole('dialog', { name: '内容详情' })
+  await expect(detail.locator('.drawer-body')).toBeVisible()
+  await detail.getByRole('button', { name: '人工纠正', exact: true }).click()
+  await detail.getByRole('combobox', { name: /^情感/ }).selectOption('正面')
+  const scroll = detail.locator('.aima-dialog-body')
+  await scroll.evaluate((element) => { element.scrollTop = 200 })
+  const before = await detail.locator('.drawer-body').boundingBox()
+  const scrollBefore = await scroll.evaluate((element) => element.scrollTop)
+  changed = true
+  await page.clock.fastForward(1_000)
+  await expect.poll(() => detailReads).toBe(2)
+  expect(await detail.locator('.drawer-body').boundingBox()).toEqual(before)
+  release()
+  await expect(detail.getByText('更新失败，保留上次详情。', { exact: false })).toBeVisible()
+  expect(await detail.locator('.drawer-body').boundingBox()).toEqual(before)
+  expect(await scroll.evaluate((element) => element.scrollTop)).toBe(scrollBefore)
+  await expect(detail.getByRole('combobox', { name: /^情感/ })).toHaveValue('正面')
+})
+
+test('主动查询清除旧结果，延迟和失败保持列表几何', async ({ page }) => {
+  let release!: () => void
+  const delayed = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/v1/contents?*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('search') !== '新查询') return route.fallback()
+    await delayed
+    return route.fulfill({ status: 503, json: { status: 503, detail: '新查询暂时不可用', request_id: 'query-change', errors: [] } })
+  })
+  await page.goto('/voice-plaza')
+  const table = page.locator('.content-list')
+  await expect(table.getByText(item.title)).toBeVisible()
+  const before = await table.boundingBox()
+  await page.getByLabel('搜索内容', { exact: true }).fill('新查询')
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await expect(table.getByText(item.title)).toHaveCount(0)
+  expect(await table.boundingBox()).toEqual(before)
+  release()
+  await expect(table.getByText('暂时无法加载声音记录', { exact: true })).toBeVisible()
+  expect(await table.boundingBox()).toEqual(before)
+})
+
+test('声音广场详情浮层滚动条三状态保持几何', async ({ page }, testInfo) => {
+  await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const body = page.getByRole('dialog', { name: '内容详情' }).locator('.aima-dialog-body')
+  await expect(body.locator('.drawer-body')).toBeVisible()
+  await captureScrollbarEvidence(page, body, testInfo, 'voice-detail')
+})
+
+test('完整多选深链替换旧会话，并在筛选摘要显示真实条件', async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
+    filters: { search: '旧搜索', sourceIdentifier: '旧来源', platform: 'weibo', analysisStatus: 'pending', relevance: 'irrelevant' },
+  })))
+  const request = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/contents')
+  const query = new URLSearchParams({ published_from: '2026-09-25', published_to: '2026-10-01', brand_ids: brandId,
+    vehicle_model_ids: vehicleId, primary_labels: '产品体验', secondary_labels: '续航表现', content_id: contentId })
+  for (const platform of ['xiaohongshu', 'douyin']) query.append('platforms', platform)
+  for (const sentiment of ['正面', '负面']) query.append('sentiments', sentiment)
+  for (const voiceType of ['真实用户发声', '媒体机构发声']) query.append('voice_types', voiceType)
+  await page.goto(`/voice-plaza?${query.toString()}`)
+  const params = new URL((await request).url()).searchParams
+  expect(params.getAll('platforms')).toEqual(['xiaohongshu', 'douyin'])
+  expect(params.getAll('sentiments')).toEqual(['正面', '负面'])
+  expect(params.getAll('voice_types')).toEqual(['真实用户发声', '媒体机构发声'])
+  for (const key of ['search', 'source_identifier', 'analysis_status', 'relevance', 'platform']) expect(params.get(key)).toBeNull()
+  await expect(page.locator('.filter-summary')).toContainText('小红书、抖音')
+  await expect(page.locator('.filter-summary')).toContainText('正面、负面')
+  await expect(page.getByRole('dialog', { name: '内容详情' })).toBeVisible()
+})
+
 test('一级标签多选约束二级候选，父级取消后失效二级不会进入查询', async ({ page }) => {
   await page.goto('/voice-plaza')
   const filters = page.locator('section.filters')
@@ -1075,7 +1197,7 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   await expect(page.getByText('AI 分析 · 处理中')).toHaveCount(0)
   expect(cancelRequested).toBe(true)
 
-  await page.getByRole('button', { name: /任务中心/ }).click()
+  await page.getByRole('button', { name: '任务中心', exact: true }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
   await expect(taskCenter).toContainText('AI 分析任务 1')

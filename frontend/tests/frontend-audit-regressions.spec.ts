@@ -297,7 +297,7 @@ describe('frontend full-stack audit regressions', () => {
     const source = await readFile(new URL('../src/shared/VehicleMultiSelect.vue', import.meta.url), 'utf8')
 
     expect(source).toContain('重试')
-    expect(source).toContain('@click="load"')
+    expect(source).toContain('@click="load(true)"')
   })
 
   it('prevents an empty vehicle form from becoming a silent save click', async () => {

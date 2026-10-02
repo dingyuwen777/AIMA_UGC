@@ -483,7 +483,7 @@ def _fullstack_mapping_for_path(path: str) -> tuple[tuple[str, ...], bool]:
     if any(marker in path for marker in content_markers):
         return ("manual-relevance-review.spec.ts",), True
     if "workbench" in path:
-        return (), True
+        return ("analysis-streaming.spec.ts",), True
     if path.startswith(
         (
             "backend/src/aima_ugc/platform/",

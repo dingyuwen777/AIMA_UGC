@@ -40,6 +40,12 @@
   --aima-color-primary-active: #c2004d;
   --aima-color-accent-purple: #7c3aed;
   --aima-color-text-inverse: #ffffff;
+  /* 全站滚动区域共用弱存在感颜色；交互增强颜色，不改变占用宽度。 */
+  --aima-scrollbar-size: 4px;
+  --aima-scrollbar-thumb: color-mix(in srgb, var(--aima-color-primary) 12%, var(--aima-color-border-strong));
+  --aima-scrollbar-thumb-hover: color-mix(in srgb, var(--aima-color-primary) 24%, var(--aima-color-border-strong));
+  --aima-scrollbar-thumb-active: color-mix(in srgb, var(--aima-color-primary) 38%, var(--aima-color-border-strong));
+  --aima-scrollbar-track: transparent;
 
   /* Figma `Spacing Tokens` collection. */
   --aima-spacing-xs: 4px;

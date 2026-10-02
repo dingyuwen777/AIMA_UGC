@@ -2,13 +2,11 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import type {
-  BrandResponse,
   ContentAnalysisTaxonomyResponse,
   GetWorkbenchMindParams,
   GetWorkbenchStreamParams,
   GetWorkbenchTrendParams,
   PlatformName,
-  VehicleModelResponse,
   WorkbenchLayoutModule,
   WorkbenchLayoutResponse,
   WorkbenchMindResponse,
@@ -17,6 +15,7 @@ import type {
   WorkbenchTrendResponse,
 } from '../../generated/api/client'
 import { AimaApiError, apiErrorMessage } from '../../shared/api/http'
+import { useVehicleCatalogStore } from '../../shared/domain/vehicleCatalog'
 import { useTransientNotice } from '../../shared/ui/useTransientNotice'
 import {
   fetchActiveBrands,
@@ -64,11 +63,11 @@ function shiftDate(value: string, days: number): string {
   return date.toISOString().slice(0, 10)
 }
 
-/** 生成工作台默认近 30 个北京时间自然日。 */
+/** 昨日结束的七个完整北京时间自然日，排除尚未结束的今日。 */
 function defaultFilters(): WorkbenchFilters {
-  const dateTo = beijingToday()
+  const dateTo = shiftDate(beijingToday(), -1)
   return {
-    dateFrom: shiftDate(dateTo, -29),
+    dateFrom: shiftDate(dateTo, -6),
     dateTo,
     platforms: [],
     brandIds: [],
@@ -132,8 +131,9 @@ function sortedModules(modules: readonly WorkbenchLayoutModule[]): WorkbenchLayo
 export const useWorkbenchStore = defineStore('workbench', () => {
   const filters = ref<WorkbenchFilters>(defaultFilters())
   const taxonomy = ref<ContentAnalysisTaxonomyResponse | null>(null)
-  const brands = ref<BrandResponse[]>([])
-  const vehicleModels = ref<VehicleModelResponse[]>([])
+  const catalog = useVehicleCatalogStore()
+  const brands = computed(() => catalog.activeBrands)
+  const vehicleModels = computed(() => catalog.activeVehicles)
   const stream = ref<WorkbenchStreamResponse | null>(null)
   const mind = ref<WorkbenchMindResponse | null>(null)
   const trend = ref<WorkbenchTrendResponse | null>(null)
@@ -160,6 +160,13 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   const mindMetric = ref<WorkbenchMindMetric>('share')
   let dataRevision = 0
   let referenceRevision = 0
+  let initialized = false
+  const lastAutoRefreshAt = ref<number | null>(null)
+  const brandLabel = computed(() => {
+    if (!filters.value.brandIds.length) return '全部品牌'
+    if (filters.value.brandIds.length > 1) return '多品牌'
+    return catalog.knownBrands[filters.value.brandIds[0]!]?.display_name ?? '所选品牌'
+  })
   const moduleRequestRevision: Record<WorkbenchModuleKey, number> = {
     stream: 0,
     mind: 0,
@@ -226,10 +233,8 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       taxonomy.value = taxonomyResult.value
       filters.value = sanitizeTaxonomyFilters(filters.value, taxonomyResult.value)
     } else errors.push(apiErrorMessage(taxonomyResult.reason))
-    if (brandResult.status === 'fulfilled') brands.value = brandResult.value
-    else errors.push(apiErrorMessage(brandResult.reason))
-    if (vehicleResult.status === 'fulfilled') vehicleModels.value = vehicleResult.value
-    else errors.push(apiErrorMessage(vehicleResult.reason))
+    if (brandResult.status === 'rejected') errors.push(apiErrorMessage(brandResult.reason))
+    if (vehicleResult.status === 'rejected') errors.push(apiErrorMessage(vehicleResult.reason))
     if (layoutResult.status === 'fulfilled') {
       layout.value = layoutResult.value
       if (!editing.value) draftModules.value = cloneModules(layoutResult.value.modules)
@@ -281,6 +286,15 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   }
 
   /** 三个接口并发请求、各自完成即更新；慢聚合不能拖住已返回的声音流。 */
+  function retainSnapshot<T extends WorkbenchMindResponse | WorkbenchTrendResponse>(previous: T | null, next: T): T {
+    if (previous?.computed_at && !next.computed_at
+      && previous.analysis_scheme_version_id === next.analysis_scheme_version_id
+      && previous.taxonomy_sha256 === next.taxonomy_sha256) {
+      return { ...previous, snapshot_status: next.snapshot_status }
+    }
+    return previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next
+  }
+
   async function refreshData(silent = false, retried = false): Promise<void> {
     const revision = ++dataRevision
     const requestRevisions: Record<WorkbenchModuleKey, number> = {
@@ -306,9 +320,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
         if (revision !== dataRevision || requestRevisions[key] !== moduleRequestRevision[key]) return
         const identity = responseIdentity(response)
         seenIdentities.add(identity)
-        if (key === 'stream') stream.value = response as WorkbenchStreamResponse
-        else if (key === 'mind') mind.value = response as WorkbenchMindResponse
-        else trend.value = response as WorkbenchTrendResponse
+        if (key === 'stream') {
+          if (JSON.stringify(stream.value) !== JSON.stringify(response)) stream.value = response as WorkbenchStreamResponse
+        } else if (key === 'mind') mind.value = retainSnapshot(mind.value, response as WorkbenchMindResponse)
+        else trend.value = retainSnapshot(trend.value, response as WorkbenchTrendResponse)
         // 旧快照若属于另一 Scheme，立即移除，避免显示混合口径。
         if (stream.value && responseIdentity(stream.value) !== identity) stream.value = null
         if (mind.value && responseIdentity(mind.value) !== identity) mind.value = null
@@ -386,14 +401,16 @@ export const useWorkbenchStore = defineStore('workbench', () => {
         await refreshData(true)
         return
       }
-      if (key === 'stream') stream.value = response as WorkbenchStreamResponse
+      if (key === 'stream') {
+        if (JSON.stringify(stream.value) !== JSON.stringify(response)) stream.value = response as WorkbenchStreamResponse
+      }
       else if (key === 'mind') {
-        mind.value = response as WorkbenchMindResponse
+        mind.value = retainSnapshot(mind.value, response as WorkbenchMindResponse)
         const dimensions = mind.value.dimensions
         if (!dimensions.some((item) => item.primary_label === selectedMind.value)) {
           selectedMind.value = dimensions[0]?.primary_label ?? null
         }
-      } else trend.value = response as WorkbenchTrendResponse
+      } else trend.value = retainSnapshot(trend.value, response as WorkbenchTrendResponse)
       await alignTaxonomyWithData()
     } catch (error) {
       if (dataGeneration === dataRevision && requestRevision === moduleRequestRevision[key]) {
@@ -464,16 +481,31 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   /** 周期补读只刷新两个聚合模块，避免每 15 秒把全量声音流遍历重置到第一页。 */
   async function refreshAggregates(): Promise<void> {
     await Promise.all([refreshModule('mind', true), refreshModule('trend', true)])
+    lastAutoRefreshAt.value = Date.now()
   }
 
-  /** 页面首次进入时并行准备参考数据和模块数据，首屏不等待非关键目录串行加载。 */
+  /** 默认品牌由当前目录解析，不能固定 UUID，也不能先发全品牌查询。 */
+  function initialFilters(): WorkbenchFilters {
+    const brand = brands.value.find((item) => item.code.toUpperCase() === 'AIMA')
+      ?? brands.value.find((item) => item.display_name === '爱玛')
+      ?? brands.value.find((item) => item.aliases?.some((alias) => alias.text === '爱玛'))
+    return { ...defaultFilters(), brandIds: brand ? [brand.id] : [] }
+  }
+
+  /** 先恢复参考身份，再按同一最终查询并行加载三个模块；再次进入保留用户筛选。 */
   async function initialize(): Promise<void> {
-    await Promise.all([refreshReferenceData(), refreshData()])
+    await refreshReferenceData()
+    if (!initialized) {
+      filters.value = initialFilters()
+      initialized = true
+    }
+    await refreshData()
+    lastAutoRefreshAt.value = Date.now()
   }
 
-  /** 恢复近 30 个北京时间自然日和全维度未筛选状态。 */
+  /** 重置应用与首次一致的爱玛七日条件，并失效另一查询的结果。 */
   function resetFilters(): void {
-    filters.value = defaultFilters()
+    setFilters(initialFilters())
   }
 
   /** 替换筛选快照；页面用 debounce 合并连续勾选后再触发查询。 */
@@ -486,7 +518,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       dateTo: dates[1] ?? dates[0] ?? defaultDates.dateTo,
       platforms: [...value.platforms],
       brandIds: [...value.brandIds],
-      vehicleModelIds: [...value.vehicleModelIds],
+      vehicleModelIds: value.vehicleModelIds.filter((id) => {
+        if (!value.brandIds.length) return true
+        return vehicleModels.value.some((item) => item.id === id && item.brand_id && value.brandIds.includes(item.brand_id))
+      }),
       voiceTypes: [...value.voiceTypes],
       sentiments: [...value.sentiments],
       primaryLabels: [...value.primaryLabels],
@@ -537,6 +572,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   /** 编辑态显示/隐藏模块，只修改布局草稿。 */
   function setModuleVisible(moduleId: WorkbenchModuleId, visible: boolean): void {
     if (!editing.value) return
+    if (moduleId === 'sound-stream') return
     draftModules.value = draftModules.value.map((item) =>
       item.module_id === moduleId ? { ...item, visible } : item,
     )
@@ -549,7 +585,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     rowUnits: number,
   ): void {
     if (!editing.value) return
-    const normalizedSpan = Math.max(4, Math.min(12, Math.round(columnSpan)))
+    const normalizedSpan = Math.max(6, Math.min(12, Math.round(columnSpan)))
     const normalizedRows = Math.max(48, Math.min(160, Math.round(rowUnits)))
     draftModules.value = draftModules.value.map((item) =>
       item.module_id === moduleId
@@ -619,6 +655,8 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     hiddenModules,
     latestAsOf,
     activeSchemeVersionId,
+    brandLabel,
+    lastAutoRefreshAt,
     initialize,
     refreshReferenceData,
     refreshTaxonomy,

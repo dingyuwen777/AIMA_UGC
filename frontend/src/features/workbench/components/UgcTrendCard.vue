@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import * as echarts from 'echarts'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import type { WorkbenchTrendResponse } from '../../../generated/api/client'
+import WorkbenchDateLabel from './WorkbenchDateLabel.vue'
 
 const props = defineProps<{
   trend: WorkbenchTrendResponse | null
   loading: boolean
   error: string | null
+  dateFrom: string
+  dateTo: string
 }>()
 
 const emit = defineEmits<{
@@ -16,8 +19,7 @@ const emit = defineEmits<{
 }>()
 
 const chartElement = ref<HTMLDivElement | null>(null)
-const preparing = computed(() => props.trend?.snapshot_status === 'preparing'
-  || (props.trend?.snapshot_status === 'failed' && !props.trend.computed_at))
+const preparing = computed(() => props.trend?.snapshot_status === 'preparing')
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
 
@@ -54,10 +56,10 @@ function sentimentColor(index: number): string {
 /** 把后端 daily 序列绘成 Figma 对应的平滑面积折线，数据本身不在前端重算。 */
 function renderChart(): void {
   if (!chartElement.value) return
-  if (!chart) chart = echarts.init(chartElement.value)
+  if (!chart) chart = echarts.init(chartElement.value, undefined, { renderer: 'svg' })
   const daily = props.trend?.daily ?? []
   chart.setOption({
-    animationDuration: 280,
+    animation: false,
     grid: { left: 46, right: 14, top: 24, bottom: 28 },
     tooltip: {
       trigger: 'axis',
@@ -113,16 +115,20 @@ function renderChart(): void {
 /** 图表容器 resize 后让 ECharts 重新读取真实卡片尺寸。 */
 function resizeChart(): void {
   chart?.resize()
+  renderChart()
 }
 
-onMounted(async () => {
+watch(chartElement, async (element) => {
+  observer?.disconnect()
+  chart?.dispose()
+  chart = null
+  if (!element) return
   await nextTick()
+  if (chartElement.value !== element) return
   renderChart()
-  if (chartElement.value) {
-    observer = new ResizeObserver(resizeChart)
-    observer.observe(chartElement.value)
-  }
-})
+  observer = new ResizeObserver(resizeChart)
+  observer.observe(element)
+}, { flush: 'post' })
 
 watch(() => props.trend?.daily, async () => {
   await nextTick()
@@ -141,7 +147,7 @@ onBeforeUnmount(() => {
     class="trend-card"
     :aria-busy="loading"
   >
-    <header>
+    <header class="card-header">
       <div class="title">
         <span>↗</span>
         <div>
@@ -149,26 +155,28 @@ onBeforeUnmount(() => {
           <p>关注每日声量起伏与当前生效分析规则下的情感变化</p>
         </div>
       </div>
-      <small>{{ trend ? `${trend.date_from} — ${trend.date_to}` : '近30天' }}</small>
+      <WorkbenchDateLabel
+        :from="dateFrom"
+        :to="dateTo"
+      />
+      <div
+        class="card-refresh-state"
+        role="status"
+      >
+        <template v-if="(error && trend) || trend?.snapshot_status === 'failed'">
+          <span>{{ trend?.computed_at ? '更新失败，保留上次结果' : '聚合失败' }}</span><button
+            type="button"
+            @click="emit('retry')"
+          >
+            重试
+          </button>
+        </template>
+        <span v-else-if="loading || trend?.snapshot_status === 'refreshing'">更新中…</span>
+      </div>
     </header>
 
-    <p
-      v-if="trend?.snapshot_status === 'refreshing' || (loading && !preparing)"
-      class="refresh-note"
-      role="status"
-    >
-      后台正在更新当前筛选，以下为最近成功结果…
-    </p>
-    <p
-      v-else-if="trend?.snapshot_status === 'failed' && trend.computed_at"
-      class="refresh-note"
-      role="status"
-    >
-      当前继续显示最近成功结果，后台会自动完成后续更新。
-    </p>
-
     <div
-      v-if="error"
+      v-if="error && !trend"
       class="module-state module-state--error"
       :class="{ 'module-state--inline': trend }"
       role="alert"
@@ -183,7 +191,7 @@ onBeforeUnmount(() => {
       </button>
     </div>
     <div
-      v-if="preparing"
+      v-else-if="preparing"
       class="module-state"
       role="status"
     >
@@ -272,6 +280,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.card-header { position: relative; flex: none; }
+.card-refresh-state { position: absolute; bottom: 1px; right: 12px; display: flex; gap: 5px; color: var(--aima-text-muted); font-size: 9px; line-height: 11px; }
+.card-refresh-state button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font: inherit; }
 .trend-card { display: flex; height: 100%; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: var(--aima-surface); box-shadow: 0 4px 12px -2px rgb(23 35 61 / 4%), 0 1px 6px rgb(23 35 61 / 8%); }
 header { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--aima-border); }
 .title { display: flex; min-width: 0; align-items: center; gap: 8px; }
@@ -280,55 +291,41 @@ header { display: flex; min-height: 56px; align-items: center; justify-content: 
 .title h2 { color: var(--aima-text); font-size: 16px; }
 .title p { margin-top: 2px; color: var(--aima-text-secondary); font-size: 11px; }
 header > small { color: var(--aima-text-disabled); font-size: 10px; }
-.trend-body { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(0, 1fr) 190px; gap: 10px; padding: 10px; }
-.trend-main { display: grid; min-width: 0; grid-template-rows: auto minmax(150px, 1fr) auto; gap: 8px; }
+.trend-body { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(0, 2.6fr) minmax(0, 1fr); gap: clamp(6px, 1cqw, 12px); padding: clamp(7px, 1.2cqw, 14px); }
+.trend-main { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto minmax(100px, 1fr) auto; gap: 6px; }
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
-.kpis > div { display: grid; gap: 3px; padding: 7px 8px; border: 1px solid var(--aima-border); border-radius: 5px; }
-.kpis span { color: var(--aima-text-disabled); font-size: 9px; }
-.kpis strong { color: var(--aima-text); font-size: 15px; }
+.kpis > div { display: grid; gap: 2px; padding: 5px 6px; border: 1px solid var(--aima-border); border-radius: 5px; }
+.kpis span { color: var(--aima-text-muted); font-size: 11px; }
+.kpis strong { color: var(--aima-text); font-size: clamp(15px, 2.3cqw, 22px); }
 .kpis .emphasis { background: var(--aima-color-error-bg); }
 .kpis .emphasis strong { color: var(--aima-primary); }
-.trend-chart { min-height: 160px; }
+.trend-chart { min-height: 0; }
 .insight-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 5px; background: #f6f5fe; }
 .insight-card > span { padding: 2px 5px; border-radius: 3px; color: #fff; background: #8b5cf6; font-size: 9px; font-weight: 700; }
 .insight-card strong { color: var(--aima-text); font-size: 10px; }
 .insight-card p { margin: 2px 0 0; color: var(--aima-text-secondary); font-size: 9px; line-height: 14px; }
 .insight-card button, .module-state button { border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .insight-card button:disabled { color: var(--aima-text-disabled); cursor: default; }
-aside { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid var(--aima-border); border-radius: 6px; }
+aside { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 5px; padding: 7px; border: 1px solid var(--aima-border); border-radius: 6px; }
 .sentiment-title { display: grid; gap: 2px; }
 .sentiment-title strong { color: var(--aima-text); font-size: 11px; }
-.sentiment-title span { color: var(--aima-text-disabled); font-size: 8px; line-height: 12px; }
-.positive-ring { display: grid; width: 104px; height: 104px; flex: none; place-self: center; place-items: center; border-radius: 50%; }
-.positive-ring > div { display: grid; width: 74px; height: 74px; place-content: center; border-radius: 50%; background: #fff; text-align: center; }
-.positive-ring span, .positive-ring small { color: var(--aima-text-disabled); font-size: 8px; }
-.positive-ring strong { color: var(--aima-success); font-size: 20px; }
+.sentiment-title span { color: var(--aima-text-disabled); font-size: 10px; line-height: 1.3; }
+.positive-ring { display: grid; width: clamp(76px, 13cqw, 120px); aspect-ratio: 1; flex: none; place-self: center; place-items: center; border-radius: 50%; }
+.positive-ring > div { display: grid; width: 72%; aspect-ratio: 1; place-content: center; border-radius: 50%; background: var(--aima-surface); text-align: center; }
+.positive-ring span, .positive-ring small { color: var(--aima-text-disabled); font-size: 10px; }
+.positive-ring strong { color: var(--aima-success); font-size: clamp(16px, 2.4cqw, 24px); }
 .sentiment-list { display: grid; min-height: 0; gap: 3px; overflow: auto; }
-.sentiment-list > div { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 5px; color: var(--aima-text); font-size: 9px; }
+@container (max-height: 400px) {
+  .positive-ring { width: clamp(76px, 13cqw, 100px); }
+}
+.sentiment-list > div { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 5px; color: var(--aima-text); font-size: 11px; }
 .sentiment-list i { width: 5px; height: 5px; border-radius: 50%; }
-.sentiment-list strong { font-size: 9px; }
-.rate-change { display: flex; justify-content: space-between; padding-top: 6px; border-top: 1px solid var(--aima-border); color: var(--aima-text-secondary); font-size: 9px; }
+.sentiment-list strong { font-size: 11px; }
+.rate-change { display: flex; flex-wrap: wrap; justify-content: space-between; padding-top: 5px; border-top: 1px solid var(--aima-border); color: var(--aima-text-secondary); font-size: 11px; }
 .rate-change strong { color: var(--aima-primary); }
-.coverage { margin-top: auto; color: var(--aima-text-disabled); font-size: 8px; }
+.coverage { margin-top: auto; color: var(--aima-text-disabled); font-size: 10px; }
 .module-state { display: grid; min-height: 220px; place-content: center; gap: 5px; color: var(--aima-text-disabled); text-align: center; font-size: 12px; }
 .module-state--error { color: var(--aima-danger); }
 .module-state--error span { color: var(--aima-text-secondary); }
 .module-state--inline { min-height: 0; grid-template-columns: auto auto auto; align-items: center; justify-content: start; margin: 5px 12px 0; padding: 5px 8px; border-radius: 5px; background: var(--aima-primary-soft); text-align: left; font-size: 10px; }
-.refresh-note { margin: 5px 12px 0; color: var(--aima-text-secondary); font-size: 10px; }
-@container (max-width: 760px) {
-  header { align-items: flex-start; flex-wrap: wrap; }
-  .trend-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
-  aside { display: grid; grid-template-columns: minmax(130px, .8fr) 110px minmax(150px, 1fr); align-items: center; }
-  .sentiment-title, .rate-change, .coverage { grid-column: 1; }
-  .positive-ring { grid-column: 2; grid-row: 1 / span 3; }
-  .sentiment-list { grid-column: 3; grid-row: 1 / span 3; }
-}
-@container (max-width: 520px) {
-  .title p { white-space: normal; }
-  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .insight-card { grid-template-columns: auto minmax(0, 1fr); }
-  .insight-card button { grid-column: 2; justify-self: start; }
-  aside { display: flex; align-items: stretch; }
-  .sentiment-list { max-height: 112px; }
-}
 </style>

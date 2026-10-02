@@ -45,6 +45,8 @@ const connectionResult = ref<ProviderConnectionTestResponse | null>(null)
 let connectionRequestVersion = 0
 let capacityTimer: ReturnType<typeof setInterval> | undefined
 let refreshingCapacity = false
+let disposed = false
+let loadEpoch = 0
 const capacityRefreshError = ref(false)
 
 const draft = reactive({
@@ -129,19 +131,22 @@ const formValid = computed(() => {
 
 onMounted(async () => {
   await load()
-  if (isLlm.value) capacityTimer = setInterval(() => { void refreshCapacity() }, 3000)
+  if (!disposed && isLlm.value) capacityTimer = setInterval(() => { void refreshCapacity() }, 3000)
 })
-onUnmounted(() => clearInterval(capacityTimer))
+onUnmounted(() => { disposed = true; loadEpoch += 1; clearInterval(capacityTimer) })
 
 /** 轮询只替换安全投影，不覆盖用户正在编辑的地址、模型或密钥。 */
 async function refreshCapacity(): Promise<void> {
-  if (loading.value || saving.value || refreshingCapacity) return
+  if (disposed || loading.value || saving.value || refreshingCapacity) return
+  const epoch = loadEpoch
   refreshingCapacity = true
   try {
-    items.value = (await fetchProviderConfigs(props.providerKind)).items
+    const response = await fetchProviderConfigs(props.providerKind)
+    if (disposed || epoch !== loadEpoch || saving.value) return
+    items.value = response.items
     capacityRefreshError.value = false
   } catch {
-    capacityRefreshError.value = true
+    if (!disposed && epoch === loadEpoch && !saving.value) capacityRefreshError.value = true
   } finally {
     refreshingCapacity = false
   }
@@ -159,20 +164,23 @@ watch(draft, invalidateConnectionTest, { flush: 'sync' })
 watch(navigationDirty, (dirty) => emit('dirty-change', dirty), { immediate: true })
 
 async function load(preferredId?: string): Promise<void> {
+  const epoch = ++loadEpoch
   loading.value = true
   loadError.value = null
   error.value = null
   try {
-    items.value = (await fetchProviderConfigs(props.providerKind)).items
+    const response = await fetchProviderConfigs(props.providerKind)
+    if (disposed || epoch !== loadEpoch) return
+    items.value = response.items
     const selected = items.value.find((item) => item.id === (preferredId ?? selectedId.value))
       ?? items.value.find((item) => item.is_default)
       ?? items.value[0]
     if (selected) selectItem(selected, true)
     else resetDraft(true)
   } catch (reason) {
-    loadError.value = apiErrorMessage(reason)
+    if (!disposed && epoch === loadEpoch) loadError.value = apiErrorMessage(reason)
   } finally {
-    loading.value = false
+    if (!disposed && epoch === loadEpoch) loading.value = false
   }
 }
 
@@ -528,6 +536,7 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
         <p>系统根据成功入库速度、响应时间和服务商限流自动调整。新任务自动确定等待时间和分片大小。</p>
         <p
           v-if="capacityRefreshError"
+          class="capacity-refresh-status"
           role="status"
         >
           状态刷新失败，当前显示上次取得的数据。
@@ -680,6 +689,8 @@ async function permanentlyDelete(item: ResourceLifecycleResponse): Promise<void>
 </template>
 
 <style scoped>
+.advanced-settings { position: relative; }
+.capacity-refresh-status { position: absolute; z-index: 2; top: 4px; right: 8px; margin: 0; padding: 3px 6px; border-radius: 4px; color: var(--aima-text-muted); background: var(--aima-surface); font-size: 10px; }
 .provider-layout { display: grid; grid-template-columns: minmax(280px, .78fr) minmax(0, 1.55fr); gap: 24px; align-items: start; }
 .provider-form { margin: 0; }
 .provider-list > header :deep(.aima-button) { flex-shrink: 0; white-space: nowrap; }

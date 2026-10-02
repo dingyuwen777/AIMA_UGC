@@ -11,6 +11,7 @@ import { platformLabel } from '../../../shared/domain/platform'
 import AimaPlatformMark from '../../../shared/ui/AimaPlatformMark.vue'
 import type { WorkbenchFilters } from '../store'
 import WorkbenchFiltersBar from './WorkbenchFilters.vue'
+import WorkbenchDateLabel from './WorkbenchDateLabel.vue'
 
 const props = defineProps<{
   stream: WorkbenchStreamResponse | null
@@ -91,10 +92,10 @@ watch([scrollList, firstCycle], async () => {
   if (firstCycle.value) resizeObserver?.observe(firstCycle.value)
   resizeTrack()
 })
-watch(() => props.stream, async () => {
+watch(() => props.stream, async (_current, previous) => {
   await nextTick()
   advancingPage = false
-  if (scrollList.value) scrollList.value.scrollTop = 0
+  if (scrollList.value && props.stream?.items[0]?.content_id !== previous?.items[0]?.content_id) scrollList.value.scrollTop = 0
   resizeTrack()
 })
 watch(() => props.loading, (loading) => {
@@ -135,6 +136,24 @@ function contentText(item: WorkbenchStreamResponse['items'][number]): string {
           <p>聚合全渠道舆情、UGC 反馈和采集得到的真实用户原声流</p>
         </div>
       </div>
+      <WorkbenchDateLabel
+        :from="filters.dateFrom"
+        :to="filters.dateTo"
+      />
+      <div
+        class="card-refresh-state"
+        role="status"
+      >
+        <template v-if="error && stream">
+          <span>更新失败，保留上次结果</span><button
+            type="button"
+            @click="emit('retry')"
+          >
+            重试
+          </button>
+        </template>
+        <span v-else-if="loading">更新中…</span>
+      </div>
     </header>
 
     <WorkbenchFiltersBar
@@ -147,16 +166,8 @@ function contentText(item: WorkbenchStreamResponse['items'][number]): string {
       @reset="emit('reset')"
     />
 
-    <p
-      v-if="loading && stream"
-      class="refresh-note"
-      role="status"
-    >
-      正在按当前筛选更新，以下为上次结果…
-    </p>
-
     <div
-      v-if="error"
+      v-if="error && !stream"
       class="module-state module-state--error"
       :class="{ 'module-state--inline': items.length > 0 }"
       role="alert"
@@ -250,6 +261,9 @@ function contentText(item: WorkbenchStreamResponse['items'][number]): string {
 </template>
 
 <style scoped>
+.card-header { position: relative; flex: none; }
+.card-refresh-state { position: absolute; bottom: 1px; right: 12px; display: flex; gap: 5px; color: var(--aima-text-muted); font-size: 9px; line-height: 11px; }
+.card-refresh-state button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font: inherit; }
 .workbench-card {
   display: flex;
   height: 100%;
@@ -262,11 +276,12 @@ function contentText(item: WorkbenchStreamResponse['items'][number]): string {
   background: var(--aima-surface);
   box-shadow: 0 4px 12px -2px rgb(23 35 61 / 4%), 0 1px 6px rgb(23 35 61 / 8%);
 }
-.card-header { min-height: 44px; border-bottom: 1px solid var(--aima-border); }
-.card-title { display: flex; align-items: center; gap: 8px; }
+.card-header { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--aima-border); }
+.card-title { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.card-title > div { min-width: 0; }
 .card-title h2, .card-title p { margin: 0; }
 .card-title h2 { color: var(--aima-text); font-size: 16px; line-height: 22px; }
-.card-title p { margin-top: 2px; color: var(--aima-text-secondary); font-size: 11px; line-height: 16px; }
+.card-title p { margin-top: 2px; overflow: hidden; color: var(--aima-text-secondary); font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .card-icon { display: inline-grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; color: var(--aima-primary); background: var(--aima-primary-soft); }
 .stream-list { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .stream-list::-webkit-scrollbar { display: none; }

@@ -234,7 +234,7 @@ async function viewRunResults(runId: string): Promise<void> {
     />
     <AimaFeedbackBanner
       v-if="store.error && store.items.length > 0"
-      class="page-error"
+      class="page-error refresh-error"
       tone="error"
       role="alert"
     >
@@ -327,6 +327,7 @@ async function viewRunResults(runId: string): Promise<void> {
 .runtime-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; line-height: 20px; }
 .runtime-tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
 .page-error { margin-top: 16px; }
+.refresh-error { position: fixed; z-index: 40; top: 96px; right: 24px; max-width: min(520px, calc(100vw - 48px)); margin: 0; }
 .list-heading { display: flex; min-height: 24px; align-items: center; margin: 34px 0 12px; }
 .list-heading strong { color: var(--aima-text); font-size: 16px; font-weight: 500; line-height: 24px; }
 .pagination { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: 20px; margin-top: 24px; color: var(--aima-text-disabled); font-size: 12px; }

@@ -1,0 +1,29 @@
+/* 页面、表格、卡片、浮层都继承同一 Owner；局部语义只调整宽度。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--aima-scrollbar-thumb) var(--aima-scrollbar-track);
+}
+
+/* Chrome/Edge 使用显式像素宽度；Firefox 保留 thin 和颜色兼容。 */
+@supports selector(::-webkit-scrollbar) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+  *::-webkit-scrollbar { width: var(--aima-scrollbar-size); height: var(--aima-scrollbar-size); }
+  *::-webkit-scrollbar-track { background: var(--aima-scrollbar-track); }
+  *::-webkit-scrollbar-thumb { border-radius: var(--aima-radius-full); background: var(--aima-scrollbar-thumb); }
+  *::-webkit-scrollbar-thumb:hover { background: var(--aima-scrollbar-thumb-hover); }
+  *::-webkit-scrollbar-thumb:active { background: var(--aima-scrollbar-thumb-active); }
+  *::-webkit-scrollbar-corner { background: transparent; }
+}
+
+.aima-scroll { overflow: auto; }
+.aima-scroll-x { --aima-scrollbar-size: 3px; overflow-x: auto; overscroll-behavior-inline: contain; }
+.aima-scroll-card { --aima-scrollbar-size: 3px; }
+.vehicle-groups,
+.vehicle-match-list { --aima-scrollbar-size: 3px; scrollbar-gutter: stable; }
+.aima-scroll-table { --aima-scrollbar-size: 4px; }
+.aima-scroll-overlay,
+.aima-dialog-body,
+.aima-drawer-body,
+.el-dialog__body,
+.el-drawer__body { --aima-scrollbar-size: 5px; }
+.aima-scroll-stable { scrollbar-gutter: stable; }

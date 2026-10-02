@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
@@ -94,8 +96,39 @@ def test_parallel_workbench_requests_persist_one_active_scheme(monkeypatch) -> N
             )
         resolved_query = _resolved_snapshot_query(query)
         mind_hash = _snapshot_query_hash("mind", resolved_query)
+        # 持久保存旧作者口径 JSONB；新查询必须另建身份，不能误解析成新 Contract。
+        legacy_payload = resolved_query.model_dump(mode="json")
+        for key, value in legacy_payload.items():
+            if isinstance(value, list):
+                legacy_payload[key] = sorted(value)
+        legacy_hash = hashlib.sha256(
+            json.dumps(
+                {"module": "mind", "query": legacy_payload},
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        assert legacy_hash != mind_hash
         with runtime.database.new_session() as session, session.begin():
             snapshots = PostgresWorkbenchSnapshotRepository(session)
+            legacy_refresh = snapshots.request_refresh(
+                module="mind",
+                query_hash=legacy_hash,
+                query=legacy_payload,
+                source_revision=snapshots.current_data_revision(),
+                analysis_scheme_version_id=responses[1].analysis_scheme_version_id,
+            )
+            assert legacy_refresh is not None
+            assert snapshots.record_success(
+                refresh=legacy_refresh,
+                taxonomy_sha256=responses[1].taxonomy_sha256,
+                response={
+                    "identified_user_count": 8,
+                    "dimensions": [{"user_count": 4, "user_share": 0.5}],
+                },
+                computed_at=responses[1].as_of,
+            )
             row = snapshots.get(module="mind", query_hash=mind_hash)
             assert row is not None
             refresh = WorkbenchSnapshotRefresh(

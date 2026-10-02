@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import * as echarts from 'echarts'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import type {
   WorkbenchMindDimensionResponse,
   WorkbenchMindResponse,
 } from '../../../generated/api/client'
 import type { WorkbenchMindMetric } from '../store'
+import WorkbenchDateLabel from './WorkbenchDateLabel.vue'
+import { radarGeometry } from './radarGeometry'
 
 const props = defineProps<{
   mind: WorkbenchMindResponse | null
@@ -14,6 +16,9 @@ const props = defineProps<{
   metric: WorkbenchMindMetric
   loading: boolean
   error: string | null
+  dateFrom: string
+  dateTo: string
+  brandLabel: string
 }>()
 
 const emit = defineEmits<{
@@ -24,8 +29,7 @@ const emit = defineEmits<{
 }>()
 
 const dimensions = computed(() => props.mind?.dimensions ?? [])
-const preparing = computed(() => props.mind?.snapshot_status === 'preparing'
-  || (props.mind?.snapshot_status === 'failed' && !props.mind.computed_at))
+const preparing = computed(() => props.mind?.snapshot_status === 'preparing')
 const selected = computed(() =>
   dimensions.value.find((item) => item.primary_label === props.selectedLabel)
     ?? dimensions.value[0]
@@ -34,10 +38,11 @@ const selected = computed(() =>
 const chartElement = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
+const centerSize = ref(40)
 
 /** 根据当前切换维度返回条形图值；占比与正向率都以 0..1 Contract 展示。 */
 function metricValue(item: WorkbenchMindDimensionResponse): number {
-  return props.metric === 'share' ? item.user_share : item.positive_rate ?? 0
+  return props.metric === 'share' ? item.content_share : item.positive_rate ?? 0
 }
 
 /** 将比例格式化为百分数，缺失正向率明确显示“—”。 */
@@ -53,7 +58,7 @@ function changeText(value: number | null | undefined): string {
   return `较上期 ${sign}${value.toFixed(2)}pp`
 }
 
-/** 切换用户占比/正向率只改变当前卡片表现层，不改变查询口径。 */
+/** 切换帖子占比/正向率只改变当前卡片表现层，不改变查询口径。 */
 function setMetric(value: WorkbenchMindMetric): void {
   emit('metric', value)
 }
@@ -62,7 +67,7 @@ function setMetric(value: WorkbenchMindMetric): void {
 function renderChart(): void {
   if (!chartElement.value || dimensions.value.length === 0) return
   if (!chart) {
-    chart = echarts.init(chartElement.value)
+    chart = echarts.init(chartElement.value, undefined, { renderer: 'svg' })
     chart.on('click', (event) => {
       if (event.componentType !== 'radar') return
       const label = String(event.name ?? '')
@@ -70,9 +75,20 @@ function renderChart(): void {
     })
   }
   const values = dimensions.value.map(metricValue)
-  const labelValues = new Map(dimensions.value.map((item) => [item.primary_label, metricValue(item)]))
+  const context = document.createElement('canvas').getContext('2d')
+  const fontFamily = getComputedStyle(chartElement.value).fontFamily
+  const labels = dimensions.value.map((item) => `${item.primary_label} ${percent(metricValue(item))}`)
+  const geometry = radarGeometry(chartElement.value.clientWidth, chartElement.value.clientHeight, labels, (text, size) => {
+    if (!context) return text.length * size
+    context.font = `600 ${size}px ${fontFamily}`
+    return context.measureText(text).width
+  })
+  centerSize.value = Math.max(28, Math.min(58, geometry.radius * 0.64))
+  const displayLabels = new Map(dimensions.value.map((item, index) => [item.primary_label, geometry.labels[index]?.label]))
+  chartElement.value.dataset.labelGeometry = JSON.stringify(geometry.labels)
+  chartElement.value.dataset.labelFontSize = String(geometry.fontSize)
   chart.setOption({
-    animationDuration: 280,
+    animation: false,
     tooltip: {
       trigger: 'item',
       backgroundColor: '#fff',
@@ -80,25 +96,23 @@ function renderChart(): void {
       borderWidth: 1,
       textStyle: { color: '#17233d', fontSize: 11 },
       formatter: () => dimensions.value
-        .map((item) => `${item.primary_label}　<b>${percent(metricValue(item))}</b>`)
+        .map((item) => `${echarts.format.encodeHTML(item.primary_label)}　<b>${percent(metricValue(item))}</b>`)
         .join('<br/>'),
     },
     radar: {
-      center: ['46%', '52%'],
-      radius: dimensions.value.length > 8 ? '56%' : '62%',
+      center: ['50%', '50%'],
+      radius: geometry.radius,
       shape: 'polygon',
       splitNumber: 4,
       startAngle: 90,
       indicator: dimensions.value.map((item) => ({ name: item.primary_label, max: 1 })),
-      axisNameGap: 12,
+      axisNameGap: geometry.gap,
       axisName: {
         color: '#17233d',
-        fontSize: dimensions.value.length > 8 ? 9 : 10,
+        fontSize: geometry.fontSize,
         fontWeight: 600,
-        lineHeight: 16,
-        formatter: (name: string) => (
-          `${name}\n{value|${percent(labelValues.get(name))}} {unit|${props.metric === 'share' ? '占比' : '正向率'}}`
-        ),
+        lineHeight: geometry.fontSize + 3,
+        formatter: (name: string) => displayLabels.get(name) ?? name,
         rich: {
           value: { color: '#ed0b68', fontSize: 14, fontWeight: 700, lineHeight: 20 },
           unit: { color: '#8a96ad', fontSize: 9, fontWeight: 400, lineHeight: 20 },
@@ -111,7 +125,7 @@ function renderChart(): void {
     series: [{
       type: 'radar',
       symbol: 'circle',
-      symbolSize: 7,
+      symbolSize: Math.max(3, Math.min(7, geometry.radius / 14)),
       lineStyle: { color: '#ed0b68', width: 2.5 },
       itemStyle: { color: '#fff', borderColor: '#ed0b68', borderWidth: 2 },
       areaStyle: { color: 'rgba(237, 11, 104, .34)' },
@@ -120,14 +134,17 @@ function renderChart(): void {
   }, true)
 }
 
-onMounted(async () => {
+watch(chartElement, async (element) => {
+  observer?.disconnect()
+  chart?.dispose()
+  chart = null
+  if (!element) return
   await nextTick()
+  if (chartElement.value !== element) return
   renderChart()
-  if (chartElement.value) {
-    observer = new ResizeObserver(() => chart?.resize())
-    observer.observe(chartElement.value)
-  }
-})
+  observer = new ResizeObserver(() => { chart?.resize(); renderChart() })
+  observer.observe(element)
+}, { flush: 'post' })
 
 watch([dimensions, () => props.metric], async () => {
   await nextTick()
@@ -146,7 +163,7 @@ onBeforeUnmount(() => {
     class="mind-card"
     :aria-busy="loading"
   >
-    <header>
+    <header class="card-header">
       <div class="title">
         <span>◎</span>
         <div>
@@ -155,7 +172,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="header-actions">
-        <small>当前筛选 · {{ mind ? `${mind.date_from} — ${mind.date_to}` : '近30天' }}</small>
+        <WorkbenchDateLabel
+          :from="dateFrom"
+          :to="dateTo"
+        />
         <div class="metric-toggle">
           <button
             type="button"
@@ -173,25 +193,24 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </div>
+      <div
+        class="card-refresh-state"
+        role="status"
+      >
+        <template v-if="(error && mind) || mind?.snapshot_status === 'failed'">
+          <span>{{ mind?.computed_at ? '更新失败，保留上次结果' : '聚合失败' }}</span><button
+            type="button"
+            @click="emit('retry')"
+          >
+            重试
+          </button>
+        </template>
+        <span v-else-if="loading || mind?.snapshot_status === 'refreshing'">更新中…</span>
+      </div>
     </header>
 
-    <p
-      v-if="mind?.snapshot_status === 'refreshing' || (loading && !preparing)"
-      class="refresh-note"
-      role="status"
-    >
-      后台正在更新当前筛选，以下为最近成功结果…
-    </p>
-    <p
-      v-else-if="mind?.snapshot_status === 'failed' && mind.computed_at"
-      class="refresh-note"
-      role="status"
-    >
-      当前继续显示最近成功结果，后台会自动完成后续更新。
-    </p>
-
     <div
-      v-if="error"
+      v-if="error && !mind"
       class="module-state module-state--error"
       :class="{ 'module-state--inline': dimensions.length > 0 }"
       role="alert"
@@ -206,7 +225,7 @@ onBeforeUnmount(() => {
       </button>
     </div>
     <div
-      v-if="preparing"
+      v-else-if="preparing"
       class="module-state"
       role="status"
     >
@@ -244,19 +263,11 @@ onBeforeUnmount(() => {
           />
           <div
             class="radar-center"
+            :style="{ width: `${centerSize}px`, height: `${centerSize}px` }"
             aria-hidden="true"
           >
-            <strong>爱玛</strong><span>心智图</span>
+            <strong :title="brandLabel">{{ brandLabel }}</strong><span>心智图</span>
           </div>
-          <button
-            v-if="selected"
-            type="button"
-            class="radar-selected-card"
-            @click="emit('select', selected.primary_label)"
-          >
-            <strong>{{ selected.primary_label }}</strong>
-            <span>{{ percent(metricValue(selected)) }} <small>{{ metric === 'share' ? '占比' : '正向率' }}</small></span>
-          </button>
         </div>
         <div
           class="radar-accessible-list"
@@ -276,17 +287,19 @@ onBeforeUnmount(() => {
 
       <div
         v-if="selected"
-        class="mind-detail"
+        class="mind-detail aima-scroll-card"
       >
-        <small>当前查看 · 一级心智 · {{ metric === 'share' ? '用户占比' : '正向率' }}</small>
+        <small>当前查看 · 一级心智 · {{ metric === 'share' ? '帖子占比' : '正向率' }}</small>
         <div class="detail-title">
-          <h3>{{ selected.primary_label }}</h3>
-          <span>{{ changeText(selected.user_share_change_pp) }}</span>
+          <h3 :title="selected.primary_label">
+            {{ selected.primary_label }}
+          </h3>
+          <span>{{ changeText(selected.content_share_change_pp) }}</span>
         </div>
         <div class="metric-cards">
           <div>
             <span>心智占比</span>
-            <strong>{{ percent(selected.user_share) }}</strong>
+            <strong>{{ percent(selected.content_share) }}</strong>
           </div>
           <div>
             <span>正向率</span>
@@ -299,9 +312,9 @@ onBeforeUnmount(() => {
             v-for="item in selected.secondary_labels.slice(0, 4)"
             :key="item.secondary_label"
           >
-            {{ item.secondary_label }} · {{ item.user_count }} 人
+            {{ item.secondary_label }} · {{ item.content_count }} 条
           </span>
-          <span v-if="selected.secondary_labels.length === 0">暂无二级标签用户</span>
+          <span v-if="selected.secondary_labels.length === 0">暂无二级标签内容</span>
         </div>
         <div class="change-card">
           <strong>主要变化</strong>
@@ -318,13 +331,16 @@ onBeforeUnmount(() => {
     </div>
 
     <footer v-if="mind">
-      <span>可识别用户 {{ mind.identified_user_count.toLocaleString('zh-CN') }} 人</span>
+      <span>相关内容 {{ mind.relevant_content_count.toLocaleString('zh-CN') }} 条</span>
       <span>当前规则覆盖 {{ (mind.analysis_coverage_rate * 100).toFixed(1) }}%</span>
     </footer>
   </section>
 </template>
 
 <style scoped>
+.card-header { position: relative; flex: none; }
+.card-refresh-state { position: absolute; bottom: 1px; right: 12px; display: flex; gap: 5px; color: var(--aima-text-muted); font-size: 9px; line-height: 11px; }
+.card-refresh-state button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font: inherit; }
 .mind-card { display: flex; height: 100%; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: var(--aima-surface); box-shadow: 0 4px 12px -2px rgb(23 35 61 / 4%), 0 1px 6px rgb(23 35 61 / 8%); }
 header { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--aima-border); }
 .title { display: flex; min-width: 0; align-items: center; gap: 8px; }
@@ -337,53 +353,43 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
 .metric-toggle { display: flex; padding: 2px; border-radius: 6px; background: var(--aima-surface-disabled); }
 .metric-toggle button { padding: 4px 7px; border: 0; border-radius: 4px; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 10px; }
 .metric-toggle .active { color: var(--aima-primary); background: var(--aima-primary-soft); font-weight: 700; }
-.mind-body { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(0, 1.2fr) minmax(220px, .9fr); }
-.mind-radar { display: flex; min-width: 0; min-height: 0; flex-direction: column; padding: 10px; border-right: 1px solid var(--aima-border); }
-.radar-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mind-body { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.mind-radar { display: flex; min-width: 0; min-height: 0; flex-direction: column; padding: clamp(6px, 1.1cqw, 12px); border-right: 1px solid var(--aima-border); }
+.radar-title { display: flex; min-height: 18px; flex: none; align-items: center; justify-content: space-between; gap: 5px; }
 .radar-title strong { color: var(--aima-text); font-size: 12px; }
-.radar-title span { color: var(--aima-text-disabled); font-size: 9px; white-space: nowrap; }
-.radar-stage { position: relative; min-height: 230px; flex: 1; overflow: hidden; }
-.radar-chart { width: 100%; height: 100%; min-height: 230px; }
-.radar-center { position: absolute; top: 52%; left: 46%; display: grid; width: 76px; height: 76px; place-content: center; transform: translate(-50%, -50%); border-radius: 50%; color: #fff; background: linear-gradient(145deg, #f5418b, #ed0b68); box-shadow: 0 8px 18px rgb(237 11 104 / 25%); text-align: center; pointer-events: none; }
-.radar-center strong { font-size: 17px; }
-.radar-center span { margin-top: 2px; font-size: 9px; }
-.radar-selected-card { position: absolute; top: 12px; right: 4px; display: grid; min-width: 104px; gap: 5px; padding: 9px 12px; border: 2px solid #ed0b68; border-radius: 12px; color: var(--aima-text); background: #fff5f9; cursor: pointer; text-align: left; box-shadow: 0 4px 10px rgb(237 11 104 / 10%); }
-.radar-selected-card strong { max-width: 150px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.radar-selected-card > span { color: #ed0b68; font-size: 16px; font-weight: 700; }
-.radar-selected-card small { color: var(--aima-text-disabled); font-size: 9px; font-weight: 400; }
+.radar-title span { color: var(--aima-text-disabled); font-size: 10px; white-space: nowrap; }
+.radar-stage { position: relative; min-height: 0; flex: 1; }
+.radar-chart { width: 100%; height: 100%; min-height: 0; }
+.radar-center { position: absolute; top: 50%; left: 50%; display: grid; place-content: center; transform: translate(-50%, -50%); border-radius: 50%; color: #fff; background: var(--aima-primary); text-align: center; pointer-events: none; }
+.radar-center strong { max-width: 54px; overflow: hidden; font-size: clamp(10px, 1.7cqw, 14px); text-overflow: ellipsis; white-space: nowrap; }
+.radar-center span { font-size: 9px; }
 .radar-accessible-list { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.mind-detail { display: flex; min-width: 0; flex-direction: column; gap: 9px; padding: 12px; overflow: auto; }
-.mind-detail > small { color: var(--aima-text-disabled); font-size: 9px; text-transform: uppercase; }
-.detail-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.detail-title h3 { margin: 0; color: var(--aima-text); font-size: 18px; }
-.detail-title span { color: var(--aima-primary); font-size: 10px; font-weight: 600; }
+.mind-detail { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: clamp(5px, .9cqw, 10px); padding: clamp(7px, 1.2cqw, 14px); overflow: auto; }
+.mind-detail > small { color: var(--aima-text-disabled); font-size: 11px; }
+.detail-title { display: grid; gap: 2px; }
+.detail-title h3 { min-width: 0; margin: 0; color: var(--aima-text); font-size: clamp(14px, 2cqw, 18px); line-height: 1.35; overflow-wrap: anywhere; }
+.detail-title span { color: var(--aima-primary); font-size: 11px; }
 .metric-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.metric-cards div { display: grid; min-height: 58px; align-content: center; gap: 3px; padding: 9px 11px; border-radius: 7px; background: var(--aima-surface-disabled); }
-.metric-cards span { color: var(--aima-text-disabled); font-size: 9px; }
-.metric-cards strong { color: var(--aima-text); font-size: 18px; }
-.secondary { display: grid; gap: 4px; }
-.secondary strong { color: var(--aima-text); font-size: 10px; }
-.secondary span { color: var(--aima-text-secondary); font-size: 9px; }
-.change-card { padding: 10px 12px; border-left: 2px solid var(--aima-primary); border-radius: 6px; background: var(--aima-primary-soft); }
-.change-card strong { color: var(--aima-text); font-size: 10px; }
-.change-card p { margin: 4px 0 0; color: var(--aima-text-secondary); font-size: 9px; line-height: 15px; }
+.metric-cards div { display: grid; min-height: 44px; align-content: center; gap: 2px; padding: 5px 7px; border-radius: 7px; background: var(--aima-surface-disabled); }
+.metric-cards span { color: var(--aima-text-muted); font-size: 11px; }
+.metric-cards strong { color: var(--aima-text); font-size: clamp(16px, 2.3cqw, 22px); }
+.secondary { display: grid; gap: 2px; }
+.secondary strong { color: var(--aima-text); font-size: 11px; }
+.secondary span { color: var(--aima-text-secondary); font-size: 11px; line-height: 1.3; }
+.change-card { padding: 5px 7px; border-left: 2px solid var(--aima-primary); border-radius: 6px; background: var(--aima-primary-soft); }
+.change-card strong { color: var(--aima-text); font-size: 11px; }
+.change-card p { margin: 2px 0 0; color: var(--aima-text-secondary); font-size: 11px; line-height: 1.3; }
 .voice-link, .module-state button { align-self: flex-start; padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font-size: 10px; font-weight: 600; }
 .module-state { display: grid; min-height: 220px; place-content: center; gap: 5px; color: var(--aima-text-disabled); text-align: center; font-size: 12px; }
 .module-state--error { color: var(--aima-danger); }
 .module-state--error span { color: var(--aima-text-secondary); }
 .module-state--inline { min-height: 0; grid-template-columns: auto auto auto; align-items: center; justify-content: start; margin: 5px 12px 0; padding: 5px 8px; border-radius: 5px; background: var(--aima-primary-soft); text-align: left; font-size: 10px; }
-.refresh-note { margin: 5px 12px 0; color: var(--aima-text-secondary); font-size: 10px; }
+@container (max-height: 400px) {
+  .mind-detail { gap: 3px; padding: 6px 9px; }
+  .detail-title h3 { font-size: 15px; }
+  .metric-cards div { min-height: 36px; padding: 4px 6px; }
+  .metric-cards strong { font-size: 18px; }
+  .change-card { padding: 4px 6px; }
+}
 footer { display: flex; min-height: 26px; align-items: center; justify-content: space-between; padding: 5px 12px; border-top: 1px solid var(--aima-border); color: var(--aima-text-disabled); font-size: 9px; }
-@container (max-width: 760px) {
-  header { align-items: flex-start; flex-wrap: wrap; }
-  .header-actions { width: 100%; justify-content: space-between; }
-  .mind-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
-  .mind-radar { min-height: 310px; border-right: 0; border-bottom: 1px solid var(--aima-border); }
-}
-@container (max-width: 520px) {
-  .header-actions { align-items: flex-start; flex-direction: column; }
-  .radar-title { align-items: flex-start; flex-direction: column; }
-  .radar-selected-card { top: 4px; right: 0; min-width: 92px; padding: 7px 9px; }
-  .metric-cards { grid-template-columns: minmax(0, 1fr); }
-}
 </style>

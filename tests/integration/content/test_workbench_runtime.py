@@ -79,7 +79,7 @@ def test_workbench_mind_and_trend_each_execute_one_aggregate_statement() -> None
         )
 
         assert trend["current_summary"]["total_count"] == 0
-        assert mind["current_summary"]["identified_user_count"] == 0
+        assert mind["current_summary"]["relevant_content_count"] == 0
         aggregate_statements = [statement for statement in statements if "workbench:" in statement]
         assert len(aggregate_statements) == 2
         assert "workbench:trend-snapshot" in aggregate_statements[0]
@@ -184,6 +184,166 @@ def _result_values(
         "analyzed_at": now,
         "created_at": now,
     }
+
+
+def test_mind_counts_posts_with_shared_or_missing_author_and_independent_labels() -> None:
+    """同作者的帖子、缺失作者与同一级多标签均按 Content 身份统计。"""
+
+    runtime = DatabaseRuntime(load_settings())
+    session = runtime.new_session()
+    transaction = session.begin()
+    now = datetime(2026, 9, 27, tzinfo=UTC)
+    try:
+        scheme_id, version_id, job_id, run_id, account_id = (uuid4() for _ in range(5))
+        session.execute(
+            analysis_schemes_table.insert().values(
+                id=scheme_id,
+                name=f"posts-{scheme_id}",
+                is_active=False,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.execute(
+            analysis_scheme_versions_table.insert().values(
+                id=version_id,
+                scheme_id=scheme_id,
+                version=1,
+                status="retired",
+                description="test",
+                definition={"sentiments": ["正面", "负面"]},
+                compiled_prompt="test prompt",
+                prompt_sha256="1" * 64,
+                taxonomy_sha256="a" * 64,
+                created_by="integration-test",
+                created_at=now,
+            )
+        )
+        session.execute(jobs_table.insert().values(**_job_values(job_id, now=now, suffix="posts")))
+        session.execute(
+            analysis_content_runs_table.insert().values(
+                **_run_values(
+                    run_id,
+                    job_id=job_id,
+                    scheme_version_id=version_id,
+                    taxonomy_hash="a" * 64,
+                    now=now,
+                    suffix="posts",
+                )
+            )
+        )
+        session.execute(
+            accounts_table.insert().values(
+                id=account_id,
+                platform="xiaohongshu",
+                external_account_id=f"posts-{account_id}",
+                display_name="同一作者",
+                first_seen_at=now,
+                last_seen_at=now,
+                updated_at=now,
+            )
+        )
+        for index in range(4):
+            content_id, result_id = uuid4(), uuid4()
+            published_at = now if index < 3 else now - timedelta(days=7)
+            session.execute(
+                contents_table.insert().values(
+                    id=content_id,
+                    platform="xiaohongshu",
+                    external_content_id=f"posts-{content_id}",
+                    content_type="note",
+                    title="爱玛帖子统计",
+                    text="外观与骑行体验",
+                    author_account_id=None if index == 2 else account_id,
+                    published_at=published_at,
+                    first_seen_at=now,
+                    last_seen_at=now,
+                    current_version=1,
+                    updated_at=now,
+                )
+            )
+            session.execute(
+                analysis_content_results_table.insert().values(
+                    **_result_values(
+                        result_id,
+                        content_id=content_id,
+                        run_id=run_id,
+                        job_id=job_id,
+                        sentiment="负面" if index == 1 else "正面",
+                        taxonomy_hash="a" * 64,
+                        now=now,
+                    )
+                )
+            )
+            pairs = [("外观设计", "颜色与配色")]
+            if index == 0:
+                pairs.append(("外观设计", "整体造型与颜值"))
+            if index < 2:
+                pairs.append(("骑行性能", "舒适性"))
+            session.execute(
+                analysis_content_label_pairs_table.insert(),
+                [
+                    {
+                        "analysis_result_id": result_id,
+                        "ordinal": ordinal,
+                        "primary_label": primary,
+                        "secondary_label": secondary,
+                    }
+                    for ordinal, (primary, secondary) in enumerate(pairs)
+                ],
+            )
+            # 该查询读取派生模型的可见范围；Fixture 复用既有集成测试的完整投影边界。
+            session.execute(
+                voice_plaza_content_projection_table.update()
+                .where(voice_plaza_content_projection_table.c.content_id == content_id)
+                .values(
+                    content_version=1,
+                    platform="xiaohongshu",
+                    content_type="note",
+                    published_at=published_at,
+                    sort_at=published_at,
+                    is_visible=True,
+                    analysis_result_id=result_id,
+                    analysis_status="completed",
+                    effective_relevance="relevant",
+                    relevance_source="ai",
+                    effective_voice_type="真实用户发声",
+                    effective_sentiment="负面" if index == 1 else "正面",
+                    labels=[
+                        {"primary_label": primary, "secondary_label": secondary}
+                        for primary, secondary in pairs
+                    ],
+                    brand_ids=[],
+                    vehicle_model_ids=[],
+                    competition_scope="none_detected",
+                    updated_at=now,
+                )
+            )
+        snapshot = PostgresWorkbenchRepository(session).mind_snapshot(
+            active_scheme_version_id=version_id,
+            query=WorkbenchQuery(),
+            previous_start_at=now - timedelta(days=10),
+            current_start_at=now - timedelta(days=3),
+            end_at=now + timedelta(days=4),
+        )
+        assert int(snapshot["current_summary"]["relevant_content_count"]) == 3
+        assert int(snapshot["current_summary"]["unidentified_content_count"]) == 1
+        assert int(snapshot["previous_summary"]["relevant_content_count"]) == 1
+        primary = {row["primary_label"]: row for row in snapshot["current_primary"]}
+        assert int(primary["外观设计"]["content_count"]) == 3
+        assert int(primary["外观设计"]["positive_content_count"]) == 2
+        assert int(primary["骑行性能"]["content_count"]) == 2
+        assert int(primary["骑行性能"]["positive_content_count"]) == 1
+        secondary = {
+            (row["primary_label"], row["secondary_label"]): int(row["content_count"])
+            for row in snapshot["current_secondary"]
+        }
+        assert secondary[("外观设计", "颜色与配色")] == 3
+        assert secondary[("外观设计", "整体造型与颜值")] == 1
+    finally:
+        transaction.rollback()
+        session.close()
+        runtime.dispose()
 
 
 def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result() -> None:
@@ -387,7 +547,9 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
         assert stream[0]["effective_labels"] == [
             {"primary_label": "外观设计", "secondary_label": "颜色与配色"}
         ]
-        assert [(row["primary_label"], int(row["user_count"])) for row in mind] == [("外观设计", 1)]
+        assert [(row["primary_label"], int(row["content_count"])) for row in mind] == [
+            ("外观设计", 1)
+        ]
 
         snapshots = PostgresWorkbenchSnapshotRepository(session)
         revision_before = snapshots.current_data_revision()
@@ -573,7 +735,7 @@ def test_workbench_uses_active_scheme_result_instead_of_projection_latest_result
         assert int(fast_trend_snapshot["current_summary"]["positive_count"]) == 0
         assert [row["sentiment"] for row in fast_trend_snapshot["sentiment_counts"]] == ["负面"]
         assert [
-            (row["primary_label"], int(row["user_count"]))
+            (row["primary_label"], int(row["content_count"]))
             for row in fast_mind_snapshot["current_primary"]
         ] == [("售后服务", 1)]
 

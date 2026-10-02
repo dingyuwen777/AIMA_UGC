@@ -209,7 +209,9 @@ Content 是 UGC 事实，Analysis 是对某个 Content Version 的推理结果�
 
 声音流用绑定完整筛选和页大小的签名 Cursor，以 `(published_at, content_id)` 稳定遍历筛选期全部匹配记录；视觉副本不承担数据分页。品牌心智和趋势各自把规范化筛选、active Scheme、Taxonomy、来源数据修订、刷新代次和最近成功响应保存为可重建快照。声音广场投影的 INSERT/UPDATE/DELETE/TRUNCATE 通过 statement trigger 推进无锁单调 revision；HTTP 热路径只读 revision 与快照，同一 Scheme/Taxonomy 的兼容快照陈旧时保留最近成功响应并幂等入队 `workbench.snapshot-refresh.v1`。冷筛选或旧口径快照立即返回当前口径的 preparing 状态，重型查询只在 Worker 中运行。
 
-同一筛选和 Scheme 在任一时刻只允许一个刷新任务，持续导入期间的新 revision 合并到当前任务完成后的下一次补算；Job 提交同时校验刷新代次与 Job Fencing，旧任务不能覆盖新目标。最终失败只改变刷新状态并保留成功响应，短暂退避后自动重试。默认近 30 日心智与趋势在 Worker 启动时幂等预热。三个模块不共享错误、布局草稿或重试状态。这不会改写历史 Analysis Result，也不会把 Workbench 口径反向强加给声音广场。用户布局以 Provider-neutral Principal 为 Owner 单独持久化，并用 revision 防止多会话静默覆盖。
+同一筛选和 Scheme 在任一时刻只允许一个刷新任务，持续导入期间的新 revision 合并到当前任务完成后的下一次补算；Job 提交同时校验刷新代次与 Job Fencing，旧任务不能覆盖新目标。最终失败只改变刷新状态并保留成功响应，短暂退避后自动重试。Worker 保留近 30 日全品牌聚合预热；页面先读目录后采用爱玛及截至昨日完整 7 日，二者查询身份不同。三个模块不共享错误、布局草稿或重试状态。这不会改写历史 Analysis Result，也不会把 Workbench 口径反向强加给声音广场。用户布局以 Provider-neutral Principal 为 Owner 单独持久化，并用 revision 防止多会话静默覆盖。
+
+心智按相关帖子 distinct content_id 聚合，所有相关帖子构成分母，每个一级标签独立计数，同一一级下多个二级不重复增加该一级数量。HTTP 与 Worker 共用带 `content-mind.v2` 语义版本的查询 Hash，旧用户口径 JSONB 快照保持可重建历史记录但不会解析为新的响应；不需要 Schema Migration。公共响应由 [`backend/src/aima_ugc/contracts/workbench.py`](../../backend/src/aima_ugc/contracts/workbench.py) 和生成 OpenAPI/Client 持有。声音广场保留旧单值情感/发声字段，新增数组字段与旧单值在同一维度内取并集，维度之间继续 AND；Content Query 的投影和回退读路径使用同一筛选语义。
 
 ## 10. Durable Job 的核心保证
 

@@ -319,7 +319,7 @@ Analysis Run 的历史、终态和跨页面任务摘要由全局任务中心读�
 → 详情人工纠正合法值
 ```
 
-前端不手写平台、相关性、分析状态或 AI 分类枚举：前三者直接消费 generated Contract，动态目录则由 Filter Options 先保留 active Taxonomy 顺序，再追加当前可见最新结果或人工覆盖中的历史分类并标记“历史数据”；历史项只用于查询，不会成为当前人工纠正合法值。Filter Options 暂不可用时只禁用动态筛选，平台、相关性和分析状态仍可使用；active Taxonomy 暂不可用时只禁用人工纠正。两类错误都不会阻断当前内容列表。实现入口见 [`frontend/src/features/voice-plaza/store.ts`](src/features/voice-plaza/store.ts) 和 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue)。
+前端不手写平台、相关性、分析状态或 AI 分类枚举：前三者直接消费 generated Contract，动态目录则由 Filter Options 先保留 active Taxonomy 顺序，再追加当前可见最新结果或人工覆盖中的历史分类并标记“历史数据”；历史项只用于查询，不会成为当前人工纠正合法值。只有首次无成功值时目录错误才禁用对应动态筛选；后续后台刷新保留可用值和交互状态，同值不替换对象，失败不会清空。active Taxonomy 同样保留已成功加载的值。实现入口见 [`frontend/src/features/voice-plaza/store.ts`](src/features/voice-plaza/store.ts) 和 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue)。品牌和车型的共享只读目录由 [`frontend/src/shared/domain/vehicleCatalog.ts`](src/shared/domain/vehicleCatalog.ts) 持有，active/all 缓存与请求隔离并在同一范围内去重。
 
 ### 5.4 `features/task-center`：跨页面后台任务只读聚合
 
