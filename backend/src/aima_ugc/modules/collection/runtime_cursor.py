@@ -20,6 +20,7 @@ type RuntimeRecordType = Literal[
     "data_import_campaign",
     "tikhub_discovery",
     "tikhub_batch_supplement",
+    "tikhub_content_supplement",
     "canonical_replay",
 ]
 
@@ -45,6 +46,7 @@ class CollectionRuntimeCursorCodec:
             "data_import_campaign",
             "tikhub_discovery",
             "tikhub_batch_supplement",
+            "tikhub_content_supplement",
             "canonical_replay",
         }
     )

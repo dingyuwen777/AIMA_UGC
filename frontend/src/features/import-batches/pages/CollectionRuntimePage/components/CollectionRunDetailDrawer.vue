@@ -15,6 +15,9 @@ import {
 } from '../../../format'
 
 const props = defineProps<{ modelValue: boolean; item: CollectionRunResponse | null }>()
+const modeLabel = computed(() => props.item?.mode === 'content_supplement'
+  ? props.item.supplement_selection?.kind === 'selected' ? '评论补采' : '按发布时间补采'
+  : props.item?.mode === 'discovery' ? '独立发现新内容' : '历史导入补采')
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   refresh: []
@@ -76,14 +79,14 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
     >
       <div class="title-row">
         <div>
-          <span>{{ item.mode === 'discovery' ? '独立发现新内容' : '基于已有批次补采' }}</span><h2>{{ item.keywords?.length ? item.keywords.join(' / ') : '批次内容补采' }}</h2>
+          <span>{{ modeLabel }}</span><h2>{{ item.keywords?.length ? item.keywords.join(' / ') : modeLabel }}</h2>
         </div>
         <b :class="`status status--${item.status}`">{{ runtimeStatusLabels[item.status] }}</b>
       </div>
       <section class="facts">
-        <div><span>补采方式</span><strong>{{ item.mode === 'discovery' ? '独立发现' : '基于历史批次' }}</strong></div>
+        <div><span>补采方式</span><strong>{{ modeLabel }}</strong></div>
         <div><span>目标平台</span><strong>{{ item.platforms.map((platform) => platformLabels[platform]).join(' / ') }}</strong></div>
-        <div><span>来源任务</span><strong>{{ item.mode === 'discovery' ? (item.keywords?.join(' / ') || '关键词发现') : '已关联导入来源' }}</strong></div>
+        <div><span>内容来源</span><strong>{{ item.mode === 'content_supplement' ? item.supplement_selection?.kind === 'selected' ? '声音广场已选内容' : '日期范围内的已入库内容' : item.mode === 'discovery' ? (item.keywords?.join(' / ') || '关键词发现') : '已关联导入来源' }}</strong></div>
         <div><span>总耗时</span><strong>{{ elapsed(item.started_at, item.finished_at) }}</strong></div>
       </section>
       <section class="progress-panel">
@@ -94,6 +97,19 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         <small v-if="item.status === 'queued' || item.status === 'running'">
           执行尝试 {{ item.attempt }} / {{ item.max_attempts }}；短暂故障由后台自动重试。
         </small>
+      </section>
+      <section
+        v-if="item.mode === 'content_supplement'"
+        class="date-selection"
+      >
+        <h3>{{ item.supplement_selection?.kind === 'selected' ? '已选内容' : '内容发布时间 · 北京时间' }}</h3>
+        <p v-if="item.published_from">
+          {{ formatDateTime(item.published_from) }} ~ {{ formatDateTime(item.published_to) }}
+        </p>
+        <p v-if="item.supplement_selection">
+          固定目标 {{ item.supplement_selection.target_count }} 条
+        </p>
+        <p>采集内容：详情{{ item.include_comments ? '、一级评论' : '' }}{{ item.include_sub_comments ? '、二级回复' : '' }}</p>
       </section>
       <h3>处理统计</h3>
       <section class="stats">
@@ -108,7 +124,7 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         <div><span>回复</span><strong>{{ formatNumber(item.stats.reply_count) }}</strong></div>
         <div><span>品牌车型过滤</span><strong>{{ formatNumber(item.stats.filtered_count) }}</strong></div>
       </section>
-      <template v-if="item.mode === 'batch_supplement'">
+      <template v-if="item.mode !== 'discovery'">
         <h3>平台评论覆盖</h3>
         <section
           class="coverage-summary"
@@ -207,7 +223,7 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
       >
         <span>创建于 {{ formatDateTime(item.created_at) }}</span>
         <AimaButton
-          v-if="item.mode === 'batch_supplement'"
+          v-if="item.mode !== 'discovery'"
           variant="secondary"
           @click="emit('viewResults', item.run_id)"
         >

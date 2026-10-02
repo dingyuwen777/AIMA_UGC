@@ -14,13 +14,15 @@
 
 Figma 负责布局、视觉层级、组件复用、用户可见状态和交互意图。HTTP 字段、Capability、Cursor、Job/Run/Campaign 状态、资格条件和错误语义继续以当前 Contract、generated client、Store/API 与服务端实现为准。
 
+2026-10-02 用户确认新建辅助补采使用与“导入数据”相同的居中弹窗，并按已入库内容发布时间选择补采范围。当前代码复用 `AimaModalContainer`、`AimaDateRange` 和北京时间边界；日期与声音广场勾选补采共用 `features/collection-supplement` 的预览、渠道选项与创建规则；原补采节点 `3500:4257`、`3500:4408` 保留为此前设计参照，本轮未修改 Figma 文件。日期补采的当前能力和验收以用户确认决定、[Blueprint 08 §25](../blueprint/08_采集策略与平台能力.md#25-辅助补采的范围冻结与身份资格) 与实际 Contract 为准。
+
 ## 2. 四层 Owner 链路
 
 | 层级 | Figma Owner | 职责 | 代码 Owner |
 | --- | --- | --- | --- |
 | L1 | `01 设计规范`、`02 公共组件` | 颜色、字体、间距、圆角，以及 Button、PageHeader、DateRange、Tabs、Feedback、Empty、Modal/Drawer Shell 等跨页面视觉 API | [`frontend/src/shared/styles/`](../../frontend/src/shared/styles/) 与 [`frontend/src/shared/ui/`](../../frontend/src/shared/ui/) |
 | L2 | `03 页面模板` | PageShell、列表/筛选/详情/任务进度等稳定组合方式，不保存采集运行业务状态 | [`frontend/src/app/layouts/AppShell.vue`](../../frontend/src/app/layouts/AppShell.vue) 与共享页面组合规则 |
-| L3 | `4798:10640` 页面公共组件区 | 采集运行 KPI、筛选、七列表格、状态进度、Cursor、导入 Modal 内容、补采与详情 Drawer 内容 | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/)；跨组件数据由 [`frontend/src/features/import-batches/store.ts`](../../frontend/src/features/import-batches/store.ts) 持有 |
+| L3 | `4798:10640` 页面公共组件区 | 采集运行 KPI、筛选、七列表格、状态进度、Cursor、导入与补采 Modal 内容、详情 Drawer 内容 | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/)；跨组件数据由 [`frontend/src/features/import-batches/store.ts`](../../frontend/src/features/import-batches/store.ts) 持有 |
 | L4 | `3500:2023` 下正式页面实例 | 主页面、Tab、流程状态、详情、撤销、Compact/Wide 等可验收 Screen；只组合上游 Owner | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue) 及真实 Route 实例 |
 
 同步顺序固定为：
@@ -56,8 +58,8 @@ L1 设计规范 / 公共组件
 | 导入数据 / 本地电脑 | `3500:2875` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue) |
 | 导入数据 / 服务器目录 | `3500:3029` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue) |
 | 预检就绪 / 运行 / 完成 | `3500:3348`、`3500:3648`、`3500:3951` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue) + Store/服务端 Campaign 状态 |
-| 辅助补采 / 主动发现 | `3500:4257` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDrawer.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDrawer.vue) |
-| 辅助补采 / 基于批次 | `3500:4408` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDrawer.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDrawer.vue) |
+| 辅助补采 / 主动发现 | `3500:4257` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDialog.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDialog.vue) |
+| 辅助补采 / 原批次设计参照（当前日期补采） | `3500:4408` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDialog.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDialog.vue) |
 | 数据导入详情 | `3500:4557` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue) |
 | 辅助补采详情 | `3500:5216` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRunDetailDrawer.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRunDetailDrawer.vue) |
 | 撤销影响 / 不可撤销 / 已撤销 | `5140:7670`、`5143:7905`、`5143:8216` | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue) + 服务端撤销资格与结果 |
@@ -93,7 +95,7 @@ Prototype 只表达用户如何从创建进入状态、从列表进入详情；V
 
 - `GET /api/v1/collection-runtime/runs` 的 cursor + limit 和 `next_cursor + has_more`；
 - `GET /api/v1/collection-runtime/summary` 的 `Asia/Shanghai` 今日口径；
-- Data Import Campaign、兼容 Excel Import、TikHub discovery/batch supplement 的状态与资格；
+- Data Import Campaign、兼容 Excel Import、TikHub discovery/batch/date supplement 的状态与资格；
 - Provider/Platform/Search Config 和补采能力；
 - 只有活跃任务且页面可见时约每 5 秒静默刷新；
 - Campaign 开始、取消、重试、撤销、冲突详情和任务中心深链；
@@ -124,7 +126,7 @@ Fresh Figma Design Context / Screenshot
 - 七列表格：[`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeTable.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeTable.vue)
 - 状态进度：[`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeStatusProgress.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeStatusProgress.vue)
 - 导入 Modal：[`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue)
-- 补采 Drawer：[`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDrawer.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDrawer.vue)
+- 补采 Modal：[`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDialog.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDialog.vue)
 - 详情 Drawer：[`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue)、[`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRunDetailDrawer.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRunDetailDrawer.vue)
 - 页面共享状态：[`frontend/src/features/import-batches/store.ts`](../../frontend/src/features/import-batches/store.ts)
 - Feature API：[`frontend/src/features/import-batches/api.ts`](../../frontend/src/features/import-batches/api.ts)

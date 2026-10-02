@@ -1,13 +1,15 @@
-"""Stage 8E Import Batch → 当前 Content 补采目标只读查询。"""
+"""日期、显式 Content 与历史导入来源共用的补采身份查询。"""
 
 from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import Uuid, any_, literal, select
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -80,6 +82,100 @@ class PostgresCollectionTargetReader:
     ) -> None:
         self._session = session
         self._analysis_identity = analysis_identity
+
+    def list_date_range_selection(
+        self,
+        *,
+        published_from: datetime,
+        published_to: datetime,
+        platforms: tuple[PlatformName, ...],
+    ) -> tuple[
+        tuple[CollectionEnrichmentTarget, ...],
+        tuple[CollectionSupplementSourceItem, ...],
+        tuple[CollectionSupplementPlatformDiagnostic, ...],
+    ]:
+        """从同一份候选集合生成资格、冻结来源和诊断，避免重复日期查询。"""
+        rows = self._content_rows(
+            published_from=published_from, published_to=published_to, platforms=platforms
+        )
+        return self._selection(rows, exclude_irrelevant=True)
+
+    def list_selected_selection(
+        self,
+        *,
+        content_ids: tuple[UUID, ...],
+    ) -> tuple[
+        tuple[CollectionEnrichmentTarget, ...],
+        tuple[CollectionSupplementSourceItem, ...],
+        tuple[CollectionSupplementPlatformDiagnostic, ...],
+    ]:
+        """用户明确选中的内容优先于 AI 筛选，缺失身份也保留为 Scope。"""
+        return self._selection(
+            self._content_rows(content_ids=content_ids), exclude_irrelevant=False
+        )
+
+    def _selection(
+        self, rows: tuple[RowMapping, ...], *, exclude_irrelevant: bool
+    ) -> tuple[
+        tuple[CollectionEnrichmentTarget, ...],
+        tuple[CollectionSupplementSourceItem, ...],
+        tuple[CollectionSupplementPlatformDiagnostic, ...],
+    ]:
+        """候选来源只决定相关性策略，身份和诊断保持一个实现。"""
+        source_items = self._source_items(rows, exclude_irrelevant=exclude_irrelevant)
+        source_ids = {item.content_id for item in source_items}
+        relevant_rows = tuple(row for row in rows if row["id"] in source_ids)
+        return (
+            self._eligible_targets(relevant_rows, exclude_irrelevant=False),
+            source_items,
+            self._diagnostics(relevant_rows, exclude_irrelevant=False),
+        )
+
+    def get_content_target(self, *, content_id: UUID) -> CollectionEnrichmentTarget | None:
+        """执行冻结内容；日期和相关性仅在创建时筛选，不在排队后重新判断。"""
+        targets = self._eligible_targets(
+            self._content_rows(content_id=content_id), exclude_irrelevant=False
+        )
+        return targets[0] if targets else None
+
+    def get_content_unavailable_reason(self, *, content_id: UUID) -> str | None:
+        """保留内容删除与身份不可用的不同失败语义。"""
+        return self._unavailable_reason(self._content_rows(content_id=content_id))
+
+    def _content_rows(
+        self,
+        *,
+        content_id: UUID | None = None,
+        content_ids: tuple[UUID, ...] | None = None,
+        published_from: datetime | None = None,
+        published_to: datetime | None = None,
+        platforms: tuple[PlatformName, ...] | None = None,
+    ) -> tuple[RowMapping, ...]:
+        content = contents_table
+        conditions = []
+        if content_id is not None:
+            conditions.append(content.c.id == content_id)
+        if content_ids is not None:
+            conditions.append(content.c.id == any_(literal(list(content_ids), type_=ARRAY(Uuid()))))
+        if published_from is not None:
+            conditions.append(content.c.published_at >= published_from)
+        if published_to is not None:
+            conditions.append(content.c.published_at <= published_to)
+        if platforms is not None:
+            conditions.append(content.c.platform.in_(platforms))
+        return tuple(
+            self._session.execute(
+                select(
+                    content.c.id,
+                    content.c.platform,
+                    content.c.external_content_id,
+                    content.c.content_type,
+                    content.c.current_version,
+                )
+                .where(*conditions)
+                .order_by(content.c.platform, content.c.id)
+            ).mappings()
+        )
 
     def batch_exists(self, batch_id: UUID) -> bool:
         return (
@@ -328,7 +424,7 @@ class PostgresCollectionTargetReader:
         return tuple(targets)
 
     def _diagnostics(
-        self, rows: tuple[RowMapping, ...]
+        self, rows: tuple[RowMapping, ...], *, exclude_irrelevant: bool = True
     ) -> tuple[CollectionSupplementPlatformDiagnostic, ...]:
         """只读分类与真实 Scope 资格共用同一 lookup 规则。"""
         if not rows:
@@ -336,7 +432,11 @@ class PostgresCollectionTargetReader:
         content_ids = tuple(cast(UUID, row["id"]) for row in rows)
         alternate_ids = self._alternate_ids(content_ids)
         tikhub_content_ids = self._tikhub_content_ids(content_ids)
-        irrelevant_content_ids = self._latest_current_irrelevant_content_ids(content_ids)
+        irrelevant_content_ids = (
+            self._latest_current_irrelevant_content_ids(content_ids)
+            if exclude_irrelevant
+            else set()
+        )
         counts: dict[PlatformName, list[int]] = {}
         reasons: dict[PlatformName, dict[str, int]] = defaultdict(dict)
         for row in rows:
@@ -373,14 +473,14 @@ class PostgresCollectionTargetReader:
         )
 
     def _source_items(
-        self, rows: tuple[RowMapping, ...]
+        self, rows: tuple[RowMapping, ...], *, exclude_irrelevant: bool = True
     ) -> tuple[CollectionSupplementSourceItem, ...]:
         """Scope 只排除当前明确不相关内容，身份缺口留给执行期分类。"""
         irrelevant = (
             self._latest_current_irrelevant_content_ids(
                 tuple(cast(UUID, row["id"]) for row in rows)
             )
-            if rows
+            if rows and exclude_irrelevant
             else set()
         )
         return tuple(
@@ -408,7 +508,10 @@ class PostgresCollectionTargetReader:
                 content_external_ids_table.c.content_id,
                 content_external_ids_table.c.id_type,
                 content_external_ids_table.c.external_id,
-            ).where(content_external_ids_table.c.content_id.in_(content_ids))
+            ).where(
+                content_external_ids_table.c.content_id
+                == any_(literal(list(content_ids), type_=ARRAY(Uuid())))
+            )
         ).mappings()
         result: dict[UUID, dict[str, str]] = defaultdict(dict)
         for row in rows:
@@ -429,7 +532,7 @@ class PostgresCollectionTargetReader:
                 )
             )
             .where(
-                version.c.content_id.in_(content_ids),
+                version.c.content_id == any_(literal(list(content_ids), type_=ARRAY(Uuid()))),
                 request.c.provider == "tikhub",
             )
             .distinct()
@@ -454,7 +557,8 @@ class PostgresCollectionTargetReader:
                 )
             )
             .where(
-                analysis.c.content_id.in_(content_ids),
+                # UUID 数组使用一个绑定参数，宽日期范围不会超过驱动参数数上限。
+                analysis.c.content_id == any_(literal(list(content_ids), type_=ARRAY(Uuid()))),
                 analysis.c.content_version == content.c.current_version,
             )
             .distinct(analysis.c.content_id)

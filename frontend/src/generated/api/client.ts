@@ -1237,6 +1237,7 @@ export type CollectionRunMode = typeof CollectionRunMode[keyof typeof Collection
 export const CollectionRunMode = {
   discovery: 'discovery',
   batch_supplement: 'batch_supplement',
+  content_supplement: 'content_supplement',
 } as const;
 
 /**
@@ -1248,6 +1249,43 @@ export interface CollectionRunPlatformRequest {
   search_config?: CollectionSearchConfig | null;
 }
 
+export type CollectionSupplementSelectedTargetsKind = typeof CollectionSupplementSelectedTargetsKind[keyof typeof CollectionSupplementSelectedTargetsKind];
+
+
+export const CollectionSupplementSelectedTargetsKind = {
+  selected: 'selected',
+} as const;
+
+/**
+ * 用户显式选择的内容，不按 AI 相关性再次筛选。
+ */
+export interface CollectionSupplementSelectedTargets {
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     */
+  content_ids: string[];
+  kind: CollectionSupplementSelectedTargetsKind;
+}
+
+export type CollectionSupplementPublishedDateRangeTargetsKind = typeof CollectionSupplementPublishedDateRangeTargetsKind[keyof typeof CollectionSupplementPublishedDateRangeTargetsKind];
+
+
+export const CollectionSupplementPublishedDateRangeTargetsKind = {
+  published_date_range: 'published_date_range',
+} as const;
+
+/**
+ * 日期只决定创建时的目标集合，执行期由冻结 Scope 决定。
+ */
+export interface CollectionSupplementPublishedDateRangeTargets {
+  kind: CollectionSupplementPublishedDateRangeTargetsKind;
+  published_from: string;
+  published_to: string;
+}
+
+export type CollectionSupplementTargetSelection = CollectionSupplementSelectedTargets | CollectionSupplementPublishedDateRangeTargets;
+
 /**
  * 一次性发现冻结 Search Terms 与 Brand Filter；补采只处理既有内容。
  */
@@ -1255,6 +1293,8 @@ export interface CollectionRunCreateRequest {
   /** @maxItems 100 */
   brand_ids?: string[];
   data_import_campaign_id?: string | null;
+  expected_target_count?: number | null;
+  expected_target_fingerprint?: string | null;
   import_batch_id?: string | null;
   include_comments?: boolean;
   include_sub_comments?: boolean;
@@ -1266,6 +1306,28 @@ export interface CollectionRunCreateRequest {
      * @maxItems 5
      */
   platforms: CollectionRunPlatformRequest[];
+  supplement_targets?: CollectionSupplementTargetSelection | null;
+}
+
+export type CollectionSupplementSelectionResponseKind = typeof CollectionSupplementSelectionResponseKind[keyof typeof CollectionSupplementSelectionResponseKind];
+
+
+export const CollectionSupplementSelectionResponseKind = {
+  selected: 'selected',
+  published_date_range: 'published_date_range',
+} as const;
+
+/**
+ * 选择条件审计；具体内容 UUID 只保存在正式 Scope 中。
+ */
+export interface CollectionSupplementSelectionResponse {
+  kind: CollectionSupplementSelectionResponseKind;
+  published_from?: string | null;
+  published_to?: string | null;
+  /** @minimum 0 */
+  target_count: number;
+  /** @pattern ^[0-9a-f]{64}$ */
+  target_fingerprint: string;
 }
 
 export interface CollectionRunCreatedResponse {
@@ -1273,8 +1335,11 @@ export interface CollectionRunCreatedResponse {
   import_batch_id?: string | null;
   job_id: string;
   mode: CollectionRunMode;
+  published_from?: string | null;
+  published_to?: string | null;
   run_id: string;
   status?: 'queued';
+  supplement_selection?: CollectionSupplementSelectionResponse | null;
 }
 
 export type CollectionScopeResponseCommentCoverage = typeof CollectionScopeResponseCommentCoverage[keyof typeof CollectionScopeResponseCommentCoverage] | null;
@@ -1371,6 +1436,8 @@ export interface CollectionRunResponse {
   error_summary?: string | null;
   finished_at?: string | null;
   import_batch_id?: string | null;
+  include_comments?: boolean | null;
+  include_sub_comments?: boolean | null;
   job_id: string;
   keywords?: string[];
   /** @exclusiveMinimum 0 */
@@ -1382,12 +1449,15 @@ export interface CollectionRunResponse {
      * @maximum 100
      */
   progress: number;
+  published_from?: string | null;
+  published_to?: string | null;
   run_id: string;
   scopes: CollectionScopeResponse[];
   stage: string;
   started_at?: string | null;
   stats: CollectionRunStatsResponse;
   status: CollectionRuntimeStatus;
+  supplement_selection?: CollectionSupplementSelectionResponse | null;
 }
 
 export interface ImportStatsResponse {
@@ -1413,6 +1483,7 @@ export const CollectionRuntimeRecordType = {
   data_import_campaign: 'data_import_campaign',
   tikhub_discovery: 'tikhub_discovery',
   tikhub_batch_supplement: 'tikhub_batch_supplement',
+  tikhub_content_supplement: 'tikhub_content_supplement',
   canonical_replay: 'canonical_replay',
 } as const;
 
@@ -1460,6 +1531,46 @@ export interface CollectionRuntimeSummaryResponse {
   contents_ingested_today: number;
   /** @minimum 0 */
   processing_count: number;
+}
+
+export type CollectionSupplementPreviewPlatformResponseBlockReasons = {[key: string]: number};
+
+/**
+ * 真实选择数包含身份阻塞内容，避免把可执行数冒充选择数。
+ */
+export interface CollectionSupplementPreviewPlatformResponse {
+  block_reasons: CollectionSupplementPreviewPlatformResponseBlockReasons;
+  /** @minimum 0 */
+  blocked_count: number;
+  /** @minimum 0 */
+  content_count: number;
+  /** @minimum 0 */
+  direct_target_count: number;
+  platform: CollectionPlatform;
+  /** @minimum 0 */
+  resolution_candidate_count: number;
+}
+
+/**
+ * 预览与创建共用目标和采集选项；平台筛选只适用于日期入口。
+ */
+export interface CollectionSupplementPreviewRequest {
+  include_comments?: boolean;
+  include_sub_comments?: boolean;
+  /** @maxItems 5 */
+  platforms?: CollectionPlatform[];
+  targets: CollectionSupplementTargetSelection;
+}
+
+/**
+ * 平台分布覆盖全部候选；总数和指纹绑定实际拟确认的平台范围。
+ */
+export interface CollectionSupplementPreviewResponse {
+  platforms: CollectionSupplementPreviewPlatformResponse[];
+  /** @minimum 0 */
+  target_count: number;
+  /** @pattern ^[0-9a-f]{64}$ */
+  target_fingerprint: string;
 }
 
 export interface CommentCoverageResponse {
@@ -3737,7 +3848,7 @@ limit?: number;
 export type ListCollectionRuntimeRunsParams = {
 search?: string | null;
 /**
- * @maxItems 5
+ * @maxItems 6
  */
 record_types?: CollectionRuntimeRecordType[];
 status?: CollectionRuntimeStatus | null;
@@ -5643,6 +5754,38 @@ export const getCollectionRuntimeSummary = async ( options?: RequestInit): Promi
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: CollectionRuntimeSummaryResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getPreviewCollectionSupplementUrl = () => {
+
+
+
+
+  return `/api/v1/collection-supplements/preview`
+}
+
+/**
+ * 统一预览不访问 TikHub，也不创建任务。
+ * @summary Preview Collection Supplement
+ */
+export const previewCollectionSupplement = async (collectionSupplementPreviewRequest: CollectionSupplementPreviewRequest, options?: RequestInit): Promise<CollectionSupplementPreviewResponse> => {
+
+  const res = await fetch(getPreviewCollectionSupplementUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(collectionSupplementPreviewRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionSupplementPreviewResponse = body ? JSON.parse(body) : {}
   return data
 }
 

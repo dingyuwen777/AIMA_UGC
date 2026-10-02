@@ -46,6 +46,9 @@ class _FakeCollectionService:
             "targets": [{"platform": "xiaohongshu", "target_count": 3}],
         }
 
+    def preview_supplement(self, request):  # type: ignore[no-untyped-def]
+        return {"target_count": 2, "target_fingerprint": "a" * 64, "platforms": []}
+
     def create_run(self, request, *, request_id):  # type: ignore[no-untyped-def]
         assert request.mode == "discovery"
         assert request.keyword_pack_ids == (PACK_ID,)
@@ -164,6 +167,9 @@ def test_create_discovery_collection_run_returns_202() -> None:
         "mode": "discovery",
         "import_batch_id": None,
         "data_import_campaign_id": None,
+        "published_from": None,
+        "published_to": None,
+        "supplement_selection": None,
         "status": "queued",
     }
 
@@ -231,3 +237,56 @@ def test_collection_run_detail_and_runtime_summary_are_queryable() -> None:
     assert summary.json()["contents_ingested_today"] == 3
     assert listing.status_code == 200
     assert listing.json() == {"items": [], "next_cursor": None, "has_more": False}
+
+
+@pytest.mark.parametrize(
+    "published_from,published_to,status",
+    [
+        ("2026-09-01T00:00:00+08:00", "2026-09-01T23:59:59.999+08:00", 200),
+        ("2026-09-01T00:00:00", "2026-09-01T23:59:59+08:00", 422),
+        ("2026-09-02T00:00:00+08:00", "2026-09-01T23:59:59+08:00", 422),
+    ],
+)
+def test_date_supplement_eligibility_http(
+    published_from: str, published_to: str, status: int
+) -> None:
+    client = TestClient(create_app(collection_service=_FakeCollectionService()))
+    response = client.post(
+        "/api/v1/collection-supplements/preview",
+        json={
+            "targets": {
+                "kind": "published_date_range",
+                "published_from": published_from,
+                "published_to": published_to,
+            }
+        },
+    )
+    assert response.status_code == status
+    if status == 200:
+        assert response.json()["target_count"] == 2
+        assert response.json()["target_fingerprint"] == "a" * 64
+    else:
+        assert response.json()["request_id"]
+
+
+def test_content_supplement_changed_targets_returns_specific_409() -> None:
+    """前端可以按独立错误码刷新预览，不能把变化当成可重发的创建。"""
+    from aima_ugc.modules.collection.http import CollectionSupplementTargetsChanged
+
+    class ChangedService(_FakeCollectionService):
+        def create_run(self, request, *, request_id):  # type: ignore[no-untyped-def]
+            raise CollectionSupplementTargetsChanged
+
+    client = TestClient(create_app(collection_service=ChangedService()))
+    response = client.post(
+        "/api/v1/collection-runs",
+        json={
+            "mode": "content_supplement",
+            "supplement_targets": {"kind": "selected", "content_ids": [str(RUN_ID)]},
+            "expected_target_count": 1,
+            "expected_target_fingerprint": "a" * 64,
+            "platforms": [{"platform": "douyin", "provider_config_id": str(CONFIG_ID)}],
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["errors"][0]["code"] == "collection_supplement_targets_changed"

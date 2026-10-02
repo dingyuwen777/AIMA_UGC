@@ -6,6 +6,7 @@ import AppShell from '../../../../app/layouts/AppShell.vue'
 import {
   PlatformName,
   type AnalysisContentRunResponse,
+  type CollectionRunCreatedResponse,
   type ContentAnalysisManualReviewRequest,
   type ContentRelevanceReviewResponse,
   type DataExportResponse,
@@ -23,6 +24,7 @@ import {
 } from '../../relevanceReview'
 import { useVoicePlazaStore } from '../../store'
 import AnalysisSubmitDialog from './components/AnalysisSubmitDialog.vue'
+import CommentSupplementDialog from './components/CommentSupplementDialog.vue'
 import ContentDetailDrawer from './components/ContentDetailDrawer.vue'
 import DataExportDialog from './components/DataExportDialog.vue'
 import VoicePlazaFilters from './components/VoicePlazaFilters.vue'
@@ -34,7 +36,15 @@ const route = useRoute()
 const router = useRouter()
 const analysisOpen = ref(false)
 const exportOpen = ref(false)
+const commentSupplementOpen = ref(false)
 const { message: notice, show: showNotice } = useTransientNotice()
+/** 复用现有已选 ID；运行终态由本页面现有轮询刷新内容与评论。 */
+async function commentSupplementCreated(created: CollectionRunCreatedResponse): Promise<void> {
+  commentSupplementOpen.value = false
+  store.trackSupplement(created.run_id)
+  showNotice(`评论补采任务已创建，共 ${created.supplement_selection?.target_count ?? 0} 条内容。`)
+  await taskCenter.refresh(true)
+}
 const activeAnalysisRuns = computed(() => store.analysisRuns.filter(
   (run) => run.status === 'queued' || run.status === 'running' || run.status === 'cancelling',
 ))
@@ -315,6 +325,14 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             AI 分析
           </AimaButton>
           <AimaButton
+            size="small"
+            :disabled="store.selectedIds.length === 0 || store.selectedIds.length > 1000"
+            :title="store.selectedIds.length > 1000 ? '每次最多选择 1000 条内容' : '补采已选笔记的详情和评论'"
+            @click="commentSupplementOpen = true"
+          >
+            评论补采
+          </AimaButton>
+          <AimaButton
             variant="primary"
             size="small"
             @click="exportOpen = true"
@@ -567,6 +585,11 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         @review="reviewSingle"
         @review-vehicles="reviewDetailVehicles"
         @review-analysis="reviewDetailAnalysis"
+      />
+      <CommentSupplementDialog
+        v-model="commentSupplementOpen"
+        :content-ids="store.selectedIds"
+        @created="commentSupplementCreated"
       />
       <AnalysisSubmitDialog
         v-model="analysisOpen"

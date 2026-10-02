@@ -147,28 +147,14 @@ describe('frontend full-stack audit regressions', () => {
     expect(generated.listKeywordPacks).toHaveBeenNthCalledWith(2, { enabled: true, offset: 100, limit: 100 })
   })
 
-  it('loads all cursor pages of successful import batches for supplement creation', async () => {
+  it('supplement creation loads no import batch or campaign catalogs', async () => {
     generated.getCollectionCapabilities.mockResolvedValue({ capabilities: [], provider_configs: [] })
     generated.listKeywordPacks.mockResolvedValue({ items: [], total: 0, offset: 0, limit: 100 })
-    generated.listDataImportCampaigns.mockResolvedValue({ items: [] })
-    generated.listImportBatches
-      .mockResolvedValueOnce({
-        items: [{ id: 'batch-1', status: 'succeeded', stats: { rows_ingested: 1 } }],
-        has_more: true,
-        next_cursor: 'batch-next',
-      })
-      .mockResolvedValueOnce({
-        items: [{ id: 'batch-2', status: 'succeeded', stats: { rows_ingested: 2 } }],
-        has_more: false,
-        next_cursor: null,
-      })
     const store = useImportBatchesStore()
-
     await store.loadCreationOptions()
-
-    expect(store.batchOptions.map((batch) => batch.id)).toEqual(['batch-1', 'batch-2'])
-    expect(generated.listImportBatches).toHaveBeenNthCalledWith(1, { limit: 100 })
-    expect(generated.listImportBatches).toHaveBeenNthCalledWith(2, { limit: 100, cursor: 'batch-next' })
+    expect(generated.listImportBatches).not.toHaveBeenCalled()
+    expect(generated.listDataImportCampaigns).not.toHaveBeenCalled()
+    expect(generated.getCollectionCapabilities).toHaveBeenCalledOnce()
   })
 
   it('keeps the principal-wide unread count authoritative after marking a visible notification read', async () => {

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import type {
   CollectionRunCreateRequest,
+  CollectionRunCreatedResponse,
   CollectionRuntimeItemResponse,
 } from '../../../../generated/api/client'
 import AppShell from '../../../../app/layouts/AppShell.vue'
@@ -12,9 +13,9 @@ import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
 import { useTransientNotice } from '../../../../shared/ui/useTransientNotice'
 import {
-  type SupplementSourceSelection,
   useImportBatchesStore,
 } from '../../store'
+import { useTaskCenterStore } from '../../../task-center'
 import CanonicalReplayDetailDrawer from './components/CanonicalReplayDetailDrawer.vue'
 import CollectionRunDetailDrawer from './components/CollectionRunDetailDrawer.vue'
 import CollectionRuntimeFilters from './components/CollectionRuntimeFilters.vue'
@@ -22,14 +23,14 @@ import CollectionRuntimeKpiCards from './components/CollectionRuntimeKpiCards.vu
 import CollectionRuntimeTable from './components/CollectionRuntimeTable.vue'
 import DataImportDialog from './components/DataImportDialog.vue'
 import ImportBatchDetailDrawer from './components/ImportBatchDetailDrawer.vue'
-import TikHubSupplementDrawer from './components/TikHubSupplementDrawer.vue'
+import TikHubSupplementDialog from './components/TikHubSupplementDialog.vue'
 
 const store = useImportBatchesStore()
 const route = useRoute()
 const router = useRouter()
 const dataImportOpen = ref(false)
 const supplementOpen = ref(false)
-const initialSupplementSource = ref<SupplementSourceSelection | null>(null)
+const taskCenter = useTaskCenterStore()
 const { message: notice, show: showNotice } = useTransientNotice()
 const persistentNotice = ref<string | null>(null)
 const batchDetailOpen = computed({
@@ -91,10 +92,9 @@ async function openDataImport(): Promise<void> {
   await store.openHistoricalWorkspace()
 }
 
-/** 打开辅助补采；从列表发起时可把当前导入来源作为初始补采来源。 */
-async function openCreate(source: SupplementSourceSelection | null = null): Promise<void> {
-  initialSupplementSource.value = source
-  await store.loadCreationOptions(source)
+/** 新建补采按发布时间选择已入库内容，复用共享居中弹窗。 */
+async function openCreate(): Promise<void> {
+  await store.loadCreationOptions()
   supplementOpen.value = true
 }
 
@@ -104,6 +104,13 @@ async function createRun(request: CollectionRunCreateRequest): Promise<void> {
   if (!created) return
   supplementOpen.value = false
   showNotice('辅助补采任务已创建，将在后台执行。')
+}
+
+/** 补采创建后立即同步运行中心与任务中心，不等待下一轮定时刷新。 */
+async function supplementCreated(created: CollectionRunCreatedResponse): Promise<void> {
+  supplementOpen.value = false
+  showNotice(`补采任务已创建，共 ${created.supplement_selection?.target_count ?? 0} 条内容。`)
+  await Promise.all([store.refresh(true), taskCenter.refresh(true), store.openRunDetail(created.run_id)])
 }
 
 /** 根据统一运行记录的真实 record_type 进入对应详情 Owner。 */
@@ -294,19 +301,14 @@ async function viewRunResults(runId: string): Promise<void> {
       v-model="dataImportOpen"
       @view-contents="viewContents"
     />
-    <TikHubSupplementDrawer
+    <TikHubSupplementDialog
       v-model="supplementOpen"
       :capabilities="store.capabilities"
-      :campaigns="store.campaignOptions"
-      :batches="store.batchOptions"
       :keyword-packs="store.keywordPackOptions"
-      :supplement-content-platforms="store.supplementContentPlatforms"
-      :supplement-diagnostics="store.supplementDiagnostics"
-      :loading-supplement-platforms="store.loadingSupplementPlatforms"
+      :error="store.error"
       :creating="store.creating"
-      :initial-source="initialSupplementSource"
-      @source-change="store.loadSupplementPlatforms"
       @submit="createRun"
+      @created="supplementCreated"
     />
     <div
       v-if="notice"

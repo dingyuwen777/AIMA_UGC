@@ -17,6 +17,7 @@ const generated = vi.hoisted(() => ({
   listContents: vi.fn(),
   listContentComments: vi.fn(),
   getContent: vi.fn(),
+  getCollectionRun: vi.fn(),
   getContentAnalysisCapabilities: vi.fn(),
   getContentAnalysisTaxonomy: vi.fn(),
   getContentFilterOptions: vi.fn(),
@@ -120,6 +121,41 @@ function installSessionStorage(): Storage {
 }
 
 describe('voice plaza', () => {
+  it.each(['succeeded', 'partial_success', 'failed', 'cancelled'])('补采 %s 后刷新服务器窗口、已打开详情和评论，随后停止跟进', async (status) => {
+    vi.stubGlobal('document', { visibilityState: 'visible' })
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    generated.getContent.mockResolvedValue(item)
+    generated.getCollectionRun.mockResolvedValue({ run_id: 'supplement-1', status })
+    const store = useVoicePlazaStore()
+    await store.refresh()
+    await store.openDetail(item.id)
+    generated.listContents.mockResolvedValue({ items: [], has_more: false })
+    generated.getContent.mockResolvedValue({ ...item, metrics: { comment_count: 2 } })
+    generated.listContentComments.mockResolvedValue({ items: [{ id: 'comment-1', text: '新评论' }], has_more: false, total_count: 1, ingested_total_count: 1 })
+    store.trackSupplement('supplement-1')
+    await store.pollSupplements()
+    expect(store.items).toEqual([])
+    expect(store.detail?.metrics?.comment_count).toBe(2)
+    expect(store.commentRoots[0]?.text).toBe('新评论')
+    expect(generated.getCollectionRun).toHaveBeenCalledOnce()
+    await store.pollSupplements()
+    expect(generated.getCollectionRun).toHaveBeenCalledOnce()
+  })
+
+  it('离开声音广场后迟到的补采状态不能再触发内容刷新', async () => {
+    vi.stubGlobal('document', { visibilityState: 'visible' })
+    let finish!: (value: unknown) => void
+    generated.getCollectionRun.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const store = useVoicePlazaStore()
+    store.trackSupplement('supplement-late')
+    const pending = store.pollSupplements()
+    store.stopPolling()
+    finish({ status: 'succeeded' })
+    await pending
+    expect(generated.listContents).not.toHaveBeenCalled()
+    await store.pollSupplements()
+    expect(generated.getCollectionRun).toHaveBeenCalledOnce()
+  })
   it('旧会话内容类型不会成为列表、分析和导出的隐藏条件', async () => {
     installSessionStorage()
     sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({

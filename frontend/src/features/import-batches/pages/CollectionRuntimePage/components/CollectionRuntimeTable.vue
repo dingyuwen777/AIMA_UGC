@@ -3,7 +3,6 @@ import type { CollectionRuntimeItemResponse } from '../../../../../generated/api
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaEmptyState from '../../../../../shared/ui/AimaEmptyState.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
-import type { SupplementSourceSelection } from '../../../store'
 import {
   formatDateTime,
   formatNumber,
@@ -20,7 +19,6 @@ defineProps<{
 
 defineEmits<{
   select: [item: CollectionRuntimeItemResponse]
-  supplement: [source: SupplementSourceSelection]
   retry: []
 }>()
 
@@ -32,6 +30,7 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
   if (item.record_type === 'tikhub_discovery' && item.keywords?.length) {
     return `关键词：${item.keywords.slice(0, 2).join(' / ')}`
   }
+  if (item.record_type === 'tikhub_content_supplement') return '按确认的内容范围'
   if (item.record_type === 'tikhub_batch_supplement') return '基于已有导入数据'
   return recordTypeLabels[item.record_type]
 }
@@ -142,22 +141,6 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
           @click="$emit('select', item)"
         >
           查看详情
-        </AimaButton>
-        <AimaButton
-          v-if="item.record_type === 'excel_import' && item.import_batch_id && item.status === 'succeeded' && (item.import_stats?.rows_ingested ?? 0) > 0"
-          variant="text"
-          size="small"
-          @click="$emit('supplement', { kind: 'batch', id: item.import_batch_id })"
-        >
-          基于本次导入补采
-        </AimaButton>
-        <AimaButton
-          v-if="item.record_type === 'data_import_campaign' && item.data_import_campaign_id && ['succeeded', 'partial_success'].includes(item.status) && (item.import_stats?.rows_matched ?? 0) > 0"
-          variant="text"
-          size="small"
-          @click="$emit('supplement', { kind: 'campaign', id: item.data_import_campaign_id })"
-        >
-          基于本次导入补采
         </AimaButton>
       </div>
     </article>

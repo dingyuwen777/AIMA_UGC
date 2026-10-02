@@ -40,13 +40,19 @@ describe('Stage 6 品牌车型过滤前端产品化', () => {
   it('Excel 与 TikHub Discovery 都提交品牌过滤，补采不携带搜索或过滤范围', async () => {
     const [dataImport, discovery] = await Promise.all([
       readSource('features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue'),
-      readSource('features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDrawer.vue'),
+      readSource('features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDialog.vue'),
     ])
 
     expect(dataImport).toContain('不适用于 Excel 文件导入')
     expect(dataImport).toContain("brand_ids: brandScope.value === 'selected' ? selectedBrandIds.value : []")
-    expect(discovery).toContain("brand_ids: mode.value === 'discovery' && brandScope.value === 'selected' ? selectedBrandIds.value : []")
-    expect(discovery).not.toContain('vehicle_model_ids: mode.value === \'discovery\'')
+    const submitStart = discovery.indexOf('async function submit()')
+    const submitEnd = discovery.indexOf('</script>', submitStart)
+    const submit = discovery.slice(submitStart, submitEnd)
+    const supplementEnd = submit.indexOf("mode: 'discovery'")
+    expect(submit.slice(0, supplementEnd)).toContain('await supplement.create()')
+    expect(submit.slice(0, supplementEnd)).not.toContain('brand_ids:')
+    expect(submit.slice(supplementEnd)).toContain("brand_ids: brandScope.value === 'selected' ? selectedBrandIds.value : []")
+    expect(submit).not.toContain('vehicle_model_ids:')
   })
 
   it('声音广场发送品牌与竞争范围筛选并展示品牌证据', async () => {

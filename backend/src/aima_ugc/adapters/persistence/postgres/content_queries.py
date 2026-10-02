@@ -717,7 +717,7 @@ class PostgresContentQueryRepository:
         )
 
     def latest_supplement_status(self, content_id: UUID) -> ContentSupplementStatusResponse | None:
-        """返回该 Content 最近一次 Batch Supplement Scope 状态。"""
+        """按内容 Scope 语义读取最近补采，兼容所有目标来源。"""
 
         run = collection_runs_table
         scope = collection_scopes_table
@@ -738,7 +738,6 @@ class PostgresContentQueryRepository:
                 )
                 .select_from(scope.join(run, run.c.id == scope.c.run_id))
                 .where(
-                    run.c.import_batch_id.is_not(None),
                     scope.c.source_type == "content",
                     scope.c.source_value == str(content_id),
                     scope.c.operation_group == "content_enrichment",

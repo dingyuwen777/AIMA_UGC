@@ -352,12 +352,13 @@ def _normalize_platform_inputs(value: object) -> object:
     return value
 
 
-type CollectionRunMode = Literal["discovery", "batch_supplement"]
+type CollectionRunMode = Literal["discovery", "batch_supplement", "content_supplement"]
 type CollectionRuntimeRecordType = Literal[
     "excel_import",
     "data_import_campaign",
     "tikhub_discovery",
     "tikhub_batch_supplement",
+    "tikhub_content_supplement",
     "canonical_replay",
 ]
 type CollectionRuntimeStatus = Literal[
@@ -385,6 +386,93 @@ class CollectionRunPlatformRequest(BaseModel):
         return _normalize_platform_input(value)
 
 
+class CollectionDateSupplementQuery(BaseModel):
+    """按已入库内容发布时间查询补采资格，边界为带时区闭区间。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    published_from: datetime
+    published_to: datetime
+
+    @field_validator("published_from", "published_to")
+    @classmethod
+    def validate_aware_datetime(cls, value: datetime) -> datetime:
+        """拒绝无时区时间，并统一使用北京时间边界。"""
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("发布时间筛选必须包含时区")
+        return to_beijing(value)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> CollectionDateSupplementQuery:
+        """保留闭区间语义，允许单个时间点。"""
+        if self.published_from > self.published_to:
+            raise ValueError("published_from 不能晚于 published_to")
+        return self
+
+
+class CollectionSupplementSelectedTargets(BaseModel):
+    """用户显式选择的内容，不按 AI 相关性再次筛选。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["selected"]
+    content_ids: tuple[UUID, ...] = Field(min_length=1, max_length=1000)
+
+    @field_validator("content_ids")
+    @classmethod
+    def deduplicate_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        """重复 UUID 只形成一个 Scope，保留显式请求大小边界。"""
+        return tuple(dict.fromkeys(value))
+
+
+class CollectionSupplementPublishedDateRangeTargets(CollectionDateSupplementQuery):
+    """日期只决定创建时的目标集合，执行期由冻结 Scope 决定。"""
+
+    kind: Literal["published_date_range"]
+
+
+type CollectionSupplementTargetSelection = Annotated[
+    CollectionSupplementSelectedTargets | CollectionSupplementPublishedDateRangeTargets,
+    Field(discriminator="kind"),
+]
+
+
+class CollectionSupplementPreviewRequest(BaseModel):
+    """预览与创建共用目标和采集选项；平台筛选只适用于日期入口。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    targets: CollectionSupplementTargetSelection
+    platforms: tuple[CollectionPlatform, ...] = Field(default=(), max_length=5)
+    include_comments: bool = True
+    include_sub_comments: bool = False
+
+    @model_validator(mode="after")
+    def validate_options(self) -> CollectionSupplementPreviewRequest:
+        """显式选择必须完整处理；不能把平台筛选变成隐式丢弃。"""
+        if len(self.platforms) != len(set(self.platforms)):
+            raise ValueError("补采预览平台不得重复")
+        if self.targets.kind == "selected" and self.platforms:
+            raise ValueError("显式选择不能提交平台筛选")
+        if self.targets.kind == "selected" and not self.include_comments:
+            raise ValueError("评论补采必须启用一级评论")
+        if self.include_sub_comments and not self.include_comments:
+            raise ValueError("采集二级回复时必须同时启用评论采集")
+        return self
+
+
+class CollectionSupplementSelectionResponse(BaseModel):
+    """选择条件审计；具体内容 UUID 只保存在正式 Scope 中。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["selected", "published_date_range"]
+    target_count: int = Field(ge=0)
+    target_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    published_from: datetime | None = None
+    published_to: datetime | None = None
+
+
 class CollectionRunCreateRequest(BaseModel):
     """一次性发现冻结 Search Terms 与 Brand Filter；补采只处理既有内容。"""
 
@@ -395,6 +483,9 @@ class CollectionRunCreateRequest(BaseModel):
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
+    supplement_targets: CollectionSupplementTargetSelection | None = None
+    expected_target_count: int | None = Field(default=None, ge=1)
+    expected_target_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
     include_comments: bool = True
     include_sub_comments: bool = False
@@ -408,12 +499,34 @@ class CollectionRunCreateRequest(BaseModel):
             raise ValueError("同一次 Collection Run 的词包不得重复")
         if len(self.brand_ids) != len(set(self.brand_ids)):
             raise ValueError("同一次 Collection Run 的品牌不得重复")
+        if self.mode == "content_supplement":
+            if self.supplement_targets is None:
+                raise ValueError("内容补采必须提供目标选择")
+            if self.expected_target_count is None or self.expected_target_fingerprint is None:
+                raise ValueError("内容补采必须提供预览目标数量和指纹")
+            if self.import_batch_id is not None or self.data_import_campaign_id is not None:
+                raise ValueError("内容补采不能关联数据导入来源")
+            if self.keyword_pack_ids or self.brand_ids:
+                raise ValueError("内容补采不能提交词包或品牌范围")
+            if any(item.search_config is not None for item in self.platforms):
+                raise ValueError("内容补采不能提交关键词搜索配置")
+            if self.supplement_targets.kind == "selected" and not self.include_comments:
+                raise ValueError("评论补采必须启用一级评论")
+        elif any(
+            value is not None
+            for value in (
+                self.supplement_targets,
+                self.expected_target_count,
+                self.expected_target_fingerprint,
+            )
+        ):
+            raise ValueError("仅内容补采可以提交目标选择和预览身份")
         if self.mode == "discovery":
             if not self.keyword_pack_ids:
                 raise ValueError("主动发现必须选择至少一个 Keyword Pack 作为 Search Terms")
             if self.import_batch_id is not None or self.data_import_campaign_id is not None:
                 raise ValueError("主动发现不能关联数据导入来源")
-        else:
+        elif self.mode == "batch_supplement":
             if (self.import_batch_id is None) == (self.data_import_campaign_id is None):
                 raise ValueError(
                     "基于数据导入补采必须且只能提供 import_batch_id 或 data_import_campaign_id"
@@ -437,6 +550,9 @@ class CollectionRunCreatedResponse(BaseModel):
     mode: CollectionRunMode
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
+    published_from: datetime | None = None
+    published_to: datetime | None = None
+    supplement_selection: CollectionSupplementSelectionResponse | None = None
     status: Literal["queued"] = "queued"
 
 
@@ -483,6 +599,11 @@ class CollectionRunResponse(BaseModel):
     mode: CollectionRunMode
     import_batch_id: UUID | None = None
     data_import_campaign_id: UUID | None = None
+    published_from: datetime | None = None
+    published_to: datetime | None = None
+    supplement_selection: CollectionSupplementSelectionResponse | None = None
+    include_comments: bool | None = None
+    include_sub_comments: bool | None = None
     status: CollectionRuntimeStatus
     stage: str
     progress: int = Field(ge=0, le=100)
@@ -577,11 +698,27 @@ class CollectionCampaignSupplementEligibilityResponse(BaseModel):
     diagnostics: tuple[CollectionSupplementPlatformDiagnosticResponse, ...] = ()
 
 
+class CollectionSupplementPreviewPlatformResponse(CollectionSupplementPlatformDiagnosticResponse):
+    """真实选择数包含身份阻塞内容，避免把可执行数冒充选择数。"""
+
+    content_count: int = Field(ge=0)
+
+
+class CollectionSupplementPreviewResponse(BaseModel):
+    """平台分布覆盖全部候选；总数和指纹绑定实际拟确认的平台范围。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_count: int = Field(ge=0)
+    target_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    platforms: tuple[CollectionSupplementPreviewPlatformResponse, ...]
+
+
 class CollectionRuntimeListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: str | None = Field(default=None, min_length=1, max_length=500)
-    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=5)
+    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=6)
     status: CollectionRuntimeStatus | None = None
     stage: str | None = Field(default=None, min_length=1, max_length=100)
     created_from: datetime | None = None
@@ -1942,6 +2079,12 @@ __all__ = [
     "CollectionRunCreateRequest",
     "CollectionRunCreatedResponse",
     "CollectionRunMode",
+    "CollectionDateSupplementQuery",
+    "CollectionSupplementPreviewRequest",
+    "CollectionSupplementPreviewResponse",
+    "CollectionSupplementSelectedTargets",
+    "CollectionSupplementPublishedDateRangeTargets",
+    "CollectionSupplementSelectionResponse",
     "CollectionRunPlatformRequest",
     "CollectionRunResponse",
     "CollectionRunStatsResponse",

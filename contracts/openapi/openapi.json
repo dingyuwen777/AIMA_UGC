@@ -2934,6 +2934,30 @@
             ],
             "title": "Data Import Campaign Id"
           },
+          "expected_target_count": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Target Count"
+          },
+          "expected_target_fingerprint": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Target Fingerprint"
+          },
           "import_batch_id": {
             "anyOf": [
               {
@@ -2977,6 +3001,16 @@
             "minItems": 1,
             "title": "Platforms",
             "type": "array"
+          },
+          "supplement_targets": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionSupplementTargetSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3021,6 +3055,30 @@
           "mode": {
             "$ref": "#/components/schemas/CollectionRunMode"
           },
+          "published_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published From"
+          },
+          "published_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published To"
+          },
           "run_id": {
             "format": "uuid",
             "title": "Run Id",
@@ -3031,6 +3089,16 @@
             "default": "queued",
             "title": "Status",
             "type": "string"
+          },
+          "supplement_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionSupplementSelectionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3044,7 +3112,8 @@
       "CollectionRunMode": {
         "enum": [
           "discovery",
-          "batch_supplement"
+          "batch_supplement",
+          "content_supplement"
         ],
         "type": "string"
       },
@@ -3158,6 +3227,28 @@
             ],
             "title": "Import Batch Id"
           },
+          "include_comments": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Comments"
+          },
+          "include_sub_comments": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Sub Comments"
+          },
           "job_id": {
             "format": "uuid",
             "title": "Job Id",
@@ -3192,6 +3283,30 @@
             "title": "Progress",
             "type": "integer"
           },
+          "published_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published From"
+          },
+          "published_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published To"
+          },
           "run_id": {
             "format": "uuid",
             "title": "Run Id",
@@ -3225,6 +3340,16 @@
           },
           "status": {
             "$ref": "#/components/schemas/CollectionRuntimeStatus"
+          },
+          "supplement_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionSupplementSelectionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3561,6 +3686,7 @@
           "data_import_campaign",
           "tikhub_discovery",
           "tikhub_batch_supplement",
+          "tikhub_content_supplement",
           "canonical_replay"
         ],
         "type": "string"
@@ -3889,6 +4015,242 @@
         ],
         "title": "CollectionSupplementPlatformDiagnosticResponse",
         "type": "object"
+      },
+      "CollectionSupplementPreviewPlatformResponse": {
+        "additionalProperties": false,
+        "description": "真实选择数包含身份阻塞内容，避免把可执行数冒充选择数。",
+        "properties": {
+          "block_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Block Reasons",
+            "type": "object"
+          },
+          "blocked_count": {
+            "minimum": 0.0,
+            "title": "Blocked Count",
+            "type": "integer"
+          },
+          "content_count": {
+            "minimum": 0.0,
+            "title": "Content Count",
+            "type": "integer"
+          },
+          "direct_target_count": {
+            "minimum": 0.0,
+            "title": "Direct Target Count",
+            "type": "integer"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/CollectionPlatform"
+          },
+          "resolution_candidate_count": {
+            "minimum": 0.0,
+            "title": "Resolution Candidate Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platform",
+          "direct_target_count",
+          "resolution_candidate_count",
+          "blocked_count",
+          "block_reasons",
+          "content_count"
+        ],
+        "title": "CollectionSupplementPreviewPlatformResponse",
+        "type": "object"
+      },
+      "CollectionSupplementPreviewRequest": {
+        "additionalProperties": false,
+        "description": "预览与创建共用目标和采集选项；平台筛选只适用于日期入口。",
+        "properties": {
+          "include_comments": {
+            "default": true,
+            "title": "Include Comments",
+            "type": "boolean"
+          },
+          "include_sub_comments": {
+            "default": false,
+            "title": "Include Sub Comments",
+            "type": "boolean"
+          },
+          "platforms": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CollectionPlatform"
+            },
+            "maxItems": 5,
+            "title": "Platforms",
+            "type": "array"
+          },
+          "targets": {
+            "$ref": "#/components/schemas/CollectionSupplementTargetSelection"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "title": "CollectionSupplementPreviewRequest",
+        "type": "object"
+      },
+      "CollectionSupplementPreviewResponse": {
+        "additionalProperties": false,
+        "description": "平台分布覆盖全部候选；总数和指纹绑定实际拟确认的平台范围。",
+        "properties": {
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionSupplementPreviewPlatformResponse"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "target_count": {
+            "minimum": 0.0,
+            "title": "Target Count",
+            "type": "integer"
+          },
+          "target_fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Target Fingerprint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_count",
+          "target_fingerprint",
+          "platforms"
+        ],
+        "title": "CollectionSupplementPreviewResponse",
+        "type": "object"
+      },
+      "CollectionSupplementPublishedDateRangeTargets": {
+        "additionalProperties": false,
+        "description": "日期只决定创建时的目标集合，执行期由冻结 Scope 决定。",
+        "properties": {
+          "kind": {
+            "const": "published_date_range",
+            "title": "Kind",
+            "type": "string"
+          },
+          "published_from": {
+            "format": "date-time",
+            "title": "Published From",
+            "type": "string"
+          },
+          "published_to": {
+            "format": "date-time",
+            "title": "Published To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "published_from",
+          "published_to",
+          "kind"
+        ],
+        "title": "CollectionSupplementPublishedDateRangeTargets",
+        "type": "object"
+      },
+      "CollectionSupplementSelectedTargets": {
+        "additionalProperties": false,
+        "description": "用户显式选择的内容，不按 AI 相关性再次筛选。",
+        "properties": {
+          "content_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Content Ids",
+            "type": "array"
+          },
+          "kind": {
+            "const": "selected",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "content_ids"
+        ],
+        "title": "CollectionSupplementSelectedTargets",
+        "type": "object"
+      },
+      "CollectionSupplementSelectionResponse": {
+        "additionalProperties": false,
+        "description": "选择条件审计；具体内容 UUID 只保存在正式 Scope 中。",
+        "properties": {
+          "kind": {
+            "enum": [
+              "selected",
+              "published_date_range"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "published_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published From"
+          },
+          "published_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published To"
+          },
+          "target_count": {
+            "minimum": 0.0,
+            "title": "Target Count",
+            "type": "integer"
+          },
+          "target_fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Target Fingerprint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "target_count",
+          "target_fingerprint"
+        ],
+        "title": "CollectionSupplementSelectionResponse",
+        "type": "object"
+      },
+      "CollectionSupplementTargetSelection": {
+        "discriminator": {
+          "mapping": {
+            "published_date_range": "#/components/schemas/CollectionSupplementPublishedDateRangeTargets",
+            "selected": "#/components/schemas/CollectionSupplementSelectedTargets"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CollectionSupplementSelectedTargets"
+          },
+          {
+            "$ref": "#/components/schemas/CollectionSupplementPublishedDateRangeTargets"
+          }
+        ]
       },
       "CommentCoverageResponse": {
         "additionalProperties": false,
@@ -14821,7 +15183,7 @@
               "items": {
                 "$ref": "#/components/schemas/CollectionRuntimeRecordType"
               },
-              "maxItems": 5,
+              "maxItems": 6,
               "title": "Record Types",
               "type": "array"
             }
@@ -15019,6 +15381,68 @@
           }
         },
         "summary": "Get Collection Runtime Summary",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
+    "/api/v1/collection-supplements/preview": {
+      "post": {
+        "description": "统一预览不访问 TikHub，也不创建任务。",
+        "operationId": "previewCollectionSupplement",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionSupplementPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionSupplementPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Preview Collection Supplement",
         "tags": [
           "collection"
         ]

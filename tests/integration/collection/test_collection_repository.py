@@ -16,7 +16,7 @@ from aima_ugc.modules.collection.tables import collection_runs_table, collection
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 
@@ -106,6 +106,51 @@ def test_service_persists_run_and_scopes_bound_to_real_job(
         }
     finally:
         session.close()
+
+
+@pytest.mark.parametrize("fail_late_batch", (False, True))
+def test_large_scope_creation_keeps_all_batches_in_one_transaction(
+    database_runtime: DatabaseRuntime, fail_late_batch: bool
+) -> None:
+    """万条目标跨过单条 SQL 参数上限，末批失败仍回滚 Job、Run 和全部 Scope。"""
+    scopes = tuple(
+        CollectionScopeDefinition(
+            platform="xiaohongshu",
+            source_type="content",
+            source_value=str(uuid4()),
+            operation_group="content_enrichment",
+        )
+        for _ in range(10_000)
+    )
+    if fail_late_batch:
+        # 直接验证 Repository 的事务边界，不通过 Service 的重复输入预校验。
+        scopes = (*scopes, scopes[0])
+    with database_runtime.new_session() as session:
+
+        def create() -> None:
+            """使用正式 Job/Collection Owner 在同一事务创建大范围目标。"""
+            with session.begin():
+                job = _enqueue_job(PostgresJobRepository(session), key="large-scope-create")
+                execution = PostgresCollectionRepository(session).create_queued_run(
+                    job_id=job.id,
+                    trigger_type="api",
+                    config_snapshot={"mode": "date_supplement"},
+                    scopes=scopes,
+                )
+                assert len(execution.scopes) == 10_000
+
+        if fail_late_batch:
+            with pytest.raises(IntegrityError):
+                create()
+        else:
+            create()
+        with session.begin():
+            for table, expected in (
+                (jobs_table, 0 if fail_late_batch else 1),
+                (collection_runs_table, 0 if fail_late_batch else 1),
+                (collection_scopes_table, 0 if fail_late_batch else 10_000),
+            ):
+                assert session.scalar(select(func.count()).select_from(table)) == expected
 
 
 def test_repository_tracks_live_run_and_scope_lifecycle(

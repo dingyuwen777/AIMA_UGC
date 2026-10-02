@@ -15,6 +15,8 @@ from aima_ugc.contracts.http import (
     CollectionRuntimeListQuery,
     CollectionRuntimeListResponse,
     CollectionRuntimeSummaryResponse,
+    CollectionSupplementPreviewRequest,
+    CollectionSupplementPreviewResponse,
 )
 
 
@@ -24,6 +26,10 @@ class CollectionResourceNotFound(LookupError):
 
 class CollectionConflict(RuntimeError):
     """当前配置或业务状态不能创建 Collection Run。"""
+
+
+class CollectionSupplementTargetsChanged(CollectionConflict):
+    """预览后目标或身份诊断变化，必须再次确认而不能扩大费用范围。"""
 
 
 class InvalidCollectionRuntimeCursor(ValueError):
@@ -38,6 +44,11 @@ class CollectionHttpService(Protocol):
     """Router 可调用的 Stage 8E 最小 Application Service。"""
 
     def get_capabilities(self) -> CollectionCapabilitiesResponse: ...
+
+    def preview_supplement(
+        self,
+        request: CollectionSupplementPreviewRequest,
+    ) -> CollectionSupplementPreviewResponse: ...
 
     def get_batch_supplement_eligibility(
         self,
