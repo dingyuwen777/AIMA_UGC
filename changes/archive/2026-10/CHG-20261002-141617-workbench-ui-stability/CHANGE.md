@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20261002-141617-workbench-ui-stability
 title: 工作台与声音广场展示稳定性、自适应和全站滚动条整改
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: fix/692-workbench-ui-stability
 created: 2026-10-02T14:16:17+08:00
-updated: 2026-10-02T16:45:00+08:00
+updated: 2026-10-02
 completion_gate: required
 depends_on: []
 affected_areas:
