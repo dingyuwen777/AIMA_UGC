@@ -3,16 +3,40 @@ schema: coding-change/v1
 id: CHG-20261002-211727-manual-full-comments-workbench
 title: 主动采集默认全量评论与工作台交互修复
 level: L3
-status: implementing
+status: ready_for_review
 owner: codex
 branch: codex/manual-full-comments-workbench
 created: 2026-10-02
 updated: 2026-10-02
 completion_gate: required
 depends_on: []
-affected_areas: [collection, content, workbench, voice-plaza, contracts, docs]
-affected_paths: [backend/src/aima_ugc/contracts/http.py, backend/src/aima_ugc/bootstrap/collection_http.py, backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py, frontend/src/features/collection-supplement, frontend/src/features/import-batches, frontend/src/features/workbench, frontend/src/features/voice-plaza, tests/contracts, tests/integration/collection, frontend/tests, frontend/e2e, frontend/e2e-fullstack, contracts, frontend/src/generated, docs/product, docs/blueprint]
-contracts: [CollectionRunCreateRequest, CollectionSupplementPreviewRequest]
+affected_areas:
+  - collection
+  - content
+  - workbench
+  - voice-plaza
+  - contracts
+  - docs
+affected_paths:
+  - backend/src/aima_ugc/contracts/http.py
+  - backend/src/aima_ugc/bootstrap/collection_http.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+  - frontend/src/features/collection-supplement
+  - frontend/src/features/import-batches
+  - frontend/src/features/workbench
+  - frontend/src/features/voice-plaza
+  - tests/contracts
+  - tests/integration/collection
+  - frontend/tests
+  - frontend/e2e
+  - frontend/e2e-fullstack
+  - contracts
+  - frontend/src/generated
+  - docs/product
+  - docs/blueprint
+contracts:
+  - CollectionRunCreateRequest
+  - CollectionSupplementPreviewRequest
 data_changes: []
 ---
 
@@ -60,7 +84,7 @@ main 77060d1c：HTTP 默认 include_sub_comments=false；手动 Run comment_poli
 
 ## 成功标准
 
-- [ ] Issue #696 AC1–AC7 对应实现、测试与文档证据完整。
+- [x] Issue #696 AC1–AC7 对应实现、测试与文档证据完整。
 - [ ] 本地验证、独立 Review、当前 head/base CI 满足交付门禁。
 
 ## 范围
@@ -112,13 +136,13 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 主动入口默认评论回复且可关闭 | #696 / AC1 | not_satisfied | 本轮 Red 3 failed |
-| R2 | 新手动 Run Full，周期历史兼容 | #696 / AC2 | not_satisfied | 尚未验证 |
-| R3 | 完整已应用筛选恢复与安全清理 | #696 / AC3 | not_satisfied | 尚未验证 |
-| R4 | 可见可操作标签与详情高亮联动 | #696 / AC4 | not_satisfied | 尚未验证 |
-| R5 | 无活动任务隐藏 AI 区域 | #696 / AC5 | not_satisfied | 尚未验证 |
-| R6 | 本地各层证据与分页边界 | #696 / AC6 | not_satisfied | 尚未验证 |
-| R7 | 正式文档与无迁移依赖升级 | #696 / AC7 | not_satisfied | 尚未验证 |
+| R1 | 主动入口默认评论回复且可关闭 | #696 / AC1 | satisfied | V1/V2/V4/V7/V9/V10：HTTP 默认与非法组合、三个入口/重开/关闭；默认全量回复实际入库 |
+| R2 | 新手动 Run Full，周期历史兼容 | #696 / AC2 | satisfied | V2/V3：手动发现四种请求选项冻结 Full 一致；原周期及历史配置回归 |
+| R3 | 完整已应用筛选恢复与安全清理 | #696 / AC3 | satisfied | V4/V7/V10：三个首次请求直接恢复日期及条件，reset/损坏 storage/目录失效/目录读取失败 |
+| R4 | 可见可操作标签与详情高亮联动 | #696 / AC4 | satisfied | V4/V7：按钮鼠标及键盘、aria-pressed、右侧标题指标/二级详情/下钻，refresh 及指标切换保留选择 |
+| R5 | 无活动任务隐藏 AI 区域 | #696 / AC5 | satisfied | V4/V7：空与终态隐藏，活动进度、轮询及历史入口继续有效 |
+| R6 | 本地各层证据与分页边界 | #696 / AC6 | satisfied | V2–V11：真实 PG Full 500/30/100 页与 partial，Browser/完整实链、重复来源及去重、构建及生成物；Fake 不冒充真实 Provider |
+| R7 | 正式文档与无迁移依赖升级 | #696 / AC7 | satisfied | V5/V11：Product 02/Blueprint 08 与实现同步；check_docs PASS；锁文件与 Migration 无变更 |
 
 # 计划改动
 
@@ -137,8 +161,8 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 - [x] 默认行为建立失败证据
 - [x] 完成最小充分实现
 - [x] 同步受影响长期文档
-- [ ] 取得当前版本验证证据
-- [ ] 完成追溯、完成审计和两阶段复核
+- [x] 取得当前版本验证证据
+- [x] 完成追溯与完成审计；Final Ready 复核另绑定最终 head
 
 # 验证矩阵
 
@@ -180,10 +204,12 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 
 # 完成审计
 
-- [ ] upstream_re_read：重新读取 #696 与引用方案并独立重建要求。
-- [ ] change_coverage：全部上游要求有实施与验证。
-- [ ] reverse_audit：API/入口/异步状态与浏览器实际行为双向核对。
-- [ ] unresolved_cleared：not_satisfied 清零；无隐藏延期。
+- [x] upstream_re_read：2026-10-02 重新读取 live #696 与引用对话第一阶段完整方案（20 节）；主动入口默认/Full、首次请求恢复、雷达每标签/右侧/下钻、空活动任务四组要求分别重建。
+- [x] change_coverage：AC1–AC7 与 R1–R7 全部对应实现、分层测试和正式文档，无遗漏及擅自延期；账号方案明确是后续独立单元，不以第一阶段代替整体交付。
+- [x] reverse_audit：HTTP 默认→生成物→三个入口→冻结 Run→Job/Raw/入库/覆盖→结果/评论详情；恢复条件→三个首请求；雷达选择→详情与原声；活动任务→轮询/终态/历史。完整 Journey 的反向结果核对发现并修复重复补采来源遗漏。
+- [x] unresolved_cleared：not_satisfied 清零，原 F-P1-01/F-P1-02 经独立 REPAIR_VERIFY 关闭。代码局部完成不冒充人工验收/远程 CI/merge，后者按交付状态持续留待取得真实证据。
+
+验证资产冗余检查：clean。分页 500/30/100 复用既有生产 Full 引擎；新增 Contract 和手动 Run 测试证明接线，前端与 PG 分别承担各自边界；两个隐含依赖的 Full-stack 用例合并为一个自主建立前置状态的 Journey，没有复制 Provider 实现。
 
 # 完成证据与状态
 
@@ -201,14 +227,16 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 | V8 | 返修工作树 / 真 PostgreSQL 18.4 | test_collection_content_runtime.py -k repeated_unchanged：先 Red 后 Green；同文件及 test_stage8d_voice_plaza_runtime.py | Red 2 failed；Green 15 passed | 内容不变仍关联两次 Run，未入库 Run 不关联；投影/回退、列表/计数/目标冻结一致，业务版本仍只有 1 个 |
 | V9 | 返修工作树 / 全新 aima_comments_source_fixed + API + Fake Worker + Browser | comment-supplement.spec.ts 单一完整 Journey | 1 passed，26.4s | 五平台导入→日期补采→勾选补采→重复补采，无跨用例依赖，结果来源及评论回复不重复 |
 | V10 | 返修工作树 / 本地锁定工具链 | pytest tests/unit tests/contracts tests/api -q；mypy backend/src；frontend test/lint/typecheck | 2014 passed、16 skipped、12 subtests；437 source files PASS；305 passed；lint/typecheck PASS | 来源查询与目录加载失败返修未破坏其他行为 |
+| V11 | e42b39c6 / 隔离 PostgreSQL 18.4 / 锁定本地工具链 | import_campaign_revocation_postgres.py；frontend build；generate.py --check；check_compatibility.py；ruff format --check/check；check_docs.py；validate_changed.py --base origin/main | 6 passed；构建/生成/兼容/静态/文档 PASS；classifier 输出 27 个 changed paths 与 contract profile | 当前来源修复未绕过撤销可见性；生成物/类型/构建及正式文档一致，复用 CI 唯一范围分类 |
+| V12 | reviewed head e42b39c61750cf4004d73064b4f2ed9a38a34dd8 / base 77060d1c49303ebf95542c2bb049159f2d7f4be5 | 独立 phase1_acceptance_review：First Assembly → REPAIR_VERIFY | NO_FINDINGS_WITHIN_SCOPE；F-P1-01/F-P1-02 CLOSED | 原阻塞问题及新增成功入库来源关联均已按实际代码/消费者/证据复核，无本轮阻塞 Finding |
 
 ## 未验证内容与剩余风险
 
-First Assembly Review 的 F-P1-01（车型目录加载失败被当空目录清理）和 F-P1-02（Full-stack 隐含跨用例依赖）已返修，待独立 REPAIR_VERIFY；新增来源关联需独立复核。人工本地验收为 PENDING，已向用户提供免等待选择与本地入口。当前实现尚未取得 current-head/current-base CI；所有 TikHub 外发使用 Fake，当前阶段未连接真实 Provider，未使用用户 Secret。
+人工本地验收为 PENDING，已向用户提供免等待选择与本地入口；未收到免等待或通过事实前不推送实现。独立 REPAIR_VERIFY 已通过，Final Ready 与 current-head/current-base CI 尚未取得。第一阶段功能验证的 TikHub 请求使用 Fake，不冒充真实 Provider 结构探测。新增来源条件未做生产大规模性能实测，不据既有索引宣称容量已验证。现有 Pydantic/Starlette deprecated 与构建 chunk size 警告保留，无本轮升级或断言放宽。
 
 ## 交付状态
 
-- 提交：治理/Red 6ea6481；实现 checkpoint d5cffdfe；本轮返修 checkpoint 待记录。
+- 提交：治理/Red 6ea6481；实现 checkpoint d5cffdfe；返修 checkpoint e42b39c6。
 - 拉取请求：#697 早期 Draft，仅治理/Red commit 已推送。
 - CI：早期 Draft Red 状态，尚无当前实现 CI 证据。
 - 合并：尚未合并。
