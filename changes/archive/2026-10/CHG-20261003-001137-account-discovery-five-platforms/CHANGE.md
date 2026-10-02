@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261003-001137-account-discovery-five-platforms
 title: 五平台按账号补采正式集成与完整分页核验
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: codex/account-discovery-five-platforms
 created: 2026-10-03
