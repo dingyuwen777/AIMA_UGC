@@ -47,12 +47,11 @@ async function assertCompletedRunRetained(
     status: 'succeeded',
   }))
 
-  // 终态移除活动卡片，保留固定区域避免正文位移；历史仍可在任务中心查看。
+  // 终态移除整个活动区域，历史继续从全局任务中心查看。
   const activity = page.getByRole('region', { name: 'AI 分析活动任务' })
-  await expect(activity).toContainText('0 个任务正在处理', { timeout: 5_000 })
-  await expect(activity.locator('article')).toHaveCount(0)
-  expect((await activity.boundingBox())?.height).toBe(96)
-  await activity.getByRole('button', { name: '查看任务中心', exact: true }).click()
+  await expect(activity).toHaveCount(0, { timeout: 5_000 })
+  await expect(page.getByText('0 个任务正在处理', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '任务中心', exact: true }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   const completed = taskCenter.locator('.task-card').filter({
     has: page.getByText(`AI 分析任务 ${sequenceNo}`, { exact: true }),

@@ -74,9 +74,12 @@ test('从页面提交两条内容并通过真实 Worker 保存两份合法打标
     return { status: result.snapshot_status, count: result.relevant_content_count,
       dimension: result.dimensions.find((item: { primary_label: string }) => item.primary_label === '骑行性能')?.content_count }
   }, { timeout: 30_000 }).toEqual({ status: 'fresh', count: 2, dimension: 2 })
-  await expect(page.locator('.radar-chart svg text').filter({ hasText: '骑行性能 100%' })).toBeVisible({ timeout: 20_000 })
-  await page.locator('.radar-accessible-list').getByRole('button', { name: '骑行性能 100%' }).focus()
+  const mindLabel = page.getByRole('button', { name: '骑行性能 100%', exact: true })
+  await expect(mindLabel).toBeVisible({ timeout: 20_000 })
+  await mindLabel.focus()
   await page.keyboard.press('Enter')
+  await expect(mindLabel).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.mind-detail h3')).toHaveText('骑行性能')
   await page.getByRole('button', { name: '查看该心智的用户原声 →' }).click()
   await expect(page).toHaveURL(/primary_labels=%E9%AA%91%E8%A1%8C%E6%80%A7%E8%83%BD/)
   await expect(page.getByRole('region', { name: '声音广场内容列表' }).getByTitle('骑行性能 / 舒适性', { exact: true })).toHaveCount(2)

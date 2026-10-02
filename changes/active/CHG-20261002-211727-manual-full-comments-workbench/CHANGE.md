@@ -74,7 +74,7 @@ main 77060d1c：HTTP 默认 include_sub_comments=false；手动 Run comment_poli
 
 ## 推断与待确认
 
-隔离 PostgreSQL 评论策略 109 项、声音广场及来源 15 项、197 项 Browser Mock 和单一五平台 Full-stack Journey 均已有通过证据。独立返修复核和当前 head/base CI 尚未完成。
+隔离 PostgreSQL 评论策略 109 项、声音广场及来源 15 项、197 项 Browser Mock 均已有通过证据。独立返修及 Final Ready 增量复核已通过。a0660688 的远程全套 Full-stack 揭示另外两处旧 UI 断言，已同步到批准行为并在全新隔离数据库取得 17 项全套通过；返修后的 head/base CI 仍待取得。
 
 # 目标、成功标准与非目标
 
@@ -230,16 +230,18 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 | V11 | e42b39c6 / 隔离 PostgreSQL 18.4 / 锁定本地工具链 | import_campaign_revocation_postgres.py；frontend build；generate.py --check；check_compatibility.py；ruff format --check/check；check_docs.py；validate_changed.py --base origin/main | 6 passed；构建/生成/兼容/静态/文档 PASS；classifier 输出 27 个 changed paths 与 contract profile | 当前来源修复未绕过撤销可见性；生成物/类型/构建及正式文档一致，复用 CI 唯一范围分类 |
 | V12 | reviewed head e42b39c61750cf4004d73064b4f2ed9a38a34dd8 / base 77060d1c49303ebf95542c2bb049159f2d7f4be5 | 独立 phase1_acceptance_review：First Assembly → REPAIR_VERIFY | NO_FINDINGS_WITHIN_SCOPE；F-P1-01/F-P1-02 CLOSED | 原阻塞问题及新增成功入库来源关联均已按实际代码/消费者/证据复核，无本轮阻塞 Finding |
 | V13 | reviewed head 139752e3446bc3172c4a40a3e4effeb695a01795 / base 77060d1c49303ebf95542c2bb049159f2d7f4be5 | 独立 phase1_acceptance_review：Final Ready 增量审查 | NO_FINDINGS_WITHIN_SCOPE | 相对返修版本仅有 Change 完成审计与元数据修正，原验证保持代表性；CI 和人工验收不由审查结论替代 |
+| V14 | a0660688 / GitHub CI 37027439688 / base 77060d1c | CI 与 Runtime Acceptance 37027439713；全套 Full-stack | Backend/Frontend/Browser、PostgreSQL、Compose PASS；Full-stack 15 passed、2 failed | 两个既有消费者仍断言 SVG 标签和固定空 AI 区域，未同步本轮已批准的 UI 行为；五平台补采 Journey 已通过，不以该局部通过代替全套验收 |
+| V15 | 本次返修工作树 / 全新 aima_comments_ci_repair_2338 / Python 3.14.7、Node 24.19.0、PostgreSQL 18.4 | frontend lint；typecheck；test:e2e:fullstack；validate_changed.py --base origin/main | PASS；17 passed（1.9m）；29 changed paths，contract profile | 保留 100% 心智统计、可见键盘选中/详情/原声下钻、终态活动区消失及任务中心历史断言，完整跨流程验收通过；未提高 timeout、删除用例或放宽业务断言 |
 
 ## 未验证内容与剩余风险
 
-第一阶段人工本地验收等待按用户 2026-10-02 最新指示“第一阶段做完了就提交远程分析啊”及“你自己测试功能没问题之后直接合并到远程主分支就行”记为 USER_WAIVED：用户明确要求自行测试后直接提交和合并，因此不再以尚未人工操作页面阻塞第一阶段实现推送；该覆盖不冒充 PASSED，不跳过技术验证、独立 Review 或 current-head/current-base CI。独立 REPAIR_VERIFY 及 139752e3 的 Final Ready 增量审查已通过；本次只更新交付事实，远程 CI 仍待推送后取得。第一阶段功能验证的 TikHub 请求使用 Fake，不冒充真实 Provider 结构探测。新增来源条件未做生产大规模性能实测，不据既有索引宣称容量已验证。现有 Pydantic/Starlette deprecated 与构建 chunk size 警告保留，无本轮升级或断言放宽。
+第一阶段人工本地验收等待按用户 2026-10-02 最新指示“第一阶段做完了就提交远程分析啊”及“你自己测试功能没问题之后直接合并到远程主分支就行”记为 USER_WAIVED：用户明确要求自行测试后直接提交和合并，因此不再以尚未人工操作页面阻塞第一阶段实现推送；该覆盖不冒充 PASSED，不跳过技术验证、独立 Review 或 current-head/current-base CI。独立 REPAIR_VERIFY 及 a0660688 的 Final Ready 增量审查已通过；本次仅同步两个既有 Full-stack 消费者的批准行为断言，全套本地验证通过后取得新的增量 Review 与远程 CI。第一阶段功能验证的 TikHub 请求使用 Fake，不冒充真实 Provider 结构探测。新增来源条件未做生产大规模性能实测，不据既有索引宣称容量已验证。现有 Pydantic/Starlette deprecated 与构建 chunk size 警告保留，无本轮升级或断言放宽。
 
 ## 交付状态
 
 - 提交：治理/Red 6ea6481；实现 checkpoint d5cffdfe；返修 checkpoint e42b39c6；完成审计 139752e3；本次交付事实更新后推送。
 - 拉取请求：#697，本次按用户新指示推送第一阶段实现并更新 PR；进入 Ready 前继续核对最终 head 的增量审查与必要门禁。
-- CI：既有远程结果只对应早期治理/Red head，不代表当前实现；推送后取得本次 head/base 的新鲜 CI。
+- CI：a0660688 的真实 CI/Runtime 已取得，Full-stack 两处旧 UI 断言使 CI Gate 为 failure；本次返修已取得全套本地 Green，继续取得新 head/base 的远程证据。
 - 合并：尚未合并。
 - Change 归档：合并后由原生 Workflow 完成。
 - 发布 / 部署：不适用，本轮仅要求 merge main。
