@@ -119,4 +119,4 @@ Validation Asset Redundancy: clean。复用三模式共享 Worker 参数化测�
 
 # 完成证据与状态
 
-最初日期 Contract Red 为 1 failed / 10 passed，原 Contract 拒绝新增模式。后续统一 Selected/Preview 与生命周期回归证明并修正实际失败路径，最终结果和环境见 [evidence/validation.md](evidence/validation.md)。正式 CI 以 PR #691 当前 head 为准；在本记录提交时尚未 merge、归档、关闭 Issue 或部署。直接在用户指定目录开发，不保留独立 worktree。
+最初日期 Contract Red 为 1 failed / 10 passed，原 Contract 拒绝新增模式。后续统一 Selected/Preview 与生命周期回归证明并修正实际失败路径，最终结果和环境见 [验证证据](https://github.com/dingyuwen777/AIMA_UGC/blob/355eea59a468f2f0da1203d9a98a7d4368d2d68f/changes/active/CHG-20261002-100000-date-supplement/evidence/validation.md)。链接固定实现 revision，原生归档只移动 CHANGE.md 后仍可访问。正式 CI 以 PR #691 当前 head 为准；在本记录提交时尚未 merge、归档、关闭 Issue 或部署。直接在用户指定目录开发，不保留独立 worktree。
