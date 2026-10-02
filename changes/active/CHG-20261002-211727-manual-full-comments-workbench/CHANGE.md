@@ -10,8 +10,8 @@ created: 2026-10-02
 updated: 2026-10-02
 completion_gate: required
 depends_on: []
-affected_areas: [collection, workbench, voice-plaza, contracts, docs]
-affected_paths: [backend/src/aima_ugc/contracts/http.py, backend/src/aima_ugc/bootstrap/collection_http.py, frontend/src/features/collection-supplement, frontend/src/features/import-batches, frontend/src/features/workbench, frontend/src/features/voice-plaza, tests/contracts, tests/integration/collection, frontend/tests, frontend/e2e, frontend/e2e-fullstack, contracts, frontend/src/generated, docs/product, docs/blueprint]
+affected_areas: [collection, content, workbench, voice-plaza, contracts, docs]
+affected_paths: [backend/src/aima_ugc/contracts/http.py, backend/src/aima_ugc/bootstrap/collection_http.py, backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py, frontend/src/features/collection-supplement, frontend/src/features/import-batches, frontend/src/features/workbench, frontend/src/features/voice-plaza, tests/contracts, tests/integration/collection, frontend/tests, frontend/e2e, frontend/e2e-fullstack, contracts, frontend/src/generated, docs/product, docs/blueprint]
 contracts: [CollectionRunCreateRequest, CollectionSupplementPreviewRequest]
 data_changes: []
 ---
@@ -46,10 +46,11 @@ main 77060d1c：HTTP 默认 include_sub_comments=false；手动 Run comment_poli
 | E2 | 手动 Run 冻结 adaptive | bootstrap/collection_http.py:create_run | 同时冻结 policy.comment_mode=full |
 | E3 | Full 引擎已存在 | run_policy.py；test_tikhub_plan_full_comments.py | 复用正式引擎，保留页上限 |
 | E4 | filters 不持久化；几何已计算标签边界 | workbench/store.ts；radarGeometry.ts | sessionStorage 与已有几何复用 |
+| E5 | 重复补采不生成新版本时，版本来源关联漏掉该次成功入库 | 单一 Full-stack Journey 失败；PG 两条重复来源回归 Red | 结果查询补充成功 Candidate Ingestion 关联，保持业务版本不变 |
 
 ## 推断与待确认
 
-隔离 PostgreSQL 109 项和五平台日期补采 Full-stack 已有通过证据；完整浏览器及重复补采仍在处理本机资源干扰，不能宣称全部通过。
+隔离 PostgreSQL 评论策略 109 项、声音广场及来源 15 项、197 项 Browser Mock 和单一五平台 Full-stack Journey 均已有通过证据。独立返修复核和当前 head/base CI 尚未完成。
 
 # 目标、成功标准与非目标
 
@@ -64,7 +65,7 @@ main 77060d1c：HTTP 默认 include_sub_comments=false；手动 Run comment_poli
 
 ## 范围
 
-HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声音广场活动任务区域及直接相关测试、生成物和正式文档。
+HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声音广场活动任务区域、重复补采结果来源关联及直接相关测试、生成物和正式文档。来源关联修复来自必须验收的重复补采流程，不另造写入账本或业务版本。
 
 ## 非目标
 
@@ -94,6 +95,7 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 3. 按 radarGeometry 渲染可见 HTML 标签按钮，单一 selectedMind 驱动高亮与右侧详情。验证鼠标、键盘、指标和下钻。
 4. 活动任务非空才显示区域；同步正式文档。验证终态消失和轮询不回归。
 5. 本地分层验收、完成审计、独立两阶段 Review、CI、merge、原生 Archive/main-fresh/Closure。
+6. 返修保留目录读取失败时的已存车型条件；将隐含跨用例前置状态合并为单一 Journey。该 Journey 复现的重复补采来源遗漏使用现有成功入库账本补齐，投影与回退共用关联，列表、计数和冻结目标同义。
 
 ## 证据到决策
 
@@ -127,6 +129,7 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 | workbench/store.ts | 已应用筛选持久与恢复 | E4 | R3 |
 | BrandMindCard.vue | 可见按钮与动态详情标题 | E4 | R4 |
 | VoicePlazaPage.vue | 活动区域条件渲染 | 当前永久区域 | R5 |
+| content_queries.py、collection content runtime regression | 成功入库账本补齐重复采集来源 | E5，不伪造新版本 | R6 |
 | 相关测试与正式文档 | 回归、验收及事实同步 | Requirement | R6/R7 |
 
 - [x] 调查当前实现和事实源
@@ -194,14 +197,18 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 | V4 | 本地实现 / Node 24.19.0 | npm --prefix frontend run test -- --run；lint；build | 304 passed；lint/typecheck/build PASS | store、默认选项、AI 活动状态与构建 |
 | V5 | 本地实现 | generate.py --check；check_compatibility.py；mypy backend/src；ruff；check_docs.py | PASS | 生成物、兼容性、类型与文档 |
 | V6 | 本地实现 / 全新隔离 DB + API + Fake Worker | comment-supplement.spec.ts 首个五平台日期用例 | PASS，18.3s | 浏览器默认回复到 Raw/Job/业务库和评论详情 |
+| V7 | d5cffdfe / Browser Mock / workers=2 | npm --prefix frontend run test:e2e -- --workers=2 | 197 passed | 包含首次恢复请求、可见雷达、默认选项及活动任务流程 |
+| V8 | 返修工作树 / 真 PostgreSQL 18.4 | test_collection_content_runtime.py -k repeated_unchanged：先 Red 后 Green；同文件及 test_stage8d_voice_plaza_runtime.py | Red 2 failed；Green 15 passed | 内容不变仍关联两次 Run，未入库 Run 不关联；投影/回退、列表/计数/目标冻结一致，业务版本仍只有 1 个 |
+| V9 | 返修工作树 / 全新 aima_comments_source_fixed + API + Fake Worker + Browser | comment-supplement.spec.ts 单一完整 Journey | 1 passed，26.4s | 五平台导入→日期补采→勾选补采→重复补采，无跨用例依赖，结果来源及评论回复不重复 |
+| V10 | 返修工作树 / 本地锁定工具链 | pytest tests/unit tests/contracts tests/api -q；mypy backend/src；frontend test/lint/typecheck | 2014 passed、16 skipped、12 subtests；437 source files PASS；305 passed；lint/typecheck PASS | 来源查询与目录加载失败返修未破坏其他行为 |
 
 ## 未验证内容与剩余风险
 
-当前实现待独立 Review；完整 Browser/Full-stack 重验及当前 head/base CI 尚未完成。Windows 并发浏览器期间出现 WinError 10055 和 Vite 连接拒绝，改用顺序批次验证；不得用已有局部通过结果代替完整门禁。
+First Assembly Review 的 F-P1-01（车型目录加载失败被当空目录清理）和 F-P1-02（Full-stack 隐含跨用例依赖）已返修，待独立 REPAIR_VERIFY；新增来源关联需独立复核。人工本地验收为 PENDING，已向用户提供免等待选择与本地入口。当前实现尚未取得 current-head/current-base CI；所有 TikHub 外发使用 Fake，当前阶段未连接真实 Provider，未使用用户 Secret。
 
 ## 交付状态
 
-- 提交：治理/Red 6ea6481；实现 checkpoint 待记录。
+- 提交：治理/Red 6ea6481；实现 checkpoint d5cffdfe；本轮返修 checkpoint 待记录。
 - 拉取请求：#697 早期 Draft，仅治理/Red commit 已推送。
 - CI：早期 Draft Red 状态，尚无当前实现 CI 证据。
 - 合并：尚未合并。

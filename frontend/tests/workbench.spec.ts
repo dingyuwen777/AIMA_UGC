@@ -148,6 +148,25 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
+it('preserves saved vehicle filters when only the vehicle catalog fails to load', async () => {
+  api.fetchActiveBrands.mockResolvedValue([{ id: 'aima', code: 'AIMA', display_name: '爱玛', aliases: [] }])
+  api.fetchActiveVehicleModels.mockRejectedValue(new Error('vehicle catalog unavailable'))
+  const store = useWorkbenchStore()
+  const saved = { ...store.filters, dateFrom: '2026-08-01', dateTo: '2026-08-31', brandIds: ['aima'], vehicleModelIds: ['vehicle'] }
+  savedFilters.set(savedFiltersKey, JSON.stringify({ schema_version: 1, ...saved }))
+  await store.initialize()
+  expect(store.filters.vehicleModelIds).toEqual(['vehicle'])
+  expect(JSON.parse(savedFilters.get(savedFiltersKey)!).vehicleModelIds).toEqual(['vehicle'])
+  for (const call of [api.fetchWorkbenchStream, api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
+    expect(call).toHaveBeenCalledWith(expect.objectContaining({ brand_ids: ['aima'], vehicle_model_ids: ['vehicle'] }))
+  }
+  // 目录成功恢复后，归属不符及真实删除的车型仍按现有规则清理。
+  api.fetchActiveVehicleModels.mockResolvedValue([{ id: 'vehicle', brand_id: 'other' }])
+  await store.refreshReferenceData()
+  store.setFilters({ ...store.filters, vehicleModelIds: ['vehicle', 'deleted'] })
+  expect(store.filters.vehicleModelIds).toEqual([])
+})
+
 it('restores the complete applied snapshot before the first queries and persists reset', async () => {
   api.fetchActiveBrands.mockResolvedValue([{ id: 'aima', code: 'AIMA', display_name: '爱玛', aliases: [] }])
   api.fetchActiveVehicleModels.mockResolvedValue([{ id: 'vehicle', brand_id: 'aima' }])

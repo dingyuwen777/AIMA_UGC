@@ -529,7 +529,8 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       platforms: [...value.platforms],
       brandIds: [...value.brandIds],
       vehicleModelIds: value.vehicleModelIds.filter((id) => {
-        if (!value.brandIds.length) return true
+        // 目录尚未成功加载时不能用空列表判定已保存车型失效。
+        if (catalog.vehicles.active === null || !value.brandIds.length) return true
         return vehicleModels.value.some((item) => item.id === id && item.brand_id && value.brandIds.includes(item.brand_id))
       }),
       voiceTypes: [...value.voiceTypes],

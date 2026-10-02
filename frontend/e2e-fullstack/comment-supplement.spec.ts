@@ -17,7 +17,7 @@ async function selectPublishedDay(dialog: Locator, day: string): Promise<void> {
 
 const labels = ['小红书', '抖音', '微博', 'B站', '快手'] as const
 
-test('五平台原生 ID 从浏览器补采到声音广场评论与回复', async ({ page, request }) => {
+test('五平台日期补采与声音广场勾选、重复补采串联保留完整评论和回复', async ({ page, request }) => {
   test.setTimeout(180_000)
   const fixturePath = process.env.AIMA_COMMENT_SUPPLEMENT_EXCEL_FIXTURE
   expect(fixturePath, '必须提供隔离生成的五平台 Excel Fixture').toBeTruthy()
@@ -144,21 +144,7 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
     }
     await contentDetail.getByRole('button', { name: '关闭' }).click()
   }
-})
-
-test('声音广场只补采勾选笔记，详情和评论在终态自动刷新且重复评论不新增', async ({ page, request }) => {
-  test.setTimeout(180_000)
-  await ensureStage3FilterBrand(request)
-  const fixturePath = process.env.AIMA_COMMENT_SUPPLEMENT_EXCEL_FIXTURE
-  expect(fixturePath).toBeTruthy()
-  await page.goto('/collection-runtime')
-  await page.getByRole('button', { name: '导入数据' }).click()
-  const importDialog = page.getByRole('dialog', { name: '导入数据' })
-  await importDialog.locator('input[type="file"]').first().setInputFiles(fixturePath!)
-  await importDialog.getByRole('button', { name: '创建并预检' }).click()
-  await expect(importDialog.locator('.campaign-status')).toHaveText('预检完成', { timeout: 60_000 })
-  await importDialog.getByRole('button', { name: '开始导入' }).click()
-  await expect(importDialog.locator('.campaign-status')).toHaveText('导入完成', { timeout: 60_000 })
+  // 同一 Journey 先建立完整回复前置状态，再验收勾选补采和重复补采。
   await page.goto('/voice-plaza')
   const action = page.getByRole('button', { name: '评论补采', exact: true })
   await expect(action).toBeDisabled()
@@ -182,25 +168,25 @@ test('声音广场只补采勾选笔记，详情和评论在终态自动刷新�
   const body = created.request().postDataJSON()
   expect(body).toMatchObject({ mode: 'content_supplement', supplement_targets: { kind: 'selected' }, expected_target_count: 2, include_comments: true, include_sub_comments: true })
   chosen.push(...body.supplement_targets.content_ids)
-  const { run_id: runId } = await created.json()
+  const { run_id: selectedRunId } = await created.json()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByText('评论补采任务已创建，共 2 条内容。')).toBeVisible()
   const row = page.locator('.content-row').filter({ hasText: '爱玛评论补采全栈小红书' })
   await row.getByRole('button', { name: '查看详情' }).click()
   const detail = page.getByRole('dialog', { name: '内容详情' })
-  // 在页面停留，依赖真实终态轮询刷新，无手动刷新或重新进入页面。
+  // 在详情停留并等待正式终态，确认完整采集的数据仍可读取。
   await expect(detail.getByText('脱敏一级评论')).toBeVisible({ timeout: 90_000 })
   await expect.poll(async () => {
-    const value = await (await request.get(`/api/v1/collection-runs/${runId}`)).json()
+    const value = await (await request.get(`/api/v1/collection-runs/${selectedRunId}`)).json()
     return value.status
   }, { timeout: 90_000 }).toBe('succeeded')
-  const run = await (await request.get(`/api/v1/collection-runs/${runId}`)).json()
-  const ingested = await (await request.get('/api/v1/contents', { params: { source_identifier: runId, limit: 20 } })).json()
+  const selectedRun = await (await request.get(`/api/v1/collection-runs/${selectedRunId}`)).json()
+  const ingested = await (await request.get('/api/v1/contents', { params: { source_identifier: selectedRunId, limit: 20 } })).json()
   expect(ingested.items.map((item: { id: string }) => item.id).sort()).toEqual(chosen.sort())
-  expect(run.scopes).toHaveLength(2)
-  // 上一用例已完整采集相同笔记的回复；Full 保留完整且数量未变的回复，不重复计费。
-  expect(run.stats.requested_count).toBe(4)
-  expect(run.scopes.map((scope: { stats: { reply_count: number } }) => scope.stats.reply_count)).toEqual([0, 0])
+  expect(selectedRun.scopes).toHaveLength(2)
+  // 本 Journey 已完整采集相同笔记的回复；Full 保留完整且数量未变的回复，不重复计费。
+  expect(selectedRun.stats.requested_count).toBe(4)
+  expect(selectedRun.scopes.map((scope: { stats: { reply_count: number } }) => scope.stats.reply_count)).toEqual([0, 0])
   const identity = ingested.items.find((item: { platform: string }) => item.platform === 'xiaohongshu').id
   const before = await (await request.get(`/api/v1/contents/${identity}/comments`)).json()
   expect(before.items[0].reply_count).toBe(2)
