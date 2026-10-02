@@ -1569,8 +1569,11 @@ def _apply_projection_filters(
             )
     else:
         statement = statement.where(projection.c.effective_relevance == filters.relevance)
+    voice_types = set(filters.voice_types)
     if filters.voice_type is not None:
-        statement = statement.where(projection.c.effective_voice_type == filters.voice_type)
+        voice_types.add(filters.voice_type)
+    if voice_types:
+        statement = statement.where(projection.c.effective_voice_type.in_(voice_types))
     if filters.search is not None:
         pattern = f"%{_escape_like(filters.search)}%"
         statement = statement.where(
@@ -1649,8 +1652,11 @@ def _apply_projection_filters(
         )
     if filters.analysis_status is not None:
         statement = statement.where(projection.c.analysis_status == filters.analysis_status)
+    sentiments = set(filters.sentiments)
     if filters.sentiment is not None:
-        statement = statement.where(projection.c.effective_sentiment == filters.sentiment)
+        sentiments.add(filters.sentiment)
+    if sentiments:
+        statement = statement.where(projection.c.effective_sentiment.in_(sentiments))
     if filters.primary_labels:
         statement = statement.where(
             or_(
@@ -1693,8 +1699,11 @@ def _apply_filters(
             )
     else:
         statement = statement.where(effective_relevance == filters.relevance)
+    voice_types = set(filters.voice_types)
     if filters.voice_type is not None:
-        statement = statement.where(effective_voice_type == filters.voice_type)
+        voice_types.add(filters.voice_type)
+    if voice_types:
+        statement = statement.where(effective_voice_type.in_(voice_types))
     if filters.search is not None:
         pattern = f"%{_escape_like(filters.search)}%"
         statement = statement.where(
@@ -1847,8 +1856,11 @@ def _apply_filters(
         statement = statement.where(analysis.c.id.is_(None), has_any_analysis)
     elif filters.analysis_status == "pending":
         statement = statement.where(~has_any_analysis)
+    sentiments = set(filters.sentiments)
     if filters.sentiment is not None:
-        statement = statement.where(effective_sentiment == filters.sentiment)
+        sentiments.add(filters.sentiment)
+    if sentiments:
+        statement = statement.where(effective_sentiment.in_(sentiments))
     label_dimensions = (
         ("primary_label", filters.primary_labels),
         ("secondary_label", filters.secondary_labels),

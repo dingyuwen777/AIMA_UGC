@@ -1302,6 +1302,10 @@ class ContentFilterSnapshot(BaseModel):
     relevance: ContentRelevance | None = None
     voice_type: ContentVoiceType | None = None
     sentiment: str | None = Field(default=None, min_length=1, max_length=128)
+    voice_types: tuple[ContentVoiceType, ...] = Field(default=(), max_length=100)
+    sentiments: tuple[Annotated[str, Field(min_length=1, max_length=128)], ...] = Field(
+        default=(), max_length=100
+    )
     primary_label: str | None = Field(default=None, min_length=1, max_length=256)
     secondary_label: str | None = Field(default=None, min_length=1, max_length=256)
     primary_labels: tuple[Annotated[str, Field(min_length=1, max_length=256)], ...] = Field(
@@ -1347,6 +1351,10 @@ class ContentFilterSnapshot(BaseModel):
             raise ValueError("primary_labels 不能重复")
         if len(self.secondary_labels) != len(set(self.secondary_labels)):
             raise ValueError("secondary_labels 不能重复")
+        if len(self.voice_types) != len(set(self.voice_types)):
+            raise ValueError("voice_types 不能重复")
+        if len(self.sentiments) != len(set(self.sentiments)):
+            raise ValueError("sentiments 不能重复")
 
         # 新版调用统一消费 plural 字段；legacy singular 继续接受并在 Contract 边界
         # 归一化为同一筛选事实，避免列表、Count、Analysis/Export 形成两套语义。

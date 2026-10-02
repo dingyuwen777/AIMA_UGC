@@ -203,6 +203,7 @@ onBeforeUnmount(() => { disposed = true; if (poll) clearInterval(poll) })
     </div>
     <AimaFeedbackBanner
       v-if="pollError"
+      class="poll-status"
       tone="warning"
     >
       状态同步暂时失败，正在重试：{{ pollError }}
@@ -339,7 +340,8 @@ onBeforeUnmount(() => { disposed = true; if (poll) clearInterval(poll) })
 </template>
 
 <style scoped>
-.report-panel { display: grid; gap: 20px; }
+.report-panel { position: relative; display: grid; gap: 20px; }
+.poll-status { position: absolute; z-index: 3; top: 0; right: 0; max-width: min(560px, 100%); }
 .report-heading h2, .history-heading h3 { margin: 0; }
 .report-heading p, .report-card p { color: var(--text-secondary, #64748b); line-height: 1.6; }
 .report-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }

@@ -135,17 +135,17 @@ class WorkbenchMindSecondaryResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     secondary_label: str
-    user_count: int = Field(ge=0)
+    content_count: int = Field(ge=0)
 
 
 class WorkbenchMindDimensionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     primary_label: str
-    user_count: int = Field(ge=0)
-    user_share: float = Field(ge=0, le=1)
+    content_count: int = Field(ge=0)
+    content_share: float = Field(ge=0, le=1)
     positive_rate: float | None = Field(default=None, ge=0, le=1)
-    user_share_change_pp: float | None = None
+    content_share_change_pp: float | None = None
     secondary_labels: tuple[WorkbenchMindSecondaryResponse, ...]
     change_summary: str
 
@@ -158,7 +158,7 @@ class WorkbenchMindResponse(WorkbenchAnalysisIdentityResponse):
     date_to: date
     previous_date_from: date
     previous_date_to: date
-    identified_user_count: int = Field(ge=0)
+    relevant_content_count: int = Field(ge=0)
     unidentified_content_count: int = Field(ge=0)
     analyzed_count: int = Field(ge=0)
     analysis_coverage_rate: float = Field(ge=0, le=1)
@@ -174,7 +174,7 @@ class WorkbenchLayoutModule(BaseModel):
     module_id: WorkbenchModuleId
     visible: bool = True
     order: int = Field(ge=0, le=20)
-    column_span: int = Field(ge=4, le=12)
+    column_span: int = Field(ge=6, le=12)
     row_units: int = Field(ge=48, le=160)
 
 
@@ -200,6 +200,8 @@ class WorkbenchLayoutUpdateRequest(BaseModel):
             raise ValueError("module_id 不能重复")
         if set(ids) != {"sound-stream", "brand-mind", "ugc-trend"}:
             raise ValueError("modules 必须完整包含三个工作台模块")
+        if any(item.module_id == "sound-stream" and not item.visible for item in self.modules):
+            raise ValueError("sound-stream 承载全局筛选，必须保持可见")
         orders = tuple(item.order for item in self.modules)
         if len(set(orders)) != len(orders):
             raise ValueError("order 不能重复")

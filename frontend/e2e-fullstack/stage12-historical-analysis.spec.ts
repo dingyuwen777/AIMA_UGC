@@ -47,10 +47,19 @@ async function assertCompletedRunRetained(
     status: 'succeeded',
   }))
 
-  // 声音广场只展示 queued/running/cancelling 活动任务；终态历史统一进入任务中心。
-  await expect(page.getByRole('region', { name: 'AI 分析活动任务' })).toHaveCount(0, {
-    timeout: 5_000,
+  // 终态移除活动卡片，保留固定区域避免正文位移；历史仍可在任务中心查看。
+  const activity = page.getByRole('region', { name: 'AI 分析活动任务' })
+  await expect(activity).toContainText('0 个任务正在处理', { timeout: 5_000 })
+  await expect(activity.locator('article')).toHaveCount(0)
+  expect((await activity.boundingBox())?.height).toBe(96)
+  await activity.getByRole('button', { name: '查看任务中心', exact: true }).click()
+  const taskCenter = page.getByRole('complementary', { name: '任务中心' })
+  const completed = taskCenter.locator('.task-card').filter({
+    has: page.getByText(`AI 分析任务 ${sequenceNo}`, { exact: true }),
   })
+  await expect(completed).toBeVisible()
+  await expect(completed.locator('.task-status')).toHaveText('已完成')
+  await taskCenter.getByRole('button', { name: '关闭任务中心', exact: true }).click()
 }
 
 async function createAnalysisRun(

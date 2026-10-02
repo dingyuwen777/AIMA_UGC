@@ -7,6 +7,7 @@ import type {
   VehicleModelResponse,
 } from '../src/generated/api/client'
 import { expect, test, type Page, type Route } from './fixture'
+import { captureScrollbarEvidence } from './scrollbarEvidence'
 
 const now = '2026-09-17T12:00:00+08:00'
 const brandId = '81111111-1111-4111-8111-111111111111'
@@ -228,6 +229,19 @@ async function expectNoGlobalHorizontalScroll(page: Page): Promise<void> {
   expect(bounds.scroll).toBeLessThanOrEqual(bounds.client + 1)
 }
 
+test('管理员目录和配置编辑滚动条三状态保持几何', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 680 })
+  await mockAdmin(page)
+  await page.goto('/admin/configuration')
+  const brandDetail = page.locator('.brand-detail-card')
+  await expect(brandDetail).toBeVisible()
+  await captureScrollbarEvidence(page, brandDetail, testInfo, 'admin-catalog')
+  await page.getByRole('button', { name: 'AI 分析规则', exact: true }).click()
+  const scheme = page.locator('.scheme-editor')
+  await expect(scheme).toBeVisible()
+  await captureScrollbarEvidence(page, scheme, testInfo, 'admin-scheme')
+})
+
 test('admin exposes database reports in the six approved tabs', async ({ page }) => {
   await mockAdmin(page)
   await page.goto('/admin/configuration')
@@ -296,10 +310,12 @@ test('database report preflight, polling recovery, downloads and independent pub
   await submit.click()
   await expect(panel.getByRole('button', { name: '取消任务' })).toBeVisible()
   expect(initialRead).not.toBeNull()
+  const beforeFailure = await panel.locator('.report-card').first().boundingBox()
   await json(initialRead!, { items: [] })
   // 创建前的旧空列表不得覆盖已经创建的任务，也不能因此停止轮询。
   await expect(panel.getByRole('button', { name: '取消任务' })).toBeVisible()
   await expect(panel.getByText('状态同步暂时失败', { exact: false })).toBeVisible({ timeout: 12000 })
+  expect(await panel.locator('.report-card').first().boundingBox()).toEqual(beforeFailure)
   await expect(panel.getByRole('link', { name: '下载 Word' })).toBeVisible({ timeout: 12000 })
   await expect(panel.getByRole('link', { name: '下载 Excel 数据' })).toBeVisible()
   expect(createCount).toBe(1)

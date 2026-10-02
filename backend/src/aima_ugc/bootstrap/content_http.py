@@ -1258,15 +1258,20 @@ def _assert_same_analysis_run_request(
         runtime_config_snapshot=cast(dict[str, object], row["runtime_config_snapshot"]),
     )
     stored_filter_snapshot = row["filter_snapshot"]
+    same_filter_snapshot = stored_filter_snapshot == filter_snapshot
     if row["scope"] == "query" and not is_analysis_all_scope_filter_snapshot(
         stored_filter_snapshot
     ):
-        stored_filter_snapshot = analysis_query_filters_from_snapshot(stored_filter_snapshot)
+        same_filter_snapshot = _query_hash(
+            ContentFilterSnapshot.model_validate(
+                analysis_query_filters_from_snapshot(stored_filter_snapshot)
+            )
+        ) == _query_hash(ContentFilterSnapshot.model_validate(filter_snapshot))
     if (
         row["target_count"] != expected_target_count
         or row["run_intent"] != run_intent
         or row["scope"] != scope
-        or stored_filter_snapshot != filter_snapshot
+        or not same_filter_snapshot
         or actual_configuration_hash != expected_configuration_hash
     ):
         raise ContentAnalysisRunConflict
@@ -1328,6 +1333,16 @@ def _query_hash(
 ) -> str:
     """对语义等价筛选生成稳定摘要，同时保持 Cursor 的严格查询绑定。"""
     payload = filters.model_dump(mode="json", exclude_none=True)
+    for plural_key, singular_key in (("voice_types", "voice_type"), ("sentiments", "sentiment")):
+        values = sorted(
+            set(payload.pop(plural_key, []))
+            | ({payload[singular_key]} if singular_key in payload else set())
+        )
+        payload.pop(singular_key, None)
+        if len(values) == 1:
+            payload[singular_key] = values[0]
+        elif values:
+            payload[plural_key] = values
     for plural_key, singular_key in (
         ("primary_labels", "primary_label"),
         ("secondary_labels", "secondary_label"),

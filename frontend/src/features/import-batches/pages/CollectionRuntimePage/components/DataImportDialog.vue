@@ -50,6 +50,7 @@ const maxBytes = 500 * 1024 * 1024
 const campaignPollIntervalMs = 5_000
 let pollHandle: ReturnType<typeof setInterval> | undefined
 let pollInFlight = false
+let dialogVersion = 0
 const activeStatuses = [
   'uploading',
   'discovering',
@@ -184,20 +185,24 @@ async function pollCampaign(): Promise<void> {
     !activeStatuses.includes(campaign.status)
   ) return
   pollInFlight = true
+  const version = dialogVersion
   try {
     await store.refreshHistoricalCampaignLive(campaign.id)
+    if (version !== dialogVersion || !props.modelValue || store.selectedHistoricalCampaign?.id !== campaign.id) return
     persistentNotice.value = null
     if (store.selectedHistoricalCampaign?.status === 'revoking') {
-      await store.previewHistoricalRevocation()
+      await store.previewHistoricalRevocation(true)
+      if (version !== dialogVersion || !props.modelValue || store.selectedHistoricalCampaign?.id !== campaign.id) return
     }
     if (!activeStatuses.includes(store.selectedHistoricalCampaign?.status ?? '')) {
       await store.refreshHistoricalCampaign(campaign.id)
+      if (version !== dialogVersion || !props.modelValue || store.selectedHistoricalCampaign?.id !== campaign.id) return
       if (store.historicalRevocationPreview?.status === 'succeeded') {
         showNotice('撤销完成。')
       }
     }
   } catch {
-    persistentNotice.value = '导入任务状态刷新失败，页面会继续重试。'
+    if (version === dialogVersion && props.modelValue && store.selectedHistoricalCampaign?.id === campaign.id) persistentNotice.value = '导入任务状态刷新失败，页面会继续重试。'
   } finally {
     pollInFlight = false
   }
@@ -212,6 +217,8 @@ function startPolling(): void {
 watch(
   () => props.modelValue,
   (open) => {
+    dialogVersion += 1
+    store.invalidateHistoricalDetailRequests()
     if (open) {
       startPolling()
       return
@@ -233,7 +240,11 @@ watch(
   },
 )
 
-onBeforeUnmount(stopPolling)
+onBeforeUnmount(() => {
+  dialogVersion += 1
+  store.invalidateHistoricalDetailRequests()
+  stopPolling()
+})
 
 /** 长表单内的操作错误需要滚入可见区域，不能只追加在滚动区底部。 */
 watch([validationError, () => store.error], async (messages) => {
@@ -881,6 +892,7 @@ function viewCampaignContents(): void {
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="persistentNotice"
+        class="poll-status"
         tone="warning"
         role="alert"
       >
@@ -1027,7 +1039,8 @@ function viewCampaignContents(): void {
 .dialog-header { display: flex; height: 76px; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 16px 22px 12px; border-bottom: 1px solid var(--aima-border); background: var(--aima-surface); }
 .dialog-header h2 { margin: 0; color: var(--aima-text); font-size: 19px; font-weight: 700; line-height: 26px; }
 .dialog-header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
-.dialog-body { display: flex; min-height: 624px; flex-direction: column; gap: 20px; padding: 16px 22px 12px; }
+.dialog-body { position: relative; display: flex; min-height: 624px; flex-direction: column; gap: 20px; padding: 16px 22px 12px; }
+.poll-status { position: absolute; z-index: 3; top: 4px; right: 22px; max-width: calc(100% - 44px); }
 .source-tabs { display: flex; min-height: 40px; gap: 8px; }
 .source-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; line-height: 20px; }
 .source-tabs button.selected { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }

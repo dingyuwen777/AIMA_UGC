@@ -140,15 +140,29 @@ const secondaryOptions = computed(() =>
   props.taxonomy?.labels.find((item) => item.primary_label === labelPrimary.value)?.secondary_labels ?? [],
 )
 
-watch(() => props.item, (item) => {
-  vehicleModelIds.value = (item?.vehicles ?? []).map((vehicle) => vehicle.vehicle_model_id)
-  voiceType.value = item?.analysis.voice_type ?? ''
-  sentiment.value = item?.analysis.sentiment ?? ''
-  labels.value = [...(item?.analysis.labels ?? [])]
-  confirmUnlockVehicles.value = false
-  confirmUnlockAnalysis.value = false
-  unlockTarget.value = null
+watch(() => props.item, (item, previous) => {
+  const changed = item?.id !== previous?.id
+  if (changed || !editingVehicles.value) {
+    vehicleModelIds.value = (item?.vehicles ?? []).map((vehicle) => vehicle.vehicle_model_id)
+    confirmUnlockVehicles.value = false
+  }
+  if (changed || !editingAnalysis.value) {
+    voiceType.value = item?.analysis.voice_type ?? ''
+    sentiment.value = item?.analysis.sentiment ?? ''
+    labels.value = [...(item?.analysis.labels ?? [])]
+    confirmUnlockAnalysis.value = false
+  }
+  if (changed) unlockTarget.value = null
 }, { immediate: true })
+
+/** 显式保存成功采用服务器规范值；后台刷新不拥有编辑草稿。 */
+watch(() => props.saving, (saving, previous) => {
+  if (!previous || saving || props.saveError || !props.item) return
+  vehicleModelIds.value = (props.item.vehicles ?? []).map((vehicle) => vehicle.vehicle_model_id)
+  voiceType.value = props.item.analysis.voice_type ?? ''
+  sentiment.value = props.item.analysis.sentiment ?? ''
+  labels.value = [...(props.item.analysis.labels ?? [])]
+})
 
 function addLabel(): void {
   if (!labelPrimary.value || !labelSecondary.value) return
@@ -320,10 +334,22 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
             :size="22"
           />
         </button>
+        <div
+          v-if="error && item"
+          class="detail-refresh-error"
+          role="alert"
+        >
+          更新失败，保留上次详情。<button
+            type="button"
+            @click="emit('retry')"
+          >
+            重试
+          </button>
+        </div>
       </header>
     </template>
     <div
-      v-if="error"
+      v-if="error && !item"
       class="drawer-state"
       role="alert"
     >
@@ -949,6 +975,9 @@ header small { font-size: 12px; }
 .unlock-dialog-body p { margin: 0; color: var(--aima-text-muted); font-size: 11px; line-height: 18px; }
 .unlock-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px 20px; }
 .drawer-state { min-height: 180px; align-content: center; gap: 12px; padding: 24px; }
+.content-detail-dialog header { position: relative; }
+.detail-refresh-error { position: absolute; right: 34px; bottom: 0; color: var(--aima-danger); font-size: 11px; }
+.detail-refresh-error button { padding: 0 0 0 6px; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font: inherit; }
 .drawer-save-error { padding: 12px 24px; color: var(--aima-danger); font-size: 12px; }
 </style>
 <style>

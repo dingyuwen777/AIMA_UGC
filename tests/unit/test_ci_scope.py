@@ -341,7 +341,8 @@ def test_workbench_persistence_change_uses_exact_postgres_targets() -> None:
         "tests/integration/content/test_workbench_scheme_bootstrap.py",
     )
     assert requirements.postgres_suites == ()
-    assert requirements.fullstack_required is False
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ("analysis-streaming.spec.ts",)
 
 
 def test_historical_import_persistence_uses_owned_domain_suites_and_known_journeys() -> None:
@@ -369,7 +370,7 @@ def test_unknown_new_user_journey_fails_closed_to_fullstack() -> None:
     assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
-def test_workbench_frontend_and_backend_change_has_no_unrelated_real_fullstack() -> None:
+def test_workbench_frontend_and_backend_change_runs_its_real_analysis_journey() -> None:
     requirements = _requirements(
         "backend/src/aima_ugc/adapters/persistence/postgres/workbench.py",
         "frontend/src/features/workbench/pages/WorkbenchPage.vue",
@@ -379,7 +380,8 @@ def test_workbench_frontend_and_backend_change_has_no_unrelated_real_fullstack()
     assert requirements.frontend_required is True
     assert requirements.backend_required is True
     assert requirements.postgres_required is True
-    assert requirements.fullstack_required is False
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ("analysis-streaming.spec.ts",)
 
 
 def test_frontend_dependency_audit_only_runs_for_dependency_inputs() -> None:

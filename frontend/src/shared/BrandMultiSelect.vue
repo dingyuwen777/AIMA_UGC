@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
-import { listVehicleBrands, type BrandResponse } from '../generated/api/client'
-import { apiErrorMessage, unwrapResponse } from './api/http'
+import { useVehicleCatalogStore } from './domain/vehicleCatalog'
 import AimaButton from './ui/AimaButton.vue'
 import AimaDialog from './ui/AimaDialog.vue'
 
@@ -15,9 +14,11 @@ const props = withDefaults(defineProps<{
 }>(), { label: '品牌', disabled: false, includeDeprecated: false, compact: false })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
-const options = ref<BrandResponse[]>([])
-const loading = ref(false)
-const error = ref<string | null>(null)
+const catalog = useVehicleCatalogStore()
+const scope = computed(() => props.includeDeprecated ? 'all' : 'active')
+const options = computed(() => catalog.brands[scope.value] ?? [])
+const loading = computed(() => catalog.brandLoading[scope.value] && catalog.brands[scope.value] === null)
+const error = computed(() => catalog.brands[scope.value] === null ? catalog.brandErrors[scope.value] : null)
 const open = ref(false)
 const draft = ref<string[]>([])
 const search = ref('')
@@ -29,38 +30,17 @@ const matching = computed(() => options.value.filter((item) => {
 const selectedLabel = computed(() => {
   if (!props.modelValue.length) return '全部品牌'
   if (props.modelValue.length === 1) {
-    return options.value.find((item) => item.id === props.modelValue[0])?.display_name ?? '已选 1 个品牌'
+    return catalog.knownBrands[props.modelValue[0] ?? '']?.display_name ?? '已选 1 个品牌'
   }
   return `已选 ${props.modelValue.length} 个品牌`
 })
 
-onMounted(load)
+onMounted(() => { void load() })
+watch(scope, () => { void load() })
 
 /** 读取完整品牌目录；创建新过滤条件时默认只暴露 active 品牌。 */
-async function load(): Promise<void> {
-  if (loading.value) return
-  loading.value = true
-  error.value = null
-  try {
-    const items: BrandResponse[] = []
-    let offset = 0
-    while (true) {
-      const response = unwrapResponse(await listVehicleBrands({
-        status: props.includeDeprecated ? undefined : 'active',
-        offset,
-        limit: 200,
-      }))
-      if (!Array.isArray(response.items)) throw new Error('品牌目录响应无效，请稍后重试。')
-      items.push(...response.items)
-      offset += response.items.length
-      if (offset >= response.total || response.items.length === 0) break
-    }
-    options.value = items
-  } catch (reason) {
-    error.value = apiErrorMessage(reason)
-  } finally {
-    loading.value = false
-  }
+async function load(force = false): Promise<void> {
+  try { await catalog.loadBrands(scope.value, force) } catch { /* 目录 Owner 保留错误和最近成功值。 */ }
 }
 
 function toggle(id: string): void {
@@ -82,11 +62,13 @@ function toggleDraft(id: string): void {
 }
 
 function confirm(): void {
-  emit('update:modelValue', [...draft.value])
+  if (catalog.brands[scope.value] === null) return
+  const allowed = new Set(options.value.map((item) => item.id))
+  emit('update:modelValue', draft.value.filter((id) => allowed.has(id)))
   open.value = false
 }
 
-function roleLabel(role: BrandResponse['role']): string {
+function roleLabel(role: 'owned' | 'competitor' | 'other'): string {
   return role === 'owned' ? '自有' : role === 'competitor' ? '竞品' : '其他'
 }
 </script>
@@ -122,7 +104,7 @@ function roleLabel(role: BrandResponse['role']): string {
           placeholder="搜索品牌名称、编码或识别词"
         >
       </template>
-      <div class="brand-picker-body">
+      <div class="brand-picker-body aima-scroll-card aima-scroll-stable">
         <p v-if="loading">
           正在读取品牌目录…
         </p>
@@ -132,7 +114,7 @@ function roleLabel(role: BrandResponse['role']): string {
         >
           {{ error }} <button
             type="button"
-            @click="load"
+            @click="load(true)"
           >
             重试
           </button>
@@ -164,6 +146,7 @@ function roleLabel(role: BrandResponse['role']): string {
             取消
           </AimaButton><AimaButton
             variant="primary"
+            :disabled="catalog.brands[scope] === null"
             @click="confirm"
           >
             确定
@@ -187,7 +170,7 @@ function roleLabel(role: BrandResponse['role']): string {
     >
       {{ error }}<button
         type="button"
-        @click="load"
+        @click="load(true)"
       >
         重试
       </button>

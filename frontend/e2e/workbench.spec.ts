@@ -30,6 +30,183 @@ const modules = [
   { module_id: 'ugc-trend', visible: true, order: 2, column_span: 6, row_units: 48 },
 ]
 
+// 取自当前正式 Prompt 的九个业务一级标签，覆盖最长的正常标签。
+const nineLabels = ['品牌评价', '外观设计', '骑行性能', '电池、续航与充电', '智能化与电子功能', '耐用性与质量', '价格与价值', '销售与购买体验', '售后服务']
+function nineMind(status: 'fresh' | 'preparing' | 'refreshing' | 'failed' = 'fresh') {
+  return {
+    analysis_scheme_version_id: schemeId, taxonomy_sha256: taxonomyHash,
+    as_of: '2026-10-02T08:10:00+08:00', computed_at: status === 'preparing' || status === 'failed' ? null : '2026-10-02T08:10:00+08:00',
+    snapshot_status: status, date_from: '2026-09-25', date_to: '2026-10-01',
+    previous_date_from: '2026-09-18', previous_date_to: '2026-09-24',
+    relevant_content_count: 100, unidentified_content_count: 2, analyzed_count: 100, analysis_coverage_rate: 1,
+    dimensions: status === 'preparing' || status === 'failed' ? [] : nineLabels.map((primary_label) => ({
+      primary_label, content_count: 35, content_share: 0.35, positive_rate: 0.7,
+      content_share_change_pp: 2.2,
+      secondary_labels: (primary_label === '品牌评价' ? ['口碑与信任', '形象与定位', '性价比与溢价', '推荐与购买意愿'] : [])
+        .map((secondary_label) => ({ secondary_label, content_count: 20 })),
+      change_summary: `${primary_label}帖子占比较紧邻等长上期上升 2.20pp。`,
+    })),
+  }
+}
+
+for (const [columnSpan, rowUnits] of [[6, 48], [6, 80], [8, 48], [8, 80], [12, 48], [12, 160]]) {
+  test(`九标签在 ${columnSpan}×${rowUnits} 完整单行可读、左右布局且无正常内部滚动`, async ({ page }, testInfo) => {
+    await page.route('**/api/v1/workbench/layout', (route) => route.fulfill({ json: {
+      schema_version: 1, revision: 4, modules: modules.map((item) => ({ ...item, column_span: columnSpan, row_units: rowUnits })),
+      updated_at: '2026-10-02T08:00:00+08:00',
+    } }))
+    await page.route('**/api/v1/workbench/mind**', (route) => route.fulfill({ json: nineMind() }))
+    await page.goto('/')
+    const chart = page.locator('.radar-chart')
+    await expect(chart.locator('svg text')).toHaveCount(9)
+    const labels = await chart.locator('svg text').evaluateAll((elements) => elements.map((element) => {
+      const box = element.getBoundingClientRect()
+      return { text: element.textContent, left: box.left, top: box.top, right: box.right, bottom: box.bottom,
+        fontSize: Number.parseFloat(getComputedStyle(element).fontSize) }
+    }))
+    expect(labels.map((label) => label.text)).toEqual(nineLabels.map((label) => `${label} 35%`))
+    const bounds = await chart.boundingBox()
+    expect(bounds).not.toBeNull()
+    for (let index = 0; index < labels.length; index += 1) {
+      const label = labels[index]!
+      expect(label.fontSize).toBeGreaterThanOrEqual(11)
+      expect(label.left).toBeGreaterThanOrEqual(bounds!.x - 1)
+      expect(label.right).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1)
+      expect(label.top).toBeGreaterThanOrEqual(bounds!.y - 1)
+      expect(label.bottom).toBeLessThanOrEqual(bounds!.y + bounds!.height + 1)
+      for (const other of labels.slice(index + 1)) {
+        expect(label.right <= other.left || other.right <= label.left || label.bottom <= other.top || other.bottom <= label.top).toBe(true)
+      }
+    }
+    for (const [left, right] of [['.mind-radar', '.mind-detail'], ['.trend-main', '.trend-card aside']]) {
+      const leftBox = await page.locator(left!).boundingBox()
+      const rightBox = await page.locator(right!).boundingBox()
+      expect(rightBox!.x).toBeGreaterThanOrEqual(leftBox!.x + leftBox!.width - 1)
+    }
+    for (const selector of ['.mind-detail', '.sentiment-list']) {
+      const overflow = await page.locator(selector).evaluate((element) => element.scrollHeight - element.clientHeight)
+      expect(overflow, selector).toBeLessThanOrEqual(1)
+    }
+    await expect(page.locator('.radar-center strong')).toHaveText('爱玛')
+    await page.screenshot({ path: testInfo.outputPath(`workbench-${columnSpan}-${rowUnits}.png`), fullPage: true })
+  })
+}
+
+test('首次后台聚合独立跟进，不等待六小时，失败状态可以重试', async ({ page }) => {
+  await page.clock.install()
+  let requests = 0
+  await page.route('**/api/v1/workbench/mind**', (route) => {
+    requests += 1
+    return route.fulfill({ json: nineMind(requests === 1 ? 'preparing' : requests === 2 ? 'failed' : 'fresh') })
+  })
+  await page.goto('/')
+  await expect(page.getByText('首次聚合正在后台准备，完成后会自动显示…').first()).toBeVisible()
+  await page.clock.fastForward(3_000)
+  await expect(page.locator('.mind-card').getByText('聚合失败')).toBeVisible()
+  await page.locator('.mind-card').getByRole('button', { name: '重试', exact: true }).click()
+  await expect(page.locator('.radar-chart svg text')).toHaveCount(9)
+  expect(requests).toBe(3)
+})
+
+test('异常长一级标签守住可读字号，省略显示且详情保留全名', async ({ page }) => {
+  const fullName = '异常长业务标签名称需要完整保留在详情中而不挤出图表边界'.repeat(3)
+  const mind = nineMind()
+  mind.dimensions[0]!.primary_label = fullName
+  await page.route('**/api/v1/workbench/mind**', (route) => route.fulfill({ json: mind }))
+  await page.goto('/')
+  const chart = page.locator('.radar-chart')
+  await expect(chart.locator('svg text')).toHaveCount(9)
+  const texts = await chart.locator('svg text').allTextContents()
+  expect(texts[0]).toContain('…')
+  expect(texts[0]).toContain('35%')
+  const box = await chart.boundingBox()
+  const actual = await chart.locator('svg text').evaluateAll((elements) => elements.map((element) => {
+    const r = element.getBoundingClientRect()
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, font: Number.parseFloat(getComputedStyle(element).fontSize) }
+  }))
+  for (const label of actual) {
+    expect(label.font).toBeGreaterThanOrEqual(11)
+    expect(label.left).toBeGreaterThanOrEqual(box!.x - 1)
+    expect(label.right).toBeLessThanOrEqual(box!.x + box!.width + 1)
+    expect(label.top).toBeGreaterThanOrEqual(box!.y - 1)
+    expect(label.bottom).toBeLessThanOrEqual(box!.y + box!.height + 1)
+  }
+  await expect(page.locator('.mind-detail h3')).toHaveText(fullName)
+  await expect(page.locator('.mind-detail h3')).toHaveAttribute('title', fullName)
+})
+
+test('后台聚合请求及失败保留成功图表、日期和几何', async ({ page }) => {
+  await page.clock.install()
+  let release!: () => void
+  const delayed = new Promise<void>((resolve) => { release = resolve })
+  let requests = 0
+  await page.route('**/api/v1/workbench/mind**', async (route) => {
+    requests += 1
+    if (requests === 1) return route.fulfill({ json: nineMind() })
+    await delayed
+    return route.fulfill({ status: 503, json: temporaryError })
+  })
+  await page.goto('/')
+  const card = page.locator('.mind-card')
+  await expect(card.locator('svg text')).toHaveCount(9)
+  const before = await card.boundingBox()
+  const bodySelectors = ['.radar-stage', '.radar-center', '.mind-detail']
+  const bodyBefore = await Promise.all(bodySelectors.map((selector) => card.locator(selector).boundingBox()))
+  await page.clock.fastForward(6 * 60 * 60 * 1000)
+  await expect.poll(() => requests).toBe(2)
+  await expect(card.locator('svg text')).toHaveCount(9)
+  expect(await card.boundingBox()).toEqual(before)
+  expect(await Promise.all(bodySelectors.map((selector) => card.locator(selector).boundingBox()))).toEqual(bodyBefore)
+  release()
+  await expect(card).toHaveAttribute('aria-busy', 'false')
+  await expect(card.locator('svg text')).toHaveCount(9)
+  expect(await card.boundingBox()).toEqual(before)
+  expect(await Promise.all(bodySelectors.map((selector) => card.locator(selector).boundingBox()))).toEqual(bodyBefore)
+})
+
+test('筛选与卡片统一细滚动条，三卡日期位于右上且取同一范围', async ({ page }, testInfo) => {
+  await page.goto('/')
+  const filter = page.locator('.workbench-filters')
+  await expect(filter).toBeVisible()
+  const style = await filter.evaluate((element) => ({
+    width: getComputedStyle(element, '::-webkit-scrollbar').width,
+    height: getComputedStyle(element, '::-webkit-scrollbar').height,
+    track: getComputedStyle(element, '::-webkit-scrollbar-track').backgroundColor,
+    radius: getComputedStyle(element, '::-webkit-scrollbar-thumb').borderRadius,
+    thumb: getComputedStyle(element, '::-webkit-scrollbar-thumb').backgroundColor,
+    hover: getComputedStyle(element).getPropertyValue('--aima-scrollbar-thumb-hover').trim(),
+    active: getComputedStyle(element).getPropertyValue('--aima-scrollbar-thumb-active').trim(),
+    overflow: element.scrollWidth > element.clientWidth,
+  }))
+  expect(style.width).toBe('3px')
+  expect(style.height).toBe('3px')
+  expect(style.track).toBe('rgba(0, 0, 0, 0)')
+  expect(style.radius).toBe('999px')
+  expect(style.overflow).toBe(true)
+  expect(style.hover).not.toEqual(style.active)
+  for (const selector of ['.stream-card', '.mind-card', '.trend-card']) {
+    const card = page.locator(selector)
+    const date = card.locator('.workbench-date-label')
+    const header = card.locator('.card-header')
+    await expect(date).toBeVisible()
+    const dateBox = await date.boundingBox()
+    const headerBox = await header.boundingBox()
+    expect(dateBox!.x).toBeGreaterThan(headerBox!.x + headerBox!.width / 2)
+    expect(dateBox!.y + dateBox!.height).toBeLessThanOrEqual(headerBox!.y + headerBox!.height + 1)
+  }
+  const dates = await page.locator('.workbench-date-label').allTextContents()
+  expect(new Set(dates).size).toBe(1)
+  await page.screenshot({ path: testInfo.outputPath('scrollbars-workbench.png'), fullPage: true })
+  const bounds = await filter.boundingBox()
+  await page.mouse.move(bounds!.x + 12, bounds!.y + bounds!.height - 1)
+  await page.screenshot({ path: testInfo.outputPath('scrollbars-workbench-hover.png'), fullPage: true })
+  await page.mouse.down()
+  await page.screenshot({ path: testInfo.outputPath('scrollbars-workbench-active.png'), fullPage: true })
+  expect(await filter.boundingBox()).toEqual(bounds)
+  expect(await filter.evaluate((element) => getComputedStyle(element, '::-webkit-scrollbar').height)).toBe('3px')
+  await page.mouse.up()
+})
+
 /** 安装工作台 Browser Mock；只模拟后端 Contract，不在测试端重算业务指标。 */
 async function mockWorkbench(page: Page): Promise<void> {
   await page.route('**/api/v1/content-analysis-taxonomy', async (route) => {
@@ -156,27 +333,27 @@ async function mockWorkbench(page: Page): Promise<void> {
         date_to: '2026-09-27',
         previous_date_from: '2026-07-30',
         previous_date_to: '2026-08-28',
-        identified_user_count: empty ? 0 : 100,
+        relevant_content_count: empty ? 0 : 100,
         unidentified_content_count: empty ? 0 : 2,
         analyzed_count: empty ? 0 : 80,
         analysis_coverage_rate: empty ? 0 : 0.8,
         dimensions: empty ? [] : [
           {
             primary_label: '外观设计',
-            user_count: 35,
-            user_share: 0.35,
+            content_count: 35,
+            content_share: 0.35,
             positive_rate: 0.7,
-            user_share_change_pp: 2.2,
-            secondary_labels: [{ secondary_label: '颜色与配色', user_count: 20 }],
+            content_share_change_pp: 2.2,
+            secondary_labels: [{ secondary_label: '颜色与配色', content_count: 20 }],
             change_summary: '外观设计用户占比较紧邻等长上期上升 2.20pp。',
           },
           {
             primary_label: '电池、续航与充电',
-            user_count: 28,
-            user_share: 0.28,
+            content_count: 28,
+            content_share: 0.28,
             positive_rate: 0.55,
-            user_share_change_pp: -1.1,
-            secondary_labels: [{ secondary_label: '续航里程', user_count: 18 }],
+            content_share_change_pp: -1.1,
+            secondary_labels: [{ secondary_label: '续航里程', content_count: 18 }],
             change_summary: '电池、续航与充电用户占比较紧邻等长上期下降 1.10pp。',
           },
         ],
@@ -284,12 +461,12 @@ test('工作台按 active Taxonomy 展示真实模块，并使用后端 as_of', 
   await expect(page.getByRole('heading', { name: 'UGC 声量与情感趋势' })).toBeVisible()
   await expect(page.getByText('基于当前 active Taxonomy，动态查看一级用户心智')).toBeVisible()
   await expect(page.locator('.mind-card .radar-chart')).toHaveAttribute('data-axis-count', '2')
-  await expect(page.locator('.mind-card .radar-chart canvas')).toBeVisible()
+  await expect(page.locator('.mind-card .radar-chart svg')).toBeVisible()
   await expect(page.locator('.mind-card .radar-center')).toContainText('爱玛心智图')
-  await expect(page.locator('.mind-card .radar-selected-card')).toContainText('外观设计')
+  await expect(page.locator('.mind-card .mind-detail')).toContainText('外观设计')
   await expect(page.locator('.trend-card .sentiment-list').getByText('混合', { exact: true })).toBeVisible()
   await expect(page.locator('.trend-card .sentiment-list').getByText('无法判断', { exact: true })).toBeVisible()
-  await expect(page.getByText(/2026.*09.*27.*08.*10.*每 15 秒检查更新/)).toBeVisible()
+  await expect(page.getByText(/2026.*09.*27.*08.*10.*每 6 小时检查更新/)).toBeVisible()
   await expect(page.getByAltText('工作台开发中')).toHaveCount(0)
 
   // Figma 默认态 1440×900：侧栏后两张主卡同排，页面留白不能叠加两层。
@@ -312,16 +489,16 @@ test('工作台按 active Taxonomy 展示真实模块，并使用后端 as_of', 
   const [radarStage, radarCenter, radarSelection] = await Promise.all([
     page.locator('.mind-card .radar-stage').boundingBox(),
     page.locator('.mind-card .radar-center').boundingBox(),
-    page.locator('.mind-card .radar-selected-card').boundingBox(),
+    page.locator('.mind-card .mind-detail').boundingBox(),
   ])
   expect(radarStage).not.toBeNull()
   expect(radarCenter).not.toBeNull()
   expect(radarSelection).not.toBeNull()
   expect((radarCenter?.x ?? 0) + (radarCenter?.width ?? 0))
     .toBeLessThanOrEqual((radarSelection?.x ?? 0) + 1)
-  expect(radarSelection?.x ?? 0).toBeGreaterThanOrEqual(radarStage?.x ?? 0)
+  expect(radarSelection?.x ?? 0).toBeGreaterThanOrEqual((radarStage?.x ?? 0) + (radarStage?.width ?? 0))
   expect((radarSelection?.x ?? 0) + (radarSelection?.width ?? 0))
-    .toBeLessThanOrEqual((radarStage?.x ?? 0) + (radarStage?.width ?? 0) + 1)
+    .toBeLessThanOrEqual((mindBox?.x ?? 0) + (mindBox?.width ?? 0) + 1)
 })
 
 test('声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开关', async ({ page }) => {
@@ -783,7 +960,7 @@ test('短声音流按 Figma 连续滚动，平台标识复用声音广场样式'
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(5)
 })
 
-test('页面保持可见时按 15 秒补读聚合且不重置声音流游标', async ({ page }) => {
+test('普通刷新六小时一次，未过期恢复可见不补读且不重置声音流', async ({ page }) => {
   await page.clock.install()
   const requests: string[] = []
   page.on('request', (request) => {
@@ -796,6 +973,11 @@ test('页面保持可见时按 15 秒补读聚合且不重置声音流游标', a
   const initialMind = requests.filter((path) => path.endsWith('/mind')).length
   const initialTrend = requests.filter((path) => path.endsWith('/trend')).length
   await page.clock.fastForward(15_000)
+  expect(requests.filter((path) => path.endsWith('/mind'))).toHaveLength(initialMind)
+  expect(requests.filter((path) => path.endsWith('/trend'))).toHaveLength(initialTrend)
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+  expect(requests.filter((path) => path.endsWith('/mind'))).toHaveLength(initialMind)
+  await page.clock.fastForward(6 * 60 * 60 * 1000)
   await expect.poll(() => requests.filter((path) => path.endsWith('/mind')).length)
     .toBeGreaterThanOrEqual(initialMind + 1)
   await expect.poll(() => requests.filter((path) => path.endsWith('/trend')).length)
@@ -853,14 +1035,14 @@ test('趋势模块横向按单列缩放，窄模块内部自适应且不重叠',
   ])
   expect(mainBox).not.toBeNull()
   expect(asideBox).not.toBeNull()
-  expect(asideBox?.y ?? 0).toBeGreaterThanOrEqual((mainBox?.y ?? 0) + (mainBox?.height ?? 0) - 1)
+  expect(asideBox?.x ?? 0).toBeGreaterThanOrEqual((mainBox?.x ?? 0) + (mainBox?.width ?? 0) - 1)
 
   const saveRequest = page.waitForRequest((request) =>
     request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/workbench/layout')
   await page.getByRole('button', { name: '保存完成' }).click()
   const request = await saveRequest
   const payload = request.postDataJSON() as { modules: typeof modules }
-  expect(payload.modules.find((item) => item.module_id === 'ugc-trend')?.column_span).toBe(4)
+  expect(payload.modules.find((item) => item.module_id === 'ugc-trend')?.column_span).toBe(6)
   expect(payload.modules.find((item) => item.module_id === 'sound-stream')?.column_span).toBe(6)
   expect(payload.modules.find((item) => item.module_id === 'brand-mind')?.column_span).toBe(6)
 })
@@ -873,7 +1055,7 @@ test('三个模块在各自最窄宽度下独立重排且不产生横向溢出',
       body: JSON.stringify({
         schema_version: 1,
         revision: 4,
-        modules: modules.map((item) => ({ ...item, column_span: 4 })),
+        modules: modules.map((item) => ({ ...item, column_span: 6 })),
         updated_at: '2026-09-27T08:12:00+08:00',
       }),
     })
@@ -899,8 +1081,8 @@ test('三个模块在各自最窄宽度下独立重排且不产生横向溢出',
     page.locator('.stream-card .stream-main').first().boundingBox(),
     page.locator('.stream-card .stream-tags').first().boundingBox(),
   ])
-  expect(trendAside?.y ?? 0).toBeGreaterThanOrEqual((trendMain?.y ?? 0) + (trendMain?.height ?? 0) - 1)
-  expect(mindDetail?.y ?? 0).toBeGreaterThanOrEqual((mindRanking?.y ?? 0) + (mindRanking?.height ?? 0) - 1)
+  expect(trendAside?.x ?? 0).toBeGreaterThanOrEqual((trendMain?.x ?? 0) + (trendMain?.width ?? 0) - 1)
+  expect(mindDetail?.x ?? 0).toBeGreaterThanOrEqual((mindRanking?.x ?? 0) + (mindRanking?.width ?? 0) - 1)
   expect(streamTags?.y ?? 0).toBeGreaterThanOrEqual(streamMain?.y ?? 0)
 })
 
@@ -917,6 +1099,41 @@ test('品牌心智深链把当前日期和一级标签恢复到声音广场', as
   expect(url.searchParams.get('published_from')).toBeTruthy()
   expect(url.searchParams.get('published_to')).toBeTruthy()
   await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
+})
+
+test('心智钻取保留已经应用的二级标签', async ({ page }) => {
+  await mockVoicePlazaAfterDeepLink(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: '一级标签', exact: true }).click()
+  await page.getByRole('dialog', { name: '选择一级标签' }).getByRole('checkbox', { name: '外观设计', exact: true }).check()
+  await page.getByRole('button', { name: '二级标签', exact: true }).click()
+  await page.getByRole('dialog', { name: '选择二级标签' }).getByRole('checkbox', { name: '外观设计 / 颜色与配色' }).check()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '查看该心智的用户原声 →' }).click()
+  await page.waitForURL((url) => url.pathname === '/voice-plaza')
+  const params = new URL(page.url()).searchParams
+  expect(params.getAll('primary_labels')).toEqual(['外观设计'])
+  expect(params.getAll('secondary_labels')).toEqual(['颜色与配色'])
+})
+
+test('窄窗口的高度拖动按保存的合法行数呈现', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 900 })
+  await page.goto('/')
+  const mindShell = page.locator('.module-shell').filter({ has: page.getByRole('heading', { name: '品牌用户心智' }) })
+  await expect.poll(async () => (await mindShell.boundingBox())?.height).toBe(384)
+  await page.getByRole('button', { name: '+ 编辑工作台' }).click()
+  const handle = mindShell.getByRole('button', { name: '调整模块尺寸' })
+  await handle.scrollIntoViewIfNeeded()
+  const box = await handle.boundingBox()
+  await page.mouse.move(box!.x + 12, box!.y + 12)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + 12, box!.y + 12 + 256, { steps: 12 })
+  await page.mouse.up()
+  const saving = page.waitForRequest((request) => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/workbench/layout')
+  await page.getByRole('button', { name: '保存完成' }).click()
+  const payload = (await saving).postDataJSON() as { modules: typeof modules }
+  expect(payload.modules.find((item) => item.module_id === 'brand-mind')?.row_units).toBe(80)
+  await expect.poll(async () => (await mindShell.boundingBox())?.height).toBe(640)
 })
 
 test('点击声音流笔记携带真实 Content ID 定位声音广场', async ({ page }) => {

@@ -8,6 +8,7 @@ import {
   type VehicleModelResponse,
 } from '../../../generated/api/client'
 import { platformLabel } from '../../../shared/domain/platform'
+import { useVehicleCatalogStore } from '../../../shared/domain/vehicleCatalog'
 import AimaDateRange from '../../../shared/ui/AimaDateRange.vue'
 import AimaMultiSelect, { type AimaSelectOption } from '../../../shared/ui/AimaMultiSelect.vue'
 import type { WorkbenchFilters } from '../store'
@@ -18,6 +19,11 @@ const props = defineProps<{
   brands: BrandResponse[]
   vehicleModels: VehicleModelResponse[]
 }>()
+const catalog = useVehicleCatalogStore()
+const brandSummary = computed(() => props.modelValue.brandIds.length === 1
+  ? catalog.knownBrands[props.modelValue.brandIds[0]!]?.display_name : undefined)
+const vehicleSummary = computed(() => props.modelValue.vehicleModelIds.length === 1
+  ? catalog.knownVehicles[props.modelValue.vehicleModelIds[0]!]?.display_name : undefined)
 
 const emit = defineEmits<{
   'update:modelValue': [value: WorkbenchFilters]
@@ -80,12 +86,27 @@ function updateDateRange(value: { from: string; to: string }): void {
 </script>
 
 <template>
-  <div class="workbench-filters">
+  <div class="workbench-filters aima-scroll-x">
+    <AimaDateRange
+      class="workbench-date"
+      label="工作台时间范围"
+      :from="modelValue.dateFrom"
+      :to="modelValue.dateTo"
+      @update:range="updateDateRange"
+    />
     <AimaMultiSelect
-      label="情感"
-      :model-value="modelValue.sentiments"
-      :options="sentimentOptions"
-      @update:model-value="updateArray('sentiments', $event)"
+      label="品牌"
+      :summary="brandSummary"
+      :model-value="modelValue.brandIds"
+      :options="brandOptions"
+      @update:model-value="updateArray('brandIds', $event)"
+    />
+    <AimaMultiSelect
+      label="车型"
+      :summary="vehicleSummary"
+      :model-value="modelValue.vehicleModelIds"
+      :options="vehicleOptions"
+      @update:model-value="updateArray('vehicleModelIds', $event)"
     />
     <AimaMultiSelect
       label="平台"
@@ -95,16 +116,10 @@ function updateDateRange(value: { from: string; to: string }): void {
       @update:model-value="updateArray('platforms', $event)"
     />
     <AimaMultiSelect
-      label="品牌"
-      :model-value="modelValue.brandIds"
-      :options="brandOptions"
-      @update:model-value="updateArray('brandIds', $event)"
-    />
-    <AimaMultiSelect
-      label="车型"
-      :model-value="modelValue.vehicleModelIds"
-      :options="vehicleOptions"
-      @update:model-value="updateArray('vehicleModelIds', $event)"
+      label="情感"
+      :model-value="modelValue.sentiments"
+      :options="sentimentOptions"
+      @update:model-value="updateArray('sentiments', $event)"
     />
     <AimaMultiSelect
       label="发声"
@@ -125,13 +140,6 @@ function updateDateRange(value: { from: string; to: string }): void {
       :options="secondaryLabelOptions"
       :disabled="modelValue.primaryLabels.length === 0"
       @update:model-value="updateArray('secondaryLabels', $event)"
-    />
-    <AimaDateRange
-      class="workbench-date"
-      label="工作台时间范围"
-      :from="modelValue.dateFrom"
-      :to="modelValue.dateTo"
-      @update:range="updateDateRange"
     />
     <button
       class="reset"
@@ -155,7 +163,6 @@ function updateDateRange(value: { from: string; to: string }): void {
   border-radius: 7px;
   background: #fef7ff;
   overscroll-behavior-inline: contain;
-  scrollbar-width: thin;
 }
 .workbench-filters > * { flex: none; }
 .workbench-date { width: 205px; }

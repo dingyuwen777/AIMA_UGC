@@ -21,6 +21,12 @@ let filterRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let analysisRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let periodicRefreshHandle: ReturnType<typeof setInterval> | undefined
 let periodicRefreshPending = false
+const AUTO_REFRESH_INTERVAL = 6 * 60 * 60 * 1000
+let pendingRefreshHandle: ReturnType<typeof setTimeout> | undefined
+let pendingRefreshRunning = false
+let pendingAttempts = 0
+let pendingQuery = ''
+let disposed = false
 let resizeCleanup: (() => void) | null = null
 
 const analysisFingerprint = computed(() =>
@@ -46,7 +52,7 @@ function moduleStyle(module: WorkbenchLayoutModule): Record<string, string> {
 
 /** 工作台数据更新时间按北京时间显示，值来自后端模块 as_of。 */
 function refreshLabel(): string {
-  return store.latestAsOf ? `${formatDateTime(store.latestAsOf)} · 每 15 秒检查更新` : '等待首次同步'
+  return store.latestAsOf ? `${formatDateTime(store.latestAsOf)} · 每 6 小时检查更新` : '等待首次同步'
 }
 
 /** 连续多选操作短暂合并，日期确认则在当前事件中直接刷新。 */
@@ -73,10 +79,11 @@ function updateFilters(value: WorkbenchFilters): void {
   scheduleFilterRefresh()
 }
 
-/** 页面可见时按任务中心既有频率检查入库变化，慢请求不会叠加。 */
+/** 普通聚合刷新每六小时执行；慢请求与隐藏标签页不叠加。 */
 async function refreshPeriodically(): Promise<void> {
   if (periodicRefreshPending || document.visibilityState !== 'visible'
     || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend) return
+  if (store.lastAutoRefreshAt !== null && Date.now() - store.lastAutoRefreshAt < AUTO_REFRESH_INTERVAL) return
   periodicRefreshPending = true
   try {
     await store.refreshAggregates()
@@ -85,9 +92,38 @@ async function refreshPeriodically(): Promise<void> {
   }
 }
 
-/** 后台标签页恢复时立即追上最新业务事实。 */
+/** 标签页恢复后只补充已经过期的普通刷新，并继续跟进后台计算。 */
 function onVisibilityChange(): void {
-  if (document.visibilityState === 'visible') void refreshPeriodically()
+  if (document.visibilityState === 'visible') {
+    void refreshPeriodically()
+    schedulePendingRefresh()
+  }
+}
+
+/** preparing/refreshing 是一次持久计算的完成跟进，与六小时普通刷新独立。 */
+function schedulePendingRefresh(): void {
+  if (pendingRefreshHandle) clearTimeout(pendingRefreshHandle)
+  pendingRefreshHandle = undefined
+  const query = JSON.stringify(store.filters)
+  if (query !== pendingQuery) { pendingQuery = query; pendingAttempts = 0 }
+  if (disposed || pendingRefreshRunning || pendingAttempts >= 120) return
+  const pending = (status?: string) => status === 'preparing' || status === 'refreshing'
+  if (!pending(store.mind?.snapshot_status) && !pending(store.trend?.snapshot_status)) return
+  pendingRefreshHandle = setTimeout(async () => {
+    pendingRefreshHandle = undefined
+    if (disposed || document.visibilityState !== 'visible') { schedulePendingRefresh(); return }
+    pendingRefreshRunning = true
+    pendingAttempts += 1
+    try {
+      await Promise.all([
+        pending(store.mind?.snapshot_status) ? store.refreshModule('mind', true) : Promise.resolve(),
+        pending(store.trend?.snapshot_status) ? store.refreshModule('trend', true) : Promise.resolve(),
+      ])
+    } finally {
+      pendingRefreshRunning = false
+      schedulePendingRefresh()
+    }
+  }, Math.min(15_000, 3_000 * 2 ** Math.min(3, Math.floor(pendingAttempts / 5))))
 }
 
 /** 日期是一次确认动作，立即向后端请求三个模块。 */
@@ -98,7 +134,7 @@ function updateDateFilters(value: WorkbenchFilters): void {
   void store.refreshData()
 }
 
-/** 重置为北京时间近 30 天后立即刷新，避免旧筛选结果继续停留。 */
+/** 重置为爱玛与截至昨日的完整七天，立即刷新。 */
 function resetFilters(): void {
   store.resetFilters()
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
@@ -117,7 +153,7 @@ function dropOn(targetId: WorkbenchModuleId): void {
   draggedModule.value = null
 }
 
-/** 从当前筛选构造声音广场可真实恢复的 Route Query；不可表达的多平台条件不伪造。 */
+/** 深链接完整携带已应用筛选；声音广场恢复时覆盖旧 Session。 */
 function voicePlazaQuery(
   extra: { primaryLabel?: string; day?: string; contentId?: string } = {},
 ): LocationQueryRaw {
@@ -126,15 +162,15 @@ function voicePlazaQuery(
     published_from: extra.day ?? filters.dateFrom,
     published_to: extra.day ?? filters.dateTo,
   }
-  if (filters.platforms.length === 1) query.platform = filters.platforms[0]
-  if (filters.sentiments.length === 1) query.sentiment = filters.sentiments[0]
-  if (filters.voiceTypes.length === 1) query.voice_type = filters.voiceTypes[0]
+  if (filters.platforms.length) query.platforms = [...filters.platforms]
+  if (filters.sentiments.length) query.sentiments = [...filters.sentiments]
+  if (filters.voiceTypes.length) query.voice_types = [...filters.voiceTypes]
   if (extra.primaryLabel) {
     query.primary_labels = [extra.primaryLabel]
   } else {
     if (filters.primaryLabels.length) query.primary_labels = [...filters.primaryLabels]
-    if (filters.secondaryLabels.length) query.secondary_labels = [...filters.secondaryLabels]
   }
+  if (filters.secondaryLabels.length) query.secondary_labels = [...filters.secondaryLabels]
   if (filters.brandIds.length) query.brand_ids = [...filters.brandIds]
   if (filters.vehicleModelIds.length) query.vehicle_model_ids = [...filters.vehicleModelIds]
   if (extra.contentId) query.content_id = extra.contentId
@@ -191,14 +227,17 @@ function moduleLabel(moduleId: WorkbenchModuleId): string {
 watch(analysisFingerprint, (current, previous) => {
   if (previous && current !== previous) scheduleAnalysisRefresh()
 })
+watch([() => store.mind, () => store.trend, () => store.filters], schedulePendingRefresh)
 
 onMounted(() => {
   void store.initialize()
-  periodicRefreshHandle = setInterval(() => { void refreshPeriodically() }, 15_000)
+  periodicRefreshHandle = setInterval(() => { void refreshPeriodically() }, AUTO_REFRESH_INTERVAL)
   document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  if (pendingRefreshHandle) clearTimeout(pendingRefreshHandle)
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
   if (analysisRefreshHandle) clearTimeout(analysisRefreshHandle)
   if (periodicRefreshHandle) clearInterval(periodicRefreshHandle)
@@ -246,33 +285,38 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <AimaFeedbackBanner
-        v-if="store.globalError"
-        tone="warning"
-        role="status"
+      <aside
+        class="page-notices"
+        aria-label="工作台状态"
       >
-        {{ store.globalError }}
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
-        v-if="store.referenceError"
-        tone="warning"
-      >
-        {{ store.referenceError }}
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
-        v-if="store.layoutError"
-        tone="error"
-        role="alert"
-      >
-        <strong>布局尚未保存</strong>
-        <span>{{ store.layoutError }}</span>
-      </AimaFeedbackBanner>
-      <AimaFeedbackBanner
-        v-if="store.notice"
-        tone="success"
-      >
-        {{ store.notice }}
-      </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="store.globalError"
+          tone="warning"
+          role="status"
+        >
+          {{ store.globalError }}
+        </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="store.referenceError"
+          tone="warning"
+        >
+          {{ store.referenceError }}
+        </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="store.layoutError"
+          tone="error"
+          role="alert"
+        >
+          <strong>布局尚未保存</strong>
+          <span>{{ store.layoutError }}</span>
+        </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="store.notice"
+          tone="success"
+        >
+          {{ store.notice }}
+        </AimaFeedbackBanner>
+      </aside>
 
       <section
         v-if="store.editing"
@@ -324,6 +368,7 @@ onBeforeUnmount(() => {
               @dragend.stop="draggedModule = null"
             >⠿</span>
             <button
+              v-if="module.module_id !== 'sound-stream'"
               type="button"
               @click="store.setModuleVisible(module.module_id, false)"
             >
@@ -351,6 +396,9 @@ onBeforeUnmount(() => {
           <BrandMindCard
             v-else-if="module.module_id === 'brand-mind'"
             :mind="store.mind"
+            :date-from="store.filters.dateFrom"
+            :date-to="store.filters.dateTo"
+            :brand-label="store.brandLabel"
             :selected-label="store.selectedMind"
             :metric="store.mindMetric"
             :loading="store.moduleLoading.mind"
@@ -363,6 +411,8 @@ onBeforeUnmount(() => {
           <UgcTrendCard
             v-else
             :trend="store.trend"
+            :date-from="store.filters.dateFrom"
+            :date-to="store.filters.dateTo"
             :loading="store.moduleLoading.trend"
             :error="store.moduleErrors.trend"
             @retry="store.refreshModule('trend')"
@@ -388,7 +438,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.workbench-page { display: grid; gap: 8px; }
+.workbench-page { position: relative; display: grid; gap: 8px; }
+.page-notices { position: absolute; z-index: 40; top: 88px; right: 0; display: grid; gap: 4px; max-width: min(540px, 100%); }
 .workbench-header { display: flex; min-height: 80px; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 0; }
 .workbench-header h1, .workbench-header p { margin: 0; }
 .workbench-header h1 { color: var(--aima-text); font-size: var(--aima-font-size-page-title); line-height: 32px; }
@@ -402,7 +453,7 @@ onBeforeUnmount(() => {
 .hidden-modules { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .hidden-modules button { padding: 3px 7px; border: 1px solid var(--aima-border-strong); border-radius: 5px; color: var(--aima-primary); background: #fff; cursor: pointer; font-size: 10px; }
 .workbench-grid { display: grid; min-width: 0; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; padding-bottom: 20px; align-items: stretch; }
-.module-shell { position: relative; min-width: 0; box-sizing: border-box; container-type: inline-size; }
+.module-shell { position: relative; min-width: 0; box-sizing: border-box; container-type: size; }
 .module-shell--editing { padding: 5px; border: 1px dashed var(--aima-primary); border-radius: 10px; background: rgb(255 238 246 / 35%); }
 .module-edit-controls { position: absolute; z-index: 30; top: 10px; right: 10px; display: flex; align-items: center; gap: 5px; padding: 3px 5px; border: 1px solid var(--aima-border); border-radius: 6px; background: rgb(255 255 255 / 94%); box-shadow: 0 2px 8px rgb(23 35 61 / 10%); }
 .drag-handle { color: var(--aima-primary); cursor: grab; font-size: 14px; line-height: 18px; }
@@ -412,7 +463,7 @@ onBeforeUnmount(() => {
   .workbench-header { align-items: flex-start; flex-wrap: wrap; }
   .header-actions { width: 100%; justify-content: flex-end; }
   .workbench-grid { grid-template-columns: minmax(0, 1fr); }
-  .module-shell { grid-column: 1 / -1 !important; height: 430px !important; }
+  .module-shell { grid-column: 1 / -1 !important; }
   .edit-toolbar { align-items: flex-start; flex-direction: column; }
 }
 </style>

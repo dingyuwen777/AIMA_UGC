@@ -6,6 +6,9 @@
 
 - [`frontend/src/shared/styles/tokens.css`](tokens.css)：颜色、间距、圆角、Semantic Typography、Density 与 Layout Token。
 - [`frontend/src/shared/styles/responsive.css`](responsive.css)：跨页面桌面端 reflow、overflow、Overlay 安全边界，以及历史页面 raw px 向 semantic token 收口的兼容层。
+- [`frontend/src/shared/styles/scrollbars.css`](scrollbars.css)：全站滚动条与局部滚动工具类，颜色和宽度只消费 [`frontend/src/shared/styles/tokens.css`](tokens.css)。Chrome/Edge 使用显式像素宽度，Firefox 使用 `thin` 与相同颜色。
+
+滚动条默认 4px，横向筛选和卡片 3px，抽屉/弹窗 5px；透明轨道、浅粉灰滑块和完整圆角统一继承，hover/active 只增强颜色。业务页面通过 `aima-scroll-x/card/table/overlay` 选择语义，不能另写全局宽度或硬编码颜色。真实需要滚动的品牌与车型选择器预留稳定 gutter，其他容器按几何需要使用 `aima-scroll-stable`，普通无滚动卡片不预留空槽。声音流连续播放轨道和媒体 Carousel 的既有隐藏滚动条保留。
 
 ## 桌面端响应式基线
 

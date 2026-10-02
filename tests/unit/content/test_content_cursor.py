@@ -190,3 +190,22 @@ def test_content_cursor_accepts_an_unexpired_v1_payload() -> None:
     assert codec.decode(cursor, query_hash="legacy-query") == ContentCursorPosition(
         sort_at=now, content_id=content_id
     )
+
+
+def test_plural_voice_and_sentiment_hash_keep_legacy_semantics_and_order() -> None:
+    """新增空数组不改旧身份，单值兼容旧键，多值 OR 不依赖选择顺序。"""
+    from aima_ugc.bootstrap.content_http import _query_hash
+    from aima_ugc.contracts.http import ContentFilterSnapshot
+
+    assert _query_hash(
+        ContentFilterSnapshot(voice_type="真实用户发声", sentiment="负面")
+    ) == _query_hash(ContentFilterSnapshot(voice_types=("真实用户发声",), sentiments=("负面",)))
+    assert _query_hash(
+        ContentFilterSnapshot(
+            voice_type="媒体机构发声", voice_types=("真实用户发声",), sentiments=("正面", "负面")
+        )
+    ) == _query_hash(
+        ContentFilterSnapshot(
+            voice_types=("真实用户发声", "媒体机构发声"), sentiments=("负面", "正面")
+        )
+    )

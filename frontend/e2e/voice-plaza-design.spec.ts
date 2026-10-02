@@ -189,9 +189,10 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
     }
 
     const table = await page.locator('.content-list').boundingBox()
+    const usableWidth = await page.evaluate(() => document.documentElement.clientWidth)
     expectNear(table?.x, 204)
-    expectNear(table?.width, width - 228)
-    const tableLayoutWidth = Math.max(width < 1440 ? 952 : 1212, width - 228)
+    expectNear(table?.width, usableWidth - 228)
+    const tableLayoutWidth = Math.max(width < 1440 ? 952 : 1212, usableWidth - 228)
     const expected = [16, tableLayoutWidth - 790, 80, 200, 150, 120, 120]
     const header = await page.locator('.table-head > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
     const row = await page.locator('.content-row').first().locator(':scope > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
@@ -204,7 +205,7 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
     await expect(complexRow.locator('.vehicle-cell')).toContainText('爱玛 Q7 / 爱玛露娜 / 爱玛探索者长续航特别版 · 仅自有')
     const complexRowBox = await complexRow.boundingBox()
     expect(complexRowBox?.height ?? 0).toBeGreaterThanOrEqual(76)
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(usableWidth)
 
     const inboxTrigger = page.getByRole('button', { name: '站内通知' })
     await expect(inboxTrigger).toBeVisible()
@@ -212,9 +213,9 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
 
     if (width === 1440) {
       const filter = page.locator('.filters')
-      expectNear((await filter.boundingBox())?.width, 1212)
+      expectNear((await filter.boundingBox())?.width, usableWidth - 228)
       const primaryWidths = await filter.locator('.filter-row--primary > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
-      ;[352, 140, 150, 120, 130, 200].forEach((size, index) => expectNear(primaryWidths[index], size))
+      ;[352 - (width - usableWidth), 140, 150, 120, 130, 200].forEach((size, index) => expectNear(primaryWidths[index], size))
       const secondaryWidths = await filter.locator('.filter-row--secondary > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
       expect(secondaryWidths).toHaveLength(4)
       ;[180, 180, 180, 160].forEach((size, index) => expectNear(secondaryWidths[index], size))
@@ -228,7 +229,9 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
         scrollWidth: node.scrollWidth,
         scrollLeft: node.scrollLeft,
       }))
-      expect(tableMetrics.scrollWidth).toBeLessThanOrEqual(tableMetrics.clientWidth + 1)
+      expectNear(tableMetrics.scrollWidth, tableLayoutWidth)
+      if (usableWidth >= 1180) expect(tableMetrics.scrollWidth).toBeLessThanOrEqual(tableMetrics.clientWidth + 1)
+      else expect(tableMetrics.scrollWidth).toBe(952)
       expect(tableMetrics.scrollLeft).toBe(0)
       const date = await page.locator('.table-head .date-heading').boundingBox()
       const details = await complexRow.getByRole('button', { name: '查看详情' }).boundingBox()
@@ -252,7 +255,8 @@ test('keeps table-local scrolling as a fallback below the compact desktop width'
   const table = page.locator('.content-list')
   const metrics = await table.evaluate((node) => ({ clientWidth: node.clientWidth, scrollWidth: node.scrollWidth }))
   expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth)
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1100)
+  const pageMetrics = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+  expect(pageMetrics.scrollWidth).toBe(pageMetrics.clientWidth)
   await table.evaluate((node) => { node.scrollLeft = node.scrollWidth })
   await page.locator('.content-row').first().getByRole('button', { name: '查看详情' }).click()
   await expect(page.getByRole('dialog', { name: '内容详情' })).toBeVisible()
@@ -363,7 +367,7 @@ test('keeps terminal analysis history out of the formal data canvas and availabl
   await expect(page.locator('.pagination')).toContainText('当前已加载 3 条')
   await expect(page.getByRole('button', { name: '加载更多 →' })).toBeEnabled()
 
-  await page.getByRole('button', { name: /任务中心/ }).click()
+  await page.getByRole('button', { name: '任务中心', exact: true }).click()
   const taskCenter = page.getByRole('complementary', { name: '任务中心' })
   await expect(taskCenter).toBeVisible()
   await expect(taskCenter).toContainText('AI 分析任务 12')
@@ -397,7 +401,7 @@ test('matches the formal 1440 desktop shell and empty-state composition', async 
   expectNear(sidebar?.width, 180)
   expectNear(pageHeader?.y, 28)
   expectNear(pageHeader?.height, 64)
-  expectNear(filters?.width, 1212)
+  expectNear(filters?.width, await page.evaluate(() => document.documentElement.clientWidth) - 228)
   expectNear(emptyState?.height, 376)
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
@@ -492,7 +496,7 @@ test('renders the formal error banner and recoverable list error state', async (
   await expect(pageError).not.toContainText('req_voice_plaza_figma_error')
   await expect(page.locator('.table-state--error')).toContainText('检查网络或服务状态后点击“刷新数据”重试。')
   await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
-  expectNear((await page.locator('.table-state--error').boundingBox())?.height, 306)
+  expectNear((await page.locator('.table-state--error').boundingBox())?.height, 376)
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-error.png', fullPage: true })

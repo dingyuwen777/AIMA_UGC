@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
 import type {
@@ -158,6 +158,12 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollDocument: Document | undefined
   let refreshVersion = 0
+  let detailVersion = 0
+  let historicalDetailVersion = 0
+  watch(() => selectedHistoricalCampaign.value?.id, () => {
+    historicalDetailVersion += 1
+    previewingHistoricalRevocation.value = false
+  }, { flush: 'sync' })
   let refreshInFlight = false
   let appliedListParams: ListCollectionRuntimeRunsParams = { limit: 20 }
   const unconfirmedReplayRequestId = ref<string | null>(null)
@@ -241,6 +247,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   async function refresh(silent = false): Promise<void> {
     if (silent && (refreshInFlight || loadingNext.value)) return
     const version = ++refreshVersion
+    const detailAtStart = detailVersion
     const params = silent ? { ...appliedListParams } : listParams()
     if (!silent) {
       loading.value = true
@@ -266,8 +273,10 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       nextCursor.value = page.next_cursor ?? null
       hasMore.value = page.has_more
       summary.value = kpis
-      if (batchDetail !== null) selectedBatch.value = batchDetail
-      if (runDetail !== null) selectedRun.value = runDetail
+      if (detailAtStart === detailVersion) {
+        if (batchDetail !== null) selectedBatch.value = batchDetail
+        if (runDetail !== null) selectedRun.value = runDetail
+      }
       if (selectedCanonicalReplay.value) {
         const current = selectedCanonicalReplay.value
         const fresh = page.items.find(
@@ -364,28 +373,33 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   }
 
   async function openBatchDetail(batchId: string): Promise<void> {
+    const version = ++detailVersion
     error.value = null
     selectedRun.value = null
     selectedCanonicalReplay.value = null
     try {
-      selectedBatch.value = await fetchImportBatchDetail(batchId)
+      const detail = await fetchImportBatchDetail(batchId)
+      if (version === detailVersion) selectedBatch.value = detail
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (version === detailVersion) error.value = errorMessage(reason)
     }
   }
 
   async function openRunDetail(runId: string): Promise<void> {
+    const version = ++detailVersion
     error.value = null
     selectedBatch.value = null
     selectedCanonicalReplay.value = null
     try {
-      selectedRun.value = await fetchCollectionRunDetail(runId)
+      const detail = await fetchCollectionRunDetail(runId)
+      if (version === detailVersion) selectedRun.value = detail
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (version === detailVersion) error.value = errorMessage(reason)
     }
   }
 
   function openCanonicalReplayDetail(item: CollectionRuntimeItemResponse): void {
+    detailVersion += 1
     selectedBatch.value = null
     selectedRun.value = null
     selectedCanonicalReplay.value = item
@@ -474,6 +488,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   }
 
   function closeDetail(): void {
+    detailVersion += 1
     selectedBatch.value = null
     selectedRun.value = null
     selectedCanonicalReplay.value = null
@@ -612,6 +627,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   }
 
   async function refreshHistoricalCampaign(campaignId: string): Promise<void> {
+    const version = ++historicalDetailVersion
     if (selectedHistoricalCampaign.value?.id !== campaignId) {
       historicalRevocationPreview.value = null
       historicalRevocation.value = null
@@ -621,6 +637,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       fetchHistoricalCampaignItems(campaignId),
       fetchHistoricalCampaignConflicts(campaignId),
     ])
+    if (version !== historicalDetailVersion) return
     selectedHistoricalCampaign.value = campaign
     historicalCampaignItems.value = campaignItems.items
     historicalCampaignConflicts.value = conflicts.items
@@ -632,13 +649,16 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
     ]
     if (['revoking', 'revoked'].includes(campaign.status)) {
-      historicalRevocationPreview.value = await previewHistoricalCampaignRevocation(campaignId)
+      const currentVersion = historicalDetailVersion
+      const preview = await previewHistoricalCampaignRevocation(campaignId)
+      if (currentVersion === historicalDetailVersion) historicalRevocationPreview.value = preview
     }
   }
 
   async function refreshHistoricalCampaignSummary(campaignId: string): Promise<void> {
+    const version = historicalDetailVersion
     const campaign = await fetchHistoricalCampaign(campaignId)
-    if (selectedHistoricalCampaign.value?.id !== campaignId) return
+    if (version !== historicalDetailVersion || selectedHistoricalCampaign.value?.id !== campaignId) return
     selectedHistoricalCampaign.value = campaign
     historicalCampaigns.value = [
       campaign,
@@ -648,21 +668,22 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
 
   /** 运行中同步最新统计与已结算来源项，避免详情只在终态才显示处理结果。 */
   async function refreshHistoricalCampaignLive(campaignId: string): Promise<void> {
-    await Promise.all([
-      fetchHistoricalCampaign(campaignId).then((campaign) => {
-        if (selectedHistoricalCampaign.value?.id !== campaignId) return
-        selectedHistoricalCampaign.value = campaign
-        historicalCampaigns.value = [
-          campaign,
-          ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
-        ]
-      }),
-      fetchHistoricalCampaignItems(campaignId).then((campaignItems) => {
-        if (selectedHistoricalCampaign.value?.id !== campaignId) return
-        historicalCampaignItems.value = campaignItems.items
-        historicalCampaignItemsHasMore.value = Boolean(campaignItems.has_more)
-      }),
+    const version = historicalDetailVersion
+    const [campaign, campaignItems] = await Promise.all([
+      fetchHistoricalCampaign(campaignId),
+      fetchHistoricalCampaignItems(campaignId),
     ])
+    if (version !== historicalDetailVersion || selectedHistoricalCampaign.value?.id !== campaignId) return
+    selectedHistoricalCampaign.value = campaign
+    historicalCampaigns.value = [campaign, ...historicalCampaigns.value.filter((item) => item.id !== campaign.id)]
+    historicalCampaignItems.value = campaignItems.items
+    historicalCampaignItemsHasMore.value = Boolean(campaignItems.has_more)
+  }
+
+  /** 关闭或重开同一任务也改变请求代次，避免仅凭 ID 接受上一轮迟到响应。 */
+  function invalidateHistoricalDetailRequests(): void {
+    historicalDetailVersion += 1
+    previewingHistoricalRevocation.value = false
   }
 
   async function submitHistoricalCampaign(
@@ -790,19 +811,23 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
-  async function previewHistoricalRevocation(): Promise<DataImportRevocationPreviewResponse | null> {
+  async function previewHistoricalRevocation(silent = false): Promise<DataImportRevocationPreviewResponse | null> {
     const campaignId = selectedHistoricalCampaign.value?.id
     if (!campaignId) return null
+    const version = historicalDetailVersion
     previewingHistoricalRevocation.value = true
-    error.value = null
+    if (!silent) error.value = null
     try {
-      historicalRevocationPreview.value = await previewHistoricalCampaignRevocation(campaignId)
+      const preview = await previewHistoricalCampaignRevocation(campaignId)
+      if (version !== historicalDetailVersion) return null
+      historicalRevocationPreview.value = preview
       return historicalRevocationPreview.value
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (silent) throw reason
+      if (version === historicalDetailVersion) error.value = errorMessage(reason)
       return null
     } finally {
-      previewingHistoricalRevocation.value = false
+      if (version === historicalDetailVersion) previewingHistoricalRevocation.value = false
     }
   }
 
@@ -920,6 +945,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     refreshHistoricalCampaign,
     refreshHistoricalCampaignSummary,
     refreshHistoricalCampaignLive,
+    invalidateHistoricalDetailRequests,
     submitHistoricalCampaign,
     submitLocalCampaign,
     actOnHistoricalCampaign,
