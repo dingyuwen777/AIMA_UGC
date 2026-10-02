@@ -183,6 +183,19 @@ describe('声音广场正式 Figma 基线', () => {
 
     expect(html).not.toContain('AI Analysis Run 历史')
     expect(html).not.toContain('Run #9')
+    expect(html).not.toContain('class="active-analysis-runs"')
+  })
+
+  it('没有活动任务时不渲染 AI 任务区域，queued/running/cancelling 均显示', async () => {
+    const empty = await renderComponent(VoicePlazaPage)
+    expect(empty).not.toContain('class="active-analysis-runs"')
+    expect(empty).not.toContain('暂无活动任务')
+    for (const status of ['queued', 'running', 'cancelling'] as const) {
+      const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
+        useVoicePlazaStore(pinia).analysisRuns = [{ ...baseAnalysisRun, status }]
+      })
+      expect(html).toContain('class="active-analysis-runs"')
+    }
   })
 
   it('仅对活动 AI 分析任务展示业务进度，并提供进入全局任务中心的入口', async () => {

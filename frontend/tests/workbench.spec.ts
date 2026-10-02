@@ -2,7 +2,7 @@ import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { createSSRApp, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { renderToString } from '@vue/server-renderer'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({
   fetchWorkbenchTaxonomy: vi.fn(),
@@ -31,6 +31,8 @@ import { useVehicleCatalogStore } from '../src/shared/domain/vehicleCatalog'
 
 const schemeId = '11111111-1111-4111-8111-111111111111'
 const taxonomyHash = 'a'.repeat(64)
+const savedFiltersKey = 'aima.workbench.applied-filters'
+let savedFilters: Map<string, string>
 const taxonomy = {
   prompt_version: 'content-labeling.v3.0',
   prompt_sha256: 'b'.repeat(64),
@@ -122,6 +124,12 @@ const trend = {
 }
 
 beforeEach(() => {
+  savedFilters = new Map()
+  vi.stubGlobal('sessionStorage', {
+    getItem: (key: string) => savedFilters.get(key) ?? null,
+    setItem: (key: string, value: string) => savedFilters.set(key, value),
+    removeItem: (key: string) => savedFilters.delete(key),
+  })
   setActivePinia(createPinia())
   vi.resetAllMocks()
   api.fetchWorkbenchTaxonomy.mockResolvedValue(taxonomy)
@@ -137,6 +145,90 @@ beforeEach(() => {
     updated_at: '2026-09-27T08:11:00+08:00',
     modules: request.modules,
   }))
+})
+afterEach(() => vi.unstubAllGlobals())
+
+it('preserves saved vehicle filters when only the vehicle catalog fails to load', async () => {
+  api.fetchActiveBrands.mockResolvedValue([{ id: 'aima', code: 'AIMA', display_name: '爱玛', aliases: [] }])
+  api.fetchActiveVehicleModels.mockRejectedValue(new Error('vehicle catalog unavailable'))
+  const store = useWorkbenchStore()
+  const saved = { ...store.filters, dateFrom: '2026-08-01', dateTo: '2026-08-31', brandIds: ['aima'], vehicleModelIds: ['vehicle'] }
+  savedFilters.set(savedFiltersKey, JSON.stringify({ schema_version: 1, ...saved }))
+  await store.initialize()
+  expect(store.filters.vehicleModelIds).toEqual(['vehicle'])
+  expect(JSON.parse(savedFilters.get(savedFiltersKey)!).vehicleModelIds).toEqual(['vehicle'])
+  for (const call of [api.fetchWorkbenchStream, api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
+    expect(call).toHaveBeenCalledWith(expect.objectContaining({ brand_ids: ['aima'], vehicle_model_ids: ['vehicle'] }))
+  }
+  // 目录成功恢复后，归属不符及真实删除的车型仍按现有规则清理。
+  api.fetchActiveVehicleModels.mockResolvedValue([{ id: 'vehicle', brand_id: 'other' }])
+  await store.refreshReferenceData()
+  store.setFilters({ ...store.filters, vehicleModelIds: ['vehicle', 'deleted'] })
+  expect(store.filters.vehicleModelIds).toEqual([])
+})
+
+it('restores the complete applied snapshot before the first queries and persists reset', async () => {
+  api.fetchActiveBrands.mockResolvedValue([{ id: 'aima', code: 'AIMA', display_name: '爱玛', aliases: [] }])
+  api.fetchActiveVehicleModels.mockResolvedValue([{ id: 'vehicle', brand_id: 'aima' }])
+  const first = useWorkbenchStore()
+  await first.initialize()
+  first.setFilters({ ...first.filters, dateFrom: '2026-08-31', dateTo: '2026-08-01', platforms: ['douyin'],
+    brandIds: ['aima'], vehicleModelIds: ['vehicle'], voiceTypes: ['真实用户发声'], sentiments: ['负面'],
+    primaryLabels: ['外观设计'], secondaryLabels: ['颜色与配色'] })
+  const expected = { ...first.filters }
+  expect(Object.keys(JSON.parse(savedFilters.get(savedFiltersKey)!)).sort()).toEqual([
+    'schema_version', 'dateFrom', 'dateTo', 'platforms', 'brandIds', 'vehicleModelIds', 'voiceTypes', 'sentiments', 'primaryLabels', 'secondaryLabels',
+  ].sort())
+  api.fetchWorkbenchStream.mockClear(); api.fetchWorkbenchMind.mockClear(); api.fetchWorkbenchTrend.mockClear()
+  setActivePinia(createPinia())
+  const restored = useWorkbenchStore()
+  await restored.initialize()
+  expect(restored.filters).toEqual(expected)
+  for (const request of [api.fetchWorkbenchStream, api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ date_from: '2026-08-01', date_to: '2026-08-31',
+      platforms: ['douyin'], brand_ids: ['aima'], vehicle_model_ids: ['vehicle'], voice_types: ['真实用户发声'],
+      sentiments: ['负面'], primary_labels: ['外观设计'], secondary_labels: ['颜色与配色'] }))
+  }
+  restored.resetFilters()
+  const reset = { ...restored.filters }
+  setActivePinia(createPinia())
+  const reopened = useWorkbenchStore()
+  await reopened.initialize()
+  expect(reopened.filters).toEqual(reset)
+})
+
+it('cleans stale catalog and taxonomy values when restoring applied filters', async () => {
+  savedFilters.set(savedFiltersKey, JSON.stringify({ schema_version: 1, dateFrom: '2026-08-01', dateTo: '2026-08-31',
+    platforms: ['douyin', 'removed'], brandIds: ['aima', 'removed'], vehicleModelIds: ['v1', 'v2', 'removed'],
+    voiceTypes: ['真实用户发声', 'removed'], sentiments: ['负面', 'removed'], primaryLabels: ['外观设计', 'removed'],
+    secondaryLabels: ['颜色与配色', '续航里程', 'removed'] }))
+  api.fetchActiveBrands.mockResolvedValue([{ id: 'aima', code: 'AIMA', display_name: '爱玛', aliases: [] }])
+  api.fetchActiveVehicleModels.mockResolvedValue([{ id: 'v1', brand_id: 'aima' }, { id: 'v2', brand_id: 'other' }])
+  const store = useWorkbenchStore()
+  await store.initialize()
+  expect(store.filters).toMatchObject({ platforms: ['douyin'], brandIds: ['aima'], vehicleModelIds: ['v1'],
+    voiceTypes: ['真实用户发声'], sentiments: ['负面'], primaryLabels: ['外观设计'], secondaryLabels: ['颜色与配色'] })
+})
+
+it.each(['{bad', '{}', JSON.stringify({ schema_version: 9 }), JSON.stringify({ schema_version: 1, dateFrom: '2026-02-30', dateTo: '2026-03-01' })])(
+  'discards malformed filters %s and still queries the default range', async (value) => {
+    savedFilters.set(savedFiltersKey, value)
+    const store = useWorkbenchStore()
+    await store.initialize()
+    expect(savedFilters.has(savedFiltersKey)).toBe(false)
+    expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(1)
+    expect(store.filters.dateFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  },
+)
+
+it('storage read and write failures do not block the workbench', async () => {
+  vi.stubGlobal('sessionStorage', { getItem: () => { throw new Error('denied') }, setItem: () => { throw new Error('denied') }, removeItem: () => { throw new Error('denied') } })
+  const store = useWorkbenchStore()
+  await store.initialize()
+  store.setFilters({ ...store.filters, dateFrom: '2026-08-01', dateTo: '2026-08-31' })
+  await store.refreshData()
+  expect(api.fetchWorkbenchStream).toHaveBeenLastCalledWith(expect.objectContaining({ date_from: '2026-08-01', date_to: '2026-08-31' }))
 })
 
 it('shares reactive catalog updates and keeps the name when active candidates no longer contain a selected ID', async () => {

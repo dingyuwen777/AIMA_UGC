@@ -428,6 +428,8 @@ test('creates an all-active-brand Excel import and a selected-brand discovery Ru
   await page.getByRole('button', { name: '新建辅助补采', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
   await drawer.getByRole('button', { name: '独立发现新内容', exact: true }).click()
+  await expect(drawer.getByLabel('评论', { exact: true })).toBeChecked()
+  await expect(drawer.getByLabel('二级回复', { exact: true })).toBeChecked()
   await drawer.getByLabel(/爱玛品牌词包/).check()
   await drawer.getByText('指定品牌', { exact: true }).click()
   await drawer.getByRole('group', { name: '指定品牌（可多选）' }).getByRole('checkbox', { name: /爱玛/ }).check()
@@ -486,6 +488,8 @@ test('creates a one-time TikHub discovery Run from multiple Keyword Packs', asyn
   await drawer.getByRole('button', { name: '创建补采任务' }).click()
   expect((await requestPromise).postDataJSON()).toMatchObject({
     mode: 'discovery',
+    include_comments: true,
+    include_sub_comments: true,
     keyword_pack_ids: [brandPackId, modelPackId],
     brand_ids: [],
     platforms: [{
@@ -512,7 +516,7 @@ test('creates a date supplement in the centered import-style modal', async ({ pa
   const created = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建补采任务' }).click()
   const body = (await created).postDataJSON()
-  expect(body).toMatchObject({ mode: 'content_supplement', supplement_targets: { kind: 'published_date_range', published_from: '2026-08-31T16:00:00.000Z', published_to: '2026-09-01T15:59:59.999Z' }, expected_target_count: 1, expected_target_fingerprint: 'a'.repeat(64), platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }] })
+  expect(body).toMatchObject({ mode: 'content_supplement', include_comments: true, include_sub_comments: true, supplement_targets: { kind: 'published_date_range', published_from: '2026-08-31T16:00:00.000Z', published_to: '2026-09-01T15:59:59.999Z' }, expected_target_count: 1, expected_target_fingerprint: 'a'.repeat(64), platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }] })
   expect(body).not.toHaveProperty('import_batch_id')
   expect(body).not.toHaveProperty('data_import_campaign_id')
   expect(body.platforms[0]).not.toHaveProperty('search_config')
@@ -533,7 +537,7 @@ test('submits all five date-eligible platforms with optional replies', async ({ 
   const dialog = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
   await selectPublishedDay(dialog, '2026-09-01')
   for (const label of ['小红书', '抖音', '微博', 'B站', '快手']) await dialog.getByLabel(new RegExp(label)).check()
-  await dialog.getByLabel('二级回复').check()
+  await expect(dialog.getByLabel('二级回复 · 默认采集')).toBeChecked()
   await expect(dialog).toContainText('预计处理 5 条内容')
   const created = page.waitForRequest(request => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
   await dialog.getByRole('button', { name: '创建补采任务' }).click()

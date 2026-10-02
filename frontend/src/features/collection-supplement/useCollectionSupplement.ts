@@ -5,6 +5,7 @@ import type {
 } from '../../generated/api/client'
 import { AimaApiError, apiErrorMessage } from '../../shared/api/http'
 import { createSupplement, fetchSupplementCapabilities, previewSupplement } from './api'
+import { manualCommentDefaults } from './defaults'
 
 /** 预览绑定当前选择与选项；请求序号同时防止日期往返和关闭重开竞态。 */
 export function useCollectionSupplement(
@@ -15,8 +16,8 @@ export function useCollectionSupplement(
   const preview = ref<CollectionSupplementPreviewResponse | null>(null)
   const platforms = ref<CollectionPlatform[]>([])
   const providerConfigId = ref('')
-  const includeComments = ref(true)
-  const includeSubComments = ref(false)
+  const includeComments = ref<boolean>(manualCommentDefaults.includeComments)
+  const includeSubComments = ref<boolean>(manualCommentDefaults.includeSubComments)
   const loading = ref(false)
   const creating = ref(false)
   const error = ref<string | null>(null)
@@ -81,8 +82,8 @@ export function useCollectionSupplement(
     preview.value = null
     platforms.value = []
     providerConfigId.value = ''
-    includeComments.value = true
-    includeSubComments.value = false
+    includeComments.value = manualCommentDefaults.includeComments
+    includeSubComments.value = manualCommentDefaults.includeSubComments
     error.value = null
     if (!open) return
     try {

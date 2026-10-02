@@ -445,7 +445,7 @@ class CollectionSupplementPreviewRequest(BaseModel):
     targets: CollectionSupplementTargetSelection
     platforms: tuple[CollectionPlatform, ...] = Field(default=(), max_length=5)
     include_comments: bool = True
-    include_sub_comments: bool = False
+    include_sub_comments: bool = True
 
     @model_validator(mode="after")
     def validate_options(self) -> CollectionSupplementPreviewRequest:
@@ -488,7 +488,7 @@ class CollectionRunCreateRequest(BaseModel):
     expected_target_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
     include_comments: bool = True
-    include_sub_comments: bool = False
+    include_sub_comments: bool = True
 
     @model_validator(mode="after")
     def validate_mode_and_options(self) -> CollectionRunCreateRequest:

@@ -39,6 +39,10 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_run_targets_table,
     analysis_content_runs_table,
 )
+from aima_ugc.modules.collection.candidate_tables import (
+    collection_candidate_ingestions_table,
+    collection_candidates_table,
+)
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
     collection_scopes_table,
@@ -1550,6 +1554,31 @@ def _latest_relevance_review_subquery() -> Any:
     ).subquery("latest_content_relevance_review")
 
 
+def _collection_ingestion_source_condition(content_id: Any, run_id: UUID) -> Any:
+    """从成功入库账本关联采集来源，覆盖未生成新业务版本的重复采集。"""
+    ingestion = collection_candidate_ingestions_table.alias("source_filter_ingestion")
+    candidate = collection_candidates_table.alias("source_filter_candidate")
+    attempt = provider_request_attempts_table.alias("source_filter_candidate_attempt")
+    request = provider_requests_table.alias("source_filter_candidate_request")
+    scope = collection_scopes_table.alias("source_filter_candidate_scope")
+    return exists(
+        select(literal(1))
+        .select_from(
+            ingestion.join(candidate, candidate.c.id == ingestion.c.candidate_id)
+            .join(attempt, attempt.c.id == candidate.c.provider_request_attempt_id)
+            .join(request, request.c.id == attempt.c.provider_request_id)
+            .join(scope, scope.c.id == request.c.scope_id)
+        )
+        .where(
+            ingestion.c.content_id == content_id,
+            ingestion.c.target_type == "content",
+            ingestion.c.result.in_(("ingested", "duplicate")),
+            candidate.c.item_kind == "content",
+            scope.c.run_id == run_id,
+        )
+    )
+
+
 def _apply_projection_filters(
     statement: Any,
     *,
@@ -1624,6 +1653,9 @@ def _apply_projection_filters(
         )
         statement = statement.where(
             or_(
+                _collection_ingestion_source_condition(
+                    projection.c.content_id, filters.source_identifier
+                ),
                 exists(
                     select(literal(1))
                     .select_from(source_lineage)
@@ -1824,6 +1856,7 @@ def _apply_filters(
         )
         statement = statement.where(
             or_(
+                _collection_ingestion_source_condition(content.c.id, filters.source_identifier),
                 exists(
                     select(literal(1))
                     .select_from(source_lineage)

@@ -249,6 +249,11 @@ def test_date_selection_excludes_current_irrelevant_and_freezes_unavailable_sibl
     assert run["import_batch_id"] is None and run["data_import_campaign_id"] is None
     assert run["config_snapshot"]["schema_version"] == "collection-run-config.v4"
     assert run["config_snapshot"]["plan_type"] == "tikhub"
+    assert run["config_snapshot"]["include_sub_comments"] is True
+    assert run["config_snapshot"]["comment_policy"] == "full"
+    assert run["config_snapshot"]["decision_policy"]["comment_mode"] == "full"
+    assert run["config_snapshot"]["decision_policy"]["comments_enabled"] is True
+    assert run["config_snapshot"]["decision_policy"]["comment_refresh_when_count_unchanged"] is True
     assert run["config_snapshot"]["supplement_selection"] == {
         "kind": "published_date_range",
         "target_count": 2,

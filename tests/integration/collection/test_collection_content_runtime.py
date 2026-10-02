@@ -13,12 +13,14 @@ from aima_ugc.adapters.persistence.postgres.collection_content import (
     PostgresCollectionContentStateReader,
     PostgresFencedCollectionIngestionWriter,
 )
+from aima_ugc.adapters.persistence.postgres.content_queries import PostgresContentQueryRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.contracts.canonical import (
     CanonicalContentV1,
     CanonicalMetricsV1,
     CanonicalSourceV1,
 )
+from aima_ugc.contracts.http import ContentFilterSnapshot
 from aima_ugc.modules.collection.candidate_tables import (
     collection_candidate_ingestions_table,
     collection_candidates_table,
@@ -28,15 +30,18 @@ from aima_ugc.modules.collection.execution import (
     CollectionScopeDefinition,
 )
 from aima_ugc.modules.collection.tables import (
+    collection_scopes_table,
     provider_request_attempts_table,
     provider_requests_table,
 )
-from aima_ugc.modules.content.tables import contents_table
+from aima_ugc.modules.content.query import ContentReadQuery
+from aima_ugc.modules.content.read_model_tables import voice_plaza_projection_state_table
+from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 from aima_ugc.platform.storage.tables import artifacts_table
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Connection
 
 _NOW = datetime(2026, 8, 17, 1, 15, tzinfo=UTC)
@@ -357,3 +362,58 @@ def test_content_state_reader_separates_comment_count_from_other_business_change
     title_state = reader.evaluate(title_not_observed)
     assert title_state is not None
     assert title_state.business_changed is False
+
+
+@pytest.mark.parametrize("projection_status", ["pending", "ready"])
+def test_repeated_unchanged_content_remains_in_each_collection_run_result(
+    database_runtime: DatabaseRuntime, projection_status: str
+) -> None:
+    """重复采集保留来源结果，但不能为建立关联伪造新的业务版本。"""
+    first = _create_live_source(database_runtime, source_value="首次采集")
+    second = _create_live_source(database_runtime, source_value="重复补采")
+    unrelated = _create_live_source(database_runtime, source_value="未入库任务")
+    writer = PostgresFencedCollectionIngestionWriter(database_runtime.new_session)
+    original = writer.ingest_content(
+        canonical=_canonical(first, external_content_id="repeated-note"), fence=first.fence
+    )
+    repeated = writer.ingest_content(
+        canonical=_canonical(second, external_content_id="repeated-note"), fence=second.fence
+    )
+    assert repeated.target_id == original.target_id
+    session = database_runtime.new_session()
+    try:
+        # 只在当前读取事务切换回填状态，关闭 Session 时恢复测试前的状态。
+        session.execute(update(voice_plaza_projection_state_table).values(status=projection_status))
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(content_versions_table)
+                .where(content_versions_table.c.content_id == original.target_id)
+            )
+            == 1
+        )
+        repository = PostgresContentQueryRepository(session, analysis_identity=None)
+        for source, expected_ids in (
+            (first, (original.target_id,)),
+            (second, (original.target_id,)),
+            (unrelated, ()),
+        ):
+            run_id = session.scalar(
+                select(collection_scopes_table.c.run_id).where(
+                    collection_scopes_table.c.id == source.scope_id
+                )
+            )
+            filters = ContentFilterSnapshot(source_identifier=run_id)
+            records = repository.list_contents(
+                ContentReadQuery(filters=filters, position=None, limit=20)
+            )
+            assert tuple(item.id for item in records) == expected_ids, source.source_value
+            assert repository.last_projection_ready is (projection_status == "ready")
+            assert (
+                tuple(target.content_id for target in repository.freeze_targets(filters=filters))
+                == expected_ids
+            )
+            if projection_status == "ready":
+                assert repository.projection_count(filters) == len(expected_ids)
+    finally:
+        session.close()

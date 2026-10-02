@@ -72,7 +72,7 @@ function blockReason(reason: string): string {
       type="checkbox"
       :disabled="!state.includeComments || state.creating"
       @change="state.setSubComments(($event.target as HTMLInputElement).checked)"
-    > 二级回复 · 默认关闭</label>
+    > 二级回复 · 默认采集</label>
     <AimaFeedbackBanner
       v-if="state.preview?.target_count === 0"
       tone="info"
@@ -94,7 +94,7 @@ function blockReason(reason: string): string {
       </AimaButton>
     </AimaFeedbackBanner>
     <AimaFeedbackBanner tone="warning">
-      将发起真实外部采集请求，可能产生渠道费用；任务创建后自动执行。
+      默认采集全部可访问的一级评论和二级回复，可能增加请求次数、费用和耗时；可取消二级回复。达到分页上限或接口不可访问时会标记采集缺口。
     </AimaFeedbackBanner>
   </section>
 </template>
