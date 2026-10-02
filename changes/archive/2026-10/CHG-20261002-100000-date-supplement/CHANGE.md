@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261002-100000-date-supplement
 title: 统一日期与显式内容补采及弹窗
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: feature/date-supplement
 created: 2026-10-02
