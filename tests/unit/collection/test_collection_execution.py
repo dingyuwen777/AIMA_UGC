@@ -163,6 +163,8 @@ def test_service_accepts_scheduled_run_with_occurrence_only() -> None:
         trigger_type="scheduled",
         config_snapshot={
             "schema_version": "collection-run-config.v4",
+            "plan_id": str(uuid4()),
+            "schedule_version": 1,
             "plan_type": "tikhub",
             "comment_policy": "adaptive",
             "decision_policy": {"comment_mode": "adaptive"},
@@ -273,5 +275,84 @@ def test_new_run_rejects_historical_or_unknown_snapshot_before_repository(snapsh
     with pytest.raises(ValueError):
         CollectionExecutionService(repository).create_run(
             job_id=uuid4(), trigger_type="api", config_snapshot=snapshot, scopes=()
+        )
+    assert repository.calls == []
+
+
+@pytest.mark.parametrize("binding", ["manual", "scheduled"])
+@pytest.mark.parametrize("version", [None, 0, -1, "1", True, False, 1.5])
+def test_plan_bound_run_rejects_invalid_schedule_version_before_repository(binding, version):
+    repository = RecordingCollectionRepository()
+    plan_id = uuid4()
+    snapshot = {
+        "schema_version": "collection-run-config.v4",
+        "plan_type": "tikhub",
+        "comment_policy": "adaptive",
+        "decision_policy": {"comment_mode": "adaptive"},
+        "plan_id": str(plan_id),
+        "schedule_version": version,
+    }
+    kwargs = {"manual_plan_id": plan_id} if binding == "manual" else {"occurrence_id": uuid4()}
+    with pytest.raises(ValueError, match="schedule_version"):
+        CollectionExecutionService(repository).create_run(
+            job_id=uuid4(), trigger_type=binding, config_snapshot=snapshot, scopes=(), **kwargs
+        )
+    assert repository.calls == []
+
+
+@pytest.mark.parametrize("binding", ["manual", "scheduled"])
+def test_plan_bound_run_rejects_missing_schedule_version_before_repository(binding):
+    repository = RecordingCollectionRepository()
+    plan_id = uuid4()
+    snapshot = {
+        "schema_version": "collection-run-config.v4",
+        "plan_type": "tikhub",
+        "comment_policy": "adaptive",
+        "decision_policy": {"comment_mode": "adaptive"},
+        "plan_id": str(plan_id),
+    }
+    kwargs = {"manual_plan_id": plan_id} if binding == "manual" else {"occurrence_id": uuid4()}
+    with pytest.raises(ValueError, match="schedule_version"):
+        CollectionExecutionService(repository).create_run(
+            job_id=uuid4(), trigger_type=binding, config_snapshot=snapshot, scopes=(), **kwargs
+        )
+    assert repository.calls == []
+
+
+@pytest.mark.parametrize("binding", ["manual", "scheduled"])
+def test_plan_bound_run_freezes_valid_version_without_coercion(binding):
+    repository = RecordingCollectionRepository()
+    plan_id = uuid4()
+    snapshot = {
+        "schema_version": "collection-run-config.v4",
+        "plan_type": "tikhub",
+        "comment_policy": "full",
+        "decision_policy": {"comment_mode": "full"},
+        "plan_id": str(plan_id),
+        "schedule_version": 7,
+    }
+    kwargs = {"manual_plan_id": plan_id} if binding == "manual" else {"occurrence_id": uuid4()}
+    CollectionExecutionService(repository).create_run(
+        job_id=uuid4(), trigger_type=binding, config_snapshot=snapshot, scopes=(), **kwargs
+    )
+    assert repository.calls[0]["config_snapshot"] == snapshot
+
+
+def test_manual_plan_bound_run_rejects_mismatched_snapshot_identity():
+    repository = RecordingCollectionRepository()
+    with pytest.raises(ValueError, match="plan_id"):
+        CollectionExecutionService(repository).create_run(
+            job_id=uuid4(),
+            trigger_type="manual",
+            config_snapshot={
+                "schema_version": "collection-run-config.v4",
+                "plan_type": "tikhub",
+                "comment_policy": "adaptive",
+                "decision_policy": {"comment_mode": "adaptive"},
+                "plan_id": str(uuid4()),
+                "schedule_version": 1,
+            },
+            scopes=(),
+            manual_plan_id=uuid4(),
         )
     assert repository.calls == []

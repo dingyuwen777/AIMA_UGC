@@ -1154,6 +1154,7 @@ class TikHubCollectionScopeExecutor:
         ):
             post_detail = self._decision_service.decide(
                 CollectionDecisionRequestV1(
+                    context=CollectionDecisionContextV1(detail_already_fetched=True),
                     current=ContentObservationV1(
                         comment_count=_observed_comment_count(content),
                         business_changed=False,
@@ -1193,6 +1194,7 @@ class TikHubCollectionScopeExecutor:
             )
             post_detail = self._decision_service.decide(
                 CollectionDecisionRequestV1(
+                    context=CollectionDecisionContextV1(detail_already_fetched=True),
                     current=ContentObservationV1(
                         comment_count=_observed_comment_count(comment_source),
                         business_changed=False,

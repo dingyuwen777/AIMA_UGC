@@ -1,8 +1,15 @@
 """全量策略不能沿用采样上限，且完整度必须参与再次采集决策。"""
 
 import pytest
-from aima_ugc.adapters.providers.tikhub.capabilities import XIAOHONGSHU_TIKHUB_CAPABILITY
+from aima_ugc.adapters.providers.tikhub.capabilities import (
+    BILIBILI_TIKHUB_CAPABILITY,
+    DOUYIN_TIKHUB_CAPABILITY,
+    KUAISHOU_TIKHUB_CAPABILITY,
+    WEIBO_TIKHUB_CAPABILITY,
+    XIAOHONGSHU_TIKHUB_CAPABILITY,
+)
 from aima_ugc.contracts.collection import (
+    CollectionDecisionContextV1,
     CollectionDecisionPolicyV1,
     CollectionDecisionRequestV1,
     ContentObservationV1,
@@ -44,6 +51,24 @@ def test_full_unknown_reply_count_has_no_sampling_limit() -> None:
         )
     )
     assert decision.target is None
+
+
+@pytest.mark.parametrize(
+    "mode,expected", [("adaptive", "probe_first_page"), ("full", "fetch_full")]
+)
+def test_unknown_count_after_actual_detail_read_enters_comments(mode, expected) -> None:
+    request = CollectionDecisionRequestV1(
+        current=ContentObservationV1(comment_count=None),
+        policy=CollectionDecisionPolicyV1(comment_mode=mode),
+        capability=XIAOHONGSHU_TIKHUB_CAPABILITY,
+    )
+    assert CollectionDecisionService().decide(request).comment_action == "defer_until_detail"
+    after_detail = request.model_copy(
+        update={"context": CollectionDecisionContextV1(detail_already_fetched=True)}
+    )
+    result = CollectionDecisionService().decide(after_detail)
+    assert result.comment_action == expected
+    assert result.comment_target == (None if mode == "full" else 50)
 
 
 @pytest.mark.parametrize("complete,expected", [(False, "fetch_full"), (True, "skip")])
@@ -133,3 +158,36 @@ def test_legacy_type_interpretation_does_not_rewrite_frozen_snapshot() -> None:
     validate_run_decision_policy(supplement)
     with pytest.raises(ValueError, match="plan_type"):
         validate_run_decision_policy({"schema_version": "collection-run-config.v3"})
+
+
+@pytest.mark.parametrize(
+    "capability",
+    [DOUYIN_TIKHUB_CAPABILITY, WEIBO_TIKHUB_CAPABILITY, KUAISHOU_TIKHUB_CAPABILITY],
+)
+@pytest.mark.parametrize("count", [499, 501])
+def test_full_count_change_without_reliable_sort_keeps_full_refresh_target(
+    capability, count: int
+) -> None:
+    result = CollectionDecisionService().decide(
+        CollectionDecisionRequestV1(
+            current=ContentObservationV1(comment_count=count),
+            previous=PreviousContentStateV1(comment_count=500, full_comment_capture_complete=True),
+            policy=CollectionDecisionPolicyV1(comment_mode="full"),
+            capability=capability,
+        )
+    )
+    assert result.comment_action == "refresh_controlled"
+    assert result.comment_target == count
+
+
+def test_bilibili_full_complete_increase_uses_reliable_incremental() -> None:
+    result = CollectionDecisionService().decide(
+        CollectionDecisionRequestV1(
+            current=ContentObservationV1(comment_count=501),
+            previous=PreviousContentStateV1(comment_count=500, full_comment_capture_complete=True),
+            policy=CollectionDecisionPolicyV1(comment_mode="full"),
+            capability=BILIBILI_TIKHUB_CAPABILITY,
+        )
+    )
+    assert result.comment_action == "fetch_incremental"
+    assert result.comment_target == 501

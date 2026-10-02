@@ -39,7 +39,8 @@ def upgrade() -> None:
     """)
     op.execute("""
         CREATE INDEX ix_comment_thread_coverage_latest_capture
-        ON comment_thread_coverage_observations (content_id, root_comment_id, observed_at DESC, id DESC)
+        ON comment_thread_coverage_observations
+            (content_id, root_comment_id, observed_at DESC, id DESC)
         WHERE coverage <> 'not_requested'
     """)
 

@@ -153,6 +153,8 @@ class CollectionDecisionContextV1(CollectionBaseModel):
 
     manual_deep_collection: bool = False
     scheduled_refresh_checkpoint: bool = False
+    # 详情已实际读取但仍未观测到数量时，评论决策应进入分页而非再次等待详情。
+    detail_already_fetched: bool = False
 
 
 class CollectionDecisionRequestV1(CollectionBaseModel):

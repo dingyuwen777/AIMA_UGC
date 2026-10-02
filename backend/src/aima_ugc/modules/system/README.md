@@ -56,7 +56,7 @@ System 负责长期关键词父事实：
 keyword_packs / keywords / keyword_pack_items
 ```
 
-Keyword Pack 为新建 TikHub Discovery 提供 Search Terms。Collection 创建 `collection-run-config.v2` 时把 Search Snapshot 与 Brand/Vehicle Filter Snapshot 分别冻结；Candidate 映射为 Canonical 后，由共享 `BrandVehicleResolver` 决定是否进入 Content Ingestion：
+Keyword Pack 为新建 TikHub Discovery 提供 Search Terms。Collection 新建 `collection-run-config.v4` 时把 Search Snapshot 与 Brand/Vehicle Filter Snapshot 分别冻结；Candidate 映射为 Canonical 后，由共享 `BrandVehicleResolver` 决定是否进入 Content Ingestion：
 
 ```text
 Collection

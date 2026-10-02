@@ -140,7 +140,12 @@ class CollectionDecisionService:
 
         if current_count is None:
             detail = request.capability.operation("content_detail")
-            if detail_action == "fetch" and detail is not None and detail.observes_comment_count:
+            if (
+                detail_action == "fetch"
+                and not request.context.detail_already_fetched
+                and detail is not None
+                and detail.observes_comment_count
+            ):
                 return "defer_until_detail", "comment_count_unknown_detail_required", None
             if policy.comment_mode == "full":
                 return "fetch_full", "comment_count_unknown_probe", None

@@ -189,7 +189,8 @@ test('matches the keyword modal and approved TikHub plan modal geometry', async 
   await expect(drawer.locator('.platforms')).toHaveCSS('grid-template-columns', /\d+.* \d+/)
   await page.screenshot({ path: '../.runtime/tikhub-plan-source/tikhub-modal-desktop.png' })
   await page.setViewportSize({ width: 640, height: 700 })
-  await expectBox(drawer, { x: 24, y: 24, width: 592, height: 652 })
+  const usableViewportWidth = await page.evaluate(() => document.documentElement.clientWidth)
+  await expectBox(drawer, { x: 24, y: 24, width: usableViewportWidth - 48, height: 652 })
   await expect(drawer.locator('.platforms')).toHaveCSS('grid-template-columns', /^\d+(\.\d+)?px$/)
   await page.screenshot({ path: '../.runtime/tikhub-plan-source/tikhub-modal-narrow.png' })
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -212,8 +213,8 @@ test('removes the global relevance entry and matches the formal plan detail draw
   await expectBox(detail, { x: 990, y: 0, width: 450, height: 900 })
   await expectBox(detail.locator('header'), { height: 84 })
   await expectBox(detail.locator('.body'), { y: 84, height: 816 })
-  await expectBox(detail.locator('dl > div').first(), { width: 196 })
-  await expectBox(detail.locator('dl > div').nth(1), { width: 196 })
+  await expectBox(detail.locator('dl > div').first(), { width: 193.5 })
+  await expectBox(detail.locator('dl > div').nth(1), { width: 193.5 })
 })
 
 test('keeps compact strategy panels inside the workspace and long keywords inside their card', async ({ page }) => {

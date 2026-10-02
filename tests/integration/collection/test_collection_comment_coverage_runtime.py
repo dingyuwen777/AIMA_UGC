@@ -92,7 +92,8 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
     finally:
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE collection_plans, jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE collection_plans, jobs, artifacts, accounts "
+                "RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
 
@@ -122,7 +123,7 @@ def _search_response(*, comment_count: int | None) -> dict[str, object]:
     return body
 
 
-def _detail_response(*, comment_count: int) -> dict[str, object]:
+def _detail_response(*, comment_count: int | None) -> dict[str, object]:
     body = _fixture("image_detail.sanitized.json")
     outer = body["data"]
     assert isinstance(outer, dict)
@@ -135,7 +136,10 @@ def _detail_response(*, comment_count: int) -> dict[str, object]:
     note = notes[0]
     assert isinstance(note, dict)
     note["id"] = "note-fixture-1"
-    note["comments_count"] = comment_count
+    if comment_count is None:
+        note.pop("comments_count", None)
+    else:
+        note["comments_count"] = comment_count
     return body
 
 
@@ -522,6 +526,46 @@ def test_full_partial_same_count_is_refetched_and_adaptive_sample_is_not_complet
         )
 
 
+@pytest.mark.parametrize("comment_count", [0, None])
+def test_full_zero_skips_and_unknown_root_count_keeps_paginating(
+    database_runtime: DatabaseRuntime, tmp_path: Path, comment_count: int | None
+) -> None:
+    pages = (
+        (
+            ProviderTransportResponse(
+                status_code=200, body=_comments_response(count=1, has_more=True)
+            ),
+            ProviderTransportResponse(
+                status_code=200, body=_comments_response(count=1, start=1, has_more=False)
+            ),
+        )
+        if comment_count is None
+        else ()
+    )
+    _, transport = _execute(
+        runtime=database_runtime,
+        tmp_path=tmp_path,
+        comment_policy="full",
+        responses=(
+            ProviderTransportResponse(
+                status_code=200, body=_search_response(comment_count=comment_count)
+            ),
+            ProviderTransportResponse(
+                status_code=200, body=_detail_response(comment_count=comment_count)
+            ),
+            *pages,
+        ),
+    )
+    assert transport.call_count == (4 if comment_count is None else 2)
+    with database_runtime.new_session() as session:
+        coverage = session.execute(select(comment_coverage_observations_table)).mappings().one()
+        assert coverage["coverage"] == "complete"
+        assert coverage["collected_count"] == (2 if comment_count is None else 0)
+        assert coverage["stop_reason"] == (
+            "provider_exhausted" if comment_count is None else "provider_reported_zero"
+        )
+
+
 def _root_page_with_replies(
     *, reply_count: int | None, include_new_root: bool = False
 ) -> dict[str, object]:
@@ -602,6 +646,18 @@ def test_full_replies_cross_five_and_unknown_counts_continue_to_exhaustion(
         assert PostgresContentCoverageReader(session).full_capture_complete(
             content_id, comment_count=1
         )
+        for missing in (False, True):
+            savepoint = session.begin_nested()
+            if missing:
+                session.execute(comment_thread_coverage_observations_table.delete())
+            else:
+                session.execute(
+                    comment_thread_coverage_observations_table.update().values(coverage="partial")
+                )
+            assert not PostgresContentCoverageReader(session).full_capture_complete(
+                content_id, comment_count=1
+            )
+            savepoint.rollback()
     _, unchanged = _execute(
         runtime=database_runtime,
         tmp_path=tmp_path,

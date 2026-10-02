@@ -433,6 +433,7 @@ label > small { display: block; margin-top: 5px; }
 .switch strong { margin: 0; }
 .eligibility { margin-bottom: 16px; padding: 10px; border: 1px solid #ffc7cc; border-radius: 8px; color: #b4232d; background: #fff5f6; font-size: 13px; }
 footer { display: flex; justify-content: flex-end; gap: 12px; padding: 18px 24px; border-top: 1px solid var(--aima-border); }
-:global(.aima-modal-container[aria-label$='TikHub 采集计划'] > .aima-modal-body) { scrollbar-width: thin; scrollbar-color: #c5ccd7 transparent; }
+:global(.aima-modal-container[aria-label$='TikHub 采集计划'] > .aima-modal-body) { --aima-scrollbar-size: 5px; }
+:global(.aima-modal-container[aria-label$='TikHub 采集计划']) { max-width: calc(100% - 48px); }
 @media (max-width: 720px) { .two-column,.platforms,.policy-options { grid-template-columns: minmax(0, 1fr); } .body { padding: 18px; } header,footer { padding: 16px 18px; } }
 </style>
