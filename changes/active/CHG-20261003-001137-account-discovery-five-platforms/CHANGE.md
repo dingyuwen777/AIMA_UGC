@@ -1,0 +1,240 @@
+---
+schema: coding-change/v1
+id: CHG-20261003-001137-account-discovery-five-platforms
+title: 五平台按账号补采正式集成与完整分页核验
+level: L3
+status: in_progress
+owner: codex
+branch: codex/account-discovery-five-platforms
+created: 2026-10-03
+updated: 2026-10-03
+completion_gate: required
+depends_on: []
+affected_areas:
+  - collection
+  - providers
+  - contracts
+  - content
+  - frontend
+  - docs
+affected_paths:
+  - backend/src/aima_ugc/contracts
+  - backend/src/aima_ugc/adapters/providers/tikhub
+  - backend/src/aima_ugc/adapters/providers/tikhub_test
+  - backend/src/aima_ugc/bootstrap/collection_http.py
+  - backend/src/aima_ugc/bootstrap/collection_scope.py
+  - backend/src/aima_ugc/modules/collection
+  - backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py
+  - frontend/src/features/collection-supplement
+  - frontend/src/features/import-batches
+  - frontend/src/generated
+  - contracts
+  - tests
+  - frontend/tests
+  - frontend/e2e
+  - frontend/e2e-fullstack
+  - docs
+contracts:
+  - CollectionRunCreateRequest
+  - CollectionAccountDiscoverySelection
+  - CollectionAccountTargetRequest
+  - CollectionCapabilityResponse
+  - CollectionScopeResponse
+  - CollectionRuntimeRecordType
+data_changes: []
+---
+
+# 变更摘要
+
+当前账号采集只有人工文件入口，缺少持久业务入库和前端。将账号 Discovery 作为既有 Collection 的新来源，复用后续内容、评论、回复和 Owner，修复真实探测发现的分页偏差，交付五平台按账号补采。
+
+# 背景、现状与问题
+
+## 背景
+
+用户要求依次实施两阶段。第一阶段 #696/#697 已真实合并并完成 main-fresh、原生 Archive、Closure 和分支清理；本阶段以上游 #698 为唯一 Acceptance Owner。
+
+## 当前现状
+
+基线 624d3178（产品实现 809afe10）；account_runtime.py 已有五平台账号 Builder/Extractor/Pagination，人工 Runner 禁止写库；HTTP 仅 discovery/batch_supplement/content_supplement，公开 Capability 无账号；新 Run 为 v4。
+
+## 问题、根因或约束
+
+账号身份解析和作品页尚未进入正式 Request/Raw/Job，现有关键词品牌准入不能用于明确账号；微博生产分页把空 since_id 当作耗尽，但真实同 endpoint 第二页返回不同作品。快手搜索上游 400 的根因尚未确认，不能用数字 ID 成功替代高级路径验证。
+
+## 不修改的后果
+
+账号数据无法直接供声音广场和分析使用；直接搬 Runner 会绕过持久恢复、来源、Pricing 与单一 Owner；错误耗尽会漏采作品。
+
+# 事实与证据
+
+| 证据编号 | 已确认事实 | 来源 / 定位 / 命令 | 支撑的约束或决策 |
+| --- | --- | --- | --- |
+| E1 | 五平台账号生产 Operation 已存在，公开入口和持久账号 Scope 不存在 | account_runtime.py、contracts/http.py、collection_scope.py | 正式提升发现来源，复用后续链 |
+| E2 | collection_scopes 身份为文本列，快照和分页为 JSONB | modules/collection/tables.py、当前 Migration/schema | 预计无需 Migration，继续核验 |
+| E3 | 微博两页各 20、ID 零交集，生产均误判耗尽 | 本机脱敏 account-pagination.sanitized.json | 空 since_id 不能独立结束非空页 |
+| E4 | 五平台主作品接口有可映射真实结构；快手搜索 400 未闭合 | 本机有界探测及当前官方 TikHub SDK | 全链路与高级身份继续验证 |
+| E5 | 10 个新账号 endpoint 官方价格已核验 | 本机 get_endpoint_info 脱敏结果 | 只登记采用的主生产路径 |
+
+## 推断与待确认
+
+账号表不需要新增是当前约束检查后的预期，最终以实际写读链审计为准。真实分页和代表性评论/回复探测仍进行中，网络失败与上游失败保留，不能宣称全量完成。
+
+# 目标、成功标准与非目标
+
+## 目标
+
+五平台多个账号在指定北京时间范围发现作品、持久采详情及全部可访问评论/回复；用户可观察每账号状态和结果，失败隔离。
+
+## 成功标准
+
+- [ ] #698 AC1–AC12 全部有直接实现、验证和文档证据。
+- [ ] 当前 head/base Review/CI 和完整交付收尾通过。
+
+## 范围
+
+账号 Contract/Capability/Pricing、v5 快照/Scope、持久身份/分页、不同来源准入、共用内容/评论链、生成物、第三 Tab、运行类型/账号进度、分层验收和正式文档。
+
+## 非目标
+
+不新增账号事实表、Runner 或调度系统，不自动分析或跨 family fallback，不升级依赖，不改预算、不部署生产。
+
+## 必须保持不变
+
+Raw/Canonical/Owner、Job Fencing/恢复、业务身份/来源、历史快照、北京时间、生成 Client、100 页评论/回复保护和 Pricing fail closed。
+
+# 约束与意图决策
+
+| 决策维度 | 当前决定 | 依据 | 影响 |
+| --- | --- | --- | --- |
+| 范围与负责人边界 | 根 Agent 单一写入，独立只读 Review | #698 | 账号来源复用现有 Owner |
+| 接口与契约 | 兼容新增账号模式与元数据，消费生成物 | AC1/AC8/AC9 | HTTP 与 UI |
+| 数据与迁移 | 无新业务表，v5 仅新账号 Run | E2/AC3 | 历史解释保留 |
+| 错误与失败语义 | 身份失败关闭、覆盖率真实 partial、账号隔离 | AC2/AC4/AC5/AC7 | 不伪造成功 |
+| 兼容性 | 既有三种模式和周期策略保留 | AC3 | 无静默变更旧任务 |
+| 部署与回滚 | 只合并 main；代码回滚保留事实 | 用户授权 | 无生产迁移/删除 |
+
+# 修改方案与决策依据
+
+## 最小充分方案
+
+1. 账号公共 Contract 和 Capability → HTTP/生产能力/生成物 → 创建验证和 v5 冻结 → Contract Red/Green、真实 PG。
+2. 五平台身份与分页 Owner → 生产 Adapter、Debug 复用 → 唯一身份、正确终止 → Fixture 与有界实测。
+3. 持久解析与账号发现 → 现有 Scope/Request/Raw/Candidate → 账号+日期准入、品牌 Evidence 补充 → PG 四 Scope、恢复/去重/隔离/500/30。
+4. 第三个 Tab 与账号进度 → 同 Feature 和生成 Client → 输入校验、运行查询、详情结果 → Vitest、Browser、真实 Full-stack。
+5. 正式文档和完成审计 → 原上游重读和反向能力审计 → 独立两阶段 Review、最新 main 集成、CI/merge/原生 Archive/main-fresh/Closure。
+
+## 证据到决策
+
+| 决策 | 依据证据 | 为什么采用这个方案 |
+| --- | --- | --- |
+| D1 | E1/E2 | 只新增发现来源，不制造第二事实库 |
+| D2 | E3/E4 | 实测修复分页，不能用第一页成功代替完整性 |
+| D3 | E5 | 开放前核价与响应验证，未知 endpoint 不发送 |
+
+## 备选方案与取舍
+
+调用人工脚本/Excel 再导入会绕开持久请求和来源，拒绝；复制评论 Runner 产生平行 Owner，拒绝；正式来源接入既有引擎满足恢复和产品结果。
+
+# 需求追溯
+
+| 编号 | 要求 | 来源 | 状态 | 证据 |
+| --- | --- | --- | --- | --- |
+| R1 | 公共账号模式与非法输入 | #698 / AC1 | not_satisfied | 待实现与 Contract 验证 |
+| R2 | 五平台稳定唯一身份与真实路径 | #698 / AC2 | not_satisfied | 探测进行中 |
+| R3 | 独立 Scope 与 v5 冻结历史兼容 | #698 / AC3 | not_satisfied | 待 PG 验证 |
+| R4 | 持久请求、Raw 恢复与 Job | #698 / AC4 | not_satisfied | 待恢复验收 |
+| R5 | 全作品分页、身份和日期准入 | #698 / AC5 | not_satisfied | E3 已复现遗漏 |
+| R6 | 无品牌词入库与单一身份/来源 | #698 / AC6 | not_satisfied | 待 PG 去重/来源 |
+| R7 | 默认 Full、500/30、真实 partial | #698 / AC7 | not_satisfied | 待账号接线回归 |
+| R8 | 账号运行类型、进度、失败隔离 | #698 / AC8 | not_satisfied | 待 UI/PG |
+| R9 | 第三 Tab 多账号和确认交互 | #698 / AC9 | not_satisfied | 待 Browser |
+| R10 | 声音广场/详情/导出/主动分析 | #698 / AC10 | not_satisfied | 待实链反向审计 |
+| R11 | 本机真实 Provider 证据及边界 | #698 / AC11 | not_satisfied | 本机探测进行中 |
+| R12 | 分层验收、文档、Review 与交付 | #698 / AC12 | not_satisfied | 待取得 |
+
+# 计划改动
+
+| 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
+| --- | --- | --- | --- |
+| contracts、capabilities、pricing、生成物 | 新模式与账号 metadata | 公开唯一事实 | R1/R2/R3 |
+| account_runtime、operations、必要 identity helper、Debug 消费者 | 身份与分页生产 Owner | 完整性和不反向依赖 | R2/R5/R11 |
+| collection_http、scope、run_policy、runtime queries | 创建、执行和查询账号 Scope | 持久链和真实状态 | R3–R8/R10 |
+| collection-supplement/import-batches 与 tests | 输入、进度和结果 | 产品闭环 | R8/R9/R10 |
+| 分层 tests 和 docs | 直接证据与长期事实同步 | 验收 | R11/R12 |
+
+- [x] 调查当前实现和事实源
+- [x] 建立任务路由和验证矩阵
+- [x] 行为变化建立失败证据
+- [ ] 完成最小充分实现
+- [ ] 同步受影响长期文档
+- [ ] 取得当前版本验证证据
+- [ ] 完成需求追溯、完成审计和适用复核
+
+# 验证矩阵
+
+| 验证层 | 是否要求 | 范围 / 证据 |
+| --- | --- | --- |
+| 行为 / 单元 / 组件 | required | 五平台身份、分页、日期、准入和表单 |
+| 接口 / 契约 | required | 模式/输入、Capability、生成物、历史 |
+| 集成 / 持久化 / 运行依赖 | required | 真实 PG 4 Scope、Raw 恢复、去重/隔离/500/30 |
+| 用户 / 工作流验收 | required | 表单、运行类型、账号进度与结果 |
+| 跨组件关键路径 | required | 正式 API/Job/Worker/DB/Browser Journey |
+| 外部依赖 / 供应方探测 | required | 五平台真实主账号和代表性评论链，费用上限/脱敏 |
+| 构建 / 打包 / 运行 | required | 静态、生成、构建与 Compose |
+| 文档 / 治理 / 其他 | required | Docs/Completion/两阶段 Review/CI |
+
+## 验证计划
+
+pytest unit/contracts/api、目标真实 PG、frontend test/lint/typecheck/build、Browser/Full-stack、generate.py --check、mypy/ruff/docs、validate_changed.py --base origin/main、check_change_completion.py --require-active-ready；付费真实 Probe 仅本机安全 Secret，独立硬限制且无隐藏重试，不进 CI。
+
+# 风险、兼容性、迁移与回滚
+
+| 项目 | 结论 | 依据 / 处理方式 |
+| --- | --- | --- |
+| 主要风险 | 全量增加费用/时长、Provider 限制 | 费用提示、硬页保护和真实 partial |
+| 兼容性 | 新增模式/字段，历史保留 | AC1/AC3 |
+| 数据 / Migration | 预计不适用，无新表列 | E2，最终审计 |
+| 部署 / 运行 | 无部署，本机隔离验收 | 用户授权 |
+| 回滚 / 恢复 | 回滚代码，保留业务和快照 | 不进行生产删除 |
+
+# 文档、依赖、部署与发布影响
+
+- **长期文档**：同步 Product 采集入口、Blueprint 账号来源、TikHub Appendix 主路径和真实验证台账。
+- **依赖 / Runtime**：不新增或升级，使用锁定环境。
+- **配置 / Secret**：冻结既有 Provider revision，Secret 只引用，不输出。
+- **部署 / Release**：不适用，用户要求合并 main。
+- **兼容 / 消费方通知**：生成 Client、运行类型与账号 metadata 同步消费者。
+
+# 完成审计
+
+- [ ] upstream_re_read：完成前重新读取 #698 及正式上游。
+- [ ] change_coverage：AC1–AC12 全部有直接证据。
+- [ ] reverse_audit：后端能力→前端动作→任务→入库→结果/评论/分析入口。
+- [ ] unresolved_cleared：所有 not_satisfied 清零。
+
+# 完成证据与状态
+
+## 新鲜证据
+
+| 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
+| --- | --- | --- | --- | --- |
+| V1 | 基线 624d3178，本机安全 Secret | 五平台有界官方价格与账号结构探测 | 主作品结构可映射，微博分页偏差，快手搜索失败 | 进入正式实现前事实，非最终验收 |
+| V2 | 624d3178 + 新 Contract/分页测试，本地 Python 3.14.7 | pytest tests/contracts/test_collection_account_discovery.py tests/unit/collection/test_account_discovery_pagination.py -q | 10 failed、10 passed | 正式模式/字段不存在；微博非空页空 since_id 错误结束，Red 可复现 |
+
+## 未验证内容与剩余风险
+
+本 Change 仍在开发。Human Local Acceptance 为 USER_WAIVED，依据本范围用户明确“所有平台都检查和修复…你自己测试功能没问题之后直接合并”，不冒充 PASSED；仍完成技术验收和全部交付门禁。
+
+## 交付状态
+
+- 提交：初始治理/Red 待形成。
+- 拉取请求：初始提交首次 push 后尽早建立 Draft。
+- CI：未取得。
+- 合并：未合并。
+- Change 归档：合并后原生 Workflow。
+- 发布 / 部署：不适用，无生产操作。
+
+## 备注
+
+Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/698。canonical Source 当前 main d2802f69 已重核；前阶段归档不是本阶段完成依据。
