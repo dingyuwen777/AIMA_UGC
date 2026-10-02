@@ -81,7 +81,7 @@ class WeiboSubCommentPagination:
 
 @dataclass(frozen=True, slots=True)
 class WeiboUserPostsPagination:
-    """微博用户作品接口按响应中的 ``since_id`` 推进。"""
+    """用户作品用页号遍历；非空页的空 since_id 不是耗尽证据。"""
 
     next_since_id: str
     should_continue: bool
@@ -98,7 +98,8 @@ class WeiboUserPostsPagination:
             return cls("", False, "empty_page")
         returned = _string(container.get("since_id"))
         if not returned:
-            return cls("", False, "provider_exhausted")
+            # 真实 Web V2 非空页常返回空 since_id，下一页仍有不同作品。
+            return cls("", True)
         if returned == previous_since_id:
             return cls(returned, False, "pagination_not_advanced")
         return cls(returned, True)

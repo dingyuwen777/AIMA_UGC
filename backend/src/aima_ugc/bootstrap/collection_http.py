@@ -43,6 +43,8 @@ from aima_ugc.contracts.collection import (
 from aima_ugc.contracts.collection.models import BusinessOperation
 from aima_ugc.contracts.http import (
     CanonicalReplayRuntimeStatsResponse,
+    CollectionAccountDiscoverySelection,
+    CollectionAccountTargetRequest,
     CollectionBatchSupplementEligibilityResponse,
     CollectionBatchSupplementTargetResponse,
     CollectionCampaignSupplementEligibilityResponse,
@@ -169,6 +171,7 @@ class PostgresCollectionHttpService:
                                     for operation in route.capability.operations
                                 ),
                                 search=_search_capability_response(route.capability),
+                                account=route.capability.account,
                             )
                         )
                     if config_has_route:
@@ -394,6 +397,9 @@ class PostgresCollectionHttpService:
                 policy = CollectionDecisionPolicyV1(
                     comments_enabled=request.include_comments,
                     comment_mode="full",
+                    full_fetch_threshold=500 if request.mode == "account_discovery" else 50,
+                    sample_target=500 if request.mode == "account_discovery" else 50,
+                    reply_target_per_root=30 if request.mode == "account_discovery" else 5,
                     # 网页端辅助补采是用户显式发起的新 Run；即使帖子公布的评论数
                     # 没有变化，也必须重新读取评论，才能恢复上次失败或不完整的补采。
                     comment_refresh_when_count_unchanged=request.include_comments,
@@ -404,7 +410,16 @@ class PostgresCollectionHttpService:
                     job_id=job.id,
                     trigger_type="api",
                     config_snapshot={
-                        "schema_version": "collection-run-config.v4",
+                        "schema_version": (
+                            "collection-run-config.v5"
+                            if request.mode == "account_discovery"
+                            else "collection-run-config.v4"
+                        ),
+                        **(
+                            {"account_selection": request.account_selection.model_dump(mode="json")}
+                            if request.account_selection is not None
+                            else {}
+                        ),
                         "plan_type": "tikhub",
                         **(
                             {
@@ -463,11 +478,16 @@ class PostgresCollectionHttpService:
                     run_id=execution.run.id,
                     job_id=job.id,
                     mode=request.mode,
+                    account_selection=request.account_selection,
                     published_from=supplement_selection.published_from
                     if supplement_selection
+                    else request.account_selection.published_from
+                    if request.account_selection
                     else None,
                     published_to=supplement_selection.published_to
                     if supplement_selection
+                    else request.account_selection.published_to
+                    if request.account_selection
                     else None,
                     supplement_selection=supplement_selection,
                     import_batch_id=request.import_batch_id,
@@ -492,14 +512,21 @@ class PostgresCollectionHttpService:
                 mode_value = snapshot.get("mode", "discovery")
                 if mode_value == "date_supplement":
                     mode_value = "content_supplement"
-                if mode_value not in {"discovery", "batch_supplement", "content_supplement"}:
+                if mode_value not in {
+                    "discovery",
+                    "batch_supplement",
+                    "content_supplement",
+                    "account_discovery",
+                }:
                     raise CollectionConflict
                 mode: CollectionRunMode = mode_value
                 selection = _snapshot_date_selection(snapshot)
+                account_selection = _snapshot_account_selection(snapshot)
                 return CollectionRunResponse(
                     run_id=run.id,
                     job_id=run.job_id,
                     mode=mode,
+                    account_selection=account_selection,
                     published_from=selection.published_from if selection else None,
                     published_to=selection.published_to if selection else None,
                     supplement_selection=_snapshot_supplement_selection(snapshot),
@@ -526,7 +553,24 @@ class PostgresCollectionHttpService:
                     keywords=_snapshot_keywords(snapshot),
                     brand_ids=_snapshot_brand_ids(snapshot),
                     stats=_run_stats(run, scopes),
-                    scopes=tuple(_scope_response(scope) for scope in scopes),
+                    scopes=tuple(
+                        _scope_response(
+                            scope,
+                            account=next(
+                                (
+                                    account
+                                    for account in account_selection.accounts
+                                    if account.platform == scope.platform
+                                    and f"{account.account_id_type}:{account.account_id}"
+                                    == scope.source_value
+                                ),
+                                None,
+                            )
+                            if account_selection
+                            else None,
+                        )
+                        for scope in scopes
+                    ),
                     error_summary=run.error_summary,
                     error_code=job.error_code,
                     created_at=run.created_at,
@@ -535,6 +579,52 @@ class PostgresCollectionHttpService:
                 )
         finally:
             session.close()
+
+    def retry_run(self, run_id: UUID) -> CollectionRunResponse:
+        """用户显式重试失败账号，复用原 Run/Job 与成功 Raw。"""
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresCollectionRepository(session)
+                run = repository.get_run(run_id)
+                if run is None:
+                    raise CollectionResourceNotFound
+                if run.config_snapshot.get("mode") != "account_discovery":
+                    raise CollectionConflict
+                if run.status != "queued":
+                    if run.status not in {"failed", "partial_success"}:
+                        raise CollectionConflict
+                    jobs = PostgresJobRepository(session)
+                    try:
+                        jobs.request_retry(
+                            run.job_id, additional_attempts=_COLLECTION_JOB_MAX_ATTEMPTS
+                        )
+                        repository.prepare_account_retry(run.id, requested_at=beijing_now())
+                    except ValueError as exc:
+                        raise CollectionConflict from exc
+        finally:
+            session.close()
+        return self.get_run(run_id)
+
+    def cancel_run(self, run_id: UUID) -> CollectionRunResponse:
+        """排队任务立即取消，运行任务由原 Job 协作或 Reaper 收敛。"""
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresCollectionRepository(session)
+                run = repository.get_run(run_id)
+                if run is None:
+                    raise CollectionResourceNotFound
+                if run.config_snapshot.get("mode") != "account_discovery":
+                    raise CollectionConflict
+                job = PostgresJobRepository(session).request_cancel(run.job_id)
+                if job.status == "cancelled":
+                    repository.settle_account_job_terminal(
+                        job.id, status=job.status, error_code="cancel_requested"
+                    )
+        finally:
+            session.close()
+        return self.get_run(run_id)
 
     def list_runtime_runs(
         self,
@@ -694,6 +784,26 @@ class PostgresCollectionHttpService:
         dict[str, object],
         CollectionSupplementSelectionResponse | None,
     ]:
+        if request.mode == "account_discovery":
+            assert request.account_selection is not None
+            account_catalog = PostgresBrandVehicleRepository(session).snapshot(brand_ids=None)
+            filter_snapshot = BrandVehicleFilterSnapshot(
+                search_semantics="not_applicable", catalog=account_catalog
+            )
+            return (
+                tuple(
+                    CollectionScopeDefinition(
+                        platform=account.platform,
+                        source_type="account",
+                        source_value=f"{account.account_id_type}:{account.account_id}",
+                        operation_group="content_discovery",
+                    )
+                    for account in request.account_selection.accounts
+                ),
+                (),
+                filter_snapshot.model_dump(mode="json"),
+                None,
+            )
         if request.mode == "discovery":
             if request.keyword_pack_ids:
                 try:
@@ -841,6 +951,16 @@ def _validate_requested_capabilities(
     required: list[BusinessOperation] = ["content_detail"]
     if request.mode == "discovery":
         required.append("keyword_search")
+    if request.mode == "account_discovery":
+        required.append("account_discovery")
+        if capability.account is None or request.account_selection is None:
+            raise ValueError("Provider Capability 缺少账号身份能力")
+        for account in request.account_selection.accounts:
+            if (
+                account.platform == capability.platform
+                and account.account_id_type not in capability.account.supported_id_types
+            ):
+                raise ValueError("Provider Capability 不支持所选账号 ID 类型")
     if request.include_comments:
         required.append("comments")
     if request.include_sub_comments:
@@ -889,6 +1009,8 @@ def _run_stage(run: CollectionRunRecord) -> str:
 
 def _snapshot_date_selection(snapshot: dict[str, object]) -> CollectionDateSupplementQuery | None:
     """日期展示从选择审计恢复，同时兼容未发布分支的旧日期快照。"""
+    if snapshot.get("mode") == "account_discovery":
+        return _snapshot_account_selection(snapshot)
     if snapshot.get("mode") not in {"content_supplement", "date_supplement"}:
         return None
     selection = snapshot.get("supplement_selection")
@@ -905,6 +1027,17 @@ def _snapshot_date_selection(snapshot: dict[str, object]) -> CollectionDateSuppl
             "published_to": selection.get("published_to"),
         }
     )
+
+
+def _snapshot_account_selection(
+    snapshot: dict[str, object],
+) -> CollectionAccountDiscoverySelection | None:
+    """只恢复 v5 的冻结目标；历史 Run 不生成或重写账号事实。"""
+    if snapshot.get("mode") != "account_discovery":
+        return None
+    if snapshot.get("schema_version") != "collection-run-config.v5":
+        raise CollectionConflict("账号 Run 缺少 v5 冻结配置")
+    return CollectionAccountDiscoverySelection.model_validate(snapshot.get("account_selection"))
 
 
 def _snapshot_supplement_selection(
@@ -956,7 +1089,11 @@ def _scope_stats(scope: CollectionScopeRecord) -> CollectionRunStatsResponse:
     )
 
 
-def _scope_response(scope: CollectionScopeRecord) -> CollectionScopeResponse:
+def _scope_response(
+    scope: CollectionScopeRecord,
+    *,
+    account: CollectionAccountTargetRequest | None = None,
+) -> CollectionScopeResponse:
     return CollectionScopeResponse(
         id=scope.id,
         platform=_collection_platform(scope.platform),
@@ -965,6 +1102,14 @@ def _scope_response(scope: CollectionScopeRecord) -> CollectionScopeResponse:
         status=_runtime_status(scope.status),
         progress=scope.progress,
         stats=_scope_stats(scope),
+        account=account,
+        account_stage=(
+            cast(Literal["resolving", "posts", "finished"], scope.stats["account_stage"])
+            if scope.stats.get("account_stage") in {"resolving", "posts", "finished"}
+            else None
+        ),
+        posts_discovered=_safe_count(scope.stats, "posts_discovered"),
+        posts_admitted=_safe_count(scope.stats, "posts_admitted"),
         comment_coverage=(
             cast(
                 Literal["complete", "partial", "unavailable", "not_requested"],
@@ -1197,6 +1342,15 @@ def _runtime_display_name(record: CollectionRuntimeReadRecord) -> str:
     if record.record_type == "tikhub_batch_supplement":
         suffix = f" · {record.source_filename}" if record.source_filename else ""
         return f"TikHub 批次补采{suffix}"
+    if record.record_type == "tikhub_account_discovery":
+        account_selection = _snapshot_account_selection(record.config_snapshot or {})
+        if account_selection is None:
+            raise CollectionConflict
+        return (
+            f"TikHub 账号补采 · {len(account_selection.accounts)} 个账号 · "
+            f"{account_selection.published_from:%Y-%m-%d} ~ "
+            f"{account_selection.published_to:%Y-%m-%d}"
+        )
     keywords = _snapshot_keywords(record.config_snapshot or {})
     suffix = f" · {'、'.join(keywords[:2])}" if keywords else ""
     return f"TikHub 主动发现{suffix}"

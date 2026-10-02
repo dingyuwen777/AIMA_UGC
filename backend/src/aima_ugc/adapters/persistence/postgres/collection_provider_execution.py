@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -165,8 +166,22 @@ class PostgresFencedProviderAttemptPreparer:
 
                 if attempts:
                     latest_attempt = max(attempts, key=lambda item: item.attempt_no)
-                    if latest_attempt.dispatch_status != "reserved" and not _attempt_allows_retry(
-                        latest_attempt
+                    state = (
+                        session.scalar(
+                            select(collection_scopes_table.c.pagination_state).where(
+                                collection_scopes_table.c.id == request.scope_id
+                            )
+                        )
+                        or {}
+                    )
+                    manual_after = state.get("_account_manual_retry_after")
+                    manual_retry = isinstance(
+                        manual_after, str
+                    ) and latest_attempt.created_at < datetime.fromisoformat(manual_after)
+                    if (
+                        latest_attempt.dispatch_status != "reserved"
+                        and not _attempt_allows_retry(latest_attempt)
+                        and not manual_retry
                     ):
                         return PreparedProviderAttempt(
                             request=persisted_request,

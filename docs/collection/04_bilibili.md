@@ -44,6 +44,8 @@ GET /api/v1/bilibili/app/fetch_reply_detail
 
 ## 3. Search Capability
 
+账号补采使用数字 `uid` 和 App `fetch_user_post_videos_v2`，沿当前分页读取账号可访问视频，拒绝不属于该 uid 的返回作品。一级评论分页的 next_offset 是 Provider 游标，可以由较大值变小；仅相同游标且无进展才判定停滞，不能按数值大小截断合法评论页。详情、一级评论和回复共用上述 App 主链。
+
 当前排序：
 
 ```text

@@ -4,6 +4,7 @@ import type {
   CollectionCapabilitiesResponse, CollectionPlatform, CollectionRunCreateRequest,
   CollectionRunCreatedResponse, CollectionSearchConfig, CollectionSearchCapabilityResponse,
   CollectionSupplementTargetSelection, KeywordPackSummaryResponse,
+  CollectionAccountTargetRequest, ProviderAccountCapabilityV1,
 } from '../../../../../generated/api/client'
 import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
 import BrandMultiSelect from '../../../../../shared/BrandMultiSelect.vue'
@@ -26,7 +27,9 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]; submit: [request: CollectionRunCreateRequest]
   created: [result: CollectionRunCreatedResponse]
 }>()
-const mode = ref<'discovery' | 'content_supplement'>('content_supplement')
+const mode = ref<'discovery' | 'content_supplement' | 'account_discovery'>('content_supplement')
+const accounts = ref<CollectionAccountTargetRequest[]>([])
+const accountConfirmation = ref(false)
 const publishedRange = ref({ from: '', to: '' })
 const publishedFrom = computed(() => publishedRange.value.from)
 const publishedTo = computed(() => publishedRange.value.to)
@@ -48,14 +51,45 @@ const supplement = useCollectionSupplement(active, targets, () => props.capabili
 const busy = computed(() => props.creating || supplement.creating)
 const provider = computed(() => props.capabilities?.provider_configs.find((item) => item.id === providerConfigId.value))
 const availablePlatforms = computed(() => props.capabilities?.capabilities.filter((item) =>
-  item.provider === provider.value?.provider && ['keyword_search', 'content_detail',
+  item.provider === provider.value?.provider && [mode.value === 'account_discovery' ? 'account_discovery' : 'keyword_search', 'content_detail',
     ...(includeComments.value ? ['comments'] : []), ...(includeSubComments.value ? ['sub_comments'] : []),
   ].every((operation) => item.operations.some((value) => value === operation)),
 ).map((item) => item.platform as CollectionPlatform) ?? [])
 function searchCapability(platform: CollectionPlatform): CollectionSearchCapabilityResponse | null {
   return props.capabilities?.capabilities.find((item) => item.platform === platform && item.provider === provider.value?.provider)?.search ?? null
 }
+function accountCapability(platform: CollectionPlatform): ProviderAccountCapabilityV1 | null {
+  return props.capabilities?.capabilities.find((item) => item.platform === platform && item.provider === provider.value?.provider)?.account ?? null
+}
+const accountIdLabels: Record<CollectionAccountTargetRequest['account_id_type'], string> = {
+  red_id: '小红书号', user_id: '用户 ID', unique_id: '抖音号', sec_uid: '稳定用户 ID',
+  uid: 'UID', kuaishou_id: '快手号', eid: '主页 EID',
+}
+function addAccount(platform: CollectionPlatform): void {
+  const capability = accountCapability(platform)
+  if (capability) accounts.value.push({ platform, account_id_type: capability.default_id_type, account_id: '', nickname: '' })
+}
+const normalizedAccounts = computed(() => accounts.value.filter((account) => platforms.value.includes(account.platform)).map((account) => ({
+  ...account, account_id: account.account_id.trim(), nickname: account.nickname?.trim() || null,
+})))
+const accountRequest = computed<CollectionRunCreateRequest | null>(() => {
+  if (!targets.value || targets.value.kind !== 'published_date_range' || !provider.value || platforms.value.length === 0) return null
+  const rows = normalizedAccounts.value
+  if (!platforms.value.every((platform) => rows.some((row) => row.platform === platform))
+    || rows.length > 100 || rows.some((row) => !row.account_id || /\s/.test(row.account_id)
+      || ((row.account_id_type === 'uid' || (row.platform === 'kuaishou' && row.account_id_type === 'user_id')) && !/^[0-9]+$/.test(row.account_id))
+      || !accountCapability(row.platform)?.supported_id_types.includes(row.account_id_type))) return null
+  const identities = rows.map((row) => `${row.platform}:${row.account_id_type}:${row.account_id}`)
+  if (new Set(identities).size !== identities.length) return null
+  return {
+    mode: 'account_discovery',
+    account_selection: { kind: 'accounts', accounts: rows, published_from: targets.value.published_from!, published_to: targets.value.published_to! },
+    platforms: platforms.value.map((platform) => ({ platform, provider_config_id: providerConfigId.value })),
+    include_comments: includeComments.value, include_sub_comments: includeSubComments.value,
+  }
+})
 const canSubmit = computed(() => mode.value === 'content_supplement' ? supplement.canSubmit :
+  mode.value === 'account_discovery' ? !busy.value && accountRequest.value !== null :
   !busy.value && Boolean(provider.value) && platforms.value.length > 0 && selectedPackIds.value.length > 0
   && (brandScope.value === 'all_active' || selectedBrandIds.value.length > 0)
   && platforms.value.every((platform) => {
@@ -69,11 +103,25 @@ watch(() => props.modelValue, (open) => {
   publishedRange.value = { from: '', to: '' }
   selectedPackIds.value = []; selectedBrandIds.value = []; brandScope.value = 'all_active'
   platforms.value = []
+  accounts.value = []; accountConfirmation.value = false
   includeComments.value = manualCommentDefaults.includeComments
   includeSubComments.value = manualCommentDefaults.includeSubComments
   providerConfigId.value = props.capabilities?.provider_configs.length === 1 ? props.capabilities.provider_configs[0]?.id ?? '' : ''
 })
 watch(providerConfigId, () => { platforms.value = [] })
+watch(mode, (current) => {
+  accountConfirmation.value = false
+  if (current === 'account_discovery') for (const platform of platforms.value) {
+    if (!accounts.value.some((account) => account.platform === platform)) addAccount(platform)
+  }
+})
+watch(platforms, (selected) => {
+  accounts.value = accounts.value.filter((account) => selected.includes(account.platform))
+  if (mode.value === 'account_discovery') for (const platform of selected) {
+    if (!accounts.value.some((account) => account.platform === platform)) addAccount(platform)
+  }
+})
+watch(() => JSON.stringify(accountRequest.value), () => { accountConfirmation.value = false })
 watch(availablePlatforms, () => { platforms.value = platforms.value.filter((platform) => availablePlatforms.value.includes(platform)) })
 watch(includeComments, (enabled) => { if (!enabled) includeSubComments.value = false })
 function togglePlatform(platform: CollectionPlatform): void {
@@ -87,6 +135,11 @@ async function submit(): Promise<void> {
   if (mode.value === 'content_supplement') {
     const created = await supplement.create()
     if (created) emit('created', created)
+    return
+  }
+  if (mode.value === 'account_discovery') {
+    if (!accountConfirmation.value) { accountConfirmation.value = true; return }
+    if (accountRequest.value) emit('submit', accountRequest.value)
     return
   }
   emit('submit', {
@@ -137,6 +190,14 @@ async function submit(): Promise<void> {
         >
           按发布时间补采
         </button>
+        <button
+          type="button"
+          :class="{ active: mode === 'account_discovery' }"
+          :disabled="busy"
+          @click="mode = 'account_discovery'"
+        >
+          按账号补采
+        </button>
       </nav>
       <AimaFeedbackBanner
         v-if="error"
@@ -163,10 +224,16 @@ async function submit(): Promise<void> {
         <CollectionSupplementOptions :state="supplement" />
       </template>
       <template v-else>
-        <AimaFeedbackBanner tone="info">
+        <AimaFeedbackBanner
+          v-if="mode === 'discovery'"
+          tone="info"
+        >
           关键词包提供搜索词；内容入库前按冻结的品牌与车型目录过滤。
         </AimaFeedbackBanner>
-        <section class="form-card">
+        <section
+          v-if="mode === 'discovery'"
+          class="form-card"
+        >
           <label>搜索条件 · 关键词包（至少选择一项）</label>
           <label
             v-for="pack in keywordPacks"
@@ -181,7 +248,10 @@ async function submit(): Promise<void> {
             当前没有可用的已启用词包。请先在“采集策略”创建并启用至少一个词包。
           </p>
         </section>
-        <section class="form-card brand-card">
+        <section
+          v-if="mode === 'discovery'"
+          class="form-card brand-card"
+        >
           <fieldset>
             <legend>内容过滤条件 · 品牌</legend><label><input
               v-model="brandScope"
@@ -202,6 +272,20 @@ async function submit(): Promise<void> {
             v-if="brandScope === 'selected' && selectedBrandIds.length === 0"
             role="status"
           >请至少选择一个品牌，或改为全部启用品牌。</small>
+        </section>
+        <section
+          v-if="mode === 'account_discovery'"
+          class="form-card"
+        >
+          <label>账号作品发布时间 · 北京时间</label>
+          <AimaDateRange
+            :from="publishedFrom"
+            :to="publishedTo"
+            label="账号作品发布时间"
+            :disabled="busy"
+            @update:range="publishedRange = $event"
+          />
+          <small>包含开始日和结束日全天，遍历可访问作品。账号归属及日期符合的笔记都会入库。</small>
         </section>
         <section class="form-card">
           <label for="provider-select">采集渠道</label><select
@@ -236,7 +320,7 @@ async function submit(): Promise<void> {
                 <strong>{{ platformLabels[platform] }}</strong><span>{{ platforms.includes(platform) ? provider?.display_name : '点击选择' }}</span>
               </button>
               <CollectionSearchConfigFields
-                v-if="platforms.includes(platform) && searchCapability(platform) && searchConfigByPlatform[platform]"
+                v-if="mode === 'discovery' && platforms.includes(platform) && searchCapability(platform) && searchConfigByPlatform[platform]"
                 :model-value="searchConfigByPlatform[platform]!"
                 :capability="searchCapability(platform)!"
                 :platform-label="platformLabels[platform]"
@@ -244,6 +328,68 @@ async function submit(): Promise<void> {
               />
             </div>
           </div>
+        </section>
+        <section
+          v-if="mode === 'account_discovery'"
+          class="form-card account-fields"
+        >
+          <label>目标账号（每个已选平台至少一个，可添加多个）</label>
+          <div
+            v-for="platform in platforms"
+            :key="platform"
+            class="account-platform"
+          >
+            <strong>{{ platformLabels[platform] }}</strong>
+            <div
+              v-for="(account, index) in accounts"
+              :key="index"
+            >
+              <div
+                v-if="account.platform === platform"
+                class="account-row"
+              >
+                <label>账号类型<select
+                  v-model="account.account_id_type"
+                  :disabled="busy"
+                >
+                  <option
+                    v-for="idType in accountCapability(platform)?.supported_id_types"
+                    :key="idType"
+                    :value="idType"
+                  >{{ accountIdLabels[idType] }}</option>
+                </select></label>
+                <label>账号 ID<input
+                  v-model="account.account_id"
+                  :aria-label="`${platformLabels[platform]}账号 ID`"
+                  :disabled="busy"
+                  maxlength="256"
+                ></label>
+                <label>昵称（可选）<input
+                  v-model="account.nickname"
+                  :aria-label="`${platformLabels[platform]}昵称`"
+                  :disabled="busy"
+                  maxlength="256"
+                ></label>
+                <AimaButton
+                  variant="text"
+                  size="small"
+                  :disabled="busy"
+                  @click="accounts.splice(index, 1)"
+                >
+                  删除账号
+                </AimaButton>
+              </div>
+            </div>
+            <AimaButton
+              variant="secondary"
+              size="small"
+              :disabled="busy"
+              @click="addAccount(platform)"
+            >
+              添加{{ platformLabels[platform] }}账号
+            </AimaButton>
+          </div>
+          <small>按声明的 ID 精确核验账号；昵称用于辅助识别。重复账号、空 ID 或缺少平台账号时无法创建。</small>
         </section>
         <section class="form-card content-card">
           <label>采集内容</label><div class="content-options">
@@ -264,6 +410,15 @@ async function submit(): Promise<void> {
         <AimaFeedbackBanner tone="warning">
           默认采集全部可访问的一级评论和二级回复，可能增加请求次数、费用和耗时；可取消评论或二级回复。达到分页上限或接口不可访问时会标记采集缺口。
         </AimaFeedbackBanner>
+        <AimaFeedbackBanner
+          v-if="mode === 'account_discovery' && accountConfirmation && accountRequest?.account_selection"
+          tone="warning"
+          role="status"
+        >
+          即将采集 {{ normalizedAccounts.length }} 个账号，发布时间 {{ publishedFrom }} 至 {{ publishedTo }}。
+          {{ includeComments ? includeSubComments ? '包含全部可访问评论与二级回复。' : '包含全部可访问一级评论。' : '仅采集作品详情。' }}
+          请求次数取决于作品与评论分页，会产生接口费用。确认后创建任务。
+        </AimaFeedbackBanner>
       </template>
     </div>
     <template #footer>
@@ -280,7 +435,7 @@ async function submit(): Promise<void> {
           :disabled="!canSubmit"
           @click="submit"
         >
-          {{ busy ? '创建中…' : '创建补采任务' }}
+          {{ busy ? '创建中…' : mode === 'account_discovery' ? accountConfirmation ? '确认创建账号任务' : '核对账号与费用' : '创建补采任务' }}
         </AimaButton>
       </footer>
     </template>
@@ -317,6 +472,10 @@ select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .platform-option button > span + span { color: var(--aima-text-muted); font-size: 11px; }
 .platform-search-fields { margin-top: 12px; }
 .brand-card { min-height: 114px; }
+.account-platform { display: grid; gap: 8px; margin: 12px 0; }
+.account-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.account-row label { color: var(--aima-text-secondary); font-size: 12px; }
+.account-row input { box-sizing: border-box; width: 100%; height: 32px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-lg); padding: 0 8px; background: var(--aima-surface); color: var(--aima-text); }
 .brand-card fieldset { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 12px; padding: 0; border: 0; }
 .brand-card legend { width: 100%; margin-bottom: 2px; color: var(--aima-text); font-size: 13px; font-weight: 500; }
 .brand-card fieldset label { display: inline-flex; align-items: center; gap: 5px; color: var(--aima-text-secondary); font-size: 12px; }
@@ -329,5 +488,5 @@ select:disabled { color: var(--aima-text-secondary); opacity: 1; }
 .dialog-footer { display: flex; height: 72px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 24px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
 .dialog-footer :deep(.aima-button.is-primary) { min-width: 136px; }
 .dialog-footer :deep(.aima-button.is-secondary) { min-width: 88px; }
-@media (max-width: 600px) { .platform-grid, .content-options { grid-template-columns: 1fr; } .section-title-row { flex-wrap: wrap; } }
+@media (max-width: 600px) { .platform-grid, .content-options, .account-row { grid-template-columns: 1fr; } .section-title-row { flex-wrap: wrap; } }
 </style>

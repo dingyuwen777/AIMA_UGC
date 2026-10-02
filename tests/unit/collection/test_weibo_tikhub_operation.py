@@ -134,12 +134,12 @@ def test_account_extractors_and_since_id_pagination_handle_nested_response() -> 
     assert next_page.should_continue is True
     assert next_page.next_since_id == "cursor-2"
 
-    exhausted = WeiboUserPostsPagination.from_response(
+    page_number_only = WeiboUserPostsPagination.from_response(
         previous_since_id="cursor-2",
         body={"data": {"data": {"statuses": [post], "since_id": ""}}},
     )
-    assert exhausted.should_continue is False
-    assert exhausted.stop_reason == "provider_exhausted"
+    assert page_number_only.should_continue is True
+    assert page_number_only.next_since_id == ""
 
 
 def test_detail_and_first_level_comments_use_current_status_id_parameter() -> None:

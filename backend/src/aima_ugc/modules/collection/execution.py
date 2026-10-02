@@ -87,6 +87,7 @@ class CollectionExecution:
 
     run: CollectionRunRecord
     scopes: tuple[CollectionScopeRecord, ...]
+    retry_available: bool = True
 
 
 class CollectionExecutionRepository(Protocol):

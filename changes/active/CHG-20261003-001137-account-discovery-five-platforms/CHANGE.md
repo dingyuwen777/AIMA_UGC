@@ -149,7 +149,7 @@ Raw/Canonical/Owner、Job Fencing/恢复、业务身份/来源、历史快照、
 | R7 | 默认 Full、500/30、真实 partial | #698 / AC7 | not_satisfied | 待账号接线回归 |
 | R8 | 账号运行类型、进度、失败隔离 | #698 / AC8 | not_satisfied | 待 UI/PG |
 | R9 | 第三 Tab 多账号和确认交互 | #698 / AC9 | not_satisfied | 待 Browser |
-| R10 | 声音广场/详情/导出/主动分析 | #698 / AC10 | not_satisfied | 待实链反向审计 |
+| R10 | 声音广场/详情/导出/报告/工作台及主动分析 | #698 / AC10 | not_satisfied | 账号来源按既有资格与筛选语义供全部消费者读取；AI 派生统计仅在主动分析后可用，待实链反向审计 |
 | R11 | 本机真实 Provider 证据及边界 | #698 / AC11 | not_satisfied | 本机探测进行中 |
 | R12 | 分层验收、文档、Review 与交付 | #698 / AC12 | not_satisfied | 待取得 |
 
@@ -210,7 +210,7 @@ pytest unit/contracts/api、目标真实 PG、frontend test/lint/typecheck/build
 
 - [ ] upstream_re_read：完成前重新读取 #698 及正式上游。
 - [ ] change_coverage：AC1–AC12 全部有直接证据。
-- [ ] reverse_audit：后端能力→前端动作→任务→入库→结果/评论/分析入口。
+- [ ] reverse_audit：后端能力→前端动作→任务→入库→声音广场/评论/导出/报告/工作台；基础内容按既有读模型与筛选读取，AI 派生统计必须经过用户主动 Analysis Run，不强制无品牌 Evidence 的内容进入爱玛默认筛选。
 - [ ] unresolved_cleared：所有 not_satisfied 清零。
 
 # 完成证据与状态
@@ -221,6 +221,10 @@ pytest unit/contracts/api、目标真实 PG、frontend test/lint/typecheck/build
 | --- | --- | --- | --- | --- |
 | V1 | 基线 624d3178，本机安全 Secret | 五平台有界官方价格与账号结构探测 | 主作品结构可映射，微博分页偏差，快手搜索失败 | 进入正式实现前事实，非最终验收 |
 | V2 | 624d3178 + 新 Contract/分页测试，本地 Python 3.14.7 | pytest tests/contracts/test_collection_account_discovery.py tests/unit/collection/test_account_discovery_pagination.py -q | 10 failed、10 passed | 正式模式/字段不存在；微博非空页空 since_id 错误结束，Red 可复现 |
+| V3 | 当前 WIP，隔离 PostgreSQL 18.4 | test_collection_account_discovery + test_stage8e_collection_http_runtime | 111 passed；后续人工重试和取消定向回归通过 | 五平台 Full 500/30、Raw 恢复、正常/重试第二页、账号失败隔离；不是最终 current-head 全量验收 |
+| V4 | 当前 WIP，本机 API/Fixture Worker/PG/Chrome | 第三个账号入口四 Scope Full-stack Journey | 1 passed | XHS2/DY1/WB1 实际执行、根/回复、Source筛选、无自动AI、主动分析4条成功、导出4条、报告预检4条/8评论、工作台4条 |
+| V5 | 当前 WIP | backend unit/contracts、frontend lint/typecheck/unit、CollectionRuntime browser | 1938 passed/16 skipped/12 subtests；305 frontend passed；20 browser passed | 公共行为、原入口保留和第三并列账号入口；后续修复仍须受影响复跑 |
+| V6 | 当前 WIP，确定性 PG | 完成提交窗口取消；人工重试详情失败账号 | Red 取消 status/stage 冲突、部分账号 Canonical 不一致；修复后 3 passed | Job 终态统一取消裁决；账号作品与详情各自不可变，成功 Raw 不重复发送，失败详情新 Attempt |
 
 ## 未验证内容与剩余风险
 
@@ -228,8 +232,8 @@ pytest unit/contracts/api、目标真实 PG、frontend test/lint/typecheck/build
 
 ## 交付状态
 
-- 提交：初始治理/Red 待形成。
-- 拉取请求：初始提交首次 push 后尽早建立 Draft。
+- 提交：治理/Red 247a1ac3；本次形成可审查实现 checkpoint，仍为开发状态。
+- 拉取请求：#699 Draft，关联 #698；实现未 Ready。
 - CI：未取得。
 - 合并：未合并。
 - Change 归档：合并后原生 Workflow。

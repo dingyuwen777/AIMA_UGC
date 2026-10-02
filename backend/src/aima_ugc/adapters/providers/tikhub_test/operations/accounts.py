@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from aima_ugc.adapters.providers.tikhub import account_runtime
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
+from aima_ugc.adapters.providers.tikhub.account_identity import _kuaishou_identity_from_mapping
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
 from aima_ugc.adapters.providers.tikhub_test.core.config import TikHubTestConfig
 from aima_ugc.adapters.providers.tikhub_test.core.core import default_run_id
@@ -1830,37 +1831,6 @@ def _platform_homepage_id(homepage_url: str, platform: str) -> str:
 
 def _kuaishou_reference_from_homepage(homepage_url: str) -> str:
     return _platform_homepage_id(homepage_url, "kuaishou")
-
-
-def _kuaishou_identity_from_mapping(raw: Mapping[str, object]) -> dict[str, str]:
-    queue: list[Mapping[str, object]] = [raw]
-    seen: set[int] = set()
-    result: dict[str, str] = {}
-    aliases = {
-        "user_id": ("userId", "user_id", "userid"),
-        "eid": ("eid", "userEid", "user_eid"),
-        "kuaishou_id": ("kwaiId", "kwai_id", "kwaiid", "kuaishouId"),
-        "nickname": ("userName", "user_name", "name", "nickname"),
-    }
-    while queue and len(seen) < 64:
-        current = queue.pop(0)
-        marker = id(current)
-        if marker in seen:
-            continue
-        seen.add(marker)
-        for result_key, source_keys in aliases.items():
-            if result_key in result:
-                continue
-            for source_key in source_keys:
-                value = current.get(source_key)
-                if isinstance(value, bool) or value is None:
-                    continue
-                text = str(value).strip()
-                if text:
-                    result[result_key] = text
-                    break
-        queue.extend(value for value in current.values() if isinstance(value, Mapping))
-    return result
 
 
 def _kuaishou_account_candidate_matches(

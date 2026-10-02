@@ -12,6 +12,14 @@ from zoneinfo import ZoneInfo
 
 from aima_ugc.adapters.providers.tikhub import account_runtime
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
+from aima_ugc.adapters.providers.tikhub.account_identity import (
+    ResolvedXiaohongshuAccount,
+    XiaohongshuAccountResolutionError,
+    XiaohongshuAccountTarget,
+    _nickname_matches,
+    _object_string,
+    resolve_account_candidate,
+)
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
 from aima_ugc.adapters.providers.tikhub_test.core.config import TikHubTestConfig
 from aima_ugc.adapters.providers.tikhub_test.core.core import default_run_id
@@ -34,43 +42,6 @@ _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 _ACCOUNT_CACHE_SCHEMA = "tikhub-test-account-cache.v1"
 _NORMAL_PAGINATION_STOP_REASONS = frozenset({"provider_exhausted", "empty_page"})
 CommentMode = Literal["limited", "all"]
-ResolutionReason = Literal["not_found", "ambiguous", "incomplete", "identity_mismatch"]
-
-
-@dataclass(frozen=True, slots=True)
-class XiaohongshuAccountTarget:
-    """人工配置的小红书账号目标；稳定身份优先级为 user_id > red_id > nickname。"""
-
-    nickname: str | None = None
-    red_id: str | None = None
-    user_id: str | None = None
-
-    def __post_init__(self) -> None:
-        """去除配置空白并拒绝完全没有定位信息的账号。"""
-        object.__setattr__(self, "nickname", _normalized_optional(self.nickname))
-        object.__setattr__(self, "red_id", _normalized_optional(self.red_id))
-        object.__setattr__(self, "user_id", _normalized_optional(self.user_id))
-        if self.nickname is None and self.red_id is None and self.user_id is None:
-            raise ValueError("小红书账号至少提供 nickname、red_id 或 user_id 之一")
-
-
-@dataclass(frozen=True, slots=True)
-class ResolvedXiaohongshuAccount:
-    """完成消歧后可安全用于付费用户笔记请求的稳定账号身份。"""
-
-    user_id: str
-    red_id: str | None
-    nickname: str | None
-    nickname_matches: bool | None
-
-
-class XiaohongshuAccountResolutionError(ValueError):
-    """账号无法安全解析时的失败；reason 用于决定是否允许备用搜索词。"""
-
-    def __init__(self, message: str, *, reason: ResolutionReason) -> None:
-        """保存稳定失败分类，供账号解析流程决定是否继续备用搜索。"""
-        super().__init__(message)
-        self.reason = reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,67 +155,6 @@ class _AccountResolutionCache:
         )
         temporary.replace(self.path)
         return self.path
-
-
-def resolve_account_candidate(
-    target: XiaohongshuAccountTarget,
-    candidates: Sequence[dict[str, Any]],
-) -> ResolvedXiaohongshuAccount:
-    """按稳定身份消歧账号；red_id 精确匹配优先，昵称歧义时拒绝猜测。"""
-    identities: dict[str, ResolvedXiaohongshuAccount] = {}
-    for raw in candidates:
-        candidate = _resolved_candidate(target, raw)
-        if candidate is not None:
-            identities[candidate.user_id] = candidate
-    values = tuple(identities.values())
-
-    if target.user_id is not None:
-        matches = tuple(item for item in values if item.user_id == target.user_id)
-        if len(matches) == 1:
-            candidate = matches[0]
-            if target.red_id is not None and candidate.red_id not in {None, target.red_id}:
-                raise XiaohongshuAccountResolutionError(
-                    f"user_id={target.user_id} 返回的 red_id 与配置不一致",
-                    reason="identity_mismatch",
-                )
-            return candidate
-        if len(matches) > 1:
-            raise XiaohongshuAccountResolutionError(
-                f"user_id={target.user_id} 候选不唯一",
-                reason="ambiguous",
-            )
-        raise XiaohongshuAccountResolutionError(
-            f"未找到 user_id={target.user_id} 的账号候选",
-            reason="not_found",
-        )
-
-    if target.red_id is not None:
-        matches = tuple(item for item in values if item.red_id == target.red_id)
-        if len(matches) == 1:
-            return matches[0]
-        if len(matches) > 1:
-            raise XiaohongshuAccountResolutionError(
-                f"小红书号 {target.red_id} 候选不唯一",
-                reason="ambiguous",
-            )
-        raise XiaohongshuAccountResolutionError(
-            f"未找到小红书号 {target.red_id} 的精确账号候选",
-            reason="not_found",
-        )
-
-    assert target.nickname is not None
-    matches = tuple(item for item in values if item.nickname == target.nickname)
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        raise XiaohongshuAccountResolutionError(
-            f"昵称 {target.nickname} 候选不唯一，必须补充小红书号或 user_id",
-            reason="ambiguous",
-        )
-    raise XiaohongshuAccountResolutionError(
-        f"未找到昵称 {target.nickname} 的精确账号候选",
-        reason="not_found",
-    )
 
 
 class _XiaohongshuAccountRunner(_TikHubDebugRunner):
@@ -850,34 +760,6 @@ def run_xiaohongshu_accounts(
     ).run()
 
 
-def _resolved_candidate(
-    target: XiaohongshuAccountTarget,
-    raw: dict[str, Any],
-) -> ResolvedXiaohongshuAccount | None:
-    """把 Provider 用户候选规范化为稳定身份；缺 user_id 的候选不可用于后续付费请求。"""
-    user = _unwrap_user(raw)
-    user_id = _first_string(user, "user_id", "userid", "userId", "id")
-    if user_id is None:
-        return None
-    red_id = _first_string(user, "red_id", "redId")
-    nickname = _first_string(user, "nickname", "nick_name", "name")
-    return ResolvedXiaohongshuAccount(
-        user_id=user_id,
-        red_id=red_id,
-        nickname=nickname,
-        nickname_matches=_nickname_matches(target.nickname, nickname),
-    )
-
-
-def _unwrap_user(raw: dict[str, Any]) -> dict[str, Any]:
-    """兼容搜索候选和用户详情中的常见用户 wrapper。"""
-    for key in ("user", "user_info", "userInfo", "profile"):
-        value = raw.get(key)
-        if isinstance(value, dict):
-            return value
-    return raw
-
-
 def _resolution_queries(target: XiaohongshuAccountTarget) -> tuple[str, ...]:
     """优先用稳定小红书号搜索，未命中且有昵称时再做经过 red_id 复核的备用搜索。"""
     values: list[str] = []
@@ -943,39 +825,6 @@ def _increment(summary: dict[str, object], key: str) -> None:
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeError(f"账号摘要计数器 {key} 结构非法")
     summary[key] = value + 1
-
-
-def _nickname_matches(configured: str | None, actual: str | None) -> bool | None:
-    """昵称只做辅助核验；缺任一侧时返回未知，不覆盖稳定身份。"""
-    if configured is None or actual is None:
-        return None
-    return configured == actual
-
-
-def _first_string(raw: dict[str, Any], *keys: str) -> str | None:
-    """从 Provider 用户对象中读取第一个非空字符串字段。"""
-    for key in keys:
-        if key in raw:
-            value = _object_string(raw[key])
-            if value is not None:
-                return value
-    return None
-
-
-def _object_string(value: object) -> str | None:
-    """把可序列化标量规范化为去空白字符串。"""
-    if value is None:
-        return None
-    normalized = str(value).strip()
-    return normalized or None
-
-
-def _normalized_optional(value: str | None) -> str | None:
-    """把人工配置中的空字符串归一为 None。"""
-    if value is None:
-        return None
-    normalized = value.strip()
-    return normalized or None
 
 
 def _parse_date(value: date | str, field_name: str) -> date:

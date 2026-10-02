@@ -248,3 +248,16 @@ def test_comment_pagination_decodes_json_encoded_cursor_state() -> None:
     )
     assert next_sub_request.params["cursor"] == "sub-comment-cursor-2"
     assert next_sub_request.params["index"] == 3
+
+
+def test_video_detail_selects_requested_note_and_excludes_recommendations() -> None:
+    """真实视频详情会返回推荐笔记；其身份不能污染请求目标。"""
+    from aima_ugc.adapters.providers.tikhub.runtime import extract_detail_items
+
+    target = {"id": "requested-note", "title": "目标"}
+    recommendation = {"id": "recommended-note", "title": "推荐"}
+    body = {"data": {"data": [target, recommendation]}}
+    assert extract_detail_items("xiaohongshu", body, external_content_id="requested-note") == (
+        target,
+    )
+    assert extract_detail_items("xiaohongshu", body, external_content_id="missing-note") == ()

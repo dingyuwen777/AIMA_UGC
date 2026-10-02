@@ -7,10 +7,12 @@ from threading import Lock
 from uuid import UUID
 
 from pydantic import SecretStr
+from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
+from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
     PostgresCollectionRunExecutionGateway,
 )
@@ -72,6 +74,7 @@ from aima_ugc.modules.workbench.jobs import (
 )
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
+from aima_ugc.platform.jobs.models import JobRecord
 from aima_ugc.platform.security import read_secret_file, validate_secret_ref
 from aima_ugc.platform.storage import ArtifactService
 
@@ -223,7 +226,11 @@ def create_collection_job_registry(
         scope_executor=scope_executor,
     )
     registry = JobRegistry()
-    register_collection_run_job(registry, CollectionRunJobHandler(executor))
+    register_collection_run_job(
+        registry,
+        CollectionRunJobHandler(executor),
+        terminal_callback=collection_job_terminal_callback,
+    )
     register_import_job(
         registry,
         ImportJobHandler(PostgresImportJobExecutor(runtime)),
@@ -325,6 +332,13 @@ def create_collection_job_registry(
         registry, generate=report_executor.generate, publish=report_executor.publish
     )
     return registry
+
+
+def collection_job_terminal_callback(session: Session, job: JobRecord) -> None:
+    """共享 Job Worker/Reaper 的同一终态事务结清账号采集业务状态。"""
+    PostgresCollectionRepository(session).settle_account_job_terminal(
+        job.id, status=job.status, error_code=job.error_code
+    )
 
 
 def create_job_worker(

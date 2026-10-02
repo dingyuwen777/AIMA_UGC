@@ -1,6 +1,7 @@
 import {
   cancelAndRevokeAllCanonicalReplays,
   cancelDataImportCampaign,
+  cancelCollectionRun,
   createCollectionRun,
   createLocalDataImportCampaign,
   createServerDataImportCampaign,
@@ -23,6 +24,7 @@ import {
   listKeywordPacks,
   previewDataImportCampaignRevocation,
   retryDataImportCampaignFailedItems,
+  retryCollectionRunFailedAccounts,
   revokeDataImportCampaign,
   revokeAllCanonicalReplays,
   startDataImportCampaign,
@@ -162,6 +164,14 @@ export async function createTikHubCollectionRun(
 
 export async function fetchCollectionRunDetail(runId: string): Promise<CollectionRunResponse> {
   return unwrap(await getCollectionRun(runId))
+}
+
+export async function retryAccountCollectionRun(runId: string): Promise<CollectionRunResponse> {
+  return unwrap(await retryCollectionRunFailedAccounts(runId))
+}
+
+export async function cancelAccountCollectionRun(runId: string): Promise<CollectionRunResponse> {
+  return unwrap(await cancelCollectionRun(runId))
 }
 
 export interface SupplementEligibilitySnapshot {

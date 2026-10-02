@@ -170,6 +170,7 @@ def test_create_discovery_collection_run_returns_202() -> None:
         "published_from": None,
         "published_to": None,
         "supplement_selection": None,
+        "account_selection": None,
         "status": "queued",
     }
 

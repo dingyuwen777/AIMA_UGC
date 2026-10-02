@@ -388,7 +388,9 @@ class _TikHubDebugRunner:
                     )
                     return
                 raise
-            detail_items = tikhub_runtime.extract_detail_items(self.platform, detail_body)
+            detail_items = tikhub_runtime.extract_detail_items(
+                self.platform, detail_body, external_content_id=search_content.external_content_id
+            )
             mapped_details: list[tuple[CanonicalContentV1, str]] = []
             for index, detail_item in enumerate(detail_items):
                 if self.platform == "kuaishou":

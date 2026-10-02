@@ -162,9 +162,9 @@ class KuaishouUserPostsPagination:
 
 @dataclass(frozen=True, slots=True)
 class KuaishouUserSearchPagination:
-    """用户搜索 V2 按包含用户列表的 envelope.pcursor 推进。"""
+    """用户搜索 V2 使用官方页号参数，响应游标仅用于识别耗尽。"""
 
-    next_cursor: str
+    next_page: int
     should_continue: bool
     stop_reason: str | None = None
 
@@ -172,23 +172,19 @@ class KuaishouUserSearchPagination:
     def from_response(
         cls,
         *,
-        previous_cursor: str,
+        current_page: int,
         body: dict[str, Any],
     ) -> KuaishouUserSearchPagination:
         container, items = _find_user_search_container(body)
         if container is None:
-            return cls(previous_cursor, False, "response_data_unavailable")
+            return cls(current_page, False, "response_data_unavailable")
         returned = container.get("pcursor")
-        next_cursor = str(returned).strip() if returned is not None else previous_cursor
+        next_cursor = str(returned).strip() if returned is not None else ""
         if not items:
-            return cls(next_cursor, False, "empty_page")
-        if returned is None or not next_cursor:
-            return cls(previous_cursor, False, "cursor_unavailable")
-        if _is_terminal_pcursor(next_cursor):
-            return cls(next_cursor, False, "provider_exhausted")
-        if next_cursor == previous_cursor:
-            return cls(next_cursor, False, "pagination_not_advanced")
-        return cls(next_cursor, True)
+            return cls(current_page, False, "empty_page")
+        if _is_terminal_pcursor(next_cursor) or container.get("has_more") is False:
+            return cls(current_page, False, "provider_exhausted")
+        return cls(current_page + 1, True)
 
 
 def build_search_request(*, keyword: str, pcursor: str = "") -> KuaishouRequest:
@@ -239,17 +235,16 @@ def build_user_profile_request(*, user_id: str) -> KuaishouRequest:
     )
 
 
-def build_user_search_request(*, keyword: str, pcursor: str = "") -> KuaishouRequest:
+def build_user_search_request(*, keyword: str, page: int = 1) -> KuaishouRequest:
     """构造快手用户 V2 搜索，用于快手号/昵称解析数字 userId。"""
+    if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+        raise ValueError("page 必须是正整数")
     return KuaishouRequest(
         method="GET",
         path=_USER_SEARCH_PATH,
         params={
             "keyword": _required_text(keyword, "keyword"),
-            "pcursor": pcursor,
-            "user_relation": "all",
-            "user_gender": "all",
-            "fans_sort": "default",
+            "page": str(page),
         },
     )
 
@@ -398,7 +393,11 @@ def extract_sub_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...
 
 def extract_user_profile(body: dict[str, Any]) -> dict[str, Any]:
     """从用户 V2 响应中提取包含 userId/user_id 的身份对象。"""
-    queue: list[dict[str, Any]] = [body]
+    # Envelope 的 params.user_id 是请求回显，不能作为 Provider 返回的身份。
+    data = body.get("data")
+    if not isinstance(data, dict):
+        raise ValueError("快手用户 V2 响应缺少 data")
+    queue: list[dict[str, Any]] = [data]
     seen: set[int] = set()
     while queue and len(seen) < 64:
         current = queue.pop(0)
@@ -492,7 +491,7 @@ def _find_user_search_container(
             items = tuple(
                 item for item in value if isinstance(item, dict) and _is_user_search_item(item)
             )
-            if items or (not value and "pcursor" in current):
+            if items or not value:
                 return current, items
         queue.extend(value for value in current.values() if isinstance(value, dict))
     return None, ()

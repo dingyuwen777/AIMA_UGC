@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -120,6 +121,113 @@ class PostgresCollectionRepository:
             )
         ).mappings()
         return [_row_to_scope(row) for row in rows]
+
+    def prepare_account_retry(self, run_id: UUID, *, requested_at: datetime) -> None:
+        """仅重开失败或部分完成账号，保留成功 Scope 和所有请求/来源事实。"""
+        run = self._lock_run(run_id)
+        if run["status"] not in {"failed", "partial_success"}:
+            raise ValueError("account run must be failed or partial before retry")
+        scopes = self.list_scopes(run_id)
+        targets = [scope for scope in scopes if scope.status in {"failed", "partial_success"}]
+        if not targets or any(scope.source_type != "account" for scope in scopes):
+            raise ValueError("account run has no retryable scopes")
+        for scope in targets:
+            # 从第一页重放成功 Raw，补齐该账号失败项；私有恢复元数据不参与请求身份。
+            state = {
+                key: value
+                for key, value in scope.pagination_state.items()
+                if key in {"_account_identity", "_account_search_identity", "_account_candidates"}
+            }
+            state["_account_manual_retry_after"] = requested_at.isoformat()
+            stats = dict(scope.stats)
+            stats.update(
+                technical_partial_results=0,
+                search_pages=0,
+                search_items=0,
+                posts_discovered=0,
+                filtered_content_count=0,
+                comment_coverage=None,
+                comment_stage=None,
+                account_stage="resolving",
+            )
+            self._session.execute(
+                update(collection_scopes_table)
+                .where(collection_scopes_table.c.id == scope.id)
+                .values(
+                    status="queued",
+                    progress=0,
+                    stop_reason=None,
+                    finished_at=None,
+                    pagination_state=state,
+                    stats=stats,
+                )
+            )
+        self._session.execute(
+            update(collection_runs_table)
+            .where(collection_runs_table.c.id == run_id)
+            .values(status="queued", finished_at=None, error_summary=None)
+        )
+
+    def settle_account_job_terminal(
+        self, job_id: UUID, *, status: str, error_code: str | None
+    ) -> None:
+        """取消或 Job 非正常终止时，在既有终态事务结清账号 Run/Scope。"""
+        run = self.get_run_by_job_id(job_id)
+        if run is None or run.config_snapshot.get("mode") != "account_discovery":
+            return
+        current = self._lock_run(run.id)
+        if current["status"] in _RUN_TERMINAL_STATUSES:
+            if status == "cancelled" and current["status"] != "cancelled":
+                # Run 先提交、Job 后结算的窗口中取消胜出；保留已完成 Scope 与业务事实。
+                self._session.execute(
+                    update(collection_runs_table)
+                    .where(collection_runs_table.c.id == run.id)
+                    .values(
+                        status="cancelled",
+                        finished_at=func.clock_timestamp(),
+                        error_summary=error_code or "cancelled",
+                    )
+                )
+            return
+        if status not in {"failed", "cancelled"}:
+            return
+        scopes = self.list_scopes(run.id)
+        self._session.execute(
+            update(collection_scopes_table)
+            .where(
+                collection_scopes_table.c.run_id == run.id,
+                collection_scopes_table.c.status.in_(("queued", "running")),
+            )
+            .values(
+                status=status, stop_reason=error_code or status, finished_at=func.clock_timestamp()
+            )
+        )
+        counts = {
+            key: sum(
+                value
+                for scope in scopes
+                if isinstance(value := scope.stats.get(key), int)
+                and not isinstance(value, bool)
+                and value >= 0
+            )
+            for key in (
+                "requested_count",
+                "succeeded_count",
+                "failed_count",
+                "content_count",
+                "comment_count",
+            )
+        }
+        self._session.execute(
+            update(collection_runs_table)
+            .where(collection_runs_table.c.id == run.id)
+            .values(
+                status=status,
+                finished_at=func.clock_timestamp(),
+                error_summary=error_code or status,
+                **counts,
+            )
+        )
 
     def start_run(self, run_id: UUID) -> CollectionRunRecord:
         """把 queued Run 推进到 running；同一 running Run 可安全重入。"""

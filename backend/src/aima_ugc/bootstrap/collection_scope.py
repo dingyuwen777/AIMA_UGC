@@ -43,6 +43,15 @@ from aima_ugc.adapters.persistence.postgres.provider_dispatch import (
     PostgresProviderRecoveryPersistence,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
+from aima_ugc.adapters.providers.tikhub import account_runtime
+from aima_ugc.adapters.providers.tikhub.account_identity import (
+    AccountIdentityError,
+    ResolvedAccountIdentity,
+    account_search_identity_facts,
+    direct_account_identity,
+    resolve_profile_identity,
+    resolve_search_identity,
+)
 from aima_ugc.adapters.providers.tikhub.capabilities import TIKHUB_PLATFORM_CAPABILITIES
 from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 from aima_ugc.adapters.providers.tikhub.runtime import (
@@ -78,7 +87,12 @@ from aima_ugc.contracts.collection import (
     ProviderPlatformCapabilityV1,
     ReplyDecisionRequestV1,
 )
+from aima_ugc.contracts.http import (
+    CollectionAccountDiscoverySelection,
+    CollectionAccountTargetRequest,
+)
 from aima_ugc.contracts.provider import JsonObject, ProviderRequestV1
+from aima_ugc.modules.collection.account_discovery import account_content_admission
 from aima_ugc.modules.collection.collection_run_executor import (
     CollectionScopeExecutionResult,
     CollectionScopeRetryableError,
@@ -142,6 +156,7 @@ _RETRYABLE_HTTP_STATUSES = {408, 425, 429}
 _UNAVAILABLE_COMMENT_REASONS = {
     "comments_operation_unavailable",
     "comments_unavailable",
+    "detail_unavailable",
 }
 _PROVIDER_TERMINAL_STOP_REASONS = {"provider_exhausted", "empty_page"}
 _EXPECTED_PARTIAL_STOP_REASONS = {
@@ -200,6 +215,7 @@ class _PreparedSearchContent:
     final_content: CanonicalContentV1
     search_candidate_id: UUID
     prefetched_details: tuple[_DetailCandidate, ...] = ()
+    detail_unavailable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,6 +268,9 @@ class _ScopeStats:
     comment_coverage: str | None = None
     identity_status: str | None = None
     comment_stage: str | None = None
+    account_stage: str | None = None
+    posts_discovered: int = 0
+    posts_admitted: int = 0
 
     @classmethod
     def from_payload(cls, payload: dict[str, object]) -> _ScopeStats:
@@ -273,6 +292,13 @@ class _ScopeStats:
                 "technical_partial_results",
             ),
             filtered_content_count=_payload_int(payload, "filtered_content_count"),
+            account_stage=(
+                cast(str, payload["account_stage"])
+                if payload.get("account_stage") in {"resolving", "posts", "finished"}
+                else None
+            ),
+            posts_discovered=_payload_int(payload, "posts_discovered"),
+            posts_admitted=_payload_int(payload, "posts_admitted"),
             comment_coverage=(
                 cast(str, payload["comment_coverage"])
                 if payload.get("comment_coverage")
@@ -300,6 +326,8 @@ class _ScopeStats:
         self.comment_count = counts.comment_count
         self.root_comment_count = counts.root_comment_count
         self.reply_count = counts.reply_count
+        if self.account_stage is not None:
+            self.posts_admitted = counts.content_count
 
     def payload(self) -> dict[str, object]:
         return {
@@ -321,6 +349,9 @@ class _ScopeStats:
             "comment_coverage": self.comment_coverage,
             "identity_status": self.identity_status,
             "comment_stage": self.comment_stage,
+            "account_stage": self.account_stage,
+            "posts_discovered": self.posts_discovered,
+            "posts_admitted": self.posts_admitted,
         }
 
 
@@ -369,10 +400,11 @@ class TikHubCollectionScopeExecutor:
         is_discovery = (
             scope.source_type == "keyword_search" and scope.operation_group == "content_discovery"
         )
+        is_account = scope.source_type == "account" and scope.operation_group == "content_discovery"
         is_enrichment = (
             scope.source_type == "content" and scope.operation_group == "content_enrichment"
         )
-        if not is_discovery and not is_enrichment:
+        if not is_discovery and not is_enrichment and not is_account:
             raise ValueError("TikHub Scope Runtime 不支持当前 source_type/operation_group")
 
         _validate_decision_policy(run)
@@ -400,8 +432,39 @@ class TikHubCollectionScopeExecutor:
         stop_reason: str | None = None
         first_page_no = max(1, scope.progress + 1)
         current_page_no = first_page_no
+        account_selection = (
+            CollectionAccountDiscoverySelection.model_validate(
+                run.config_snapshot.get("account_selection")
+            )
+            if is_account
+            else None
+        )
+        account_identity: ResolvedAccountIdentity | None = None
 
         try:
+            if is_account:
+                assert account_selection is not None
+                target = next(
+                    (
+                        item
+                        for item in account_selection.accounts
+                        if item.platform == scope.platform
+                        and f"{item.account_id_type}:{item.account_id}" == scope.source_value
+                    ),
+                    None,
+                )
+                if target is None:
+                    raise ValueError("账号 Scope 与冻结目标不一致")
+                account_identity = self._resolve_account_identity(
+                    run=run,
+                    scope=scope,
+                    target=target,
+                    provider_config=provider_config,
+                    context=context,
+                    stats=stats,
+                    pagination_state=pagination_state,
+                )
+                stats.account_stage = "posts"
             for current_page_no in range(first_page_no, MAX_SEARCH_PAGES + 1):
                 if context.cancel_requested():
                     self._refresh_counts(scope=scope, context=context, stats=stats)
@@ -412,11 +475,17 @@ class TikHubCollectionScopeExecutor:
                         stats=stats,
                     )
 
-                call = build_search_call(
-                    platform=platform,
-                    keyword=scope.source_value,
-                    config=runtime_config.config,
-                    state=pagination_state,
+                call = (
+                    account_runtime.build_account_posts_call(
+                        platform, account_identity.stable_id, state=pagination_state
+                    )
+                    if account_identity is not None
+                    else build_search_call(
+                        platform=platform,
+                        keyword=scope.source_value,
+                        config=runtime_config.config,
+                        state=pagination_state,
+                    )
                 )
                 executed = self._execute_call(
                     run=run,
@@ -427,9 +496,18 @@ class TikHubCollectionScopeExecutor:
                 )
                 stats.search_pages += 1
 
-                items = extract_search_items(platform, executed.body)
+                items = (
+                    account_runtime.extract_account_post_items(platform, executed.body)
+                    if is_account
+                    else extract_search_items(platform, executed.body)
+                )
+                account_page_ids: list[str] = []
+                seen_post_ids = set(
+                    _string_list_payload(pagination_state.get("_account_seen_post_ids"))
+                )
                 stats.search_items += len(items)
                 prepared_contents: list[_PreparedSearchContent] = []
+                account_page_contents: list[CanonicalContentV1] = []
                 for raw_item in items:
                     if context.cancel_requested():
                         self._refresh_counts(
@@ -479,9 +557,35 @@ class TikHubCollectionScopeExecutor:
                             result="invalid",
                             error_code=type(exc).__name__,
                         )
-                        raise
-                    prepared_contents.append(
-                        self._prepare_search_content(
+                        if not is_account:
+                            raise
+                        stats.technical_partial_results += 1
+                        continue
+                    if is_account:
+                        account_page_contents.append(search_content)
+                        account_page_ids.append(search_content.external_content_id)
+                        if search_content.external_content_id in seen_post_ids:
+                            continue
+                        stats.posts_discovered = len(seen_post_ids | set(account_page_ids))
+                        assert account_identity is not None and account_selection is not None
+                        admission = account_content_admission(
+                            search_content,
+                            identity=account_identity,
+                            published_from=account_selection.published_from,
+                            published_to=account_selection.published_to,
+                        )
+                        if admission is not None:
+                            self._record_account_rejection(
+                                candidate_id=candidate_id,
+                                content=search_content,
+                                executed=executed,
+                                reason=admission,
+                                context=context,
+                                stats=stats,
+                            )
+                            continue
+                    try:
+                        prepared = self._prepare_search_content(
                             run=run,
                             scope=scope,
                             content=search_content,
@@ -491,12 +595,55 @@ class TikHubCollectionScopeExecutor:
                             stats=stats,
                             filter_snapshot=filter_snapshot,
                         )
-                    )
+                    except _ProviderCallFailed as exc:
+                        if not is_account or exc.retryable:
+                            raise
+                        stats.technical_partial_results += 1
+                        # 已核验作者和日期的作品仍有价值；详情不可达仅阻断其补充采集。
+                        prepared = _PreparedSearchContent(
+                            search_content=search_content,
+                            final_content=search_content,
+                            search_candidate_id=candidate_id,
+                            detail_unavailable=True,
+                        )
+                    if is_account:
+                        assert account_identity is not None and account_selection is not None
+                        admission = account_content_admission(
+                            prepared.final_content,
+                            identity=account_identity,
+                            published_from=account_selection.published_from,
+                            published_to=account_selection.published_to,
+                        )
+                        if (
+                            prepared.final_content.external_content_id
+                            != search_content.external_content_id
+                        ):
+                            admission = "account_content_identity_conflict"
+                        if admission is not None:
+                            for rejected in prepared.prefetched_details:
+                                self._record_account_rejection(
+                                    candidate_id=rejected.candidate_id,
+                                    content=rejected.content,
+                                    executed=executed,
+                                    reason=admission,
+                                    context=context,
+                                    stats=stats,
+                                )
+                            continue
+                    prepared_contents.append(prepared)
 
-                persistent_contents = self._persistent_filter_inputs(
-                    provider_attempt_id=executed.attempt_id,
-                    expected=tuple(item.final_content for item in prepared_contents),
-                )
+                if is_account:
+                    # 上游页的条目及内容仅来自该 Raw；详情准入与重复去重不改变此事实。
+                    self._persistent_filter_inputs(
+                        provider_attempt_id=executed.attempt_id,
+                        expected=tuple(account_page_contents),
+                    )
+                    persistent_contents = tuple(item.final_content for item in prepared_contents)
+                else:
+                    persistent_contents = self._persistent_filter_inputs(
+                        provider_attempt_id=executed.attempt_id,
+                        expected=tuple(item.final_content for item in prepared_contents),
+                    )
                 for prepared, persistent_content in zip(
                     prepared_contents,
                     persistent_contents,
@@ -510,30 +657,55 @@ class TikHubCollectionScopeExecutor:
                             pagination_state=pagination_state,
                             stats=stats,
                         )
-                    self._process_search_content(
-                        run=run,
-                        scope=scope,
-                        prepared=prepared,
-                        content=persistent_content,
-                        search_executed=executed,
-                        provider_config=provider_config,
-                        capability=capability,
-                        policy=policy,
-                        context=context,
-                        stats=stats,
-                        filter_snapshot=filter_snapshot,
-                    )
+                    try:
+                        self._process_search_content(
+                            run=run,
+                            scope=scope,
+                            prepared=prepared,
+                            content=persistent_content,
+                            search_executed=executed,
+                            provider_config=provider_config,
+                            capability=capability,
+                            policy=policy,
+                            context=context,
+                            stats=stats,
+                            filter_snapshot=filter_snapshot,
+                        )
+                    except _ProviderCallFailed as exc:
+                        if not is_account or exc.retryable:
+                            raise
+                        stats.technical_partial_results += 1
 
-                advance = advance_search(
-                    platform=platform,
-                    state=pagination_state,
-                    body=executed.body,
+                advance = (
+                    account_runtime.advance_account_posts(
+                        platform=platform, state=pagination_state, body=executed.body
+                    )
+                    if is_account
+                    else advance_search(
+                        platform=platform,
+                        state=pagination_state,
+                        body=executed.body,
+                    )
                 )
+                if is_account:
+                    if account_page_ids and set(account_page_ids).issubset(seen_post_ids):
+                        stop_reason = "duplicate_page"
+                        stats.technical_partial_results += 1
+                        break
+                    seen_post_ids.update(account_page_ids)
+                    pagination_state["_account_seen_post_ids"] = sorted(seen_post_ids)
+                    pagination_state["_account_last_page_ids"] = account_page_ids
                 if not advance.should_continue:
                     stop_reason = advance.stop_reason or "provider_exhausted"
+                    if is_account and stop_reason not in _PROVIDER_TERMINAL_STOP_REASONS:
+                        stats.technical_partial_results += 1
                     break
                 assert advance.next_state is not None
-                pagination_state = dict(advance.next_state)
+                pagination_state = (
+                    {**pagination_state, **advance.next_state}
+                    if is_account
+                    else dict(advance.next_state)
+                )
                 self._refresh_counts(scope=scope, context=context, stats=stats)
                 self._scope_gateway.checkpoint_scope(
                     scope.id,
@@ -547,6 +719,29 @@ class TikHubCollectionScopeExecutor:
                 stats.technical_partial_results += 1
         except LeaseLostError:
             raise
+        except _CommentTargetUnavailable as exc:
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            return _result(
+                status="cancelled" if exc.code == "cancelled" else "failed",
+                stop_reason=exc.code,
+                pagination_state=pagination_state,
+                stats=stats,
+            )
+        except AccountIdentityError as exc:
+            stats.identity_status = (
+                "ambiguous"
+                if exc.reason == "ambiguous"
+                else "conflict"
+                if exc.reason == "identity_mismatch"
+                else "unavailable"
+            )
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            return _result(
+                status="failed",
+                stop_reason=str(exc),
+                pagination_state=pagination_state,
+                stats=stats,
+            )
         except SecretFileError:
             self._refresh_counts(scope=scope, context=context, stats=stats)
             return _result(
@@ -573,7 +768,7 @@ class TikHubCollectionScopeExecutor:
                     comment_count=stats.comment_count,
                 ) from exc
             return _result(
-                status="failed",
+                status="partial_success" if is_account and stats.content_count > 0 else "failed",
                 stop_reason=exc.error_code,
                 pagination_state=pagination_state,
                 stats=stats,
@@ -589,6 +784,9 @@ class TikHubCollectionScopeExecutor:
             )
 
         self._refresh_counts(scope=scope, context=context, stats=stats)
+        if is_account:
+            stats.account_stage = "finished"
+            stats.posts_admitted = stats.content_count
         return _result(
             status=(
                 "partial_success"
@@ -599,6 +797,197 @@ class TikHubCollectionScopeExecutor:
             pagination_state=pagination_state,
             stats=stats,
         )
+
+    def _resolve_account_identity(
+        self,
+        *,
+        run: CollectionRunRecord,
+        scope: CollectionScopeRecord,
+        target: CollectionAccountTargetRequest,
+        provider_config: ProviderConfig,
+        context: JobExecutionContextProtocol,
+        stats: _ScopeStats,
+        pagination_state: dict[str, object],
+    ) -> ResolvedAccountIdentity:
+        """账号解析也经过持久 Request/Attempt/Raw，并在每页后提交可恢复断点。"""
+        saved = pagination_state.get("_account_identity")
+        if isinstance(saved, dict):
+            identity = ResolvedAccountIdentity.model_validate(saved)
+            if identity.aliases.get(target.account_id_type) != target.account_id:
+                raise AccountIdentityError("identity_mismatch")
+            stats.identity_status = "resolved"
+            return identity
+        stats.identity_status = "resolving"
+        stats.account_stage = "resolving"
+
+        def checkpoint() -> None:
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            self._scope_gateway.checkpoint_scope(
+                scope.id,
+                fence=context.fence,
+                pagination_state=pagination_state,
+                progress=scope.progress,
+                stats=stats.payload(),
+            )
+
+        checkpoint()
+        if (target.platform, target.account_id_type) in {
+            ("douyin", "sec_uid"),
+            ("weibo", "uid"),
+            ("bilibili", "uid"),
+        }:
+            identity = direct_account_identity(
+                platform=target.platform,
+                id_type=target.account_id_type,
+                id_value=target.account_id,
+            )
+        else:
+            lookup_id = target.account_id
+            search_identity: ResolvedAccountIdentity | None = None
+            if target.account_id_type in {"red_id", "kuaishou_id"}:
+                search_identity_raw = pagination_state.get("_account_search_identity")
+                if isinstance(search_identity_raw, dict):
+                    search_identity = ResolvedAccountIdentity.model_validate(search_identity_raw)
+                else:
+                    candidates_raw = pagination_state.get("_account_candidates", [])
+                    candidates = (
+                        [dict(item) for item in candidates_raw if isinstance(item, dict)]
+                        if isinstance(candidates_raw, list)
+                        else []
+                    )
+                    search_state_raw = pagination_state.get("_account_search_state", {})
+                    search_state = (
+                        dict(search_state_raw) if isinstance(search_state_raw, dict) else {}
+                    )
+                    first_search_page = _payload_int(pagination_state, "_account_search_page") + 1
+                    for page in range(first_search_page, MAX_SEARCH_PAGES + 1):
+                        if context.cancel_requested():
+                            raise _CommentTargetUnavailable("cancelled")
+                        search_call = (
+                            account_runtime.build_user_search_call(
+                                keyword=target.account_id, state=search_state
+                            )
+                            if target.platform == "xiaohongshu"
+                            else account_runtime.build_kuaishou_user_search_call(
+                                keyword=target.account_id, state=search_state
+                            )
+                        )
+                        executed = self._execute_call(
+                            run=run,
+                            scope=scope,
+                            call=account_runtime.as_account_discovery_call(search_call),
+                            provider_config=provider_config,
+                            context=context,
+                        )
+                        extracted = (
+                            account_runtime.extract_user_search_items(executed.body)
+                            if target.platform == "xiaohongshu"
+                            else account_runtime.extract_kuaishou_user_search_items(executed.body)
+                        )
+                        facts = [
+                            account_search_identity_facts(target.platform, item)
+                            for item in extracted
+                        ]
+                        for fact in facts:
+                            if fact and fact not in candidates:
+                                candidates.append(fact)
+                        advance = (
+                            account_runtime.advance_user_search(
+                                state=search_state, body=executed.body
+                            )
+                            if target.platform == "xiaohongshu"
+                            else account_runtime.advance_kuaishou_user_search(
+                                state=search_state, body=executed.body
+                            )
+                        )
+                        if not advance.should_continue:
+                            if advance.stop_reason not in _PROVIDER_TERMINAL_STOP_REASONS:
+                                raise AccountIdentityError("incomplete")
+                            break
+                        assert advance.next_state is not None
+                        search_state = dict(advance.next_state)
+                        pagination_state.update(
+                            _account_candidates=candidates,
+                            _account_search_state=search_state,
+                            _account_search_page=page,
+                        )
+                        checkpoint()
+                    else:
+                        raise AccountIdentityError("incomplete")
+                    search_identity = resolve_search_identity(
+                        platform=target.platform,
+                        id_type=target.account_id_type,
+                        id_value=target.account_id,
+                        candidates=candidates,
+                    )
+                    pagination_state["_account_search_identity"] = search_identity.model_dump(
+                        mode="json"
+                    )
+                    checkpoint()
+                lookup_id = search_identity.stable_id
+            profile_call = (
+                account_runtime.build_user_info_call(user_id=lookup_id)
+                if target.platform == "xiaohongshu"
+                else account_runtime.build_douyin_user_profile_call(unique_id=lookup_id)
+                if target.platform == "douyin"
+                else account_runtime.build_kuaishou_user_profile_call(user_reference=lookup_id)
+            )
+            executed = self._execute_call(
+                run=run,
+                scope=scope,
+                call=account_runtime.as_account_discovery_call(profile_call),
+                provider_config=provider_config,
+                context=context,
+            )
+            profile = (
+                account_runtime.extract_user_info_item(executed.body)
+                if target.platform == "xiaohongshu"
+                else account_runtime.extract_douyin_user_profile(executed.body)
+                if target.platform == "douyin"
+                else account_runtime.extract_kuaishou_user_profile(executed.body)
+            )
+            if profile is None:
+                raise AccountIdentityError("incomplete")
+            identity = resolve_profile_identity(
+                platform=target.platform,
+                id_type=target.account_id_type,
+                id_value=target.account_id,
+                profile=profile,
+            )
+            if search_identity is not None and identity.stable_id != search_identity.stable_id:
+                raise AccountIdentityError("identity_mismatch")
+        pagination_state["_account_identity"] = identity.model_dump(mode="json")
+        stats.identity_status = "resolved"
+        checkpoint()
+        return identity
+
+    def _record_account_rejection(
+        self,
+        *,
+        candidate_id: UUID,
+        content: CanonicalContentV1,
+        executed: _ExecutedCall,
+        reason: str,
+        context: JobExecutionContextProtocol,
+        stats: _ScopeStats,
+    ) -> None:
+        """日期外正常过滤与缺失事实、身份冲突分别进入来源账本。"""
+        if reason == "outside_published_date_range":
+            self._content_writer.record_candidate_filtered(
+                candidate_id=candidate_id,
+                canonical=content,
+                fence=context.fence,
+            )
+            stats.filtered_content_count += 1
+        else:
+            self._content_writer.record_candidate_failure(
+                candidate_id=candidate_id,
+                provider_attempt_id=_canonical_source_ids(content)[0],
+                result="invalid",
+                error_code=reason,
+                fence=context.fence,
+            )
+            stats.technical_partial_results += 1
 
     def _execute_content_enrichment(
         self,
@@ -972,11 +1361,9 @@ class TikHubCollectionScopeExecutor:
     ) -> None:
         """把已入库的评论分层计数和当前阶段暴露给运行详情轮询。"""
         self._refresh_counts(scope=scope, context=context, stats=stats)
-        self._scope_gateway.checkpoint_scope(
+        self._scope_gateway.checkpoint_scope_stats(
             scope.id,
             fence=context.fence,
-            pagination_state=dict(scope.pagination_state),
-            progress=scope.progress,
             stats=stats.payload(),
         )
 
@@ -997,7 +1384,7 @@ class TikHubCollectionScopeExecutor:
         search_resolution = resolve_canonical_brand_vehicle(
             filter_snapshot, content, resolver=self._brand_vehicle_resolver
         )
-        if search_resolution.matched:
+        if search_resolution.matched and scope.source_type != "account":
             return _PreparedSearchContent(
                 search_content=content,
                 final_content=content,
@@ -1044,7 +1431,7 @@ class TikHubCollectionScopeExecutor:
         accepted_resolution = resolve_canonical_brand_vehicle(
             filter_snapshot, content, resolver=self._brand_vehicle_resolver
         )
-        if not accepted_resolution.matched:
+        if not accepted_resolution.matched and scope.source_type != "account":
             self._content_writer.record_candidate_filtered(
                 candidate_id=prepared.search_candidate_id,
                 canonical=search_content,
@@ -1122,7 +1509,9 @@ class TikHubCollectionScopeExecutor:
         )
         content_id: UUID | None = None
         for candidate_index, candidate in enumerate(candidates):
-            candidate_resolution: BrandVehicleResolution | None = accepted_resolution
+            candidate_resolution: BrandVehicleResolution | None = (
+                accepted_resolution if accepted_resolution.matched else None
+            )
             if detail_prefetched:
                 candidate_resolution = (
                     resolve_canonical_brand_vehicle(
@@ -1147,6 +1536,16 @@ class TikHubCollectionScopeExecutor:
             content_id = ingestion.target_id
         if content_id is None:  # pragma: no cover - candidates 固定非空
             raise RuntimeError("Search/Detail 未产生 Content")
+        if prepared.detail_unavailable:
+            if run.config_snapshot.get("include_comments", True) is True:
+                self._record_non_fetch_coverage(
+                    content_id=content_id,
+                    content=content,
+                    context=context,
+                    comment_reason="detail_unavailable",
+                    comment_target=action.decision.comment_target,
+                )
+            return
         if (
             detail_prefetched
             and action.decision.detail_action == "fetch"
@@ -1403,7 +1802,11 @@ class TikHubCollectionScopeExecutor:
         )
         stats.detail_requests += 1
 
-        detail_items = extract_detail_items(platform, executed.body)
+        detail_items = extract_detail_items(
+            platform,
+            executed.body,
+            external_content_id=content.external_content_id if locator is None else None,
+        )
         if not detail_items:
             if locator is not None:
                 raise _CommentTargetUnavailable("identity_unavailable")
@@ -1503,6 +1906,12 @@ class TikHubCollectionScopeExecutor:
                 )
                 raise ValueError("TikHub Detail 与 Search Content 身份不一致")
             mapped.append(_DetailCandidate(content=detail_content, candidate_id=candidate_id))
+        if scope.source_type == "account":
+            # 详情是独立响应事实，不能附着到可先成功、后补齐详情的作品页 Artifact。
+            self._persistent_filter_inputs(
+                provider_attempt_id=executed.attempt_id,
+                expected=tuple(item.content for item in mapped),
+            )
         return tuple(mapped)
 
     def _fetch_comments(
@@ -1546,6 +1955,7 @@ class TikHubCollectionScopeExecutor:
                 raise _CommentTargetUnavailable("identity_conflict")
         pagination_state: dict[str, object] = {}
         seen_comment_ids: set[str] = set()
+        captured_reply_count = 0
         reported_total = (
             reported_total_override
             if reported_total_override is not None
@@ -1712,6 +2122,7 @@ class TikHubCollectionScopeExecutor:
                         reply_action=reply_decision.action,
                         reply_target=reply_decision.target,
                     )
+                    captured_reply_count += len(reply_outcome.reply_ids)
                     technical_partial = technical_partial or reply_outcome.technical_partial
                     if full_capture and reply_outcome.completed:
                         stats.comment_stage = "roots"
@@ -1723,6 +2134,13 @@ class TikHubCollectionScopeExecutor:
                             coverage="partial",
                         )
                 else:
+                    if full_capture and reply_decision.reason == "reply_count_unchanged_complete":
+                        previous_thread = thread_states.get(comment.external_comment_id)
+                        if (
+                            previous_thread is not None
+                            and previous_thread.reported_total is not None
+                        ):
+                            captured_reply_count += previous_thread.reported_total
                     self._record_non_fetch_thread_coverage(
                         content_id=content_id,
                         root_comment=comment,
@@ -1760,7 +2178,10 @@ class TikHubCollectionScopeExecutor:
                 coverage = _coverage_for_stop(
                     stop_reason,
                     reported_total,
-                    len(seen_comment_ids),
+                    # Content 的评论数包含回复；根分页与线程全部结束后用实际两层数量校验。
+                    len(seen_comment_ids) + captured_reply_count
+                    if full_capture
+                    else len(seen_comment_ids),
                 )
                 if full_capture and technical_partial:
                     coverage = "partial"
@@ -1776,7 +2197,11 @@ class TikHubCollectionScopeExecutor:
                     context=context,
                     coverage=coverage,
                     reported_total=reported_total,
-                    collected_count=len(seen_comment_ids),
+                    collected_count=(
+                        len(seen_comment_ids) + captured_reply_count
+                        if full_capture
+                        else len(seen_comment_ids)
+                    ),
                     sample_mode=sample_mode,
                     sort_mode=sort_mode,
                     target_count=comment_target,
@@ -2260,7 +2685,11 @@ class TikHubCollectionScopeExecutor:
             platform=scope.platform,
             operation=call.operation,
             request_params=request_params,
-            pagination_input=dict(call.pagination_input or {}),
+            pagination_input={
+                key: value
+                for key, value in (call.pagination_input or {}).items()
+                if scope.source_type != "account" or not key.startswith("_account_")
+            },
         )
         prepared = self._attempt_preparer.resolve_or_prepare_billable_attempt(
             request=request,
@@ -2572,6 +3001,11 @@ def _retryable_http_status(status_code: int) -> bool:
     return status_code in _RETRYABLE_HTTP_STATUSES or status_code >= 500
 
 
+def _string_list_payload(value: object) -> list[str]:
+    """恢复有界遍历断点中的已见 ID，拒绝混入非字符串值。"""
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+
 def _payload_int(payload: dict[str, object], name: str) -> int:
     value = payload.get(name, 0)
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -2657,13 +3091,22 @@ def _discovery_filter(
     """严格恢复当前 Collection Run 的冻结品牌车型过滤。"""
 
     schema_version = run.config_snapshot.get("schema_version")
-    if schema_version not in {"collection-run-config.v2", "collection-run-config.v4"}:
+    if schema_version not in {
+        "collection-run-config.v2",
+        "collection-run-config.v4",
+        "collection-run-config.v5",
+    }:
         raise ValueError(f"Collection Run Snapshot 版本不受支持: {schema_version}")
     snapshot = BrandVehicleFilterSnapshot.model_validate(
         run.config_snapshot.get("brand_vehicle_filter")
     )
-    if snapshot.search_semantics != "keyword_pack":
-        raise ValueError("Collection Run v2 品牌车型过滤必须使用 keyword_pack 搜索语义")
+    expected_semantics = (
+        "not_applicable"
+        if run.config_snapshot.get("mode") == "account_discovery"
+        else "keyword_pack"
+    )
+    if snapshot.search_semantics != expected_semantics:
+        raise ValueError("Collection Run 品牌车型目录与当前入口语义不一致")
     return snapshot
 
 

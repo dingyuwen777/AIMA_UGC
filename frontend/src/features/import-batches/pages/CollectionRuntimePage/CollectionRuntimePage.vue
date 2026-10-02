@@ -282,9 +282,12 @@ async function viewRunResults(runId: string): Promise<void> {
     <CollectionRunDetailDrawer
       v-model="runDetailOpen"
       :item="store.selectedRun"
+      :acting="store.actingCollectionRun"
       @refresh="store.selectedRun && store.openRunDetail(store.selectedRun.run_id)"
       @copy="copy"
       @view-results="viewRunResults"
+      @retry-failed="store.actOnCollectionRun('retry')"
+      @cancel="store.actOnCollectionRun('cancel')"
     />
     <CanonicalReplayDetailDrawer
       v-model="canonicalReplayDetailOpen"

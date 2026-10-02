@@ -155,8 +155,8 @@ def test_returned_comment_offset_state_does_not_guess_response_path() -> None:
         previous_cursor=20,
         returned_cursor=10,
     )
-    assert regressed.should_continue is False
-    assert regressed.stop_reason == "pagination_not_advanced"
+    assert regressed.should_continue is True
+    assert regressed.stop_reason is None
 
 
 def test_runtime_uses_integer_cursor_next_when_app_token_is_opaque() -> None:

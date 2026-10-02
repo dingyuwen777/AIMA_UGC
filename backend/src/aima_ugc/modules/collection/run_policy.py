@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from aima_ugc.contracts.collection import CollectionDecisionPolicyV1
+from aima_ugc.contracts.http import CollectionAccountDiscoverySelection
 
 _SUPPLEMENT_MODES = frozenset({"batch_supplement", "content_supplement", "date_supplement"})
 
@@ -36,6 +37,10 @@ def requires_full_comment_capture(run: _RunSnapshot) -> bool:
 
 def validate_run_decision_policy(snapshot: Mapping[str, object]) -> None:
     validate_run_plan_type(snapshot)
+    if snapshot.get("mode") == "account_discovery":
+        if snapshot.get("schema_version") != "collection-run-config.v5":
+            raise ValueError("账号 Collection Run 必须使用 collection-run-config.v5")
+        CollectionAccountDiscoverySelection.model_validate(snapshot.get("account_selection"))
     policy = CollectionDecisionPolicyV1.model_validate(snapshot.get("decision_policy", {}))
     if snapshot.get("detail_policy", "on_change") != "on_change":
         raise ValueError("Collection Scope Runtime 当前只支持 detail_policy=on_change")
@@ -45,8 +50,13 @@ def validate_run_decision_policy(snapshot: Mapping[str, object]) -> None:
 
 def validate_new_run_snapshot(snapshot: Mapping[str, object]) -> None:
     """所有新Run必须写当前显式格式；历史兼容仅服务已持久化快照的恢复。"""
-    if snapshot.get("schema_version") != "collection-run-config.v4":
-        raise ValueError("新Collection Run必须使用collection-run-config.v4")
+    expected_version = (
+        "collection-run-config.v5"
+        if snapshot.get("mode") == "account_discovery"
+        else "collection-run-config.v4"
+    )
+    if snapshot.get("schema_version") != expected_version:
+        raise ValueError(f"新Collection Run必须使用{expected_version}")
     if "plan_type" not in snapshot:
         raise ValueError("新Collection Run缺少显式plan_type")
     if "comment_policy" not in snapshot or "decision_policy" not in snapshot:

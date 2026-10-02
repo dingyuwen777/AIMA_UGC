@@ -1292,6 +1292,38 @@ def create_app(
     def get_collection_run(run_id: UUID) -> CollectionRunResponse:
         return current_collection_service().get_run(run_id)
 
+    @application.post(
+        "/api/v1/collection-runs/{run_id}/retry-failed",
+        operation_id="retryCollectionRunFailedAccounts",
+        response_model=CollectionRunResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection"],
+    )
+    def retry_collection_run_failed_accounts(run_id: UUID) -> CollectionRunResponse:
+        return current_collection_service().retry_run(run_id)
+
+    @application.post(
+        "/api/v1/collection-runs/{run_id}/cancel",
+        operation_id="cancelCollectionRun",
+        response_model=CollectionRunResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection"],
+    )
+    def cancel_collection_run(run_id: UUID) -> CollectionRunResponse:
+        return current_collection_service().cancel_run(run_id)
+
     @application.get(
         "/api/v1/collection-runtime/runs",
         operation_id="listCollectionRuntimeRuns",

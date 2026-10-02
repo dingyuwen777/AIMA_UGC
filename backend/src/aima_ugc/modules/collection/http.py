@@ -69,6 +69,10 @@ class CollectionHttpService(Protocol):
 
     def get_run(self, run_id: UUID) -> CollectionRunResponse: ...
 
+    def retry_run(self, run_id: UUID) -> CollectionRunResponse: ...
+
+    def cancel_run(self, run_id: UUID) -> CollectionRunResponse: ...
+
     def list_runtime_runs(
         self,
         query: CollectionRuntimeListQuery,

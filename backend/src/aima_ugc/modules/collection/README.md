@@ -710,3 +710,13 @@ Run executor 改动
 ```
 
 最终仍以 PR 最新 HEAD 的完整 CI 为准。
+
+## 16. 账号发现来源
+
+账号补采使用既有 `collection.run.v1`，每个带类型的账号一个 `account/content_discovery` Scope；新账号 Run 冻结 v5 配置，历史 Run 保持原解释。身份解析及作品分页复用持久 Request/Attempt/Raw，成功 Raw 恢复不出网。账号准入只依据稳定作者归属与冻结日期，品牌车型目录用于补充 Evidence，不拦截无品牌词作品；详情、评论和来源写入沿用原 Owner。
+
+生产身份解析由 [account_identity.py](../../adapters/providers/tikhub/account_identity.py) 维护，Operation/分页由 [account_runtime.py](../../adapters/providers/tikhub/account_runtime.py) 维护，纯账号/日期准入由 [account_discovery.py](account_discovery.py) 维护；人工账号入口调用同一实现。评论统计的检查点只更新当前 Scope 的统计，不以旧 Scope 快照覆盖身份、游标或进度。
+
+账号之间失败隔离，自动重试结束后仍保留健康账号结果。用户确认费用后可重试失败/部分完成 Scope：同一 Run/Job、重放成功 Raw、失败请求新增 Attempt；私有账号恢复字段不参与 Provider Request 指纹。取消沿用 Job Owner 与统一 Worker/Reaper 回调，在终态事务同步账号 Run，保留已完成 Scope 和业务内容。
+
+账号的第三个并列创建 Tab、运行类型、冻结日期、阶段、计数及结果来源由已有运行中心 Feature 消费生成 Client。完整产品边界及公开 ID 类型以 [采集策略与平台能力](../../../../../docs/blueprint/08_采集策略与平台能力.md) 和当前 Contract/Capability 为准。

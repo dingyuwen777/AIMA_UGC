@@ -4,11 +4,20 @@ from aima_ugc.contracts.collection import (
     ProviderOperationCapabilityV1,
     ProviderPlatformCapabilityV1,
 )
+from aima_ugc.contracts.collection.accounts import ProviderAccountCapabilityV1
 
 XIAOHONGSHU_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
     provider="tikhub",
     platform="xiaohongshu",
+    account=ProviderAccountCapabilityV1(
+        supported_id_types=("red_id", "user_id"), default_id_type="red_id"
+    ),
     operations=(
+        ProviderOperationCapabilityV1(
+            business_operation="account_discovery",
+            provider_operations=("search_users", "get_user_info", "get_user_posted_notes"),
+            provider_page_size_policy="provider_default",
+        ),
         ProviderOperationCapabilityV1(
             business_operation="keyword_search",
             provider_operations=("search_notes",),
@@ -53,7 +62,15 @@ XIAOHONGSHU_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
 DOUYIN_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
     provider="tikhub",
     platform="douyin",
+    account=ProviderAccountCapabilityV1(
+        supported_id_types=("unique_id", "sec_uid"), default_id_type="unique_id"
+    ),
     operations=(
+        ProviderOperationCapabilityV1(
+            business_operation="account_discovery",
+            provider_operations=("handler_user_profile_v2", "fetch_user_post_videos"),
+            provider_page_size_policy="provider_default",
+        ),
         ProviderOperationCapabilityV1(
             business_operation="keyword_search",
             provider_operations=("fetch_video_search_v2",),
@@ -91,7 +108,13 @@ DOUYIN_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
 WEIBO_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
     provider="tikhub",
     platform="weibo",
+    account=ProviderAccountCapabilityV1(supported_id_types=("uid",), default_id_type="uid"),
     operations=(
+        ProviderOperationCapabilityV1(
+            business_operation="account_discovery",
+            provider_operations=("fetch_user_posts",),
+            provider_page_size_policy="provider_default",
+        ),
         ProviderOperationCapabilityV1(
             business_operation="keyword_search",
             provider_operations=("fetch_search",),
@@ -129,7 +152,13 @@ WEIBO_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
 BILIBILI_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
     provider="tikhub",
     platform="bilibili",
+    account=ProviderAccountCapabilityV1(supported_id_types=("uid",), default_id_type="uid"),
     operations=(
+        ProviderOperationCapabilityV1(
+            business_operation="account_discovery",
+            provider_operations=("fetch_user_post_videos_v2",),
+            provider_page_size_policy="provider_default",
+        ),
         ProviderOperationCapabilityV1(
             business_operation="keyword_search",
             provider_operations=("fetch_search_by_type",),
@@ -165,7 +194,13 @@ BILIBILI_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
 KUAISHOU_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
     provider="tikhub",
     platform="kuaishou",
+    account=ProviderAccountCapabilityV1(supported_id_types=("user_id",), default_id_type="user_id"),
     operations=(
+        ProviderOperationCapabilityV1(
+            business_operation="account_discovery",
+            provider_operations=("fetch_one_user_v2", "fetch_user_post_v2"),
+            provider_page_size_policy="provider_default",
+        ),
         ProviderOperationCapabilityV1(
             business_operation="keyword_search",
             provider_operations=("search_video_v2",),

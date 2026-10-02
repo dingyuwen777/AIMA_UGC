@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { CollectionRunResponse } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDrawer from '../../../../../shared/ui/AimaDrawer.vue'
@@ -14,15 +14,20 @@ import {
   runtimeStatusLabels,
 } from '../../../format'
 
-const props = defineProps<{ modelValue: boolean; item: CollectionRunResponse | null }>()
+const props = defineProps<{ modelValue: boolean; item: CollectionRunResponse | null; acting?: boolean }>()
+const confirmingRetry = ref(false)
+watch(() => [props.modelValue, props.item?.run_id, props.item?.status], () => { confirmingRetry.value = false })
 const modeLabel = computed(() => props.item?.mode === 'content_supplement'
   ? props.item.supplement_selection?.kind === 'selected' ? '评论补采' : '按发布时间补采'
-  : props.item?.mode === 'discovery' ? '独立发现新内容' : '历史导入补采')
+  : props.item?.mode === 'account_discovery' ? '按账号补采'
+    : props.item?.mode === 'discovery' ? '独立发现新内容' : '历史导入补采')
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   refresh: []
   copy: [value: string]
   viewResults: [runId: string]
+  retryFailed: []
+  cancel: []
 }>()
 
 const identityStatusLabels = {
@@ -86,7 +91,7 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
       <section class="facts">
         <div><span>补采方式</span><strong>{{ modeLabel }}</strong></div>
         <div><span>目标平台</span><strong>{{ item.platforms.map((platform) => platformLabels[platform]).join(' / ') }}</strong></div>
-        <div><span>内容来源</span><strong>{{ item.mode === 'content_supplement' ? item.supplement_selection?.kind === 'selected' ? '声音广场已选内容' : '日期范围内的已入库内容' : item.mode === 'discovery' ? (item.keywords?.join(' / ') || '关键词发现') : '已关联导入来源' }}</strong></div>
+        <div><span>内容来源</span><strong>{{ item.mode === 'account_discovery' ? '指定账号的可访问作品' : item.mode === 'content_supplement' ? item.supplement_selection?.kind === 'selected' ? '声音广场已选内容' : '日期范围内的已入库内容' : item.mode === 'discovery' ? (item.keywords?.join(' / ') || '关键词发现') : '已关联导入来源' }}</strong></div>
         <div><span>总耗时</span><strong>{{ elapsed(item.started_at, item.finished_at) }}</strong></div>
       </section>
       <section class="progress-panel">
@@ -99,7 +104,7 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         </small>
       </section>
       <section
-        v-if="item.mode === 'content_supplement'"
+        v-if="item.mode === 'content_supplement' || item.mode === 'account_discovery'"
         class="date-selection"
       >
         <h3>{{ item.supplement_selection?.kind === 'selected' ? '已选内容' : '内容发布时间 · 北京时间' }}</h3>
@@ -112,6 +117,12 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         <p>采集内容：详情{{ item.include_comments ? '、一级评论' : '' }}{{ item.include_sub_comments ? '、二级回复' : '' }}</p>
       </section>
       <h3>处理统计</h3>
+      <AimaFeedbackBanner
+        v-if="confirmingRetry"
+        tone="warning"
+      >
+        仅重试失败或部分完成的账号，成功账号保留。已成功响应会复用，新增请求可能产生 TikHub 费用。
+      </AimaFeedbackBanner>
       <section class="stats">
         <div><span>请求</span><strong>{{ formatNumber(item.stats.requested_count) }}</strong></div>
         <div><span>成功</span><strong>{{ formatNumber(item.stats.succeeded_count) }}</strong></div>
@@ -145,8 +156,8 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
           v-for="scope in item.scopes"
           :key="scope.id"
         >
-          <i :class="`dot dot--${scope.status}`" /><span>{{ platformLabels[scope.platform] }} · {{ runtimeStageLabel(scope.operation_group) }}<small v-if="scope.identity_status">目标身份：{{ identityStatusLabels[scope.identity_status] }}</small><small v-if="scope.comment_stage">{{ commentStageLabels[scope.comment_stage] }}</small><small v-if="scope.comment_coverage">一级评论 {{ scope.stats.root_comment_count }} · 回复 {{ scope.stats.reply_count }} · 评论覆盖：{{ scope.comment_coverage === 'complete' ? '完整' : scope.comment_coverage === 'partial' ? '部分' : scope.comment_coverage === 'unavailable' ? '不可用' : '未请求' }}</small><small
-            v-if="scope.status === 'failed' && scope.stop_reason"
+          <i :class="`dot dot--${scope.status}`" /><span>{{ platformLabels[scope.platform] }} · {{ scope.account ? scope.account.nickname || scope.account.account_id : runtimeStageLabel(scope.operation_group) }}<small v-if="scope.account">账号：{{ scope.account.account_id }} · 已发现 {{ scope.posts_discovered }} · 已入库 {{ scope.posts_admitted }}</small><small v-if="scope.account_stage">{{ scope.account_stage === 'resolving' ? '账号解析中' : scope.account_stage === 'posts' ? '作品遍历中' : '账号遍历结束' }}</small><small v-if="scope.identity_status">目标身份：{{ identityStatusLabels[scope.identity_status] }}</small><small v-if="scope.comment_stage">{{ commentStageLabels[scope.comment_stage] }}</small><small v-if="scope.comment_coverage">一级评论 {{ scope.stats.root_comment_count }} · 回复 {{ scope.stats.reply_count }} · 评论覆盖：{{ scope.comment_coverage === 'complete' ? '完整' : scope.comment_coverage === 'partial' ? '部分' : scope.comment_coverage === 'unavailable' ? '不可用' : '未请求' }}</small><small
+            v-if="(scope.status === 'failed' || scope.status === 'partial_success') && scope.stop_reason"
           >{{ runtimeFailureMessage(scope.stop_reason) }}</small></span><b :class="`scope-state scope-state--${scope.status}`">{{ runtimeStatusLabels[scope.status] }} · {{ scope.progress }}%</b>
         </div>
       </section>
@@ -235,6 +246,22 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         >
           刷新详情
         </AimaButton>
+        <template v-if="item?.mode === 'account_discovery'">
+          <AimaButton
+            v-if="item.status === 'failed' || item.status === 'partial_success'"
+            :disabled="acting"
+            @click="confirmingRetry ? emit('retryFailed') : confirmingRetry = true"
+          >
+            {{ confirmingRetry ? '确认重试失败账号' : '重试失败账号' }}
+          </AimaButton>
+          <AimaButton
+            v-if="item.status === 'queued' || item.status === 'running'"
+            :disabled="acting"
+            @click="emit('cancel')"
+          >
+            取消任务
+          </AimaButton>
+        </template>
       </footer>
     </template>
   </AimaDrawer>

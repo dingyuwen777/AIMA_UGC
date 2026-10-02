@@ -3,9 +3,9 @@ import type { Locator } from '@playwright/test'
 
 
 /** 从共享日历公开控件选择单日，覆盖与生产相同的北京时间边界。 */
-async function selectPublishedDay(dialog: Locator, day: string): Promise<void> {
-  await dialog.getByRole('button', { name: '内容发布时间', exact: true }).click()
-  const calendar = dialog.getByRole('dialog', { name: '选择内容发布时间', exact: true })
+async function selectPublishedDay(dialog: Locator, day: string, label = '内容发布时间'): Promise<void> {
+  await dialog.getByRole('button', { name: label, exact: true }).click()
+  const calendar = dialog.getByRole('dialog', { name: `选择${label}`, exact: true })
   for (let step = 0; step < 24; step++) {
     if (await calendar.locator(`[data-date="${day}"]`).count()) break
     const visibleDay = await calendar.locator('[data-date]').first().getAttribute('data-date')
@@ -501,6 +501,62 @@ test('creates a one-time TikHub discovery Run from multiple Keyword Packs', asyn
   await expect(page.getByText('辅助补采任务已创建，将在后台执行。')).toBeVisible()
 })
 
+test('validates five-platform account targets and confirms fees without a paid preview', async ({ page }) => {
+  const targets = [
+    ['xiaohongshu', '小红书', 'red_id', '49328786266'],
+    ['douyin', '抖音', 'sec_uid', 'sec-account'],
+    ['weibo', '微博', 'uid', '123'],
+    ['bilibili', 'B站', 'uid', '456'],
+    ['kuaishou', '快手', 'user_id', '789'],
+  ] as const
+  await page.route('**/api/v1/collection-capabilities', route => route.fulfill({ json: {
+    provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }],
+    capabilities: targets.map(([platform, , idType]) => ({ provider: 'tikhub', platform,
+      operations: ['account_discovery', 'content_detail', 'comments', 'sub_comments'],
+      account: { supported_id_types: [idType], default_id_type: idType, nickname_supported: true }, search: null,
+    })),
+  } }))
+  const previews: string[] = []
+  page.on('request', request => { if (request.url().includes('/collection-supplements/preview')) previews.push(request.url()) })
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: '新建辅助补采', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '新建辅助补采', exact: true })
+  await dialog.getByRole('button', { name: '按账号补采', exact: true }).click()
+  await expect(dialog.getByLabel('评论', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('二级回复', { exact: true })).toBeChecked()
+  const submit = dialog.getByRole('button', { name: '核对账号与费用', exact: true })
+  await expect(submit).toBeDisabled()
+  await selectPublishedDay(dialog, '2026-09-01', '账号作品发布时间')
+  for (const [, label, , identity] of targets) {
+    await dialog.locator('.platform-grid').getByRole('button', { name: new RegExp(label) }).click()
+    await dialog.getByRole('textbox', { name: `${label}账号 ID`, exact: true }).fill(` ${identity} `)
+  }
+  await expect(submit).toBeEnabled()
+  await dialog.getByRole('button', { name: '添加小红书账号', exact: true }).click()
+  await dialog.getByRole('textbox', { name: '小红书账号 ID', exact: true }).nth(1).fill('49328786266')
+  await expect(submit).toBeDisabled()
+  await dialog.getByRole('textbox', { name: '小红书账号 ID', exact: true }).nth(1).fill('second-red-id')
+  await dialog.getByRole('textbox', { name: '小红书昵称', exact: true }).nth(1).fill(' 第二账号 ')
+  await dialog.getByRole('textbox', { name: '微博账号 ID', exact: true }).fill('bad uid')
+  await expect(submit).toBeDisabled()
+  await dialog.getByRole('textbox', { name: '微博账号 ID', exact: true }).fill('123')
+  await submit.click()
+  const confirmation = dialog.getByRole('status').filter({ hasText: '即将采集' })
+  await expect(confirmation).toContainText('6 个账号')
+  await expect(confirmation).toContainText('费用')
+  const created = page.waitForRequest(request => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
+  await dialog.getByRole('button', { name: '确认创建账号任务', exact: true }).click()
+  const body = (await created).postDataJSON()
+  expect(body).toMatchObject({ mode: 'account_discovery', include_comments: true, include_sub_comments: true,
+    account_selection: { kind: 'accounts', published_from: '2026-08-31T16:00:00.000Z', published_to: '2026-09-01T15:59:59.999Z' } })
+  expect(body.account_selection.accounts).toHaveLength(6)
+  expect(body.account_selection.accounts).toContainEqual({ platform: 'xiaohongshu', account_id_type: 'red_id', account_id: 'second-red-id', nickname: '第二账号' })
+  expect(body.platforms).toHaveLength(5)
+  expect(body).not.toHaveProperty('keyword_pack_ids')
+  expect(body.platforms.every((platform: object) => !('search_config' in platform))).toBe(true)
+  expect(previews).toHaveLength(0)
+})
+
 test('creates a date supplement in the centered import-style modal', async ({ page }) => {
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: '新建辅助补采', exact: true }).click()
@@ -711,6 +767,49 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
   await expect(detail).not.toContainText('providers/tikhub')
   await detail.getByRole('button', { name: '查看补采结果' }).click()
   await expect(page).toHaveURL(new RegExp(`source_identifier=${runId}`))
+})
+
+test('shows frozen account dates and confirms retry before using the shared run actions', async ({ page }) => {
+  let retried = 0
+  let cancelled = 0
+  const detail = {
+    ...runDetail, mode: 'account_discovery', status: 'partial_success', stage: 'partial_success',
+    published_from: '2026-09-01T00:00:00+08:00', published_to: '2026-09-02T23:59:59+08:00',
+    include_comments: true, include_sub_comments: true,
+    account_selection: { kind: 'accounts', published_from: '2026-09-01T00:00:00+08:00', published_to: '2026-09-02T23:59:59+08:00', accounts: [{ platform: 'xiaohongshu', account_id_type: 'user_id', account_id: 'account-test', nickname: '测试账号' }] },
+    scopes: [{ ...runDetail.scopes[0], source_type: 'account', status: 'failed', account_stage: 'posts', posts_discovered: 10, posts_admitted: 4, account: { platform: 'xiaohongshu', account_id_type: 'user_id', account_id: 'account-test', nickname: '测试账号' } }],
+  }
+  await page.route('**/api/v1/collection-runtime/runs*', route => route.fulfill({ json: { items: [{ ...runtimeItem, record_id: runId, collection_run_id: runId, record_type: 'tikhub_account_discovery', display_name: 'TikHub 账号补采 · 1 个账号', status: detail.status, stage: detail.stage }], has_more: false, next_cursor: null } }))
+  await page.route(`**/api/v1/collection-runs/${runId}**`, route => {
+    const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/retry-failed')) {
+      retried++
+      detail.status = 'queued'
+      detail.stage = 'queued'
+    } else if (path.endsWith('/cancel')) {
+      cancelled++
+      detail.status = 'cancelled'
+      detail.stage = 'cancelled'
+    }
+    return route.fulfill({ status: route.request().method() === 'POST' ? 202 : 200, json: detail })
+  })
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const drawer = page.getByRole('dialog', { name: '辅助补采运行详情' })
+  await expect(drawer).toContainText('指定账号的可访问作品')
+  await expect(drawer.locator('.date-selection')).toContainText('北京时间')
+  await expect(drawer.locator('.date-selection')).toContainText(/2026.09.01/)
+  await expect(drawer.locator('.date-selection')).toContainText(/2026.09.02/)
+  await expect(drawer.locator('.date-selection')).toContainText('详情、一级评论、二级回复')
+  await drawer.getByRole('button', { name: '重试失败账号', exact: true }).click()
+  expect(retried).toBe(0)
+  await expect(drawer).toContainText('新增请求可能产生 TikHub 费用')
+  await drawer.getByRole('button', { name: '确认重试失败账号' }).click()
+  await expect(drawer.getByRole('button', { name: '取消任务' })).toBeVisible()
+  expect(retried).toBe(1)
+  await drawer.getByRole('button', { name: '取消任务' }).click()
+  await expect(drawer.getByRole('button', { name: '取消任务' })).toHaveCount(0)
+  expect(cancelled).toBe(1)
 })
 
 test('keeps unified Error Contract technical ids out of the product list error state', async ({ page }) => {

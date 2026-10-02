@@ -40,6 +40,7 @@ export const recordTypeLabels: Record<CollectionRuntimeRecordType, string> = {
   excel_import: 'Excel 导入',
   data_import_campaign: '数据导入',
   tikhub_discovery: '平台采集',
+  tikhub_account_discovery: '账号补采',
   tikhub_batch_supplement: '辅助补采',
   tikhub_content_supplement: '内容补采',
   canonical_replay: '历史重筛',

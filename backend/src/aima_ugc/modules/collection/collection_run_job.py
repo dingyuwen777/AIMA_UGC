@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRegistry
-from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
+from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, JobRecord
 
 COLLECTION_RUN_JOB_TYPE = "collection.run.v1"
 COLLECTION_RUN_PAYLOAD_VERSION = "collection.run.v1"
@@ -53,6 +55,8 @@ class CollectionRunJobHandler:
 def register_collection_run_job(
     registry: JobRegistry,
     handler: CollectionRunJobHandler,
+    *,
+    terminal_callback: Callable[[Session, JobRecord], None] | None = None,
 ) -> None:
     """把正式 Scheduler Job 类型注册到共享 PostgreSQL Job Runtime。"""
     registry.register(
@@ -61,6 +65,7 @@ def register_collection_run_job(
         payload_model=CollectionRunJobPayload,
         handler=handler,
         retry_on_timeout=False,
+        terminal_callback=terminal_callback,
     )
 
 

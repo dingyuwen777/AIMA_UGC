@@ -344,7 +344,9 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(item for item in items if isinstance(item, dict))
 
 
-def extract_detail_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+def extract_detail_items(
+    body: dict[str, Any], *, expected_note_id: str | None = None
+) -> tuple[dict[str, Any], ...]:
     """统一提取图文 detail 的 note_list 与视频 detail 的直接 note item。"""
     outer = body.get("data")
     if not isinstance(outer, dict):
@@ -361,7 +363,13 @@ def extract_detail_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
             extracted.extend(note for note in note_list if isinstance(note, dict))
         elif "id" in item or "note_id" in item:
             extracted.append(item)
-    return tuple(extracted)
+    # 视频详情同时包含推荐笔记；只接受请求目标，避免错误身份使整条采集失败。
+    return tuple(
+        note
+        for note in extracted
+        if expected_note_id is None
+        or str(note.get("id") or note.get("note_id")) == expected_note_id
+    )
 
 
 def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:

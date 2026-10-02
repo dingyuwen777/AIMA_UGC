@@ -44,6 +44,8 @@ Search 当前主链是 V2；代码还保留 V1 Candidate Builder，只用于显�
 
 ## 3. Search 当前 Capability
 
+账号补采支持 `unique_id` 和 `sec_uid`：前者通过 App V3 `handler_user_profile_v2` 精确解析并核验返回的抖音号，后者作为稳定身份；作品使用 App V3 `fetch_user_post_videos`。作品作者的实际 sec_uid 必须匹配已核验身份，不能以昵称或互相矛盾的备用 ID 放行。身份和每页作品经过正式持久 Request/Attempt/Raw，详情、一级评论及回复复用上述主链。
+
 排序：
 
 ```text

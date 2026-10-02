@@ -37,6 +37,7 @@ TikHubBusinessOperation = Literal[
     "account_info",
     "account_notes",
     "account_posts",
+    "account_discovery",
 ]
 _JSON_OBJECT_ADAPTER = TypeAdapter(JsonObject)
 
@@ -873,10 +874,10 @@ def _advance_kuaishou_comments(
 
 
 def extract_detail_items(
-    platform: TikHubPlatform, body: dict[str, Any]
+    platform: TikHubPlatform, body: dict[str, Any], *, external_content_id: str | None = None
 ) -> tuple[dict[str, Any], ...]:
     if platform == "xiaohongshu":
-        return xiaohongshu.extract_detail_items(body)
+        return xiaohongshu.extract_detail_items(body, expected_note_id=external_content_id)
     if platform == "douyin":
         return (douyin.extract_detail_item(body),)
     if platform == "weibo":
