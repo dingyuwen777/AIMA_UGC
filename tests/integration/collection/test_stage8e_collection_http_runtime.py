@@ -173,6 +173,36 @@ def _seed_config_and_search_pack(runtime) -> tuple[UUID, UUID]:  # type: ignore[
     return provider_config_id, pack_id
 
 
+@pytest.mark.parametrize("comments,replies", [(True, True), (True, False), (False, False)])
+def test_manual_discovery_freezes_full_with_requested_comment_options(
+    runtime,
+    comments: bool,
+    replies: bool,
+) -> None:  # type: ignore[no-untyped-def]
+    provider_id, pack_id = _seed_config_and_search_pack(runtime)
+    request = CollectionRunCreateRequest(
+        mode="discovery",
+        keyword_pack_ids=(pack_id,),
+        platforms=({"platform": "xiaohongshu", "provider_config_id": provider_id},),
+        include_comments=comments,
+        include_sub_comments=replies,
+    )
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(request, request_id="manual-full-options")
+    with runtime.database.new_session() as session:
+        snapshot = session.scalar(
+            select(collection_runs_table.c.config_snapshot).where(
+                collection_runs_table.c.id == created.run_id
+            )
+        )
+    assert snapshot["include_comments"] is comments
+    assert snapshot["include_sub_comments"] is replies
+    assert snapshot["comment_policy"] == "full"
+    assert snapshot["decision_policy"]["comment_mode"] == "full"
+    assert snapshot["decision_policy"]["comments_enabled"] is comments
+    assert snapshot["decision_policy"]["comment_refresh_when_count_unchanged"] is comments
+
+
 def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomically(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
@@ -247,6 +277,10 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
     assert run["config_snapshot"]["schema_version"] == "collection-run-config.v4"
     assert run["config_snapshot"]["plan_type"] == "tikhub"
     assert run["config_snapshot"]["mode"] == "discovery"
+    assert run["config_snapshot"]["comment_policy"] == "full"
+    assert run["config_snapshot"]["decision_policy"]["comment_mode"] == "full"
+    assert run["config_snapshot"]["decision_policy"]["comments_enabled"] is True
+    assert run["config_snapshot"]["decision_policy"]["comment_refresh_when_count_unchanged"] is True
     assert run["config_snapshot"]["keywords"] == ["爱玛", "Q7"]
     assert run["config_snapshot"]["search_snapshot"]["terms"] == ["爱玛", "Q7"]
     assert run["config_snapshot"]["brand_vehicle_filter"]["search_semantics"] == ("keyword_pack")

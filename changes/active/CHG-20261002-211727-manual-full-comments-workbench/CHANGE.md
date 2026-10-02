@@ -49,7 +49,7 @@ main 77060d1c：HTTP 默认 include_sub_comments=false；手动 Run comment_poli
 
 ## 推断与待确认
 
-真实浏览器、隔离 PostgreSQL 与 Full-stack 结果尚待本轮验证；不能由代码读取推断通过。
+隔离 PostgreSQL 109 项和五平台日期补采 Full-stack 已有通过证据；完整浏览器及重复补采仍在处理本机资源干扰，不能宣称全部通过。
 
 # 目标、成功标准与非目标
 
@@ -132,8 +132,8 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 - [x] 调查当前实现和事实源
 - [x] 建立任务路由和验证矩阵
 - [x] 默认行为建立失败证据
-- [ ] 完成最小充分实现
-- [ ] 同步受影响长期文档
+- [x] 完成最小充分实现
+- [x] 同步受影响长期文档
 - [ ] 取得当前版本验证证据
 - [ ] 完成追溯、完成审计和两阶段复核
 
@@ -189,16 +189,21 @@ HTTP 默认与手动策略、三个主动入口、工作台筛选与雷达、声
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | main 77060d1c + 新测试；本地 Python | pytest tests/contracts/test_manual_comment_defaults.py -q | 3 failed，断言 include_sub_comments True | 已复现默认关闭 |
+| V2 | 本地实现 / Python 3.14.7 | pytest tests/unit tests/contracts tests/api -q | 2014 passed、16 skipped、12 subtests passed | 后端及 Contract 回归 |
+| V3 | 本地实现 / 隔离 PostgreSQL 18.4 / head 20261002_0079 | collection HTTP/date/selected/comment coverage 四个 integration 文件 | 109 passed | 默认 Full 快照、原 Full 500/30/100 页边界 |
+| V4 | 本地实现 / Node 24.19.0 | npm --prefix frontend run test -- --run；lint；build | 304 passed；lint/typecheck/build PASS | store、默认选项、AI 活动状态与构建 |
+| V5 | 本地实现 | generate.py --check；check_compatibility.py；mypy backend/src；ruff；check_docs.py | PASS | 生成物、兼容性、类型与文档 |
+| V6 | 本地实现 / 全新隔离 DB + API + Fake Worker | comment-supplement.spec.ts 首个五平台日期用例 | PASS，18.3s | 浏览器默认回复到 Raw/Job/业务库和评论详情 |
 
 ## 未验证内容与剩余风险
 
-当前处于实现阶段；Green、PG、浏览器、Full-stack、Review 和 CI 尚未取得。
+当前实现待独立 Review；完整 Browser/Full-stack 重验及当前 head/base CI 尚未完成。Windows 并发浏览器期间出现 WinError 10055 和 Vite 连接拒绝，改用顺序批次验证；不得用已有局部通过结果代替完整门禁。
 
 ## 交付状态
 
-- 提交：待首个治理/Red 提交。
-- 拉取请求：待首个本地提交 push 后创建早期 Draft。
-- CI：尚未运行。
+- 提交：治理/Red 6ea6481；实现 checkpoint 待记录。
+- 拉取请求：#697 早期 Draft，仅治理/Red commit 已推送。
+- CI：早期 Draft Red 状态，尚无当前实现 CI 证据。
 - 合并：尚未合并。
 - Change 归档：合并后由原生 Workflow 完成。
 - 发布 / 部署：不适用，本轮仅要求 merge main。

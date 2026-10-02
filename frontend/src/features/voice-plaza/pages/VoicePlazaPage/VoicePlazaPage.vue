@@ -433,13 +433,13 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </aside>
 
       <section
+        v-if="activeAnalysisRuns.length > 0"
         class="active-analysis-runs"
-        :class="{ 'active-analysis-runs--empty': !activeAnalysisRuns.length }"
         aria-label="AI 分析活动任务"
       >
         <header class="active-analysis-heading">
           <div>
-            <strong>AI 分析任务{{ activeAnalysisRuns.length ? '' : ' · 暂无活动任务' }}</strong>
+            <strong>AI 分析任务</strong>
             <span>{{ activeAnalysisRuns.length }} 个任务正在处理；历史任务统一在任务中心查看。</span>
           </div>
           <button

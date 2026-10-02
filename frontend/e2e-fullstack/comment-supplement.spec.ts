@@ -46,7 +46,7 @@ test('五平台原生 ID 从浏览器补采到声音广场评论与回复', asyn
   for (const label of labels) {
     await drawer.getByLabel(new RegExp(label)).check()
   }
-  await drawer.getByLabel('二级回复').check()
+  await expect(drawer.getByLabel('二级回复 · 默认采集')).toBeChecked()
   await test.info().attach('日期补采弹窗', {
     body: await page.screenshot({ path: test.info().outputPath('date-dialog.png') }),
     contentType: 'image/png',
@@ -172,7 +172,7 @@ test('声音广场只补采勾选笔记，详情和评论在终态自动刷新�
   const dialog = page.getByRole('dialog', { name: '评论补采', exact: true })
   await expect(dialog).toHaveClass(/aima-modal-container/)
   await expect(dialog.getByLabel('评论 · 固定执行', { exact: true })).toBeChecked()
-  await expect(dialog.getByLabel(/二级回复/)).not.toBeChecked()
+  await expect(dialog.getByLabel(/二级回复/)).toBeChecked()
   await expect(dialog.getByLabel(/二级回复/)).toBeEnabled()
   await expect(dialog).toContainText('预计处理 2 条内容')
   const createdPromise = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/collection-runs')
@@ -180,7 +180,7 @@ test('声音广场只补采勾选笔记，详情和评论在终态自动刷新�
   const created = await createdPromise
   expect(created.status()).toBe(202)
   const body = created.request().postDataJSON()
-  expect(body).toMatchObject({ mode: 'content_supplement', supplement_targets: { kind: 'selected' }, expected_target_count: 2, include_comments: true, include_sub_comments: false })
+  expect(body).toMatchObject({ mode: 'content_supplement', supplement_targets: { kind: 'selected' }, expected_target_count: 2, include_comments: true, include_sub_comments: true })
   chosen.push(...body.supplement_targets.content_ids)
   const { run_id: runId } = await created.json()
   await expect(dialog).toHaveCount(0)
@@ -198,10 +198,15 @@ test('声音广场只补采勾选笔记，详情和评论在终态自动刷新�
   const ingested = await (await request.get('/api/v1/contents', { params: { source_identifier: runId, limit: 20 } })).json()
   expect(ingested.items.map((item: { id: string }) => item.id).sort()).toEqual(chosen.sort())
   expect(run.scopes).toHaveLength(2)
+  // 上一用例已完整采集相同笔记的回复；Full 保留完整且数量未变的回复，不重复计费。
   expect(run.stats.requested_count).toBe(4)
-  expect(run.scopes.every((scope: { stats: { reply_count: number } }) => scope.stats.reply_count === 0)).toBe(true)
+  expect(run.scopes.map((scope: { stats: { reply_count: number } }) => scope.stats.reply_count)).toEqual([0, 0])
   const identity = ingested.items.find((item: { platform: string }) => item.platform === 'xiaohongshu').id
   const before = await (await request.get(`/api/v1/contents/${identity}/comments`)).json()
+  expect(before.items[0].reply_count).toBe(2)
+  await detail.getByRole('button', { name: /查看 \d+ 条回复/ }).click()
+  await expect(detail.getByText('脱敏二级回复')).toBeVisible()
+  await expect(detail.getByText('脱敏第二页回复')).toBeVisible()
   const preview = await (await request.post('/api/v1/collection-supplements/preview', { data: { targets: body.supplement_targets } })).json()
   const repeatedResponse = await request.post('/api/v1/collection-runs', { data: { ...body, expected_target_count: preview.target_count, expected_target_fingerprint: preview.target_fingerprint } })
   expect(repeatedResponse.status()).toBe(202)

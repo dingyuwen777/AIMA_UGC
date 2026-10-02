@@ -27,6 +27,7 @@ import {
   fetchWorkbenchTrend,
   saveWorkbenchLayout,
 } from './api'
+import { readWorkbenchFilters, saveWorkbenchFilters } from './filterPersistence'
 
 export interface WorkbenchFilters {
   dateFrom: string
@@ -496,7 +497,16 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   async function initialize(): Promise<void> {
     await refreshReferenceData()
     if (!initialized) {
-      filters.value = initialFilters()
+      const saved = readWorkbenchFilters()
+      if (saved) {
+        // 只在目录实际成功加载时清理旧身份，瞬时网络失败不等于目录项已删除。
+        const brandIds = catalog.brands.active === null ? saved.brandIds
+          : saved.brandIds.filter((id) => brands.value.some((item) => item.id === id))
+        const vehicleModelIds = catalog.vehicles.active === null ? saved.vehicleModelIds
+          : saved.vehicleModelIds.filter((id) => vehicleModels.value.some((item) => item.id === id))
+        filters.value = normalizeFilters({ ...saved, brandIds, vehicleModelIds })
+        saveWorkbenchFilters(filters.value)
+      } else filters.value = initialFilters()
       initialized = true
     }
     await refreshData()
@@ -508,8 +518,8 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     setFilters(initialFilters())
   }
 
-  /** 替换筛选快照；页面用 debounce 合并连续勾选后再触发查询。 */
-  function setFilters(value: WorkbenchFilters): void {
+  /** 应用和恢复共用日期、车型归属及 Taxonomy 规则，避免存储形成另一套查询语义。 */
+  function normalizeFilters(value: WorkbenchFilters): WorkbenchFilters {
     const dates = [value.dateFrom, value.dateTo].filter(Boolean).sort()
     const defaultDates = defaultFilters()
     const nextFilters: WorkbenchFilters = {
@@ -527,9 +537,15 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       primaryLabels: [...value.primaryLabels],
       secondaryLabels: [...value.secondaryLabels],
     }
-    filters.value = taxonomy.value
+    return taxonomy.value
       ? sanitizeTaxonomyFilters(nextFilters, taxonomy.value)
       : nextFilters
+  }
+
+  /** 替换并保存已应用筛选；页面用 debounce 合并连续勾选后再触发查询。 */
+  function setFilters(value: WorkbenchFilters): void {
+    filters.value = normalizeFilters(value)
+    saveWorkbenchFilters(filters.value)
     dataRevision += 1
     // 旧响应属于另一组筛选，不能在新筛选下冒充“最近成功结果”。服务端若已有
     // 相同筛选快照会立即返回；冷筛选则返回明确 preparing 状态。

@@ -3016,7 +3016,7 @@
             "type": "boolean"
           },
           "include_sub_comments": {
-            "default": false,
+            "default": true,
             "title": "Include Sub Comments",
             "type": "boolean"
           },
@@ -4112,7 +4112,7 @@
             "type": "boolean"
           },
           "include_sub_comments": {
-            "default": false,
+            "default": true,
             "title": "Include Sub Comments",
             "type": "boolean"
           },

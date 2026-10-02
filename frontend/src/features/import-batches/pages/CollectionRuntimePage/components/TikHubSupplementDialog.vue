@@ -15,6 +15,7 @@ import { beijingDayBoundary } from '../../../../../shared/domain/beijingTime'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import CollectionSupplementOptions from '../../../../collection-supplement/CollectionSupplementOptions.vue'
 import { useCollectionSupplement } from '../../../../collection-supplement/useCollectionSupplement'
+import { manualCommentDefaults } from '../../../../collection-supplement/defaults'
 import { platformLabels } from '../../../format'
 
 const props = defineProps<{
@@ -34,8 +35,8 @@ const brandScope = ref<'all_active' | 'selected'>('all_active')
 const selectedBrandIds = ref<string[]>([])
 const platforms = ref<CollectionPlatform[]>([])
 const providerConfigId = ref('')
-const includeComments = ref(true)
-const includeSubComments = ref(false)
+const includeComments = ref<boolean>(manualCommentDefaults.includeComments)
+const includeSubComments = ref<boolean>(manualCommentDefaults.includeSubComments)
 const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
 const active = computed(() => props.modelValue && mode.value === 'content_supplement')
 const targets = computed<CollectionSupplementTargetSelection | null>(() => {
@@ -67,7 +68,9 @@ watch(() => props.modelValue, (open) => {
   mode.value = 'content_supplement'
   publishedRange.value = { from: '', to: '' }
   selectedPackIds.value = []; selectedBrandIds.value = []; brandScope.value = 'all_active'
-  platforms.value = []; includeComments.value = true; includeSubComments.value = false
+  platforms.value = []
+  includeComments.value = manualCommentDefaults.includeComments
+  includeSubComments.value = manualCommentDefaults.includeSubComments
   providerConfigId.value = props.capabilities?.provider_configs.length === 1 ? props.capabilities.provider_configs[0]?.id ?? '' : ''
 })
 watch(providerConfigId, () => { platforms.value = [] })
@@ -259,7 +262,7 @@ async function submit(): Promise<void> {
           </div>
         </section>
         <AimaFeedbackBanner tone="warning">
-          将发起真实外部采集请求，可能产生渠道费用；提交后自动执行。
+          默认采集全部可访问的一级评论和二级回复，可能增加请求次数、费用和耗时；可取消评论或二级回复。达到分页上限或接口不可访问时会标记采集缺口。
         </AimaFeedbackBanner>
       </template>
     </div>

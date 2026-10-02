@@ -8,7 +8,7 @@ import type {
 } from '../../../generated/api/client'
 import type { WorkbenchMindMetric } from '../store'
 import WorkbenchDateLabel from './WorkbenchDateLabel.vue'
-import { radarGeometry } from './radarGeometry'
+import { radarGeometry, type RadarGeometry } from './radarGeometry'
 
 const props = defineProps<{
   mind: WorkbenchMindResponse | null
@@ -39,6 +39,7 @@ const chartElement = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
 const centerSize = ref(40)
+const labelGeometry = ref<RadarGeometry | null>(null)
 
 /** 根据当前切换维度返回条形图值；占比与正向率都以 0..1 Contract 展示。 */
 function metricValue(item: WorkbenchMindDimensionResponse): number {
@@ -68,11 +69,6 @@ function renderChart(): void {
   if (!chartElement.value || dimensions.value.length === 0) return
   if (!chart) {
     chart = echarts.init(chartElement.value, undefined, { renderer: 'svg' })
-    chart.on('click', (event) => {
-      if (event.componentType !== 'radar') return
-      const label = String(event.name ?? '')
-      if (dimensions.value.some((item) => item.primary_label === label)) emit('select', label)
-    })
   }
   const values = dimensions.value.map(metricValue)
   const context = document.createElement('canvas').getContext('2d')
@@ -84,7 +80,7 @@ function renderChart(): void {
     return context.measureText(text).width
   })
   centerSize.value = Math.max(28, Math.min(58, geometry.radius * 0.64))
-  const displayLabels = new Map(dimensions.value.map((item, index) => [item.primary_label, geometry.labels[index]?.label]))
+  labelGeometry.value = geometry
   chartElement.value.dataset.labelGeometry = JSON.stringify(geometry.labels)
   chartElement.value.dataset.labelFontSize = String(geometry.fontSize)
   chart.setOption({
@@ -108,15 +104,7 @@ function renderChart(): void {
       indicator: dimensions.value.map((item) => ({ name: item.primary_label, max: 1 })),
       axisNameGap: geometry.gap,
       axisName: {
-        color: '#17233d',
-        fontSize: geometry.fontSize,
-        fontWeight: 600,
-        lineHeight: geometry.fontSize + 3,
-        formatter: (name: string) => displayLabels.get(name) ?? name,
-        rich: {
-          value: { color: '#ed0b68', fontSize: 14, fontWeight: 700, lineHeight: 20 },
-          unit: { color: '#8a96ad', fontSize: 9, fontWeight: 400, lineHeight: 20 },
-        },
+        show: false,
       },
       axisLine: { lineStyle: { color: '#d1d5db', width: 1 } },
       splitLine: { lineStyle: { color: '#d1d5db', width: 1 } },
@@ -268,20 +256,29 @@ onBeforeUnmount(() => {
           >
             <strong :title="brandLabel">{{ brandLabel }}</strong><span>心智图</span>
           </div>
-        </div>
-        <div
-          class="radar-accessible-list"
-          aria-label="选择一级用户心智"
-        >
-          <button
-            v-for="item in dimensions"
-            :key="item.primary_label"
-            type="button"
-            :aria-pressed="selected?.primary_label === item.primary_label"
-            @click="emit('select', item.primary_label)"
+          <div
+            class="radar-labels"
+            aria-label="选择一级用户心智"
           >
-            {{ item.primary_label }} {{ percent(metricValue(item)) }}
-          </button>
+            <button
+              v-for="(item, index) in dimensions"
+              :key="item.primary_label"
+              class="radar-label"
+              :class="{ 'radar-label--selected': selected?.primary_label === item.primary_label }"
+              type="button"
+              :style="labelGeometry?.labels[index] ? {
+                left: `${labelGeometry.labels[index]!.left}px`, top: `${labelGeometry.labels[index]!.top}px`,
+                width: `${labelGeometry.labels[index]!.width}px`, height: `${labelGeometry.labels[index]!.height}px`,
+                fontSize: `${labelGeometry.fontSize}px`,
+              } : undefined"
+              :title="`${item.primary_label} ${percent(metricValue(item))}`"
+              :aria-label="`${item.primary_label} ${percent(metricValue(item))}`"
+              :aria-pressed="selected?.primary_label === item.primary_label"
+              @click="emit('select', item.primary_label)"
+            >
+              {{ labelGeometry?.labels[index]?.label ?? `${item.primary_label} ${percent(metricValue(item))}` }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -289,7 +286,7 @@ onBeforeUnmount(() => {
         v-if="selected"
         class="mind-detail aima-scroll-card"
       >
-        <small>当前查看 · 一级心智 · {{ metric === 'share' ? '帖子占比' : '正向率' }}</small>
+        <small>当前查看 · {{ selected.primary_label }} · {{ metric === 'share' ? '帖子占比' : '正向率' }}</small>
         <div class="detail-title">
           <h3 :title="selected.primary_label">
             {{ selected.primary_label }}
@@ -363,7 +360,10 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
 .radar-center { position: absolute; top: 50%; left: 50%; display: grid; place-content: center; transform: translate(-50%, -50%); border-radius: 50%; color: #fff; background: var(--aima-primary); text-align: center; pointer-events: none; }
 .radar-center strong { max-width: 54px; overflow: hidden; font-size: clamp(10px, 1.7cqw, 14px); text-overflow: ellipsis; white-space: nowrap; }
 .radar-center span { font-size: 9px; }
-.radar-accessible-list { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.radar-labels { position: absolute; z-index: 2; inset: 0; pointer-events: none; }
+.radar-label { position: absolute; padding: 0; border: 1px solid transparent; border-radius: var(--aima-radius-control); color: var(--aima-text); background: transparent; cursor: pointer; font-weight: 600; line-height: 1; white-space: nowrap; pointer-events: auto; }
+.radar-label--selected { border-color: var(--aima-primary); color: var(--aima-primary); background: var(--aima-primary-soft); }
+.radar-label:focus-visible { outline: 2px solid var(--aima-primary); outline-offset: 2px; }
 .mind-detail { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: clamp(5px, .9cqw, 10px); padding: clamp(7px, 1.2cqw, 14px); overflow: auto; }
 .mind-detail > small { color: var(--aima-text-disabled); font-size: 11px; }
 .detail-title { display: grid; gap: 2px; }

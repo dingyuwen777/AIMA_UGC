@@ -119,6 +119,14 @@ def test_selected_preserves_irrelevant_and_blocked_without_unselected_scopes(run
             .one()
         )
         snapshot = run["config_snapshot"]["supplement_selection"]
+        assert run["config_snapshot"]["include_sub_comments"] is True
+        assert run["config_snapshot"]["comment_policy"] == "full"
+        assert run["config_snapshot"]["decision_policy"]["comment_mode"] == "full"
+        assert run["config_snapshot"]["decision_policy"]["comments_enabled"] is True
+        assert (
+            run["config_snapshot"]["decision_policy"]["comment_refresh_when_count_unchanged"]
+            is True
+        )
         assert snapshot["kind"] == "selected" and snapshot["target_count"] == 3
         assert "content_ids" not in snapshot and run["import_batch_id"] is None
         reader = PostgresContentQueryRepository(
@@ -181,7 +189,7 @@ def test_same_count_date_membership_change_and_options_change_reject_atomically(
     )
     with pytest.raises(CollectionSupplementTargetsChanged):
         service.create_run(
-            request.model_copy(update={"include_sub_comments": True}), request_id="changed-options"
+            request.model_copy(update={"include_sub_comments": False}), request_id="changed-options"
         )
     with runtime.database.engine.begin() as connection:
         connection.execute(

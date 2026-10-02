@@ -393,6 +393,7 @@ class PostgresCollectionHttpService:
                 )
                 policy = CollectionDecisionPolicyV1(
                     comments_enabled=request.include_comments,
+                    comment_mode="full",
                     # 网页端辅助补采是用户显式发起的新 Run；即使帖子公布的评论数
                     # 没有变化，也必须重新读取评论，才能恢复上次失败或不完整的补采。
                     comment_refresh_when_count_unchanged=request.include_comments,
@@ -439,7 +440,7 @@ class PostgresCollectionHttpService:
                         "include_sub_comments": request.include_sub_comments,
                         "manual_deep_collection": True,
                         "detail_policy": "on_change",
-                        "comment_policy": "adaptive",
+                        "comment_policy": "full",
                         "decision_policy": policy.model_dump(mode="json"),
                         "job_timeout_seconds": timeout_seconds,
                         "execution_limits": {

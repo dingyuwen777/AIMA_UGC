@@ -57,11 +57,12 @@ for (const [columnSpan, rowUnits] of [[6, 48], [6, 80], [8, 48], [8, 80], [12, 4
     } }))
     await page.route('**/api/v1/workbench/mind**', (route) => route.fulfill({ json: nineMind() }))
     await page.goto('/')
-    const chart = page.locator('.radar-chart')
-    await expect(chart.locator('svg text')).toHaveCount(9)
-    const labels = await chart.locator('svg text').evaluateAll((elements) => elements.map((element) => {
+    const chart = page.locator('.radar-stage')
+    await expect(chart.locator('.radar-chart svg text')).toHaveCount(0)
+    await expect(chart.locator('.radar-label')).toHaveCount(9)
+    const labels = await chart.locator('.radar-label').evaluateAll((elements) => elements.map((element) => {
       const box = element.getBoundingClientRect()
-      return { text: element.textContent, left: box.left, top: box.top, right: box.right, bottom: box.bottom,
+      return { text: element.textContent?.trim(), left: box.left, top: box.top, right: box.right, bottom: box.bottom,
         fontSize: Number.parseFloat(getComputedStyle(element).fontSize) }
     }))
     expect(labels.map((label) => label.text)).toEqual(nineLabels.map((label) => `${label} 35%`))
@@ -104,7 +105,7 @@ test('首次后台聚合独立跟进，不等待六小时，失败状态可以�
   await page.clock.fastForward(3_000)
   await expect(page.locator('.mind-card').getByText('聚合失败')).toBeVisible()
   await page.locator('.mind-card').getByRole('button', { name: '重试', exact: true }).click()
-  await expect(page.locator('.radar-chart svg text')).toHaveCount(9)
+  await expect(page.locator('.radar-label')).toHaveCount(9)
   expect(requests).toBe(3)
 })
 
@@ -114,13 +115,13 @@ test('异常长一级标签守住可读字号，省略显示且详情保留全�
   mind.dimensions[0]!.primary_label = fullName
   await page.route('**/api/v1/workbench/mind**', (route) => route.fulfill({ json: mind }))
   await page.goto('/')
-  const chart = page.locator('.radar-chart')
-  await expect(chart.locator('svg text')).toHaveCount(9)
-  const texts = await chart.locator('svg text').allTextContents()
+  const chart = page.locator('.radar-stage')
+  await expect(chart.locator('.radar-label')).toHaveCount(9)
+  const texts = (await chart.locator('.radar-label').allTextContents()).map((value) => value.trim())
   expect(texts[0]).toContain('…')
   expect(texts[0]).toContain('35%')
   const box = await chart.boundingBox()
-  const actual = await chart.locator('svg text').evaluateAll((elements) => elements.map((element) => {
+  const actual = await chart.locator('.radar-label').evaluateAll((elements) => elements.map((element) => {
     const r = element.getBoundingClientRect()
     return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, font: Number.parseFloat(getComputedStyle(element).fontSize) }
   }))
@@ -133,6 +134,90 @@ test('异常长一级标签守住可读字号，省略显示且详情保留全�
   }
   await expect(page.locator('.mind-detail h3')).toHaveText(fullName)
   await expect(page.locator('.mind-detail h3')).toHaveAttribute('title', fullName)
+})
+
+test('雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻', async ({ page }) => {
+  await page.clock.install()
+  await mockVoicePlazaAfterDeepLink(page)
+  const response = nineMind()
+  response.dimensions.forEach((item, index) => {
+    item.content_share = (index + 1) / 100
+    item.positive_rate = (index + 10) / 100
+  })
+  let requests = 0
+  await page.route('**/api/v1/workbench/mind**', (route) => {
+    requests += 1
+    return route.fulfill({ json: response })
+  })
+  await page.goto('/')
+  const detail = page.locator('.mind-detail')
+  for (const [index, key] of [[1, null], [6, 'Enter'], [3, 'Space']] as const) {
+    const label = response.dimensions[index]!.primary_label
+    const button = page.locator('.radar-label').filter({ hasText: label })
+    await expect(button).toBeVisible()
+    if (key) { await button.focus(); await page.keyboard.press(key) } else await button.click()
+    await expect(button).toHaveAttribute('aria-pressed', 'true')
+    await expect(button).toHaveClass(/radar-label--selected/)
+    await expect(page.locator('.radar-label[aria-pressed="true"]')).toHaveCount(1)
+    await expect(detail.locator('h3')).toHaveText(label)
+    await expect(detail.locator('.metric-cards > div').first()).toContainText(`${index + 1}.00%`)
+    await expect(detail.locator('.metric-cards > div').last()).toContainText(`${index + 10}%`)
+    await expect(detail.locator('.change-card')).toContainText(response.dimensions[index]!.change_summary)
+  }
+  const label = response.dimensions[3]!.primary_label
+  await page.locator('.metric-toggle').getByRole('button', { name: '正向率', exact: true }).click()
+  await expect(detail.locator('small').first()).toHaveText(`当前查看 · ${label} · 正向率`)
+  await expect(page.locator('.radar-label[aria-pressed="true"]')).toContainText('13%')
+  await page.clock.fastForward(6 * 60 * 60 * 1000)
+  await expect.poll(() => requests).toBe(2)
+  await expect(detail.locator('h3')).toHaveText(label)
+  await expect(page.locator('.radar-label[aria-pressed="true"]')).toContainText(label)
+  await detail.getByRole('button', { name: '查看该心智的用户原声 →' }).click()
+  await page.waitForURL((url) => url.pathname === '/voice-plaza')
+  expect(new URL(page.url()).searchParams.getAll('primary_labels')).toEqual([label])
+})
+
+test('已应用日期及其它筛选在刷新后的首个模块请求中恢复，重置也持久化', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('.radar-label')).toHaveCount(2)
+  await page.getByRole('button', { name: '工作台时间范围' }).click()
+  const dates = await page.locator('.calendar-days [data-date]').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('data-date')!))
+  const from = dates[4]!, to = dates[12]!
+  await page.getByRole('button', { name: from, exact: true }).click()
+  await page.getByRole('button', { name: to, exact: true }).click()
+  await page.getByRole('button', { name: '确定', exact: true }).click()
+  for (const [name, option] of [['平台', '抖音'], ['车型', 'Q7'], ['情感', '正面'], ['发声', '真实用户发声'], ['一级标签', '外观设计'], ['二级标签', '外观设计 / 颜色与配色']]) {
+    await page.getByRole('button', { name: name!, exact: true }).click()
+    await page.getByRole('dialog', { name: `选择${name}` }).getByRole('checkbox', { name: option!, exact: true }).check()
+    await page.keyboard.press('Escape')
+  }
+  const requests: URL[] = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (['stream', 'mind', 'trend'].some((module) => url.pathname.endsWith(`/workbench/${module}`))) requests.push(url)
+  })
+  await page.reload()
+  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3)
+  for (const module of ['stream', 'mind', 'trend']) {
+    const params = requests.find((url) => url.pathname.endsWith(`/workbench/${module}`))!.searchParams
+    expect(params.get('date_from')).toBe(from)
+    expect(params.get('date_to')).toBe(to)
+    expect(params.getAll('platforms')).toEqual(['douyin'])
+    expect(params.getAll('brand_ids')).toEqual([brandId])
+    expect(params.getAll('vehicle_model_ids')).toEqual([vehicleId])
+    expect(params.getAll('sentiments')).toEqual(['正面'])
+    expect(params.getAll('voice_types')).toEqual(['真实用户发声'])
+    expect(params.getAll('primary_labels')).toEqual(['外观设计'])
+    expect(params.getAll('secondary_labels')).toEqual(['颜色与配色'])
+  }
+  await page.getByRole('button', { name: '重置', exact: true }).click()
+  const reset = await page.getByRole('button', { name: '工作台时间范围' }).textContent()
+  await page.reload()
+  await expect(page.getByRole('button', { name: '工作台时间范围' })).toHaveText(reset!)
+  const saved = await page.evaluate(() => JSON.parse(sessionStorage.getItem('aima.workbench.applied-filters')!))
+  expect(saved.platforms).toEqual([])
+  expect(saved.primaryLabels).toEqual([])
+  expect(saved.brandIds).toEqual([brandId])
 })
 
 test('后台聚合请求及失败保留成功图表、日期和几何', async ({ page }) => {
@@ -148,18 +233,18 @@ test('后台聚合请求及失败保留成功图表、日期和几何', async ({
   })
   await page.goto('/')
   const card = page.locator('.mind-card')
-  await expect(card.locator('svg text')).toHaveCount(9)
+  await expect(card.locator('.radar-label')).toHaveCount(9)
   const before = await card.boundingBox()
   const bodySelectors = ['.radar-stage', '.radar-center', '.mind-detail']
   const bodyBefore = await Promise.all(bodySelectors.map((selector) => card.locator(selector).boundingBox()))
   await page.clock.fastForward(6 * 60 * 60 * 1000)
   await expect.poll(() => requests).toBe(2)
-  await expect(card.locator('svg text')).toHaveCount(9)
+  await expect(card.locator('.radar-label')).toHaveCount(9)
   expect(await card.boundingBox()).toEqual(before)
   expect(await Promise.all(bodySelectors.map((selector) => card.locator(selector).boundingBox()))).toEqual(bodyBefore)
   release()
   await expect(card).toHaveAttribute('aria-busy', 'false')
-  await expect(card.locator('svg text')).toHaveCount(9)
+  await expect(card.locator('.radar-label')).toHaveCount(9)
   expect(await card.boundingBox()).toEqual(before)
   expect(await Promise.all(bodySelectors.map((selector) => card.locator(selector).boundingBox()))).toEqual(bodyBefore)
 })
@@ -775,7 +860,7 @@ test('一级标签多选只开放对应二级候选，并在父级取消后清�
 test('筛选后的后端结果同步替换三个模块，重置后恢复', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.stream-list article')).toHaveCount(1)
-  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
+  await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(2)
   await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 
   await page.getByRole('button', { name: '情感', exact: true }).click()
@@ -787,14 +872,14 @@ test('筛选后的后端结果同步替换三个模块，重置后恢复', async
 
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(page.locator('.stream-list article')).toHaveCount(1)
-  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
+  await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(2)
   await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 })
 
 test('新筛选请求失败时不把上一筛选结果冒充当前数据', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.stream-cycle:first-child article')).toHaveCount(1)
-  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
+  await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(2)
   await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 
   await page.getByRole('button', { name: '情感', exact: true }).click()
@@ -805,7 +890,7 @@ test('新筛选请求失败时不把上一筛选结果冒充当前数据', async
   await expect(page.getByText('趋势数据暂时无法更新')).toBeVisible()
   await expect(page.locator('.module-state--inline')).toHaveCount(0)
   await expect(page.locator('.stream-cycle:first-child article')).toHaveCount(0)
-  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(0)
+  await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(0)
   await expect(page.locator('.trend-card .kpis > div')).toHaveCount(0)
 })
 
@@ -833,7 +918,7 @@ test('品牌心智失败只重试自身，不耦合刷新声音流和趋势', as
   await page.locator('.mind-card').getByRole('button', { name: '重试' }).click()
 
   await expect(page.getByText('品牌用户心智暂时无法更新')).toHaveCount(0)
-  await expect(page.locator('.mind-card .radar-accessible-list > button')).toHaveCount(2)
+  await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(2)
   expect(reads.mind).toBe(beforeRetry.mind + 1)
   expect(reads.stream).toBe(beforeRetry.stream)
   expect(reads.trend).toBe(beforeRetry.trend)
