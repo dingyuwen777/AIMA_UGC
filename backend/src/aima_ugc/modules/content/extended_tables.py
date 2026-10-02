@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Table,
     Text,
@@ -260,6 +261,15 @@ comment_thread_coverage_observations_table = Table(
         name="nonfetch_zero",
     ),
     info={"owner": "content"},
+)
+
+Index(
+    "ix_comment_thread_coverage_latest_capture",
+    comment_thread_coverage_observations_table.c.content_id,
+    comment_thread_coverage_observations_table.c.root_comment_id,
+    comment_thread_coverage_observations_table.c.observed_at.desc(),
+    comment_thread_coverage_observations_table.c.id.desc(),
+    postgresql_where=comment_thread_coverage_observations_table.c.coverage != "not_requested",
 )
 
 __all__ = [

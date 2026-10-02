@@ -154,6 +154,27 @@ class CollectionExecutionService:
                 "manual/api/backfill run must not reference occurrence_id"
             )
 
+        from .run_policy import validate_new_run_snapshot
+
+        validate_new_run_snapshot(config_snapshot)
+        if manual_plan_id is not None or occurrence_id is not None:
+            version = config_snapshot.get("schedule_version")
+            if type(version) is not int or version <= 0:
+                raise InvalidCollectionRunPlanBindingError(
+                    "计划绑定Run必须冻结正整数schedule_version"
+                )
+            frozen_plan_id = config_snapshot.get("plan_id")
+            try:
+                if not isinstance(frozen_plan_id, str):
+                    raise ValueError("缺少冻结计划身份")
+                parsed_plan_id = UUID(frozen_plan_id)
+            except ValueError as exc:
+                raise InvalidCollectionRunPlanBindingError(
+                    "计划绑定Run必须冻结有效plan_id"
+                ) from exc
+            if manual_plan_id is not None and parsed_plan_id != manual_plan_id:
+                raise InvalidCollectionRunPlanBindingError("冻结plan_id与manual_plan_id不一致")
+
         scope_sequence = tuple(scopes)
         identities = [scope.identity for scope in scope_sequence]
         if len(identities) != len(set(identities)):

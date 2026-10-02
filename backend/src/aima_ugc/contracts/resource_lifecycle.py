@@ -6,10 +6,10 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
-from aima_ugc.contracts.http import CollectionPlanPlatformRequest, KeywordPackKeywordCreateRequest
+from aima_ugc.contracts.http import KeywordPackKeywordCreateRequest, TikHubPlanRequestConfig
 from aima_ugc.contracts.platform import PlatformScope
 
 ResourceLifecycleKind = Literal[
@@ -121,14 +121,12 @@ class KeywordPackItemRemoveRequest(ResourceExpectedVersionRequest):
     platform_scope: PlatformScope = "all"
 
 
-class CollectionPlanUpdateRequest(ResourceExpectedVersionRequest):
+class CollectionPlanUpdateRequest(ResourceExpectedVersionRequest, TikHubPlanRequestConfig):
     """完整替换一个计划的下一版本配置；历史 Run/Occurrence 继续保留旧版本事实。"""
 
+    plan_type: Literal["tikhub"] = "tikhub"
     name: str = Field(min_length=1, max_length=200)
     schedule_expr: str = Field(min_length=1, max_length=100)
-    platforms: tuple[CollectionPlanPlatformRequest, ...] = Field(min_length=1, max_length=5)
-    keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
-    brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     enabled: bool
 
     @field_validator("name", "schedule_expr", mode="before")
@@ -141,21 +139,6 @@ class CollectionPlanUpdateRequest(ResourceExpectedVersionRequest):
             if not value:
                 raise ValueError("计划名称和调度表达式不能为空")
         return value
-
-    @model_validator(mode="after")
-    def validate_unique_relations(self) -> CollectionPlanUpdateRequest:
-        """保持与创建 Contract 相同的去重和最小执行面约束。"""
-
-        platforms = [item.platform for item in self.platforms]
-        if len(platforms) != len(set(platforms)):
-            raise ValueError("同一计划的目标平台不得重复")
-        if len(self.keyword_pack_ids) != len(set(self.keyword_pack_ids)):
-            raise ValueError("同一计划的关键词包不得重复")
-        if len(self.brand_ids) != len(set(self.brand_ids)):
-            raise ValueError("同一计划的品牌不得重复")
-        if not self.keyword_pack_ids:
-            raise ValueError("计划必须选择至少一个 Keyword Pack 作为 Search Terms")
-        return self
 
 
 class CollectionPlanCopyRequest(BaseModel):

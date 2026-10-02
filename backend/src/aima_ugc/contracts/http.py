@@ -947,29 +947,17 @@ class CollectionPlanPlatformRequest(BaseModel):
         return _normalize_platform_input(value)
 
 
-class CollectionPlanCreateRequest(BaseModel):
-    """周期 Plan 创建 Contract；Keyword Pack 搜索，Brand Scope 过滤。"""
+class TikHubPlanRequestConfig(BaseModel):
+    """当前 TikHub 类型的配置；创建和编辑共享同一个公开约束。"""
 
     model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=200)
-    schedule_expr: str = Field(min_length=1, max_length=100)
+    comment_policy: Literal["adaptive", "full"] = "adaptive"
     platforms: tuple[CollectionPlanPlatformRequest, ...] = Field(min_length=1, max_length=5)
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
-    enabled: bool = True
-
-    @field_validator("name", "schedule_expr", mode="before")
-    @classmethod
-    def normalize_required_text(cls, value: object) -> object:
-        if isinstance(value, str):
-            value = value.strip()
-            if not value:
-                raise ValueError("Plan 名称和 Cron 表达式不能为空")
-        return value
 
     @model_validator(mode="after")
-    def validate_unique_relations(self) -> CollectionPlanCreateRequest:
+    def validate_unique_relations(self) -> TikHubPlanRequestConfig:
         platforms = [item.platform for item in self.platforms]
         if len(platforms) != len(set(platforms)):
             raise ValueError("同一 Plan 的目标平台不得重复")
@@ -982,6 +970,26 @@ class CollectionPlanCreateRequest(BaseModel):
         return self
 
 
+class CollectionPlanCreateRequest(TikHubPlanRequestConfig):
+    """周期 Plan 创建 Contract；Keyword Pack 搜索，Brand Scope 过滤。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    plan_type: Literal["tikhub"] = "tikhub"
+    name: str = Field(min_length=1, max_length=200)
+    schedule_expr: str = Field(min_length=1, max_length=100)
+    enabled: bool = True
+
+    @field_validator("name", "schedule_expr", mode="before")
+    @classmethod
+    def normalize_required_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("Plan 名称和 Cron 表达式不能为空")
+        return value
+
+
 class CollectionPlanPlatformResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -990,9 +998,10 @@ class CollectionPlanPlatformResponse(BaseModel):
     search_config: CollectionSearchConfig
 
 
-class CollectionPlanResponse(BaseModel):
+class CollectionPlanCommonResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    plan_type: Literal["tikhub"]
     id: UUID
     name: str
     enabled: bool
@@ -1001,13 +1010,23 @@ class CollectionPlanResponse(BaseModel):
     schedule_version: int = Field(gt=0)
     next_run_at: datetime | None = None
     last_scheduled_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TikHubPlanResponseConfig(BaseModel):
+    """TikHub 详情配置，与通用计划生命周期分开维护。"""
+
+    model_config = ConfigDict(extra="forbid")
     detail_policy: Literal["on_change"]
-    comment_policy: Literal["adaptive"]
+    comment_policy: Literal["adaptive", "full"]
     platforms: tuple[CollectionPlanPlatformResponse, ...]
     keyword_pack_ids: tuple[UUID, ...]
     brand_ids: tuple[UUID, ...] = ()
-    created_at: datetime
-    updated_at: datetime
+
+
+class CollectionPlanResponse(CollectionPlanCommonResponse, TikHubPlanResponseConfig):
+    """当前唯一详情类型；保留既有扁平字段，plan_type 是显式类型事实。"""
 
 
 class CollectionPlanListQuery(BaseModel):

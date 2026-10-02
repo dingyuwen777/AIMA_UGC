@@ -26,6 +26,7 @@ collection_plans_table = Table(
     "collection_plans",
     metadata,
     Column("id", Uuid(), primary_key=True),
+    Column("plan_type", Text(), nullable=False, server_default=text("'tikhub'")),
     Column("name", Text(), nullable=False),
     Column("enabled", Boolean(), nullable=False),
     Column("schedule_expr", Text()),
@@ -42,6 +43,8 @@ collection_plans_table = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("name"),
     CheckConstraint("char_length(name) > 0", name="name_nonempty"),
+    CheckConstraint("plan_type in ('tikhub')", name="plan_type_allowed"),
+    CheckConstraint("comment_policy in ('adaptive','full')", name="comment_policy_allowed"),
     CheckConstraint(
         "schedule_expr is null or char_length(schedule_expr) > 0",
         name="schedule_expr_nonempty",

@@ -223,6 +223,9 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
+                    "schema_version": "collection-run-config.v4",
+                    "plan_type": "tikhub",
+                    "decision_policy": {"comment_mode": "adaptive"},
                     **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
@@ -353,6 +356,9 @@ def test_scope_runtime_preserves_reply_parent_relation_for_voice_plaza(
                 job_id=job.id,
                 trigger_type="api",
                 config_snapshot={
+                    "schema_version": "collection-run-config.v4",
+                    "plan_type": "tikhub",
+                    "decision_policy": {"comment_mode": "adaptive"},
                     **stage4_collection_config_snapshot(database_runtime, alias="脱敏"),
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",

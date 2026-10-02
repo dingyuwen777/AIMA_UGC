@@ -32,6 +32,7 @@ const plan = {
   next_run_at: null,
   last_scheduled_at: null,
   detail_policy: 'on_change',
+  plan_type: 'tikhub',
   comment_policy: 'adaptive',
   platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId, search_config: {} }],
   keyword_pack_ids: [packId],
@@ -109,18 +110,12 @@ test('matches the approved Figma workspace and resolves the current Brand filter
   await expect(page.getByRole('link', { name: /采集策略/ })).toHaveClass(/router-link-active/)
   await expect(page.getByLabel('采集策略摘要').getByText('关键词包')).toBeVisible()
   await expect(page.locator('.aima-page-actions').getByRole('button', { name: /刷新数据/ })).toBeVisible()
-  await expect(page.locator('.aima-page-actions').getByRole('button', { name: /新建采集计划/ })).toBeVisible()
+  await expect(page.locator('.aima-page-actions').getByRole('button', { name: /新建 TikHub 采集计划/ })).toBeVisible()
   await expect(page.locator('.aima-page-actions').getByRole('button', { name: /新建词包/ })).toHaveCount(0)
 
   await expect(page.getByText('爱玛口碑周期采集')).toBeVisible()
   const headers = page.locator('.plan-table thead th')
-  await expect(headers).toHaveCount(6)
-  await expect(headers.nth(0)).toHaveText('采集计划')
-  await expect(headers.nth(1)).toHaveText('状态')
-  await expect(headers.nth(2)).toHaveText('搜索条件 / 品牌过滤')
-  await expect(headers.nth(3)).toHaveText('目标平台')
-  await expect(headers.nth(4)).toHaveText('调度与下次运行')
-  await expect(headers.nth(5)).toHaveText('操作')
+  await expect(headers).toHaveText(['计划名称', '计划类型', '状态', '采集范围', '评论策略', '执行频率 / 下次运行', '操作'])
 
   const planRow = page.locator('.plan-table tbody tr').filter({ hasText: '爱玛口碑周期采集' })
   await expect(planRow.getByText(planId)).toHaveCount(0)
@@ -237,8 +232,8 @@ test('uses product confirmation for archive and permanent delete flows', async (
 
 test('creates a periodic Collection Plan with paginated active Brand filtering and no new vehicle scope', async ({ page }) => {
   await page.goto('/collection-strategy')
-  await page.getByRole('button', { name: /新建采集计划/ }).click()
-  const drawer = page.getByRole('dialog', { name: '新建采集计划' })
+  await page.getByRole('button', { name: /新建 TikHub 采集计划/ }).click()
+  const drawer = page.getByRole('dialog', { name: '新建 TikHub 采集计划' })
   await expect(drawer).toBeVisible()
   const secondBrandPagePromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
@@ -255,8 +250,8 @@ test('creates a periodic Collection Plan with paginated active Brand filtering a
   await drawer.getByPlaceholder('例如：爱玛新品口碑追踪').fill('爱玛新品自动采集')
   await drawer.getByText('爱玛新品发现 · v4').click()
   await drawer.getByText('爱玛', { exact: true }).click()
-  await drawer.getByText('小红书').click()
-  await expect(drawer.getByRole('button', { name: '保存采集计划' })).toBeDisabled()
+  await drawer.getByText('小红书', { exact: true }).click()
+  await expect(drawer.getByRole('button', { name: '保存计划' })).toBeDisabled()
   await drawer.getByLabel('小红书排序').selectOption('latest')
   await drawer.getByLabel('小红书发布时间').selectOption('1d')
   await drawer.getByLabel('小红书内容类型').selectOption('all')
@@ -264,11 +259,13 @@ test('creates a periodic Collection Plan with paginated active Brand filtering a
   const requestPromise = page.waitForRequest(
     (request) => new URL(request.url()).pathname === '/api/v1/collection-plans' && request.method() === 'POST',
   )
-  await drawer.getByRole('button', { name: '保存采集计划' }).click()
+  await drawer.getByRole('button', { name: '保存计划' }).click()
   const payload = (await requestPromise).postDataJSON()
 
   expect(payload).toEqual({
     name: '爱玛新品自动采集',
+    plan_type: 'tikhub',
+    comment_policy: 'adaptive',
     schedule_expr: '0 */6 * * *',
     keyword_pack_ids: [packId],
     brand_ids: [activeBrandId],
@@ -283,4 +280,79 @@ test('creates a periodic Collection Plan with paginated active Brand filtering a
   expect(payload).not.toHaveProperty('relevance_keyword_pack_id')
   expect(payload).not.toHaveProperty('vehicle_model_ids')
   await expect(page.getByText('采集计划已保存，将按设定周期自动执行。')).toBeVisible()
+})
+
+
+test('retains a full-mode draft after failure, prevents pending duplicates, and refreshes saved results', async ({ page }) => {
+  let calls = 0
+  let releaseFirst: (() => void) | undefined
+  const firstPending = new Promise<void>((resolve) => { releaseFirst = resolve })
+  let saved: typeof plan | undefined
+  await page.route('**/api/v1/collection-plans', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    calls += 1
+    const payload = route.request().postDataJSON()
+    expect(payload).toMatchObject({ plan_type: 'tikhub', comment_policy: 'full', name: '全量计划草稿' })
+    if (calls === 1) {
+      await firstPending
+      return route.fulfill({ status: 503, json: { status: 503, title: 'Unavailable', detail: '暂时无法保存，请重试。', request_id: 'plan-save-retry' } })
+    }
+    saved = { ...plan, id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...payload }
+    await route.fulfill({ status: 201, json: saved })
+  })
+  await page.route('**/api/v1/collection-plans?*', async (route) => {
+    await route.fulfill({ json: { items: saved ? [saved, plan] : [plan], total: saved ? 2 : 1, enabled_count: saved ? 2 : 1, offset: 0, limit: 20 } })
+  })
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '新建 TikHub 采集计划', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '新建 TikHub 采集计划' })
+  const name = dialog.getByPlaceholder('例如：爱玛新品口碑追踪')
+  await name.fill('全量计划草稿')
+  await dialog.getByRole('checkbox', { name: '爱玛新品发现 · v4', exact: true }).check()
+  await dialog.getByText('小红书', { exact: true }).click()
+  await dialog.getByLabel('小红书排序').selectOption('latest')
+  await dialog.getByLabel('小红书发布时间').selectOption('1d')
+  await dialog.getByLabel('小红书内容类型').selectOption('all')
+  await dialog.getByRole('radio', { name: /^全量采集/ }).check()
+  await expect(dialog).toContainText('当前没有请求预算或金额上限')
+  await dialog.getByRole('button', { name: '保存计划', exact: true }).click()
+  const pending = dialog.getByRole('button', { name: '保存中…', exact: true })
+  await expect(pending).toBeDisabled()
+  await expect(name).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeDisabled()
+  await pending.evaluate((element) => (element as HTMLButtonElement).click())
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeVisible()
+  expect(calls).toBe(1)
+  releaseFirst!()
+  await expect(dialog.getByRole('alert')).toContainText('暂时无法保存')
+  await expect(name).toHaveValue('全量计划草稿')
+  await expect(dialog.getByRole('radio', { name: /^全量采集/ })).toBeChecked()
+  await dialog.getByRole('button', { name: '保存计划', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  const row = page.getByRole('row').filter({ hasText: '全量计划草稿' })
+  await expect(row).toContainText('TikHub')
+  await expect(row).toContainText('全量采集')
+  const detail = page.getByRole('dialog', { name: '采集计划详情' })
+  await expect(detail).toBeVisible()
+  await expect(detail).toContainText('全量采集')
+  await expect(detail).toContainText('一级评论及所有必要回复都采完整')
+  expect(calls).toBe(2)
+})
+
+test('cancelling TikHub creation makes no write request and restores trigger focus', async ({ page }) => {
+  const writes: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/collection-plans') writes.push(request.url())
+  })
+  await page.goto('/collection-strategy')
+  const trigger = page.getByRole('button', { name: '新建 TikHub 采集计划', exact: true })
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: '新建 TikHub 采集计划' })
+  await dialog.getByPlaceholder('例如：爱玛新品口碑追踪').fill('取消草稿')
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  expect(writes).toEqual([])
 })

@@ -166,7 +166,7 @@ describe('collection strategy feature', () => {
       next_run_at: null,
       last_scheduled_at: null,
       detail_policy: 'on_change',
-      comment_policy: 'adaptive',
+      comment_policy: 'adaptive', plan_type: 'tikhub',
       platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
       keyword_pack_ids: [discoveryPack.id],
       brand_ids: [],
@@ -200,7 +200,7 @@ describe('collection strategy feature', () => {
       next_run_at: null,
       last_scheduled_at: null,
       detail_policy: 'on_change',
-      comment_policy: 'adaptive',
+      comment_policy: 'adaptive', plan_type: 'tikhub',
       platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
       keyword_pack_ids: [discoveryPack.id],
       brand_ids: [],
@@ -280,7 +280,7 @@ describe('collection strategy feature', () => {
     const plan: CollectionPlanResponse = {
       id: '33333333-3333-4333-8333-333333333333', name: '停用计划', enabled: false,
       schedule_expr: '0 9 * * *', timezone: 'Asia/Shanghai', schedule_version: 1,
-      next_run_at: null, last_scheduled_at: null, detail_policy: 'on_change', comment_policy: 'adaptive',
+      next_run_at: null, last_scheduled_at: null, detail_policy: 'on_change', comment_policy: 'adaptive', plan_type: 'tikhub',
       platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
       keyword_pack_ids: [discoveryPack.id], created_at: '2026-08-22T00:00:00Z', updated_at: '2026-08-22T00:00:00Z',
     }

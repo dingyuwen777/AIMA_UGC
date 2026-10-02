@@ -253,7 +253,8 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
         assert run["status"] == "succeeded"
         assert scope["status"] == "succeeded"
         assert content["external_content_id"] == "note-fixture-1"
-        assert run["config_snapshot"]["schema_version"] == "collection-run-config.v2"
+        assert run["config_snapshot"]["schema_version"] == "collection-run-config.v4"
+        assert run["config_snapshot"]["plan_type"] == "tikhub"
         assert run["config_snapshot"]["brand_vehicle_filter"]["catalog"]["selected_brand_ids"] == [
             str(brand_id)
         ]

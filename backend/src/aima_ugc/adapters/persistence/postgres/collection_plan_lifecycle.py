@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.orm import Session
 
+from aima_ugc.contracts.collection import CollectionDecisionPolicyV1
 from aima_ugc.modules.collection.corrective_tables import (
     collection_plan_decision_policies_table,
 )
@@ -53,6 +54,8 @@ class PostgresCollectionPlanLifecycleRepository:
         platforms: tuple[PlanPlatformDefinition, ...],
         keyword_pack_ids: tuple[UUID, ...],
         brand_ids: tuple[UUID, ...],
+        comment_policy: str = "adaptive",
+        decision_policy: CollectionDecisionPolicyV1 | None = None,
     ) -> bool:
         """完整替换下一版本执行面；版本漂移或已归档时 fail closed。"""
 
@@ -71,6 +74,9 @@ class PostgresCollectionPlanLifecycleRepository:
             raise RuntimeError("已归档采集计划不能直接编辑，请先恢复")
         if row["schedule_version"] != expected_schedule_version:
             raise RuntimeError("采集计划版本已经变化，请刷新后重试")
+        policy = decision_policy or CollectionDecisionPolicyV1()
+        if row["plan_type"] != "tikhub" or comment_policy != policy.comment_mode:
+            raise ValueError("TikHub 计划类型或评论策略不一致")
         updated = self._session.execute(
             update(collection_plans_table)
             .where(
@@ -81,6 +87,7 @@ class PostgresCollectionPlanLifecycleRepository:
                 name=name,
                 schedule_expr=schedule_expr,
                 enabled=enabled,
+                comment_policy=comment_policy,
                 schedule_version=collection_plans_table.c.schedule_version + 1,
                 next_run_at=None,
                 updated_at=func.clock_timestamp(),
@@ -90,6 +97,11 @@ class PostgresCollectionPlanLifecycleRepository:
         if updated != plan_id:
             raise RuntimeError("采集计划版本已经变化，请刷新后重试")
 
+        self._session.execute(
+            update(collection_plan_decision_policies_table)
+            .where(collection_plan_decision_policies_table.c.plan_id == plan_id)
+            .values(policy=policy.model_dump(mode="json"), updated_at=func.clock_timestamp())
+        )
         self._session.execute(
             delete(collection_plan_platforms_table).where(
                 collection_plan_platforms_table.c.plan_id == plan_id

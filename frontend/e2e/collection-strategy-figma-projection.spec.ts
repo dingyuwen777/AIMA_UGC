@@ -48,7 +48,8 @@ async function mockStrategyApi(page: Page): Promise<void> {
         next_run_at: '2026-08-28T01:00:00Z',
         last_scheduled_at: null,
         detail_policy: 'on_change',
-        comment_policy: 'adaptive',
+        plan_type: 'tikhub',
+  comment_policy: 'adaptive',
         platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId, search_config: { sort_mode: 'latest', published_within: '1d', content_type: 'all' } }],
         keyword_pack_ids: [packId],
         brand_ids: [brandId],
@@ -71,7 +72,9 @@ test('uses the current Figma business projection without leaking Provider detail
 
   await expect(page.locator('.summary-item')).toHaveCount(3)
   await expect(page.getByText('1 个品牌', { exact: true })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: '目标平台', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '采集范围', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '计划类型', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '目标平台', exact: true })).toHaveCount(0)
   await expect(page.locator('.plan-table tbody tr').first()).toContainText('1 个关键词包 · 1 个平台')
   await expect(page.locator('.plan-table tbody tr').first()).toContainText('小红书')
   await expect(page.locator('.plan-table tbody tr').first()).not.toContainText('主采集渠道')

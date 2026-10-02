@@ -77,7 +77,12 @@ def test_stage8a_keeps_provider_config_immutable_after_attempt(
             ).create_run(
                 job_id=job.id,
                 trigger_type="manual",
-                config_snapshot={},
+                config_snapshot={
+                    "schema_version": "collection-run-config.v4",
+                    "plan_type": "tikhub",
+                    "comment_policy": "adaptive",
+                    "decision_policy": {"comment_mode": "adaptive"},
+                },
                 scopes=(
                     CollectionScopeDefinition(
                         platform="xiaohongshu",

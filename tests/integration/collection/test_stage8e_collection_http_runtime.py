@@ -244,7 +244,8 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
     assert job["max_attempts"] == 2
     assert run["import_batch_id"] is None
     assert run["trigger_type"] == "api"
-    assert run["config_snapshot"]["schema_version"] == "collection-run-config.v2"
+    assert run["config_snapshot"]["schema_version"] == "collection-run-config.v4"
+    assert run["config_snapshot"]["plan_type"] == "tikhub"
     assert run["config_snapshot"]["mode"] == "discovery"
     assert run["config_snapshot"]["keywords"] == ["爱玛", "Q7"]
     assert run["config_snapshot"]["search_snapshot"]["terms"] == ["爱玛", "Q7"]

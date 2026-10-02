@@ -403,11 +403,8 @@ class PostgresCollectionHttpService:
                     job_id=job.id,
                     trigger_type="api",
                     config_snapshot={
-                        "schema_version": (
-                            "collection-run-config.v3"
-                            if request.mode == "content_supplement"
-                            else "collection-run-config.v2"
-                        ),
+                        "schema_version": "collection-run-config.v4",
+                        "plan_type": "tikhub",
                         **(
                             {
                                 "supplement_selection": supplement_selection.model_dump(

@@ -14,7 +14,7 @@ _FIRST_RELEASE_TIMEZONE = "Asia/Shanghai"
 _FIRST_RELEASE_MISFIRE_POLICY = "latest_only"
 _FIRST_RELEASE_MAX_CATCH_UP_RUNS = 0
 _FIRST_RELEASE_DETAIL_POLICY = "on_change"
-_FIRST_RELEASE_COMMENT_POLICY = "adaptive"
+
 _FORBIDDEN_CONFIG_KEYS = frozenset(
     {
         "api_key",
@@ -94,8 +94,32 @@ class PlanPlatformDefinition:
         _reject_secret_keys(self.config)
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TikHubPlanConfig:
+    """TikHub 计划的搜索面和采集策略；现有子表只承载此类型配置。"""
+
+    detail_policy: str
+    comment_policy: str
+    platforms: tuple[PlanPlatformDefinition, ...]
+    keyword_pack_ids: tuple[UUID, ...]
+    brand_ids: tuple[UUID, ...] = ()
+    decision_policy: CollectionDecisionPolicyV1 = field(default_factory=CollectionDecisionPolicyV1)
+
+
+def require_tikhub_plan(plan: CollectionPlanDefinition | CollectionPlanRecord) -> None:
+    """显式分发目前唯一受支持的类型，拒绝未知类型和不一致执行策略。"""
+    if plan.plan_type != "tikhub":
+        raise UnsupportedPlanDecisionPolicyError("unsupported collection plan_type")
+    if (
+        plan.detail_policy != _FIRST_RELEASE_DETAIL_POLICY
+        or plan.comment_policy not in {"adaptive", "full"}
+        or plan.comment_policy != plan.decision_policy.comment_mode
+    ):
+        raise UnsupportedPlanDecisionPolicyError("collection plan decision policy is inconsistent")
+
+
 @dataclass(frozen=True, slots=True)
-class CollectionPlanDefinition:
+class CollectionPlanDefinition(TikHubPlanConfig):
     """创建 Plan 所需的稳定父事实；Scheduler 仅执行已批准策略。"""
 
     name: str
@@ -105,13 +129,9 @@ class CollectionPlanDefinition:
     schedule_version: int
     misfire_policy: str
     max_catch_up_runs: int
-    detail_policy: str
-    comment_policy: str
     created_by: UUID | None
-    platforms: tuple[PlanPlatformDefinition, ...]
-    keyword_pack_ids: tuple[UUID, ...]
-    brand_ids: tuple[UUID, ...] = ()
-    decision_policy: CollectionDecisionPolicyV1 = field(default_factory=CollectionDecisionPolicyV1)
+
+    plan_type: Literal["tikhub"] = "tikhub"
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -137,7 +157,7 @@ class CollectionPlanDefinition:
 
 
 @dataclass(frozen=True, slots=True)
-class CollectionPlanRecord:
+class CollectionPlanRecord(TikHubPlanConfig):
     """`collection_plans` 与关联配置的聚合快照。"""
 
     id: UUID
@@ -150,15 +170,10 @@ class CollectionPlanRecord:
     last_scheduled_at: datetime | None
     misfire_policy: str
     max_catch_up_runs: int
-    detail_policy: str
-    comment_policy: str
     created_by: UUID | None
     created_at: datetime
     updated_at: datetime
-    platforms: tuple[PlanPlatformDefinition, ...]
-    keyword_pack_ids: tuple[UUID, ...]
-    brand_ids: tuple[UUID, ...] = ()
-    decision_policy: CollectionDecisionPolicyV1 = field(default_factory=CollectionDecisionPolicyV1)
+    plan_type: Literal["tikhub"] = "tikhub"
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,13 +229,7 @@ class CollectionPlanningService:
             raise UnsupportedPlanCatchUpError(
                 f"first release max_catch_up_runs must be {_FIRST_RELEASE_MAX_CATCH_UP_RUNS}"
             )
-        if (
-            definition.detail_policy != _FIRST_RELEASE_DETAIL_POLICY
-            or definition.comment_policy != _FIRST_RELEASE_COMMENT_POLICY
-        ):
-            raise UnsupportedPlanDecisionPolicyError(
-                "first release only supports detail_policy=on_change and comment_policy=adaptive"
-            )
+        require_tikhub_plan(definition)
 
         platforms = [platform.platform for platform in definition.platforms]
         if len(platforms) != len(set(platforms)):

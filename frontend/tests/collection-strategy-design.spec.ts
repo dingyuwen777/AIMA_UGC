@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   CollectionPlanResponse,
 } from '../src/generated/api/client'
-import PlanCreateDrawer from '../src/features/collection-strategy/pages/CollectionStrategyPage/components/PlanCreateDrawer.vue'
+import TikHubPlanDialog from '../src/features/collection-strategy/pages/CollectionStrategyPage/components/TikHubPlanDialog.vue'
 import PlanPanel from '../src/features/collection-strategy/pages/CollectionStrategyPage/components/PlanPanel.vue'
 import StrategyKpiCards from '../src/features/collection-strategy/pages/CollectionStrategyPage/components/StrategyKpiCards.vue'
 import { formatBeijingDateTime } from '../src/features/collection-strategy/presentation'
@@ -20,7 +20,7 @@ const plan: CollectionPlanResponse = {
   next_run_at: null,
   last_scheduled_at: null,
   detail_policy: 'on_change',
-  comment_policy: 'adaptive',
+  comment_policy: 'adaptive', plan_type: 'tikhub',
   platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
   keyword_pack_ids: ['pack-1', 'pack-2'],
   brand_ids: ['brand-1', 'brand-2'],
@@ -56,7 +56,7 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html).not.toContain('Discovery')
   })
 
-  it('计划列表只保留六列，优先展示业务条件和平台且不暴露机器身份', async () => {
+  it('计划列表展示通用七列和显式类型、策略，不暴露机器身份', async () => {
     const html = await renderComponent(PlanPanel, {
       plans: [plan],
       packs: [
@@ -75,11 +75,15 @@ describe('采集策略正式 Figma 组件基线', () => {
       toggleReason: () => null,
     })
 
-    expect(html.match(/<th[ >]/g)).toHaveLength(6)
+    expect(html.match(/<th[ >]/g)).toHaveLength(7)
     expect(html).not.toContain('>采集策略</th>')
-    expect(html).toMatch(/<th[^>]*>采集计划<\/th>/)
-    expect(html).toContain('搜索条件 / 品牌过滤')
-    expect(html).toContain('目标平台')
+    expect(html).toMatch(/<th[^>]*>计划名称<\/th>/)
+    expect(html).toContain('采集范围')
+    expect(html).toContain('计划类型')
+    expect(html).toContain('TikHub')
+    expect(html).toContain('评论策略')
+    expect(html).toContain('自适应采集')
+    expect(html).not.toMatch(/<th[^>]*>目标平台<\/th>/)
     expect(html).not.toContain('目标平台 / 采集渠道')
     expect(html).toContain('2 个关键词包 · 1 个平台')
     expect(html).toContain('新品词包')
@@ -92,8 +96,8 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html).toContain('每6小时')
   })
 
-  it('新建计划保留正式五个频率预设并使用当前抽屉业务术语', async () => {
-    const html = await renderComponent(PlanCreateDrawer, {
+  it('TikHub弹窗复用视口约束，保留五个频率预设并说明两种策略', async () => {
+    const html = await renderComponent(TikHubPlanDialog, {
       modelValue: true,
       packs: [],
       packDetails: {},
@@ -103,13 +107,19 @@ describe('采集策略正式 Figma 组件基线', () => {
       'onUpdate:modelValue': () => undefined,
     })
 
-    expect(html).toContain('保存发现范围与周期采集配置')
-    expect(html).toContain('2. 搜索条件 · 关键词包')
-    expect(html).toContain('3. 内容过滤条件 · 品牌')
-    expect(html).toContain('4. 采集渠道')
-    expect(html).toContain('5. 执行频率')
-    expect(html).toContain('自动采集规则')
-    expect(html).toContain('当前品牌车型范围')
+    expect(html).toContain('新建 TikHub 采集计划')
+    expect(html).toContain('通过 TikHub 按关键词持续发现并采集内容')
+    expect(html).toContain('搜索条件 · 关键词包')
+    expect(html).toContain('内容过滤 · 品牌')
+    expect(html).toContain('目标平台')
+    expect(html).toContain('评论采集策略')
+    expect(html).toContain('全量采集')
+    expect(html).toContain('50 条')
+    expect(html).toContain('5 条')
+    expect(html).toContain('100 页安全上限')
+    expect(html).toContain('没有请求预算或金额上限')
+    expect(html).toContain('width:min(960px, calc(100vw - 48px))')
+    expect(html).toContain('height:min(820px, calc(100dvh - 48px))')
     expect(html).toContain('aria-label="执行频率"')
     expect(html).toMatch(/<option value="0 \*\/6 \* \* \*"[^>]* selected>每6小时<\/option>/)
     for (const [label, value] of [

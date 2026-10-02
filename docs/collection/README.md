@@ -16,6 +16,8 @@ Mapper 文件在哪？
 - [`docs/blueprint/02_采集系统与数据标准化.md`](../blueprint/02_采集系统与数据标准化.md)
 - [`docs/blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
 
+TikHub 计划的自适应/全量、根评论与回复完整度、可靠增量及费用边界由该 Blueprint 的 §9–§14、§16 解释；平台 Operation 与 Capability 继续由下面的生产入口维护。计划全量和辅助补采使用同一分页链路，不新增平台 endpoint。
+
 真实 JSON 路径：
 
 - [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)

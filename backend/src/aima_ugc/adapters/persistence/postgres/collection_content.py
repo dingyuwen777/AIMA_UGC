@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -42,6 +42,7 @@ from .brand_vehicle_classification import resolve_current_brand_vehicle_batch
 from .candidates import PostgresCandidateRepository
 from .content import PostgresIngestionResult
 from .content_complete import PostgresCompleteContentRepository
+from .content_coverage import CommentThreadCaptureState, PostgresContentCoverageReader
 from .jobs import PostgresJobRepository
 from .vehicles import PostgresVehicleCatalogRepository
 
@@ -85,7 +86,12 @@ class PostgresCollectionContentStateReader:
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
 
-    def evaluate(self, observation: CanonicalContentV1) -> CollectionContentDecisionState | None:
+    def evaluate(
+        self,
+        observation: CanonicalContentV1,
+        *,
+        include_comment_coverage: bool = False,
+    ) -> CollectionContentDecisionState | None:
         session = self._session_factory()
         try:
             with session.begin():
@@ -114,6 +120,14 @@ class PostgresCollectionContentStateReader:
                 return CollectionContentDecisionState(
                     previous=PreviousContentStateV1(
                         comment_count=row["current_comment_count"],
+                        full_comment_capture_complete=(
+                            PostgresContentCoverageReader(session).full_capture_complete(
+                                row["id"],
+                                comment_count=row["current_comment_count"],
+                            )
+                            if include_comment_coverage
+                            else False
+                        ),
                     ),
                     business_changed=_business_changed(row, observation),
                 )
@@ -128,10 +142,31 @@ class PostgresCollectionContentStateReader:
                 values = session.scalars(
                     select(comments_table.c.external_comment_id).where(
                         comments_table.c.content_id == content_id,
-                        comments_table.c.parent_comment_id.is_(None),
+                        or_(
+                            comments_table.c.root_comment_id.is_(None),
+                            comments_table.c.root_comment_id
+                            == comments_table.c.external_comment_id,
+                        ),
                     )
                 ).all()
                 return frozenset(str(value) for value in values if value)
+        finally:
+            session.close()
+
+    def thread_capture_states(self, content_id: UUID) -> dict[str, CommentThreadCaptureState]:
+        """一次读取全部线程的最近实际采集状态，避免每条评论重复打开事务。"""
+        session = self._session_factory()
+        try:
+            with session.begin():
+                return PostgresContentCoverageReader(session).thread_states(content_id)
+        finally:
+            session.close()
+
+    def necessary_threads_complete(self, content_id: UUID) -> bool:
+        session = self._session_factory()
+        try:
+            with session.begin():
+                return PostgresContentCoverageReader(session).necessary_threads_complete(content_id)
         finally:
             session.close()
 

@@ -102,19 +102,20 @@ function nextRun(value?: string | null): string {
         v-else-if="plans.length === 0"
         class="table-state"
       >
-        <strong>暂无采集计划</strong><span>可新建采集计划，或调整当前筛选条件。</span>
+        <strong>暂无采集计划</strong><span>可新建 TikHub 采集计划，或调整当前筛选条件。</span>
       </div>
       <table
         v-else
         class="plan-table"
       >
-        <thead><tr><th>采集计划</th><th>状态</th><th>搜索条件 / 品牌过滤</th><th>目标平台</th><th>调度与下次运行</th><th>操作</th></tr></thead>
+        <thead><tr><th>计划名称</th><th>计划类型</th><th>状态</th><th>采集范围</th><th>评论策略</th><th>执行频率 / 下次运行</th><th>操作</th></tr></thead>
         <tbody>
           <tr
             v-for="plan in plans"
             :key="plan.id"
           >
             <td><strong>{{ plan.name }}</strong><small>{{ planScopeSummary(plan) }}</small></td>
+            <td><span class="plan-type">{{ plan.plan_type === 'tikhub' ? 'TikHub' : '类型不可用' }}</span></td>
             <td><span :class="['status', plan.enabled ? 'enabled' : 'disabled']">{{ plan.enabled ? '已启用' : '已停用' }}</span></td>
             <td class="scope-lines">
               <span
@@ -122,14 +123,9 @@ function nextRun(value?: string | null): string {
                 :key="`${plan.id}-scope-${index}`"
                 :title="line"
               >{{ line }}</span>
+              <small>{{ channelLines(plan).join(' · ') }}</small>
             </td>
-            <td class="channel-lines">
-              <span
-                v-for="(line, index) in channelLines(plan)"
-                :key="`${plan.id}-channel-${index}`"
-                :title="line"
-              >{{ line }}</span>
-            </td>
+            <td><strong>{{ plan.comment_policy === 'full' ? '全量采集' : '自适应采集' }}</strong></td>
             <td><strong>{{ collectionScheduleLabel(plan.schedule_expr) }}</strong><small>{{ nextRun(plan.next_run_at) }}</small></td>
             <td class="actions">
               <AimaButton
@@ -191,7 +187,8 @@ function nextRun(value?: string | null): string {
 .plan-card > :deep(.aima-feedback) { min-height: 44px; align-items: center; padding: 10px 13px; }
 .table-heading { display: flex; align-items: center; justify-content: space-between; margin: 25px 0 15px; }.table-heading strong { font-size: 14px; line-height: 22px; }
 .table-wrap { min-height: 227px; overflow-x: auto; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }
-.plan-table { width: 100%; min-width: 1210px; table-layout: fixed; border-collapse: collapse; font-size: 13px; }.plan-table th { height: 45px; color: #596579; background: #fafbfc; font-weight: 500; text-align: left; }.plan-table th,.plan-table td { padding: 10px 12px; border-bottom: 1px solid #edf0f4; vertical-align: middle; }.plan-table tbody tr { height: 82px; }.plan-table th:first-child { width: 18%; }.plan-table th:nth-child(2) { width: 8%; }.plan-table th:nth-child(3) { width: 18%; }.plan-table th:nth-child(4) { width: 23%; }.plan-table th:nth-child(5) { width: 21%; }.plan-table th:last-child { width: 12%; }.plan-table td strong,.plan-table td small { display: block; }.plan-table td small { max-width: 210px; margin-top: 4px; overflow: hidden; color: #7f899b; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.plan-table { width: 100%; min-width: 1210px; table-layout: fixed; border-collapse: collapse; font-size: 13px; }.plan-table th { height: 45px; color: #596579; background: #fafbfc; font-weight: 500; text-align: left; }.plan-table th,.plan-table td { padding: 10px 12px; border-bottom: 1px solid #edf0f4; vertical-align: middle; }.plan-table tbody tr { height: 82px; }.plan-table th:first-child { width: 18%; }.plan-table th:nth-child(2) { width: 8%; }.plan-table th:nth-child(3) { width: 8%; }.plan-table th:nth-child(4) { width: 20%; }.plan-table th:nth-child(5) { width: 12%; }.plan-table th:nth-child(6) { width: 22%; }.plan-table th:last-child { width: 12%; }.plan-table td strong,.plan-table td small { display: block; }.plan-table td small { max-width: 210px; margin-top: 4px; overflow: hidden; color: #7f899b; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.plan-type { display: inline-flex; padding: 4px 8px; border-radius: 6px; color: #596579; background: #f0f3f8; font-size: 12px; }
 .status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }.status::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ''; }.enabled { color: #118852; }.disabled { color: #657084; }
 .scope-lines span,.channel-lines span { display: block; overflow: hidden; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }.scope-lines span:nth-child(3),.channel-lines span:nth-child(3) { color: #7f899b; font-size: 12px; }
 .actions :deep(.aima-button) { display: flex; width: 78px; height: 32px; margin: 3px 0; }

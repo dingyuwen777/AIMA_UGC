@@ -1972,3 +1972,94 @@ def test_0067_defers_bulk_projection_and_preserves_default_triggers(
             )
     finally:
         engine.dispose()
+
+
+def test_0079_backfills_tikhub_without_rewriting_history_and_guards_downgrade(
+    migration_database: str,
+) -> None:
+    """真实旧 Plan/Run 经升级保持语义；full 或活动新 Run 禁止降级。"""
+    _upgrade(migration_database, "20261001_0078")
+    plan_id, job_id, run_id = uuid4(), uuid4(), uuid4()
+    old_snapshot = {"schema_version": "collection-run-config.v2", "comment_policy": "adaptive"}
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                INSERT INTO collection_plans(id, name, enabled, schedule_expr, timezone,
+                  schedule_version, misfire_policy, max_catch_up_runs, detail_policy,
+                  comment_policy, created_at, updated_at)
+                VALUES (:id, '旧采集计划', true, '0 9 * * *', 'Asia/Shanghai', 1,
+                  'latest_only', 0, 'on_change', 'adaptive', :now, :now)
+            """),
+                {"id": plan_id, "now": _NOW},
+            )
+            connection.execute(
+                text("""
+                INSERT INTO jobs(id, job_type, payload_version, payload, status,
+                  internal_idempotency_key, priority, attempt, max_attempts, timeout_seconds,
+                  progress, available_at, created_at, updated_at)
+                VALUES (:id, 'collection.run.v1', 'collection.run.v1', '{}'::jsonb, 'queued',
+                  :key, 0, 0, 1, 30, 0, :now, :now, :now)
+            """),
+                {"id": job_id, "key": str(job_id), "now": _NOW},
+            )
+            connection.execute(
+                text("""
+                INSERT INTO collection_runs(id, job_id, manual_plan_id, trigger_type,
+                  config_snapshot, status, created_at)
+                VALUES (:id, :job_id, :plan_id, 'manual', CAST(:snapshot AS jsonb), 'queued', :now)
+            """),
+                {
+                    "id": run_id,
+                    "job_id": job_id,
+                    "plan_id": plan_id,
+                    "snapshot": json.dumps(old_snapshot),
+                    "now": _NOW,
+                },
+            )
+        _upgrade(migration_database, "20261002_0079")
+        with engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT plan_type, comment_policy FROM collection_plans")
+            ).one() == ("tikhub", "adaptive")
+            assert (
+                connection.scalar(text("SELECT config_snapshot FROM collection_runs"))
+                == old_snapshot
+            )
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(text("UPDATE collection_plans SET plan_type = 'unknown'"))
+        with engine.begin() as connection:
+            connection.execute(text("UPDATE collection_plans SET comment_policy = 'full'"))
+        with pytest.raises(RuntimeError, match="不能安全降级"):
+            _downgrade(migration_database, "20261001_0078")
+        with engine.begin() as connection:
+            connection.execute(text("UPDATE collection_plans SET comment_policy = 'adaptive'"))
+            connection.execute(
+                text("UPDATE collection_runs SET config_snapshot = CAST(:snapshot AS jsonb)"),
+                {
+                    "snapshot": json.dumps(
+                        {"schema_version": "collection-run-config.v4", "plan_type": "tikhub"}
+                    )
+                },
+            )
+        with pytest.raises(RuntimeError, match="不能安全降级"):
+            _downgrade(migration_database, "20261001_0078")
+        with engine.begin() as connection:
+            # 只还原本测试的旧 Fixture，生产审计事实不得用此方式删除或改写。
+            connection.execute(
+                text("UPDATE collection_runs SET config_snapshot = CAST(:snapshot AS jsonb)"),
+                {"snapshot": json.dumps(old_snapshot)},
+            )
+        _downgrade(migration_database, "20261001_0078")
+        assert "plan_type" not in {
+            item["name"] for item in inspect(engine).get_columns("collection_plans")
+        }
+        _upgrade(migration_database, "20261002_0079")
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT config_snapshot FROM collection_runs"))
+                == old_snapshot
+            )
+    finally:
+        engine.dispose()

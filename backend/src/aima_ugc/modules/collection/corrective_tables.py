@@ -40,6 +40,8 @@ collection_content_actions_table = Table(
     Column("search_observed_at", DateTime(timezone=True), nullable=False),
     Column("previous_exists", Boolean(), nullable=False),
     Column("previous_comment_count", BigInteger()),
+    # 冻结动作创建时的聚合输入，避免恢复时读取本次采集已经改写的当前状态。
+    Column("previous_capture_complete", Boolean(), nullable=False, server_default=text("false")),
     Column("initial_business_changed", Boolean(), nullable=False),
     Column("detail_action", Text(), nullable=False),
     Column("detail_reason", Text(), nullable=False),
@@ -69,7 +71,7 @@ collection_content_actions_table = Table(
     CheckConstraint("detail_action in ('fetch','skip')", name="detail_action_allowed"),
     CheckConstraint(
         "comment_action in "
-        "('skip','fetch_adaptive','fetch_incremental','refresh_controlled',"
+        "('skip','fetch_adaptive','fetch_full','fetch_incremental','refresh_controlled',"
         "'probe_first_page','defer_until_detail')",
         name="comment_action_allowed",
     ),

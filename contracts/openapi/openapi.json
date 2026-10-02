@@ -2558,6 +2558,15 @@
             "title": "Brand Ids",
             "type": "array"
           },
+          "comment_policy": {
+            "default": "adaptive",
+            "enum": [
+              "adaptive",
+              "full"
+            ],
+            "title": "Comment Policy",
+            "type": "string"
+          },
           "enabled": {
             "default": true,
             "title": "Enabled",
@@ -2579,6 +2588,12 @@
             "title": "Name",
             "type": "string"
           },
+          "plan_type": {
+            "const": "tikhub",
+            "default": "tikhub",
+            "title": "Plan Type",
+            "type": "string"
+          },
           "platforms": {
             "items": {
               "$ref": "#/components/schemas/CollectionPlanPlatformRequest"
@@ -2596,9 +2611,9 @@
           }
         },
         "required": [
+          "platforms",
           "name",
-          "schedule_expr",
-          "platforms"
+          "schedule_expr"
         ],
         "title": "CollectionPlanCreateRequest",
         "type": "object"
@@ -2694,6 +2709,7 @@
       },
       "CollectionPlanResponse": {
         "additionalProperties": false,
+        "description": "当前唯一详情类型；保留既有扁平字段，plan_type 是显式类型事实。",
         "properties": {
           "brand_ids": {
             "default": [],
@@ -2705,7 +2721,10 @@
             "type": "array"
           },
           "comment_policy": {
-            "const": "adaptive",
+            "enum": [
+              "adaptive",
+              "full"
+            ],
             "title": "Comment Policy",
             "type": "string"
           },
@@ -2764,6 +2783,11 @@
             ],
             "title": "Next Run At"
           },
+          "plan_type": {
+            "const": "tikhub",
+            "title": "Plan Type",
+            "type": "string"
+          },
           "platforms": {
             "items": {
               "$ref": "#/components/schemas/CollectionPlanPlatformResponse"
@@ -2792,16 +2816,17 @@
           }
         },
         "required": [
+          "detail_policy",
+          "comment_policy",
+          "platforms",
+          "keyword_pack_ids",
+          "plan_type",
           "id",
           "name",
           "enabled",
           "schedule_expr",
           "timezone",
           "schedule_version",
-          "detail_policy",
-          "comment_policy",
-          "platforms",
-          "keyword_pack_ids",
           "created_at",
           "updated_at"
         ],
@@ -2821,6 +2846,15 @@
             "maxItems": 100,
             "title": "Brand Ids",
             "type": "array"
+          },
+          "comment_policy": {
+            "default": "adaptive",
+            "enum": [
+              "adaptive",
+              "full"
+            ],
+            "title": "Comment Policy",
+            "type": "string"
           },
           "enabled": {
             "title": "Enabled",
@@ -2847,6 +2881,12 @@
             "title": "Name",
             "type": "string"
           },
+          "plan_type": {
+            "const": "tikhub",
+            "default": "tikhub",
+            "title": "Plan Type",
+            "type": "string"
+          },
           "platforms": {
             "items": {
               "$ref": "#/components/schemas/CollectionPlanPlatformRequest"
@@ -2864,10 +2904,10 @@
           }
         },
         "required": [
+          "platforms",
           "expected_version",
           "name",
           "schedule_expr",
-          "platforms",
           "enabled"
         ],
         "title": "CollectionPlanUpdateRequest",

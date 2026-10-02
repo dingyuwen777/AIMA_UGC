@@ -17,7 +17,7 @@ import { useTransientNotice } from '../../../../shared/ui/useTransientNotice'
 import { useCollectionStrategyStore } from '../../store'
 import KeywordPackCreateDialog from './components/KeywordPackCreateDialog.vue'
 import KeywordPackPanel from './components/KeywordPackPanel.vue'
-import PlanCreateDrawer from './components/PlanCreateDrawer.vue'
+import TikHubPlanDialog from './components/TikHubPlanDialog.vue'
 import PlanDetailDrawer from './components/PlanDetailDrawer.vue'
 import PlanFilterBar from './components/PlanFilterBar.vue'
 import PlanPanel from './components/PlanPanel.vue'
@@ -37,10 +37,10 @@ interface ResourceConfirmTarget {
 const store = useCollectionStrategyStore()
 const packDialogOpen = ref(false)
 const packEditorPack = ref<KeywordPackResponse | null>(null)
-const planDrawerOpen = ref(false)
+const planDialogOpen = ref(false)
 const planEditorPlan = ref<CollectionPlanResponse | null>(null)
 const planDetailOpen = computed({
-  get: () => store.selectedPlan !== null && !planDrawerOpen.value,
+  get: () => store.selectedPlan !== null && !planDialogOpen.value,
   set: (value: boolean) => { if (!value) store.selectedPlan = null },
 })
 const { message: notice, show: showNotice } = useTransientNotice()
@@ -89,13 +89,13 @@ function openNewPlan(): void {
   store.error = null
   planEditorPlan.value = null
   store.selectedPlan = null
-  planDrawerOpen.value = true
+  planDialogOpen.value = true
 }
 
 /** 保存周期采集计划成功后关闭抽屉并提示自动执行语义。 */
 async function savePlan(request: CollectionPlanCreateRequest): Promise<void> {
   if (await store.savePlan(request)) {
-    planDrawerOpen.value = false
+    planDialogOpen.value = false
     showNotice('采集计划已保存，将按设定周期自动执行。')
   }
 }
@@ -103,7 +103,7 @@ async function savePlan(request: CollectionPlanCreateRequest): Promise<void> {
 /** 更新计划只影响后续采集，历史记录保持不变。 */
 async function updatePlan(request: CollectionPlanUpdateRequest): Promise<void> {
   if (await store.updateExistingPlan(request)) {
-    planDrawerOpen.value = false
+    planDialogOpen.value = false
     planEditorPlan.value = null
     showNotice('采集计划已更新；后续采集将使用新配置。')
   }
@@ -119,7 +119,7 @@ function openPlan(plan: CollectionPlanResponse): void {
 function editPlan(plan: CollectionPlanResponse): void {
   store.selectedPlan = plan
   planEditorPlan.value = plan
-  planDrawerOpen.value = true
+  planDialogOpen.value = true
 }
 
 /** 一键复制当前计划，副本保持停用且详情继续停留在原计划。 */
@@ -199,7 +199,7 @@ function closeConfirm(): void {
           :disabled="store.loading || store.saving"
           @click="openNewPlan"
         >
-          新建采集计划
+          新建 TikHub 采集计划
         </AimaButton>
       </template>
     </AimaPageHeader>
@@ -297,8 +297,8 @@ function closeConfirm(): void {
       :error="store.error"
       @submit="savePack"
     />
-    <PlanCreateDrawer
-      v-model="planDrawerOpen"
+    <TikHubPlanDialog
+      v-model="planDialogOpen"
       :error="store.error"
       :packs="planEditorPlan ? store.packCatalog : store.enabledPacks"
       :pack-details="store.packDetails"
