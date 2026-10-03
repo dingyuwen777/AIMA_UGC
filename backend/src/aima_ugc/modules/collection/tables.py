@@ -43,8 +43,10 @@ collection_plans_table = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("name"),
     CheckConstraint("char_length(name) > 0", name="name_nonempty"),
-    CheckConstraint("plan_type in ('tikhub')", name="plan_type_allowed"),
-    CheckConstraint("comment_policy in ('adaptive','full')", name="comment_policy_allowed"),
+    CheckConstraint("plan_type in ('tikhub','wisersone')", name="plan_type_allowed"),
+    CheckConstraint(
+        "comment_policy in ('adaptive','full','not_applicable')", name="comment_policy_allowed"
+    ),
     CheckConstraint(
         "schedule_expr is null or char_length(schedule_expr) > 0",
         name="schedule_expr_nonempty",

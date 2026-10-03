@@ -43,6 +43,7 @@ const emit = defineEmits<{
 }>()
 
 const platformOptions = COLLECTION_PLATFORM_OPTIONS
+const planType = ref<'tikhub' | 'wisersone'>('wisersone')
 const name = ref('')
 const scheduleExpr = ref('0 */6 * * *')
 const enabled = ref(true)
@@ -68,6 +69,7 @@ const eligibilityReason = computed(() => {
   if (brandScope.value === 'selected' && selectedBrands.value.length === 0) {
     return '请至少选择一个品牌，或改为全部启用品牌。'
   }
+  if (planType.value === 'wisersone') return null
 
   const pendingProvider = platformOptions.find(
     (item) => isPlatformSelected(item.value) && !providerByPlatform[item.value],
@@ -98,8 +100,9 @@ const brandScopeSummary = computed(() =>
 watch(open, (value) => {
   if (!value) return
   const plan = props.initialPlan
+  planType.value = plan?.plan_type ?? 'wisersone'
   name.value = plan?.name ?? ''
-  scheduleExpr.value = plan?.schedule_expr ?? '0 */6 * * *'
+  scheduleExpr.value = plan?.schedule_expr ?? '0 0 * * *'
   enabled.value = plan?.enabled ?? true
   commentPolicy.value = plan?.comment_policy ?? 'adaptive'
   selectedPacks.value = [...(plan?.keyword_pack_ids ?? [])]
@@ -167,15 +170,15 @@ function togglePlatform(platform: CollectionPlatform): void {
 
 /** 资格完整时提交创建或下一版本更新；历史运行的冻结配置不会被重写。 */
 function submit(): void {
-  if (props.saving || props.loadingPackDetails || !name.value.trim() || eligibilityReason.value) return
+  if (props.saving || (planType.value === 'tikhub' && props.loadingPackDetails) || !name.value.trim() || eligibilityReason.value) return
   const common = {
-    plan_type: 'tikhub' as const,
-    comment_policy: commentPolicy.value,
+    plan_type: planType.value,
+    comment_policy: planType.value === 'tikhub' ? commentPolicy.value : null,
     name: name.value.trim(),
     schedule_expr: scheduleExpr.value,
-    keyword_pack_ids: selectedPacks.value,
+    keyword_pack_ids: planType.value === 'tikhub' ? selectedPacks.value : [],
     brand_ids: brandScope.value === 'selected' ? [...selectedBrands.value] : [],
-    platforms: selectedPlatforms.value,
+    platforms: planType.value === 'tikhub' ? selectedPlatforms.value : [],
     enabled: enabled.value,
   }
   if (props.initialPlan) {
@@ -192,7 +195,7 @@ function submit(): void {
 <template>
   <AimaModalContainer
     v-model="open"
-    :label="editing ? '编辑 TikHub 采集计划' : '新建 TikHub 采集计划'"
+    :label="editing ? '编辑采集计划' : '新建采集计划'"
     width="960px"
     height="820px"
     :close-disabled="saving"
@@ -200,8 +203,8 @@ function submit(): void {
     <template #header>
       <header>
         <div>
-          <h2>{{ editing ? '编辑 TikHub 采集计划' : '新建 TikHub 采集计划' }}</h2>
-          <p>{{ editing ? '修改仅影响后续采集；切换全量不会自动补采历史内容' : '通过 TikHub 按关键词持续发现并采集内容' }}</p>
+          <h2>{{ editing ? '编辑采集计划' : '新建采集计划' }}</h2>
+          <p>{{ planType === 'wisersone' ? '按执行频率下载网站过去 24 小时的 Excel，自动按品牌过滤并导入系统' : '通过 TikHub 按关键词持续发现并采集内容' }}</p>
         </div>
         <AimaButton
           variant="text"
@@ -225,6 +228,22 @@ function submit(): void {
         class="form-content"
         :disabled="saving"
       >
+        <fieldset>
+          <legend>采集计划类型</legend>
+          <label class="check"><input
+            v-model="planType"
+            type="radio"
+            value="wisersone"
+            :disabled="editing"
+          >WisersOne 网站下载</label>
+          <label class="check"><input
+            v-model="planType"
+            type="radio"
+            value="tikhub"
+            :disabled="editing"
+          >TikHub 采集</label>
+          <small v-if="editing">已有计划的类型保持固定；需要另一类型时新建计划。</small>
+        </fieldset>
         <div class="two-column">
           <label><strong>计划名称</strong><input
             v-model="name"
@@ -249,7 +268,7 @@ function submit(): void {
           </span><small>重新启用后从下一周期执行，不补跑停用期间任务。</small></label>
         </div>
         <div class="two-column">
-          <fieldset>
+          <fieldset v-if="planType === 'tikhub'">
             <legend>搜索条件 · 关键词包</legend>
             <label
               v-for="pack in packs"
@@ -286,7 +305,7 @@ function submit(): void {
             <small>{{ brandScopeSummary }}；每次运行保存当时的过滤范围。</small>
           </fieldset>
         </div>
-        <fieldset>
+        <fieldset v-if="planType === 'tikhub'">
           <legend>目标平台</legend>
           <div class="platforms">
             <div
@@ -338,7 +357,7 @@ function submit(): void {
             </div>
           </div>
         </fieldset>
-        <fieldset>
+        <fieldset v-if="planType === 'tikhub'">
           <legend>评论采集策略</legend>
           <div class="policy-options">
             <label :class="['policy-option', { selected: commentPolicy === 'adaptive' }]">
@@ -366,14 +385,23 @@ function submit(): void {
         ></label>
       </fieldset>
       <div
-        v-if="eligibilityReason && selectedPacks.length && platformOptions.some((item) => isPlatformSelected(item.value))"
+        v-if="eligibilityReason && (planType === 'wisersone' || (selectedPacks.length && platformOptions.some((item) => isPlatformSelected(item.value))))"
         class="eligibility"
         role="status"
       >
         {{ loadingPackDetails ? '正在读取实时资格…' : eligibilityReason }}
       </div>
-      <AimaFeedbackBanner :tone="commentPolicy === 'full' ? 'warning' : 'info'">
+      <AimaFeedbackBanner
+        v-if="planType === 'tikhub'"
+        :tone="commentPolicy === 'full' ? 'warning' : 'info'"
+      >
         {{ commentPolicy === 'full' ? '全量采集可能显著增加 TikHub 请求与费用。' : '实际运行可能产生 TikHub 请求费用。' }}当前没有请求预算或金额上限。
+      </AimaFeedbackBanner>
+      <AimaFeedbackBanner
+        v-else
+        tone="info"
+      >
+        每次新运行固定下载过去 24 小时；网站生成 Excel 较慢时持续等待，不设置 30 分钟总上限。下载完成后自动预检和导入，不自动触发智能分析。修改计划只影响后续运行。
       </AimaFeedbackBanner>
     </div>
     <template #footer>
@@ -386,7 +414,7 @@ function submit(): void {
         </AimaButton>
         <AimaButton
           variant="primary"
-          :disabled="saving || loadingPackDetails || !name.trim() || !!eligibilityReason"
+          :disabled="saving || (planType === 'tikhub' && loadingPackDetails) || !name.trim() || !!eligibilityReason"
           :title="eligibilityReason || undefined"
           @click="submit"
         >
@@ -433,7 +461,7 @@ label > small { display: block; margin-top: 5px; }
 .switch strong { margin: 0; }
 .eligibility { margin-bottom: 16px; padding: 10px; border: 1px solid #ffc7cc; border-radius: 8px; color: #b4232d; background: #fff5f6; font-size: 13px; }
 footer { display: flex; justify-content: flex-end; gap: 12px; padding: 18px 24px; border-top: 1px solid var(--aima-border); }
-:global(.aima-modal-container[aria-label$='TikHub 采集计划'] > .aima-modal-body) { --aima-scrollbar-size: 5px; }
-:global(.aima-modal-container[aria-label$='TikHub 采集计划']) { max-width: calc(100% - 48px); }
+:global(.aima-modal-container[aria-label$='采集计划'] > .aima-modal-body) { --aima-scrollbar-size: 5px; }
+:global(.aima-modal-container[aria-label$='采集计划']) { max-width: calc(100% - 48px); }
 @media (max-width: 720px) { .two-column,.platforms,.policy-options { grid-template-columns: minmax(0, 1fr); } .body { padding: 18px; } header,footer { padding: 16px 18px; } }
 </style>

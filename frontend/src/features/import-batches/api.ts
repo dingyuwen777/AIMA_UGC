@@ -1,4 +1,10 @@
 import {
+  getWisersOneDownload,
+  listWisersOneDownloads,
+  cancelWisersOneDownload,
+  retryWisersOneDownload,
+  type WisersOneDownloadResponse,
+  type WisersOneDownloadListResponse,
   cancelAndRevokeAllCanonicalReplays,
   cancelDataImportCampaign,
   cancelCollectionRun,
@@ -90,6 +96,18 @@ function isHttpErrorResponse(value: unknown): value is HttpErrorResponse {
 function unwrap<T>(value: T): T {
   if (isHttpErrorResponse(value)) throw new ImportApiError(value)
   return value
+}
+
+export async function fetchWisersOneDownloads(): Promise<WisersOneDownloadListResponse> {
+  return unwrap(await listWisersOneDownloads())
+}
+
+export async function fetchWisersOneDownload(id: string): Promise<WisersOneDownloadResponse> {
+  return unwrap(await getWisersOneDownload(id))
+}
+
+export async function actOnWisersOneDownload(id: string, action: 'cancel' | 'retry'): Promise<WisersOneDownloadResponse> {
+  return unwrap(await (action === 'cancel' ? cancelWisersOneDownload(id) : retryWisersOneDownload(id)))
 }
 
 export async function fetchImportBatchList(

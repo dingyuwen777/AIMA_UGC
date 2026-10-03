@@ -2,6 +2,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
 import type {
+  WisersOneDownloadResponse,
   CollectionCapabilitiesResponse,
   CanonicalReplayAllOperationResponse,
   DataImportIngestionPolicy,
@@ -30,6 +31,9 @@ import type {
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
 import { createClientIdempotencyKey } from '../../shared/idempotency'
 import {
+  fetchWisersOneDownloads,
+  fetchWisersOneDownload,
+  actOnWisersOneDownload,
   createTikHubCollectionRun,
   cancelAndRevokeCanonicalReplay,
   cancelHistoricalCampaign,
@@ -119,6 +123,62 @@ function errorMessage(error: unknown): string {
 
 
 export const useImportBatchesStore = defineStore('collection-runtime', () => {
+  const wisersoneDownloads = ref<WisersOneDownloadResponse[]>([])
+  const selectedWisersoneDownload = ref<WisersOneDownloadResponse | null>(null)
+  const actingWisersone = ref(false)
+  const wisersoneError = ref<string | null>(null)
+  let wisersoneVersion = 0
+  let wisersoneListVersion = 0
+
+  function selectWisersoneDownload(id: string | null): void {
+    wisersoneVersion += 1
+    selectedWisersoneDownload.value = wisersoneDownloads.value.find((run) => run.id === id) ?? null
+    wisersoneError.value = null
+  }
+
+  async function loadWisersoneDownloads(): Promise<void> {
+    const version = ++wisersoneListVersion
+    try {
+      const response = await fetchWisersOneDownloads()
+      if (version !== wisersoneListVersion) return
+      wisersoneDownloads.value = response.items
+      wisersoneError.value = null
+    } catch (reason) {
+      if (version === wisersoneListVersion) wisersoneError.value = errorMessage(reason)
+    }
+  }
+
+  async function refreshWisersoneDownload(): Promise<void> {
+    const selected = selectedWisersoneDownload.value
+    if (!selected || actingWisersone.value) return
+    const version = wisersoneVersion
+    try {
+      const response = await fetchWisersOneDownload(selected.id)
+      if (version !== wisersoneVersion || selectedWisersoneDownload.value?.id !== selected.id) return
+      selectedWisersoneDownload.value = response
+      wisersoneError.value = null
+    } catch (reason) {
+      if (version === wisersoneVersion) wisersoneError.value = errorMessage(reason)
+    }
+  }
+
+  async function actWisersoneDownload(action: 'cancel' | 'retry'): Promise<void> {
+    const selected = selectedWisersoneDownload.value
+    if (!selected || actingWisersone.value) return
+    const version = ++wisersoneVersion
+    actingWisersone.value = true
+    try {
+      const response = await actOnWisersOneDownload(selected.id, action)
+      if (version === wisersoneVersion) {
+        selectedWisersoneDownload.value = response
+        wisersoneError.value = null
+      }
+    } catch (reason) {
+      if (version === wisersoneVersion) wisersoneError.value = errorMessage(reason)
+    } finally {
+      actingWisersone.value = false
+    }
+  }
   const filters = reactive<CollectionRuntimeFilters>({ ...EMPTY_FILTERS })
   const activeTab = ref<CollectionRuntimeTab>('all')
   const items = ref<CollectionRuntimeItemResponse[]>([])
@@ -910,6 +970,14 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   }
 
   return {
+    wisersoneDownloads,
+    selectedWisersoneDownload,
+    actingWisersone,
+    wisersoneError,
+    loadWisersoneDownloads,
+    selectWisersoneDownload,
+    refreshWisersoneDownload,
+    actWisersoneDownload,
     filters,
     activeTab,
     items,

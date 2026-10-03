@@ -103,8 +103,10 @@ function brandLabel(brandId: string): string {
         </AimaButton>
       </div>
       <dl class="summary-grid">
-        <div><dt>计划类型</dt><dd>{{ plan.plan_type === 'tikhub' ? 'TikHub' : '类型不可用' }}</dd></div>
-        <div><dt>评论采集策略</dt><dd>{{ plan.comment_policy === 'full' ? '全量采集' : '自适应采集' }}</dd></div>
+        <div><dt>计划类型</dt><dd>{{ plan.plan_type === 'wisersone' ? 'WisersOne 网站下载' : 'TikHub' }}</dd></div>
+        <div v-if="plan.plan_type === 'tikhub'">
+          <dt>评论采集策略</dt><dd>{{ plan.comment_policy === 'full' ? '全量采集' : '自适应采集' }}</dd>
+        </div>
         <div><dt>执行周期</dt><dd>{{ collectionScheduleLabel(plan.schedule_expr) }}</dd></div>
         <div><dt>下次运行</dt><dd>{{ plan.next_run_at ? formatBeijingDateTime(plan.next_run_at) : '等待调度初始化' }}</dd></div>
       </dl>
@@ -139,12 +141,26 @@ function brandLabel(brandId: string): string {
         </AimaFeedbackBanner>
         <section class="policy">
           <h4>TikHub 采集规则</h4><p>内容详情在数据变化时更新。</p>
-          <TikHubCommentPolicySummary :policy="plan.comment_policy" />
+          <TikHubCommentPolicySummary :policy="plan.comment_policy ?? 'adaptive'" />
           <AimaFeedbackBanner :tone="plan.comment_policy === 'full' ? 'warning' : 'info'">
             {{ plan.comment_policy === 'full' ? '全量采集可能显著增加 TikHub 请求与费用。' : '实际运行可能产生 TikHub 请求费用。' }}当前没有请求预算或金额上限。
           </AimaFeedbackBanner>
         </section>
       </div>
+      <section
+        v-else
+        class="brands"
+      >
+        <h4>内容过滤 · 品牌</h4>
+        <span v-if="(plan.brand_ids ?? []).length === 0">全部启用品牌及车型</span>
+        <span
+          v-for="id in plan.brand_ids ?? []"
+          :key="id"
+        >{{ brandLabel(id) }}</span>
+        <AimaFeedbackBanner tone="info">
+          按执行频率下载网站过去 24 小时 Excel，随后自动预检和导入系统；每次运行冻结品牌车型过滤范围。
+        </AimaFeedbackBanner>
+      </section>
     </div>
   </AimaDrawer>
   <PlanResourceDetailDialog

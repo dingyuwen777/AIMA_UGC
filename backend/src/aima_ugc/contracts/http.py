@@ -1029,11 +1029,12 @@ class CollectionPlanPlatformRequest(BaseModel):
 
 
 class TikHubPlanRequestConfig(BaseModel):
-    """当前 TikHub 类型的配置；创建和编辑共享同一个公开约束。"""
+    """兼容既有扁平计划协议；创建和编辑按 plan_type 校验各自配置。"""
 
     model_config = ConfigDict(extra="forbid")
-    comment_policy: Literal["adaptive", "full"] = "adaptive"
-    platforms: tuple[CollectionPlanPlatformRequest, ...] = Field(min_length=1, max_length=5)
+    plan_type: Literal["tikhub", "wisersone"] = "tikhub"
+    comment_policy: Literal["adaptive", "full"] | None = None
+    platforms: tuple[CollectionPlanPlatformRequest, ...] = Field(default=(), max_length=5)
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
 
@@ -1046,8 +1047,16 @@ class TikHubPlanRequestConfig(BaseModel):
             raise ValueError("同一 Plan 的 Discovery 词包不得重复")
         if len(self.brand_ids) != len(set(self.brand_ids)):
             raise ValueError("同一 Plan 的品牌不得重复")
+        if self.plan_type == "wisersone":
+            if self.platforms or self.keyword_pack_ids or self.comment_policy is not None:
+                raise ValueError("WisersOne 计划不接受 TikHub 平台、搜索词包或评论策略")
+            return self
+        if not self.platforms:
+            raise ValueError("TikHub Plan 必须选择至少一个目标平台")
         if not self.keyword_pack_ids:
             raise ValueError("Plan 必须选择至少一个 Keyword Pack 作为 Search Terms")
+        if self.comment_policy is None:
+            self.comment_policy = "adaptive"
         return self
 
 
@@ -1056,7 +1065,7 @@ class CollectionPlanCreateRequest(TikHubPlanRequestConfig):
 
     model_config = ConfigDict(extra="forbid")
 
-    plan_type: Literal["tikhub"] = "tikhub"
+    plan_type: Literal["tikhub", "wisersone"] = "tikhub"
     name: str = Field(min_length=1, max_length=200)
     schedule_expr: str = Field(min_length=1, max_length=100)
     enabled: bool = True
@@ -1082,7 +1091,7 @@ class CollectionPlanPlatformResponse(BaseModel):
 class CollectionPlanCommonResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    plan_type: Literal["tikhub"]
+    plan_type: Literal["tikhub", "wisersone"]
     id: UUID
     name: str
     enabled: bool
@@ -1099,15 +1108,15 @@ class TikHubPlanResponseConfig(BaseModel):
     """TikHub 详情配置，与通用计划生命周期分开维护。"""
 
     model_config = ConfigDict(extra="forbid")
-    detail_policy: Literal["on_change"]
-    comment_policy: Literal["adaptive", "full"]
+    detail_policy: Literal["on_change"] | None
+    comment_policy: Literal["adaptive", "full"] | None
     platforms: tuple[CollectionPlanPlatformResponse, ...]
     keyword_pack_ids: tuple[UUID, ...]
     brand_ids: tuple[UUID, ...] = ()
 
 
 class CollectionPlanResponse(CollectionPlanCommonResponse, TikHubPlanResponseConfig):
-    """当前唯一详情类型；保留既有扁平字段，plan_type 是显式类型事实。"""
+    """保留既有扁平字段；WisersOne 的 TikHub 专属字段为空。"""
 
 
 class CollectionPlanListQuery(BaseModel):
@@ -1953,6 +1962,60 @@ class HistoricalCampaignCreateRequest(BaseModel):
         if len(set(value)) != len(value):
             raise ValueError("brand_ids 不能重复")
         return value
+
+
+class WisersOneDownloadCreateRequest(BaseModel):
+    """系统固定下载过去24小时，并按选定品牌范围执行标准导入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_idempotency_key: str = Field(
+        min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    )
+    brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
+
+    @field_validator("brand_ids")
+    @classmethod
+    def unique_brands(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("brand_ids 不能重复")
+        return value
+
+
+class WisersOneDownloadResponse(BaseModel):
+    """下载与导入分别呈现；远端生成结束不表示系统导入成功。"""
+
+    id: UUID
+    occurrence_id: UUID | None = None
+    plan_id: UUID | None = None
+    plan_name: str | None = None
+    status: Literal[
+        "queued",
+        "submitting",
+        "waiting",
+        "downloading",
+        "preflight",
+        "importing",
+        "succeeded",
+        "partial_failed",
+        "failed",
+        "cancelled",
+        "attention",
+    ]
+    send_state: Literal["not_sent", "unknown", "confirmed"]
+    website_task_id: str | None = None
+    percent: int = Field(ge=0, le=100)
+    job_id: UUID | None = None
+    campaign_id: UUID | None = None
+    sha256: str | None = None
+    error_code: str | None = None
+    cancel_requested_at: datetime | None = None
+    created_at: datetime
+    finished_at: datetime | None = None
+
+
+class WisersOneDownloadListResponse(BaseModel):
+    items: tuple[WisersOneDownloadResponse, ...]
 
 
 class LocalDataImportFileManifest(BaseModel):

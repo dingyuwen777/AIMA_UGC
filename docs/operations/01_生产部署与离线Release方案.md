@@ -183,7 +183,7 @@ TikHub 的 Internal V1 `configure` 也只负责首次创建稳定 Provider Confi
 - Frontend/Nginx 是正常浏览器入口，并由应用侧统一发出浏览器安全响应头；
 - Frontend 保持 `server_name _;` 与 8080 HTTP 监听，不在容器内强制 HTTP→HTTPS；
 - PostgreSQL、Artifact、日志和 Secret 不依赖容器可写层；
-- 镜像构建与 Runtime 不把真实 Secret 写入镜像。
+- 镜像构建与 Runtime 不把真实 Secret 写入镜像；唯一用户批准的例外是 #700 中 WisersOne 初始两份会话 JSON，边界见 [Provider README](../../backend/src/aima_ugc/adapters/providers/wisersone/README.md)。刷新状态仍保存宿主 `runtime/wisersone-auth` 并 bind 到 `/run/wisersone-auth`，升级不覆盖。下载输入保存宿主 `aima-historical-input/wisersone`，prepare_host 为 app10001 准备权限。
 
 未来只有出现真正独立的生产语义时才考虑增加最小 Production override；不能为了目录对称复制一份 canonical Compose。
 

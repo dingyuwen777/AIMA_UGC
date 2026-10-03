@@ -121,7 +121,10 @@ class PostgresHistoricalImportJobExecutor:
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
         self._sql_batch_tuner = AdaptiveBatchController(lower=250, upper=500)
-        self._browser = HistoricalDirectoryBrowser(runtime.settings.historical_import_root)
+        self._browser = HistoricalDirectoryBrowser(
+            runtime.settings.historical_import_root,
+            managed_wisersone_root=runtime.settings.wisersone_input_dir,
+        )
         self._artifacts = ArtifactService(
             metadata=PostgresArtifactMetadataGateway(runtime.database.new_session),
             store=runtime.artifact_store,
@@ -235,10 +238,7 @@ class PostgresHistoricalImportJobExecutor:
             source_reused = source_artifact is not None
             if source_artifact is None:
                 source_path = self._browser.resolve(cast(str, item["relative_path"]))
-                before = _source_entry(
-                    self._runtime.settings.historical_import_root,
-                    source_path,
-                )
+                before = self._browser.describe(cast(str, item["relative_path"]))
                 if _manifest_identity(before) != item["manifest_identity"]:
                     return JobHandlerResult.failed("historical_source_changed")
                 with source_path.open("rb") as source:
@@ -250,10 +250,7 @@ class PostgresHistoricalImportJobExecutor:
                         max_bytes=MAX_XLSX_FILE_BYTES,
                         filename_suffix=".xlsx",
                     )
-                after = _source_entry(
-                    self._runtime.settings.historical_import_root,
-                    source_path,
-                )
+                after = self._browser.describe(cast(str, item["relative_path"]))
                 if (
                     _manifest_identity(after) != item["manifest_identity"]
                     or _sha256_file(source_path) != source_artifact.sha256
@@ -1250,20 +1247,6 @@ def _campaign_lineage(
         platform=platform,
         canonical_artifact=artifact,
         operation=operation,
-    )
-
-
-def _source_entry(root: Path | None, path: Path) -> HistoricalDirectoryEntry:
-    if root is None:
-        raise HistoricalDirectoryUnavailable("未配置历史导入根目录")
-    resolved_root = root.resolve(strict=True)
-    stat = path.stat(follow_symlinks=False)
-    return HistoricalDirectoryEntry(
-        relative_path=path.relative_to(resolved_root).as_posix(),
-        name=path.name,
-        kind="file",
-        byte_size=stat.st_size,
-        modified_at_ns=stat.st_mtime_ns,
     )
 
 

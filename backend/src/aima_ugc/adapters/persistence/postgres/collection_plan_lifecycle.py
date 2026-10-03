@@ -56,6 +56,7 @@ class PostgresCollectionPlanLifecycleRepository:
         brand_ids: tuple[UUID, ...],
         comment_policy: str = "adaptive",
         decision_policy: CollectionDecisionPolicyV1 | None = None,
+        plan_type: str = "tikhub",
     ) -> bool:
         """完整替换下一版本执行面；版本漂移或已归档时 fail closed。"""
 
@@ -75,7 +76,9 @@ class PostgresCollectionPlanLifecycleRepository:
         if row["schedule_version"] != expected_schedule_version:
             raise RuntimeError("采集计划版本已经变化，请刷新后重试")
         policy = decision_policy or CollectionDecisionPolicyV1()
-        if row["plan_type"] != "tikhub" or comment_policy != policy.comment_mode:
+        if row["plan_type"] != plan_type:
+            raise ValueError("已有采集计划不能切换类型，请新建另一类型计划")
+        if plan_type == "tikhub" and comment_policy != policy.comment_mode:
             raise ValueError("TikHub 计划类型或评论策略不一致")
         updated = self._session.execute(
             update(collection_plans_table)
@@ -117,18 +120,19 @@ class PostgresCollectionPlanLifecycleRepository:
                 collection_plan_brands_table.c.plan_id == plan_id
             )
         )
-        self._session.execute(
-            insert(collection_plan_platforms_table),
-            [
-                {
-                    "plan_id": plan_id,
-                    "platform": item.platform,
-                    "provider_config_id": item.provider_config_id,
-                    "config": item.config,
-                }
-                for item in platforms
-            ],
-        )
+        if platforms:
+            self._session.execute(
+                insert(collection_plan_platforms_table),
+                [
+                    {
+                        "plan_id": plan_id,
+                        "platform": item.platform,
+                        "provider_config_id": item.provider_config_id,
+                        "config": item.config,
+                    }
+                    for item in platforms
+                ],
+            )
         if keyword_pack_ids:
             self._session.execute(
                 insert(collection_plan_keyword_packs_table),

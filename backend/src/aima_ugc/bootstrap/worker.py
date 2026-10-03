@@ -59,6 +59,7 @@ from aima_ugc.modules.ingestion.revocation_jobs import (
     DataImportRevocationJobHandler,
     register_data_import_revocation_job,
 )
+from aima_ugc.modules.ingestion.wisersone_jobs import register_wisersone_job
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
     register_data_export_job,
@@ -119,6 +120,7 @@ from .voice_plaza_projection_worker import (
     PostgresVoicePlazaProjectionJobExecutor,
     voice_plaza_projection_job_terminal_callback,
 )
+from .wisersone_worker import PostgresWisersOneJobExecutor, wisersone_terminal_callback
 from .workbench_snapshot_worker import (
     PostgresWorkbenchSnapshotJobExecutor,
     workbench_snapshot_job_terminal_callback,
@@ -226,6 +228,11 @@ def create_collection_job_registry(
         scope_executor=scope_executor,
     )
     registry = JobRegistry()
+    register_wisersone_job(
+        registry,
+        PostgresWisersOneJobExecutor(runtime),
+        terminal_callback=wisersone_terminal_callback,
+    )
     register_collection_run_job(
         registry,
         CollectionRunJobHandler(executor),

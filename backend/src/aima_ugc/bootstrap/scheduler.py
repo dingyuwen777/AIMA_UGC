@@ -21,11 +21,13 @@ from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     PostgresScheduledKeywordSnapshotReader,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
+from aima_ugc.adapters.persistence.postgres.wisersone import PostgresWisersOneRepository
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
 from aima_ugc.adapters.providers.tikhub.transport import (
     DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
 )
 from aima_ugc.contracts.collection import ProviderPlatformCapabilityV1
+from aima_ugc.contracts.http import WisersOneDownloadCreateRequest
 from aima_ugc.modules.collection.collection_run_job import (
     COLLECTION_RUN_JOB_TYPE,
     COLLECTION_RUN_PAYLOAD_VERSION,
@@ -128,6 +130,50 @@ def run_scheduler_once(
                         continue
                     if decision.next_run_at is None:  # pragma: no cover - 领域结果不允许
                         raise RuntimeError("due Scheduler decision 缺少 next_run_at")
+
+                    if plan.plan_type == "wisersone":
+                        # 同一计划锁内原子创建 Occurrence、下载来源和首个 Job。
+                        filter_snapshot = BrandVehicleFilterSnapshot(
+                            search_semantics="keyword_pack",
+                            catalog=PostgresBrandVehicleRepository(session).snapshot(
+                                brand_ids=plan.brand_ids or None
+                            ),
+                        )
+                        if not filter_snapshot.catalog.brands:
+                            raise ValueError("Brand Filter 当前没有可用 active Brand")
+                        planning_service = CollectionPlanningService(planning_repository)
+                        for skipped_slot in decision.skipped:
+                            planning_service.record_skipped_occurrence(
+                                plan_id=plan.id,
+                                schedule_version=plan.schedule_version,
+                                scheduled_for=skipped_slot.scheduled_for,
+                                skip_reason=skipped_slot.reason,
+                            )
+                        download_repo = PostgresWisersOneRepository(session)
+                        download = download_repo.create(
+                            WisersOneDownloadCreateRequest(
+                                client_idempotency_key=f"wisersone:{plan.id}:{plan.schedule_version}:{int(decision.enqueue_for.timestamp())}",
+                                brand_ids=plan.brand_ids,
+                            ),
+                            None,
+                            filter_snapshot=filter_snapshot,
+                        )
+                        occurrence = planning_service.record_enqueued_occurrence(
+                            plan_id=plan.id,
+                            schedule_version=plan.schedule_version,
+                            scheduled_for=decision.enqueue_for,
+                            job_id=download["job_id"],
+                        )
+                        download_repo.update(download["id"], occurrence_id=occurrence.id)
+                        planning_repository.update_schedule_cursor(
+                            plan_id=plan.id,
+                            schedule_version=plan.schedule_version,
+                            next_run_at=decision.next_run_at,
+                            last_scheduled_at=decision.last_scheduled_at,
+                        )
+                        enqueued += 1
+                        skipped += len(decision.skipped)
+                        continue
 
                     provider_snapshots = _resolve_provider_snapshots(session, plan)
                     keyword_catalog = PostgresScheduledKeywordSnapshotReader(session).read(

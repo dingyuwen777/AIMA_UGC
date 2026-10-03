@@ -1,6 +1,8 @@
 name: aima-ugc
 
 x-backend-environment: &backend-environment
+  - AIMA_WISERSONE_AUTH_DIR=/run/wisersone-auth
+  - AIMA_WISERSONE_INPUT_DIR=/run/wisersone-input
   - AIMA_DATA_DIR=/app/data
   - AIMA_LOG_DIR=/app/logs
   - AIMA_SECRET_DIR=/run/internal-secrets
@@ -52,6 +54,9 @@ x-backend-service: &backend-service
     - "11001"
   volumes:
     - type: bind
+      source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
+      target: /run/wisersone-input
+    - type: bind
       source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
       target: /app/data
     - type: bind
@@ -80,6 +85,12 @@ services:
       - /host
       - --runtime-only
     volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/wisersone-auth
+        target: /host/runtime/wisersone-auth
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
+        target: /host/aima-historical-input/wisersone
       - type: bind
         source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
         target: /host/runtime/data
@@ -173,6 +184,14 @@ services:
     command: ["uvicorn", "aima_ugc.entrypoints.api_main:app", "--host", "0.0.0.0", "--port", "8090"]
     volumes:
       - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/wisersone-auth
+        target: /run/wisersone-auth
+        read_only: true
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
+        target: /run/wisersone-input
+        read_only: true
+      - type: bind
         source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
         target: /app/data
       - type: bind
@@ -208,9 +227,16 @@ services:
     restart: unless-stopped
 
   worker:
+    shm_size: 512mb
     <<: *backend-service
     command: ["python", "-m", "aima_ugc.entrypoints.worker_main"]
     volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/wisersone-auth
+        target: /run/wisersone-auth
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
+        target: /run/wisersone-input
       - type: bind
         source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
         target: /app/data

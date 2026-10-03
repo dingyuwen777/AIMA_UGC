@@ -58,7 +58,7 @@ data_changes: [WisersOne download lifecycle migration]
 
 ## 成功标准
 
-以 #700 的 AC1–AC12 为完整完成定义，所有适用项必须取得直接证据。
+以 #700 的 AC1–AC13 和用户追加的定时计划、共用弹窗、品牌过滤要求为完整完成定义，所有适用项必须取得直接证据。
 
 ## 范围
 
@@ -88,7 +88,7 @@ Provider/人工入口、auth、PG Job/下载事实、API/UI、Docker/Compose、�
 
 1. 认证与 Provider → 正式与人工目录 → 过去24小时原子导出 → 本地单元和真实下载。
 2. PG/API/Job → 下载生命周期、恢复与 Campaign 接线 → 隔离 PG 集成。
-3. UI → 已有导入入口 → 下载和导入状态可见 → 组件及跨组件验收。
+3. 计划和 UI → 采集策略共用新建计划弹窗、默认 WisersOne、名称/执行频率/品牌 → Scheduler 到时自动下载导入，任务状态可见 → 组件及跨组件验收。
 4. Docker/Compose → 非 root 浏览器及 bind → 构建和真实 Linux 下载。
 5. 文档/清理/交付 → 七天保留与 Canonical 不变 → 受影响检查、Review、CI 与 merge 收尾。
 
@@ -116,6 +116,7 @@ E1 要求提交/轮询/下载阶段拆分；E2 要求复用生产导入；E3 要
 | R10 | Windows 实际免密码下载 | #700 / AC10 | not_satisfied | 实施中 |
 | R11 | 正式 Linux 实际下载和隔离导入 | #700 / AC11 | not_satisfied | 实施中 |
 | R12 | 文档、验证与完整交付收尾 | #700 / AC12 | not_satisfied | 实施中 |
+| R13 | 共用计划弹窗、名称/频率/品牌及自动下载导入 | 用户追加决定、#700 / AC13 | not_satisfied | 实施中 |
 
 # 计划改动
 

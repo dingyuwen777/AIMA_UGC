@@ -19,7 +19,9 @@ SECRET_GID = 11001
 DEFAULT_ROOT = Path("/data/AIMA_UGC")
 _POSTGRES_CLUSTER_MARKER = Path("postgres/18/docker/PG_VERSION")
 _POSTGRES_PASSWORD = Path("shared/secrets/postgres_password")
-_BIND_COMPATIBLE_RUNTIME_PATHS = frozenset({"runtime/data", "runtime/logs"})
+_BIND_COMPATIBLE_RUNTIME_PATHS = frozenset(
+    {"runtime/data", "runtime/logs", "runtime/wisersone-auth", "aima-historical-input/wisersone"}
+)
 
 
 class HostPreparationError(RuntimeError):
@@ -39,6 +41,9 @@ _RUNTIME_DIRECTORY_SPECS = (
     DirectorySpec("runtime", 0, 0, 0o750),
     DirectorySpec("runtime/data", APP_UID, APP_GID, 0o750),
     DirectorySpec("runtime/logs", APP_UID, APP_GID, 0o750),
+    DirectorySpec("runtime/wisersone-auth", APP_UID, APP_GID, 0o700),
+    DirectorySpec("aima-historical-input", 0, APP_GID, 0o750),
+    DirectorySpec("aima-historical-input/wisersone", APP_UID, APP_GID, 0o750),
     DirectorySpec("postgres", POSTGRES_UID, POSTGRES_GID, 0o700),
     DirectorySpec("shared", 0, 0, 0o750),
     DirectorySpec("shared/secrets", 0, SECRET_GID, 0o750),

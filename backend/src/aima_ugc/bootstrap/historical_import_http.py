@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import PurePosixPath
 from typing import BinaryIO, Literal, cast
 from uuid import UUID, uuid4
@@ -78,6 +78,7 @@ from aima_ugc.modules.ingestion.http import (
 from aima_ugc.modules.ingestion.xlsx_security import MAX_XLSX_FILE_BYTES
 from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.capacity import select_chunk_rows
+from aima_ugc.platform.jobs.models import JobExecutionFence
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.storage import (
     ArtifactRecord,
@@ -95,7 +96,10 @@ class PostgresHistoricalImportHttpService:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
-        self._browser = HistoricalDirectoryBrowser(runtime.settings.historical_import_root)
+        self._browser = HistoricalDirectoryBrowser(
+            runtime.settings.historical_import_root,
+            managed_wisersone_root=runtime.settings.wisersone_input_dir,
+        )
 
     def _log_campaign_capacity(
         self,
@@ -155,6 +159,9 @@ class PostgresHistoricalImportHttpService:
         request: HistoricalCampaignCreateRequest,
         *,
         request_id: str,
+        execution_fence: JobExecutionFence | None = None,
+        on_created: Callable[[Session, UUID], None] | None = None,
+        filter_snapshot: BrandVehicleFilterSnapshot | None = None,
     ) -> HistoricalCampaignCreatedResponse:
         """服务端目录 Campaign 冻结 Brand Scope；Excel Search 明确不适用。"""
 
@@ -165,7 +172,9 @@ class PostgresHistoricalImportHttpService:
             raise HistoricalDirectoryRequestInvalid from exc
         except InvalidHistoricalRelativePath as exc:
             raise HistoricalDirectoryRequestInvalid from exc
-        filter_snapshot = self._read_brand_vehicle_filter_snapshot(request.brand_ids)
+        filter_snapshot = filter_snapshot or self._read_brand_vehicle_filter_snapshot(
+            request.brand_ids
+        )
         profile_snapshot: dict[str, object] = {
             "schema_version": "historical-import-profile.v1",
             "profile": request.profile,
@@ -188,6 +197,8 @@ class PostgresHistoricalImportHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                if execution_fence is not None:
+                    PostgresJobRepository(session).lock_current_execution(execution_fence)
                 repository = PostgresHistoricalImportRepository(session)
                 campaign = repository.create_campaign(
                     campaign_id=campaign_id,
@@ -210,6 +221,8 @@ class PostgresHistoricalImportHttpService:
                 ):
                     raise HistoricalCampaignStateConflict("Campaign 幂等键已绑定到不同冻结输入")
                 resolved_id = cast(UUID, campaign["id"])
+                if on_created is not None:
+                    on_created(session, resolved_id)
                 payload = HistoricalDiscoverJobPayload(campaign_id=resolved_id)
                 job = PostgresJobRepository(session).enqueue(
                     job_type=HISTORICAL_DISCOVER_JOB_TYPE,

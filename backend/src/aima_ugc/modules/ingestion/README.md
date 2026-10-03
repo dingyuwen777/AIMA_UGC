@@ -16,6 +16,8 @@ modules/content/ingestion.py
 
 当前页面主导入工作流已经是**统一 Data Import Campaign**；旧 `/api/v1/import-batches` 和 `/api/v1/historical-import-*` 继续作为兼容 Contract 保留，不能再把旧单文件 Import 写成当前唯一正式主链。
 
+WisersOne 定时计划通过既有 Scheduler 创建本模块持有的下载事实和有界 Job，网站生成完成后自动创建 `server_path + standard_observation` Campaign 并开始导入。原文件、冻结过滤和恢复语义见[统一数据入口](../../../../../docs/appendix/08_数据入口与统一入库实现.md)；Provider 只取得完整输入，不写内容业务表。
+
 ---
 
 ## 1. 当前页面主链：统一 Data Import Campaign

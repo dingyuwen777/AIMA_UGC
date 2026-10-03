@@ -1,4 +1,5 @@
 import { expect, test } from './fixture'
+import type { CollectionPlanResponse } from '../src/generated/api/client'
 
 const packId = '11111111-1111-4111-8111-111111111111'
 const secondaryPackId = '22222222-2222-4222-8222-222222222222'
@@ -39,6 +40,18 @@ const plan = {
   brand_ids: [activeBrandId],
   created_at: '2026-08-21T00:00:00Z',
   updated_at: '2026-08-21T00:00:00Z',
+}
+const wisersonePlan: CollectionPlanResponse = {
+  ...plan,
+  id: '77777777-7777-4777-8777-777777777777',
+  name: '网站过去24小时自动导入',
+  plan_type: 'wisersone',
+  detail_policy: null,
+  comment_policy: null,
+  platforms: [],
+  keyword_pack_ids: [],
+  schedule_expr: '0 */3 * * *',
+  enabled: false,
 }
 
 test.beforeEach(async ({ page }) => {
@@ -99,7 +112,7 @@ test.beforeEach(async ({ page }) => {
       await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(plan) })
       return
     }
-    await route.fulfill({ status: 404, body: 'not mocked' })
+    await route.fallback()
   })
 })
 
@@ -110,7 +123,7 @@ test('matches the approved Figma workspace and resolves the current Brand filter
   await expect(page.getByRole('link', { name: /采集策略/ })).toHaveClass(/router-link-active/)
   await expect(page.getByLabel('采集策略摘要').getByText('关键词包')).toBeVisible()
   await expect(page.locator('.aima-page-actions').getByRole('button', { name: /刷新数据/ })).toBeVisible()
-  await expect(page.locator('.aima-page-actions').getByRole('button', { name: /新建 TikHub 采集计划/ })).toBeVisible()
+  await expect(page.locator('.aima-page-actions').getByRole('button', { name: '新建采集计划', exact: true })).toBeVisible()
   await expect(page.locator('.aima-page-actions').getByRole('button', { name: /新建词包/ })).toHaveCount(0)
 
   await expect(page.getByText('爱玛口碑周期采集')).toBeVisible()
@@ -127,8 +140,8 @@ test('matches the approved Figma workspace and resolves the current Brand filter
   await planRow.getByRole('button', { name: '查看详情' }).click()
   const detail = page.getByRole('dialog', { name: '采集计划详情' })
   await expect(detail.getByText('爱玛新品发现 · v4')).toBeVisible()
-  await expect(detail.getByRole('heading', { name: '内容过滤条件 · 品牌' })).toBeVisible()
-  await expect(detail.getByText('爱玛 · 自有')).toBeVisible()
+  await expect(detail.getByRole('heading', { name: '内容过滤条件 · 品牌（当前配置）' })).toBeVisible()
+  await expect(detail.getByText('爱玛 · 自有品牌')).toBeVisible()
   await expect(detail.getByText(planId)).toHaveCount(0)
   await expect(detail.getByText('技术详情', { exact: true })).toHaveCount(0)
   await expect(detail.getByText('TikHub 主配置', { exact: false })).toHaveCount(0)
@@ -232,9 +245,11 @@ test('uses product confirmation for archive and permanent delete flows', async (
 
 test('creates a periodic Collection Plan with paginated active Brand filtering and no new vehicle scope', async ({ page }) => {
   await page.goto('/collection-strategy')
-  await page.getByRole('button', { name: /新建 TikHub 采集计划/ }).click()
-  const drawer = page.getByRole('dialog', { name: '新建 TikHub 采集计划' })
+  await page.getByRole('button', { name: '新建采集计划', exact: true }).click()
+  const drawer = page.getByRole('dialog', { name: '新建采集计划' })
   await expect(drawer).toBeVisible()
+  await drawer.getByRole('radio', { name: 'TikHub 采集', exact: true }).check()
+  await drawer.getByLabel('执行频率', { exact: true }).selectOption('0 */6 * * *')
   const secondBrandPagePromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
     return url.pathname === '/api/v1/vehicle-brands'
@@ -304,8 +319,9 @@ test('retains a full-mode draft after failure, prevents pending duplicates, and 
     await route.fulfill({ json: { items: saved ? [saved, plan] : [plan], total: saved ? 2 : 1, enabled_count: saved ? 2 : 1, offset: 0, limit: 20 } })
   })
   await page.goto('/collection-strategy')
-  await page.getByRole('button', { name: '新建 TikHub 采集计划', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '新建 TikHub 采集计划' })
+  await page.getByRole('button', { name: '新建采集计划', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '新建采集计划' })
+  await dialog.getByRole('radio', { name: 'TikHub 采集', exact: true }).check()
   const name = dialog.getByPlaceholder('例如：爱玛新品口碑追踪')
   await name.fill('全量计划草稿')
   await dialog.getByRole('checkbox', { name: '爱玛新品发现 · v4', exact: true }).check()
@@ -347,12 +363,131 @@ test('cancelling TikHub creation makes no write request and restores trigger foc
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/collection-plans') writes.push(request.url())
   })
   await page.goto('/collection-strategy')
-  const trigger = page.getByRole('button', { name: '新建 TikHub 采集计划', exact: true })
+  const trigger = page.getByRole('button', { name: '新建采集计划', exact: true })
   await trigger.click()
-  const dialog = page.getByRole('dialog', { name: '新建 TikHub 采集计划' })
+  const dialog = page.getByRole('dialog', { name: '新建采集计划' })
+  await dialog.getByRole('radio', { name: 'TikHub 采集', exact: true }).check()
   await dialog.getByPlaceholder('例如：爱玛新品口碑追踪').fill('取消草稿')
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   await expect(trigger).toBeFocused()
   expect(writes).toEqual([])
+})
+
+test('defaults the shared creation dialog to WisersOne and submits name, frequency and selected Brands', async ({ page }) => {
+  let saved: CollectionPlanResponse | undefined
+  await page.route('**/api/v1/collection-plans?*', async (route) => {
+    await route.fulfill({ json: {
+      items: saved ? [saved, plan] : [plan], total: saved ? 2 : 1,
+      enabled_count: saved ? 2 : 1, offset: 0, limit: 20,
+    } })
+  })
+  await page.route('**/api/v1/collection-plans', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    saved = { ...wisersonePlan, ...route.request().postDataJSON() }
+    await route.fulfill({ status: 201, json: saved })
+  })
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '新建采集计划', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '新建采集计划' })
+  await expect(dialog.getByRole('radio', { name: 'WisersOne 网站下载', exact: true })).toBeChecked()
+  await expect(dialog.getByText('搜索条件 · 关键词包', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByText('目标平台', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByText('评论采集策略', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('radio', { name: '全部启用品牌及车型', exact: true })).toBeChecked()
+  await expect(dialog.getByRole('button', { name: '保存计划', exact: true })).toBeDisabled()
+  await dialog.getByPlaceholder('例如：爱玛新品口碑追踪').fill('爱玛网站周期导入')
+  await dialog.getByLabel('执行频率', { exact: true }).selectOption('0 */3 * * *')
+  const brandPage = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return request.method() === 'GET' && url.pathname === '/api/v1/vehicle-brands'
+      && url.searchParams.get('status') === 'active' && url.searchParams.get('offset') === '200'
+  })
+  await dialog.getByRole('radio', { name: '指定品牌', exact: true }).check()
+  expect(new URL((await brandPage).url()).searchParams.get('limit')).toBe('200')
+  await expect(dialog.getByRole('button', { name: '保存计划', exact: true })).toBeDisabled()
+  await expect(dialog.getByRole('status').filter({ hasText: '请至少选择一个品牌' })).toBeVisible()
+  await dialog.getByRole('checkbox', { name: /^爱玛\s*自有$/ }).check()
+  await expect(dialog.getByRole('button', { name: '保存计划', exact: true })).toBeEnabled()
+  const request = page.waitForRequest((item) =>
+    new URL(item.url()).pathname === '/api/v1/collection-plans' && item.method() === 'POST',
+  )
+  await dialog.getByRole('button', { name: '保存计划', exact: true }).click()
+  expect((await request).postDataJSON()).toEqual({
+    name: '爱玛网站周期导入', plan_type: 'wisersone', schedule_expr: '0 */3 * * *',
+    enabled: true, brand_ids: [activeBrandId], platforms: [], keyword_pack_ids: [], comment_policy: null,
+  })
+  await expect(dialog).toHaveCount(0)
+  const row = page.getByRole('row').filter({ hasText: '爱玛网站周期导入' })
+  await expect(row).toContainText('WisersOne')
+  await expect(row).toContainText('每3小时')
+  await expect(row).toContainText('品牌：爱玛')
+  await expect(row).toContainText('过去 24 小时')
+  const detail = page.getByRole('dialog', { name: '采集计划详情' })
+  await expect(detail).toContainText('按执行频率下载网站过去 24 小时 Excel')
+  await expect(detail).toContainText('爱玛 · 自有品牌')
+  await expect(detail.getByText('TikHub 采集规则', { exact: true })).toHaveCount(0)
+})
+
+test('keeps an existing WisersOne plan type fixed when editing name and frequency', async ({ page }) => {
+  let current = { ...wisersonePlan }
+  await page.route('**/api/v1/collection-plans?*', async (route) => {
+    await route.fulfill({ json: { items: [current], total: 1, enabled_count: 0, offset: 0, limit: 20 } })
+  })
+  await page.route(`**/api/v1/collection-plans/${wisersonePlan.id}`, async (route) => {
+    expect(route.request().method()).toBe('PUT')
+    const body = route.request().postDataJSON()
+    current = { ...current, ...body, schedule_version: 2 }
+    await route.fulfill({ json: current })
+  })
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '查看详情', exact: true }).click()
+  await page.getByRole('dialog', { name: '采集计划详情' }).getByRole('button', { name: '编辑计划', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑采集计划' })
+  await expect(dialog.getByRole('radio', { name: 'WisersOne 网站下载', exact: true })).toBeChecked()
+  await expect(dialog.getByRole('radio', { name: 'WisersOne 网站下载', exact: true })).toBeDisabled()
+  await expect(dialog.getByRole('radio', { name: 'TikHub 采集', exact: true })).toBeDisabled()
+  await expect(dialog.getByPlaceholder('例如：爱玛新品口碑追踪')).toHaveValue(wisersonePlan.name)
+  await dialog.getByPlaceholder('例如：爱玛新品口碑追踪').fill('网站改为每12小时')
+  await dialog.getByLabel('执行频率', { exact: true }).selectOption('0 */12 * * *')
+  const request = page.waitForRequest((item) =>
+    new URL(item.url()).pathname === `/api/v1/collection-plans/${wisersonePlan.id}` && item.method() === 'PUT',
+  )
+  await dialog.getByRole('button', { name: '保存修改', exact: true }).click()
+  expect((await request).postDataJSON()).toEqual({
+    name: '网站改为每12小时', plan_type: 'wisersone', schedule_expr: '0 */12 * * *',
+    enabled: false, brand_ids: [activeBrandId], platforms: [], keyword_pack_ids: [], comment_policy: null,
+    expected_version: 1,
+  })
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('row').filter({ hasText: '网站改为每12小时' })).toContainText('每12小时')
+})
+
+test('enables and disables WisersOne without requiring TikHub keywords or capabilities', async ({ page }) => {
+  let current = { ...wisersonePlan }
+  const submittedStates: boolean[] = []
+  await page.route('**/api/v1/collection-plans?*', async (route) => {
+    await route.fulfill({ json: {
+      items: [current], total: 1, enabled_count: current.enabled ? 1 : 0, offset: 0, limit: 20,
+    } })
+  })
+  await page.route('**/api/v1/collection-capabilities', async (route) => {
+    await route.fulfill({ json: { provider_configs: [], capabilities: [] } })
+  })
+  await page.route(`**/api/v1/collection-plans/${wisersonePlan.id}/enabled`, async (route) => {
+    expect(route.request().method()).toBe('PUT')
+    const body = route.request().postDataJSON()
+    expect(Object.keys(body)).toEqual(['enabled'])
+    submittedStates.push(body.enabled)
+    current = { ...current, enabled: body.enabled, schedule_version: current.schedule_version + 1 }
+    await route.fulfill({ json: current })
+  })
+  await page.goto('/collection-strategy')
+  const row = page.getByRole('row').filter({ hasText: wisersonePlan.name })
+  await expect(row.getByRole('button', { name: '启用', exact: true })).toBeEnabled()
+  await row.getByRole('button', { name: '启用', exact: true }).click()
+  await expect(row).toContainText('已启用')
+  await row.getByRole('button', { name: '停用', exact: true }).click()
+  await expect(row).toContainText('已停用')
+  expect(submittedStates).toEqual([true, false])
 })

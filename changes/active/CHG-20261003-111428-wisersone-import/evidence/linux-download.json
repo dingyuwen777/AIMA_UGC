@@ -1,0 +1,13 @@
+{
+  "environment": "Linux/AMD64 Docker, uid 10001, headless",
+  "image": "aima-ugc-wisersone-700:probe2",
+  "website_task_id": "00e1fc2b-495c-5569-a6b3-7f1a15d45c61",
+  "started_at": "2026-10-03T12:11:57+08:00",
+  "completed_at": "2026-10-03T12:22:43+08:00",
+  "bytes": 17304792,
+  "sha256": "af0ea3736f9b205aea682b8cd084a41d56c582c18c95fa002efd5d630804f85d",
+  "zip_crc_valid": true,
+  "required_headers_valid": true,
+  "password_prompt": false,
+  "business_data_audited": false
+}

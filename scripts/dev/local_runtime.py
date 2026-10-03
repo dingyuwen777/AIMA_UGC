@@ -32,6 +32,7 @@ _SOURCE_LOCAL_KEYS = frozenset(
         "AIMA_LLM_API_KEY",
         "AIMA_HISTORICAL_IMPORT_HOST_ROOT",
         "AIMA_HISTORICAL_IMPORT_ROOT",
+        "AIMA_HOST_ROOT",
         "AIMA_DEV_ENABLE_SCHEDULER",
         "AIMA_FEISHU_BASE_URL",
         "AIMA_FEISHU_APP_ID",
@@ -144,6 +145,7 @@ class LocalDevConfig:
     feishu_timeout_seconds: str | None = None
     feishu_max_retries: str | None = None
     feishu_dry_run: str | None = None
+    host_root: str = "./.runtime/compose"
 
     @property
     def tikhub_configured(self) -> bool:
@@ -288,6 +290,7 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
         llm_api_key=_clean(values.get("AIMA_LLM_API_KEY")),
         historical_import_host_root=_clean(values.get("AIMA_HISTORICAL_IMPORT_HOST_ROOT")),
         historical_import_root=_clean(values.get("AIMA_HISTORICAL_IMPORT_ROOT")),
+        host_root=_clean(values.get("AIMA_HOST_ROOT")) or "./.runtime/compose",
         scheduler_enabled=_parse_bool(
             values.get("AIMA_DEV_ENABLE_SCHEDULER", "false"),
             key="AIMA_DEV_ENABLE_SCHEDULER",
@@ -380,6 +383,18 @@ def build_runtime_environment(
     source_historical_import_root = config.source_historical_import_root
     if source_historical_import_root is not None:
         environment["AIMA_HISTORICAL_IMPORT_ROOT"] = source_historical_import_root
+
+    # 与容器 bind 使用同一宿主认证和下载目录；既有历史输入根继续可读。
+    wisersone_host_root = Path(config.host_root).expanduser()
+    if not wisersone_host_root.is_absolute():
+        wisersone_host_root = paths.root / wisersone_host_root
+    wisersone_auth = wisersone_host_root / "runtime" / "wisersone-auth"
+    wisersone_input = wisersone_host_root / "aima-historical-input" / "wisersone"
+    wisersone_auth.mkdir(parents=True, exist_ok=True)
+    wisersone_input.mkdir(parents=True, exist_ok=True)
+    environment["AIMA_HOST_ROOT"] = str(wisersone_host_root.resolve())
+    environment["AIMA_WISERSONE_AUTH_DIR"] = str(wisersone_auth.resolve())
+    environment["AIMA_WISERSONE_INPUT_DIR"] = str(wisersone_input.resolve())
 
     for key, value in (
         ("AIMA_FEISHU_BASE_URL", config.feishu_base_url),

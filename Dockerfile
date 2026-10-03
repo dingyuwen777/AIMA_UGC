@@ -2,7 +2,10 @@
 # Docker Hub 下载加速由宿主 Docker registry-mirrors 处理；Debian / PyPI / npm 为独立构建下载源。
 # 本文件只使用 Dockerfile 稳定基础语法，不声明外部 syntax frontend。
 
-FROM python:3.14.7-slim-trixie AS backend-builder
+# 浏览器与根 Playwright 锁定版本一致；只取 Linux headless Chromium，不改 Python 基线。
+FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d AS browser-source
+
+FROM python:3.14.7-slim-trixie AS backend-dependencies
 ARG AIMA_BUILD_PYPI_INDEX=https://mirrors.aliyun.com/pypi/simple
 ENV UV_PYTHON_DOWNLOADS=0 \
     UV_LINK_MODE=copy
@@ -30,6 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
       --require-hashes \
       /tmp/requirements.txt
 
+FROM backend-dependencies AS backend-builder
 COPY backend ./backend
 # 项目源码变化只重新构建本地 wheel；共享 uv cache 仍只作为可丢弃的性能缓存。
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -48,7 +52,8 @@ ARG AIMA_BUILD_DEBIAN_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN sed -i \
       -e "s|http://deb.debian.org/debian-security|${AIMA_BUILD_DEBIAN_SECURITY_MIRROR}|g" \
       -e "s|https://deb.debian.org/debian-security|${AIMA_BUILD_DEBIAN_SECURITY_MIRROR}|g" \
@@ -65,6 +70,12 @@ RUN sed -i \
     && mkdir -p /app/data /app/logs /app/scripts/deploy \
     && chown -R 10001:10001 /app/data /app/logs
 WORKDIR /app
+COPY --from=browser-source /ms-playwright/chromium_headless_shell-1234 /ms-playwright/chromium_headless_shell-1234
+COPY --from=browser-source /ms-playwright/ffmpeg-1011 /ms-playwright/ffmpeg-1011
+# install-deps 使用当前锁定 Playwright 的平台清单；运行时不下载浏览器。
+RUN --mount=type=bind,from=backend-dependencies,source=/app/.venv,target=/app/.venv \
+    python -m playwright install-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=backend-builder /app/.venv /app/.venv
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations

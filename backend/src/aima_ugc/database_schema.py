@@ -111,6 +111,7 @@ from aima_ugc.modules.ingestion.tables import (
     processing_import_batches_table,
     register_ingestion_schema,
 )
+from aima_ugc.modules.ingestion.wisersone_tables import wisersone_downloads_table
 from aima_ugc.modules.notification.tables import (
     notification_events_table,
     notification_inbox_items_table,
@@ -158,6 +159,7 @@ register_content_source_constraints()
 register_ingestion_schema()
 
 __all__ = [
+    "wisersone_downloads_table",
     "analysis_content_label_pairs_table",
     "analysis_content_manual_overrides_table",
     "analysis_content_relevance_reviews_table",
