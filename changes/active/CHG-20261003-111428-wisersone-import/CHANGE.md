@@ -3,17 +3,33 @@ schema: coding-change/v1
 id: CHG-20261003-111428-wisersone-import
 title: WisersOne 下载与统一导入接入
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/700-wisersone-import
 created: 2026-10-03
 updated: 2026-10-03
 completion_gate: required
 depends_on: []
-affected_areas: [backend, frontend, deployment, docs]
-affected_paths: [backend/src/aima_ugc, frontend/src, migrations, tests, Dockerfile, compose.yaml, compose.windows.yaml, scripts/deploy, docs]
-contracts: [WisersOne HTTP/Job, generated HTTP clients]
-data_changes: [WisersOne download lifecycle migration]
+affected_areas:
+  - "backend"
+  - "frontend"
+  - "deployment"
+  - "docs"
+affected_paths:
+  - "backend/src/aima_ugc"
+  - "frontend/src"
+  - "migrations"
+  - "tests"
+  - "Dockerfile"
+  - "compose.yaml"
+  - "compose.windows.yaml"
+  - "scripts/deploy"
+  - "docs"
+contracts:
+  - "WisersOne HTTP/Job"
+  - "generated HTTP clients"
+data_changes:
+  - "WisersOne download lifecycle migration"
 ---
 
 # 变更摘要
@@ -111,14 +127,16 @@ E1 要求提交/轮询/下载阶段拆分；E2 要求复用生产导入；E3 要
 | R5 | 无总等待上限、持久恢复与取消 | #700 / AC5 | satisfied | 65 次正常 continuation、未知发送回执、取消持久传播/终态竞争、预检/监控/Chunk 恢复与耗尽重试边界；实际 Linux 导出跨30分钟 |
 | R6 | 受管文件接入标准统一导入 | #700 / AC6 | satisfied | 正式 server_path Campaign/Source/Canonical/Reader/Mapper/Owner；PG 工作流与真实 full-stack 自动入库 |
 | R7 | 现有页面入口与完整结果 | #700 / AC7 | satisfied | 采集运行中心 WisersOne 任务弹窗、取消/恢复/结果；3 项浏览器状态测试与19项正式 full-stack 回归 |
-| R8 | 正式非 root Docker 与 Compose | #700 / AC8 | satisfied | 根 Dockerfile 当前候选镜像构建、uid10001 Chromium 实际启动及 installed 包21项PG测试；Compose/Windows bind接线和既有构建源检查 |
-| R9 | 七天原文件清理、Canonical 保留 | #700 / AC9 | satisfied | 45项Windows PG PASS，持久目录消费者准入、发现/Source复制复核保护、清理先认领原子409、根递归及大小写等价、终态满七天释放、Canonical保留；独立复审机制闭合，最终Linux证据按R12待补 |
+| R8 | 正式非 root Docker 与 Compose | #700 / AC8 | satisfied | 根 Dockerfile此前e5baa正式候选构建、uid10001 Chromium实际启动及installed包21项PG测试；当前454源码wheel已验证，最终LinuxCI按R14硬门禁执行；Compose/Windows bind接线和既有构建源检查 |
+| R9 | 七天原文件清理、Canonical 保留 | #700 / AC9 | satisfied | 45项Windows PG PASS，持久目录消费者准入、发现/Source复制复核保护、清理先认领原子409、根递归及大小写等价、终态满七天释放、Canonical保留；独立复审机制闭合，当前Linux PG证据按R14正式CI取得 |
 | R10 | Windows 实际免密码下载 | #700 / AC10 | satisfied | changes/active/CHG-20261003-111428-wisersone-import/evidence/windows-download.json |
-| R11 | 正式 Linux 实际下载和隔离导入 | #700 / AC11 | satisfied | 同目录 linux-download.json/linux-final.json；当前候选镜像 installed 包21项PG与认证保留 smoke |
-| R12 | 文档、自动测试、生成消费者、静态检查、Completion和独立Review | #700 / AC12 | not_satisfied | 最终Windows检查通过；最终Linux镜像/installed PG/full-stack受D盘空间耗尽和Docker只读阻塞，独立Review最终证据及Ready记录仍未闭合 |
-| R14 | 当前head远端PR CI与guarded merge | #700 / AC12 | explicitly_deferred | 按canonical Coding ref23正式顺序，在本地载体ready_for_review后执行当前PR CI；这是最终PR Ready/guarded merge前硬门禁，不能作为post-merge延期或跳过。当前未触发最终CI，整体仍pending |
+| R11 | 正式 Linux 实际下载和隔离导入 | #700 / AC11 | satisfied | 同目录 linux-download.json/linux-final.json；此前e5baa正式候选 installed 包21项PG与认证保留smoke；Provider/Auth后续未改变 |
+| R12 | 文档、本地自动测试、生成消费者、静态检查、Completion和独立代码Review | #700 / AC12 | satisfied | 最终Windows45项PG/2066项后端及Unicode3项控制、当前wheel454源码、306前端/205浏览器通过；WIS-DR-01至04 resolved，有限代码复审NO_FINDINGS_WITHIN_SCOPE；当前Linux重依赖CI明确由R14提供，不以本地旧镜像替代 |
+| R14 | 当前head Linux PG/full-stack/正式Compose构建及其它适用PR CI、guarded merge | #700 / AC12 | explicitly_deferred | 原生preflight与canonical Coding ref23规定的正式CI阶段：载体ready_for_review后转换PR触发全套CI，包含六份Wise PG、空库迁移、完整full-stack、Compose及Release只读dry-run。全部current-head/current-base证据是merge前硬门禁，当前未运行，不能post-merge延期、跳过或称PASS |
 | R15 | 合并后main-fresh、自动归档、Closure、cleanup | #700 / AC12 | explicitly_deferred | live Issue AC12、canonical Coding ref23与项目AGENTS明确属于merge后正式阶段，保留在同一任务scope；依赖R14真实merge，AC12和整体交付保持pending，不能以载体Ready视为任务完成 |
-| R13 | 共用计划弹窗、名称/频率/品牌及自动下载导入 | 用户追加决定、#700 / AC13 | satisfied | 前端10项计划测试；PG Scheduler唯一Occurrence、冻结快照、CRUD复制启停归档；正式浏览器→API→Scheduler→Worker→入库→结果工作流 |
+| R13 | 共用计划弹窗、名称/频率/品牌及自动下载导入 | #700 / AC13 | satisfied | 前端10项计划测试；PG Scheduler唯一Occurrence、冻结快照、CRUD复制启停归档；正式浏览器→API→Scheduler→Worker→入库→结果工作流 |
+
+| R16 | 不再等待本机磁盘恢复后重复整套Linux/full-stack验收，复用先前本轮证据 | #700 / AC12 | explicitly_deferred | 用户明确允许不重复本地验收；最终代码的当前Linux执行由R14远端CI补齐，保留旧镜像revision与失败日志事实。该本地重复项不再是依赖磁盘恢复的交付前置条件，不豁免CI/Review，也不新增磁盘修复范围 |
 
 # 计划改动
 
@@ -135,7 +153,7 @@ Provider/wisersone 与 wisersone_test、Ingestion 下载模型与 Contract、PG 
 | 跨组件关键路径 | required | 同一真实API/持久Worker/PG/前端与生产Reader/Mapper/Owner；只替代网站边界，保留正式30秒continuation |
 | 外部依赖 / 供应方探测 | required | Windows与Linux免密码真实下载；只验证文件结构，不审核业务内容 |
 | 构建 / 打包 / 运行 | required | fresh wheel/sdist解析、JSON2份和人工入口；正式backend非root镜像构建/Chromium启动/源hash比对 |
-| 文档 / 治理 / 其他 | required | 正式产品/架构/运行/导入文档与Secret窄例外已同步；Review/Completion待最后记录，远端CI与post-merge按R14执行 |
+| 文档 / 治理 / 其他 | required | 正式产品/架构/运行/导入文档与Secret窄例外已同步；本地Completion和有限代码Review闭合；当前head远端CI按R14、post-merge按R15执行 |
 
 ## 验证计划
 
@@ -152,9 +170,9 @@ Provider/wisersone 与 wisersone_test、Ingestion 下载模型与 Contract、PG 
 # 完成审计
 
 - [x] upstream_re_read：重新读取本轮全部用户决定、live Issue #700 AC1–AC13及项目正式采集/统一导入事实，未把本Change当上游全集。
-- [x] change_coverage：逐AC映射R1–R15；自动下载/计划/品牌未漏项；远端和合并后义务仍属完整范围。
+- [x] change_coverage：逐AC映射R1–R16；自动下载/计划/品牌未漏项；远端和合并后义务仍属完整范围。
 - [x] reverse_audit：计划创建/编辑/复制启停归档→类型化Contract/Scheduler；后端任务→运行中心取消恢复/导入详情/声音广场；Job→真实终态/取消/监控/预检恢复；源码→wheel/正式installed镜像；TTL→Canonical保留。
-- [ ] unresolved_cleared：未满足项清零。
+- [x] unresolved_cleared：当前本地施工未满足项清零，WIS-DR-01至04已resolved。R14为下一正式CI/merge前阶段、R15为merge后阶段；R16依据用户明确决定不重复本地验收。整体Issue AC12及最终交付仍pending，不以本载体Ready宣称完成。
 
 # 完成证据与状态
 
@@ -164,11 +182,11 @@ Provider/wisersone 与 wisersone_test、Ingestion 下载模型与 Contract、PG 
 
 ## 未验证内容与剩余风险
 
-Windows最终45项PG与2066项后端已通过，前端205/306项PASS；当前Docker D盘约24MB，最终构建出现I/O/aborted journal和只读，最终Linux验证未完成，已请用户释放空间。不以既有Linux成功证据冒充最新候选。独立复审和远端CI/正式交付仍进行中。外部网站可能使登录态过期；只能保证本轮免密码成功，不能承诺永久会话有效。数据业务真伪按用户决定不审核。既有Pydantic/Starlette弃用和前端bundle体积提示未升级依赖处理。
+Windows最终45项PG与2066项后端及Unicode3项控制已通过，前端205/306项PASS。独立有限代码复审闭合，WIS-DR-01至04 resolved。用户允许复用本轮既有Linux成功证据，不再等待本机D盘恢复后重跑整套本地验收；最终当前head的Linux PG/full-stack/正式Compose构建与其它适用检查仍须由远端CI通过，当前pending。不以既有Linux镜像冒充最新构建成功。本机Docker只读导致的缓存清理限制按R15继续核实。外部网站可能使登录态过期；只能保证本轮免密码成功，不能承诺永久会话有效。数据业务真伪按用户决定不审核。既有Pydantic/Starlette弃用和前端bundle体积提示未升级依赖处理。
 
 ## 交付状态
 
-Issue #700，feature/700-wisersone-import，早期Draft PR #701已建立。当前仍未Ready、未merge；最后Review/CI后按R14继续main-fresh/native archive/Closure/cleanup。Release/Deploy不适用：用户只授权验证后合并，未授权正式发布、部署或生产数据操作。
+Issue #700，feature/700-wisersone-import，早期Draft PR #701已建立。本地载体ready_for_review用于触发当前PR全套CI；最终PR merge clearance仍pending、未merge。R14当前CI通过后才guarded merge，再按R15执行main-fresh/native archive/Closure/cleanup。Release/Deploy不适用：用户只授权验证后合并，未授权正式发布、部署或生产数据操作。
 
 ## 备注
 

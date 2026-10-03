@@ -65,4 +65,16 @@ WIS-DR-04：新增正式公开server_path消费者对同一受管原Excel的准�
 - `preflight-repair2.log`：项目唯一classifier完整执行，生成漂移/兼容、frontend lint/build PASS，306单元PASS、205浏览器PASS（3.5分钟）。后续仅目录等价Python修正，不改变前端或公共Contract；后端按上一项刷新。
 - 当前wheel/sdist重新打开CRC/JSON/入口PASS，全部454份wheel源码与当前源码逐文件相等；当前包身份另见package-current.json。`candidate.json`保持此前e5baa候选真实身份，不改写成最新镜像。
 
-18eec最终本机构建未成功：Docker数据盘在D盘，宿主仅约24MB可用，Linux内核记录I/O error、ext4 aborted journal并切换只读；`candidate-final-build.log`明确失败。最终installed Linux PG和新full-stack未执行成功（createdb I/O失败及准备Migration失败），不能记为PASS。已请求用户释放D盘至少5GB；不删除旧DB、重置Docker或在无备份情况下fsck。Windows最终验证仍有效，Linux旧阶段成功只证明当时边界。保持Draft和Change in_progress，Ready/merge/cleanup待恢复后继续。
+18eec最终本机构建未成功：Docker数据盘在D盘，宿主仅约24MB可用，Linux内核记录I/O error、ext4 aborted journal并切换只读；`candidate-final-build.log`明确失败。最终installed Linux PG和新full-stack未执行成功（createdb I/O失败及准备Migration失败），不能记为PASS。未删除旧DB、重置Docker或在无备份情况下fsck。Windows最终验证仍有效，Linux旧阶段成功只证明当时边界。
+
+## 用户追加交付决定与当前 CI 路径
+
+2026-10-03 用户明确要求：“如果前面验证过没问题，就合并到主分支吧”。该决定已同步并重读 live Issue #700，AC1–AC13保留。
+
+据此复用本轮既有真实 Windows/Linux 下载、正式非 root 镜像、installed-package PG 和19项 full-stack 验证，不再等待本机磁盘恢复后重复整套本地 Linux 验证。最终产品修复的 Windows45项PG、后端2066项和Unicode3项控制、当前wheel454源码检查仍是当前实现的直接证据。旧candidate身份保持原revision，不称为18eec新构建成功。
+
+当前PR必须由项目正式CI取得Linux新鲜证据：PostgreSQL Integration包含六份WisersOne测试和空库迁移；Real Full-stack Golden Path运行真实API/Scheduler/Worker/PG与浏览器；Compose Golden Path构建根Dockerfile正式镜像并运行。原生 `validate_changed.deferred_ci_layers` 也将真实PG/full-stack留给正式CI。独立Review、Completion以及current-head/current-base required checks继续是merge前门禁。远端结果以PR/Actions持有，不预先写PASS。
+
+本机Docker只读导致的task-owned镜像/构建缓存清理限制是另一个收尾轴，不能冒充已清理，也不以清理阻塞撤回已经取得的产品验证事实。认证运行态已单独保留到默认AIMA_HOST_ROOT/runtime/wisersone-auth；该持久状态不属临时缓存。main-fresh、原生自动归档、Issue Closure及限定cleanup仍按实际结果继续。
+
+有限独立复审最终报告原文保存在 `review-final.md`：WIS-DR-01至04 resolved，代码范围 NO_FINDINGS_WITHIN_SCOPE，本地Completion准入获支持，当前CI/merge clearance仍pending。Owner据此准确更新R12/R14/R15/R16与完成审计，并实际执行 `scripts/quality/check_change_completion.py --root . --require-active-ready`：PASS（159 gated/strict，128 legacy）。初次严格检查暴露Change列表和来源的机器格式错误，已仅修正metadata为正式块列表和稳定AC绑定；未改变产品、验证断言或完成语义。canonical governance_contract validate-change及validate-pr亦PASS。
