@@ -7,11 +7,13 @@ from typing import cast
 from uuid import UUID
 
 from sqlalchemy import and_, or_, select
+from sqlalchemy.engine import RowMapping
 
 from aima_ugc.adapters.persistence.postgres.historical_import import (
     PostgresHistoricalImportRepository,
 )
 from aima_ugc.adapters.persistence.postgres.wisersone import PostgresWisersOneRepository
+from aima_ugc.modules.ingestion.historical_directory import HistoricalDirectoryBrowser
 from aima_ugc.modules.ingestion.wisersone_jobs import WISERSONE_TERMINAL
 from aima_ugc.modules.ingestion.wisersone_tables import wisersone_downloads_table as table
 from aima_ugc.platform.time import beijing_now
@@ -31,6 +33,13 @@ def cleanup_wisersone_files(
     claimed: list[UUID] = []
     with runtime.database.new_session() as session, session.begin():
         repo = PostgresWisersOneRepository(session)
+        if not repo.lock_input_admission(wait=False):
+            return 0
+        consumers = repo.retained_server_consumers(cutoff)
+        browser = HistoricalDirectoryBrowser(
+            runtime.settings.historical_import_root,
+            managed_wisersone_root=runtime.settings.wisersone_input_dir,
+        )
         rows = (
             session.execute(
                 select(table)
@@ -60,6 +69,15 @@ def cleanup_wisersone_files(
                 ):
                     continue
             download_id = cast(UUID, row["id"])
+            if any(
+                browser.selects_managed_file(
+                    f"wisersone/{download_id}/wisersone_last24h.xlsx",
+                    relative_paths=_consumer_paths(consumer),
+                    recursive=bool(consumer["recursive"]),
+                )
+                for consumer in consumers
+            ):
+                continue
             repo.update(download_id, file_delete_pending_at=observed)
             claimed.append(download_id)
     if not claimed:
@@ -87,3 +105,15 @@ def cleanup_wisersone_files(
             )
         deleted += 1
     return deleted
+
+
+def _consumer_paths(row: RowMapping) -> tuple[str, ...]:
+    """兼容既有单目录冻结事实；损坏配置不得导致活动文件被删除。"""
+    selected = row["profile_snapshot"].get("relative_paths", [row["root_relative_path"]])
+    if (
+        not isinstance(selected, list | tuple)
+        or not selected
+        or any(not isinstance(value, str) for value in selected)
+    ):
+        raise RuntimeError("活动导入的冻结目录选择不合法，停止清理。")
+    return tuple(selected)

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from sqlalchemy import Select, select, update
+from sqlalchemy import Select, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.ingestion.brand_vehicle_filter import BrandVehicleFilterSnapshot
 from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_JOB_PRIORITY
+from aima_ugc.modules.ingestion.historical_tables import historical_import_campaigns_table
 from aima_ugc.modules.ingestion.wisersone_jobs import WISERSONE_JOB_TYPE, WisersOneJobPayload
 from aima_ugc.modules.ingestion.wisersone_tables import wisersone_downloads_table as table
 from aima_ugc.platform.jobs.models import JobExecutionFence
@@ -55,6 +56,39 @@ class PostgresWisersOneRepository:
             )
             .mappings()
             .one_or_none()
+        )
+
+    def lock_input_admission(self, *, wait: bool = True) -> bool:
+        """短事务串行化文件消费者准入与删除认领；清理不阻塞正在恢复的请求。"""
+        key = func.hashtextextended("wisersone-managed-input-admission", 0)
+        if wait:
+            self.session.execute(select(func.pg_advisory_xact_lock(key)))
+            return True
+        return bool(self.session.scalar(select(func.pg_try_advisory_xact_lock(key))))
+
+    def undeleted_inputs(self) -> tuple[RowMapping, ...]:
+        return tuple(
+            self.session.execute(select(table).where(table.c.file_deleted_at.is_(None)))
+            .mappings()
+            .all()
+        )
+
+    def retained_server_consumers(self, cutoff: datetime) -> tuple[RowMapping, ...]:
+        """冻结目录选择是持久消费范围；所有消费者终态满七天才释放原文件。"""
+        campaigns = historical_import_campaigns_table
+        return tuple(
+            self.session.execute(
+                select(
+                    campaigns.c.profile_snapshot,
+                    campaigns.c.root_relative_path,
+                    campaigns.c.recursive,
+                ).where(
+                    campaigns.c.source_kind == "server_path",
+                    or_(campaigns.c.finished_at.is_(None), campaigns.c.finished_at > cutoff),
+                )
+            )
+            .mappings()
+            .all()
         )
 
     @staticmethod

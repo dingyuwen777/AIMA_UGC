@@ -198,6 +198,9 @@ class PostgresHistoricalImportHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                sources = PostgresWisersOneRepository(session)
+                sources.lock_input_admission()
+                self._validate_input_admission(sources, request)
                 if execution_fence is not None:
                     PostgresJobRepository(session).lock_current_execution(execution_fence)
                 repository = PostgresHistoricalImportRepository(session)
@@ -261,6 +264,24 @@ class PostgresHistoricalImportHttpService:
             raise HistoricalCampaignStateConflict from exc
         finally:
             session.close()
+
+    def _validate_input_admission(
+        self, sources: PostgresWisersOneRepository, request: HistoricalCampaignCreateRequest
+    ) -> None:
+        """删除意图先提交时整次拒绝；准入先提交时冻结选择供清理保护。"""
+        for row in sources.undeleted_inputs():
+            if row["file_delete_pending_at"] is not None and self._browser.selects_managed_file(
+                f"wisersone/{row['id']}/wisersone_last24h.xlsx",
+                relative_paths=request.relative_paths,
+                recursive=request.recursive,
+            ):
+                raise HistoricalCampaignConflict("选择的来源文件已认领清理，请刷新目录后重试")
+        try:
+            for relative_path in request.relative_paths:
+                self._browser.resolve(relative_path)
+        except (HistoricalDirectoryUnavailable, InvalidHistoricalRelativePath) as exc:
+            # 与初次路径校验之间文件可能被清理；持锁复核避免接受一个已经消失的输入。
+            raise HistoricalCampaignConflict("选择的来源路径已经变化，请刷新目录后重试") from exc
 
     def create_local_campaign(
         self,
@@ -699,6 +720,7 @@ class PostgresHistoricalImportHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                PostgresWisersOneRepository(session).lock_input_admission()
                 download = None
                 if action in {"retry", "resume"}:
                     download = PostgresWisersOneRepository(session).for_campaign(campaign_id)

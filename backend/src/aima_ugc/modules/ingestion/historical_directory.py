@@ -193,6 +193,31 @@ class HistoricalDirectoryBrowser:
         """读取同一批准视图的 Manifest 身份，受管 alias 不暴露宿主绝对路径。"""
         return self._entry(self._path_root(relative_path), self.resolve(relative_path))
 
+    def selects_managed_file(
+        self, file_relative_path: str, *, relative_paths: tuple[str, ...], recursive: bool
+    ) -> bool:
+        """按同一批准视图判断冻结选择是否消费受管文件，无需文件仍然存在。"""
+        if self._managed_wisersone_root is None:
+            return False
+        target = _relative_parts(file_relative_path)
+        if not target or target[0] != "wisersone":
+            return False
+        # 同名用户目录仍优先；不能因文本路径相同而保护另一个物理文件。
+        path_root = self._path_root(file_relative_path)
+        visible = path_root.joinpath(
+            *(target[1:] if self._is_managed(file_relative_path) else target)
+        )
+        managed = self._managed_wisersone_root.joinpath(*target[1:])
+        if visible.resolve() != managed.resolve():
+            return False
+        for selected in relative_paths:
+            parts = _relative_parts(selected)
+            if parts == target or parts == target[:-1]:
+                return True
+            if recursive and target[: len(parts)] == parts:
+                return True
+        return False
+
     def _root(self, *, managed: bool = False) -> Path:
         root = self._managed_wisersone_root if managed else self._configured_root
         if root is None:

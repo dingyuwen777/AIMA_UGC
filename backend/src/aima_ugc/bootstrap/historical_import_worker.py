@@ -1349,7 +1349,8 @@ def _sha256_file(path: Path) -> str:
 def _string_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, list | tuple) or not value:
         raise ValueError("冻结配置缺少非空字符串列表")
-    result = tuple(item for item in value if isinstance(item, str) and item)
+    # 根目录的正式 HTTP 表达为 ""；空列表仍非法，合法根路径交给 Browser 校验。
+    result = tuple(item for item in value if isinstance(item, str))
     if len(result) != len(value):
         raise ValueError("冻结配置字符串列表不合法")
     return result

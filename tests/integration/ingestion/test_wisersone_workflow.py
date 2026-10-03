@@ -133,7 +133,8 @@ def workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE collection_plans, jobs, artifacts, keyword_packs, "
+            "TRUNCATE historical_import_campaigns, collection_plans, jobs, artifacts, "
+            "keyword_packs, "
             "vehicle_brands, accounts CASCADE"
         )
     website = _Website(auth_dir=runtime.settings.wisersone_auth_dir)
