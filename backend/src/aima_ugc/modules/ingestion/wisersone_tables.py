@@ -39,7 +39,7 @@ wisersone_downloads_table = Table(
     Column("file_delete_pending_at", DateTime(timezone=True)),
     CheckConstraint(
         "status in ('queued','submitting','waiting','downloading','preflight','importing',"
-        "'succeeded','partial_failed','failed','cancelled','attention')",
+        "'succeeded','partial_failed','failed','cancelling','cancelled','attention')",
         name="status_allowed",
     ),
     CheckConstraint("send_state in ('not_sent','unknown','confirmed')", name="send_state_allowed"),

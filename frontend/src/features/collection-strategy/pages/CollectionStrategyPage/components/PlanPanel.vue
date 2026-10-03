@@ -87,7 +87,7 @@ function nextRun(value?: string | null): string {
 <template>
   <section class="plan-card">
     <AimaFeedbackBanner tone="info">
-      每次执行时，系统固定本次品牌车型范围；TikHub 还固定关键词包和平台搜索配置。后续修改不影响历史任务。重新启用后从下一周期执行，不补跑停用期间任务。WisersOne 下载状态可在采集运行中心的“WisersOne 任务”查看。
+      运行时固定本次配置，后续修改不影响历史任务；重新启用后从下一周期执行，不补跑停用期间任务。WisersOne 下载与导入状态可在采集运行中心查看。
     </AimaFeedbackBanner>
     <div class="table-heading">
       <strong>找到 {{ total }} 条采集计划</strong>

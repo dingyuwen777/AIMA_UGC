@@ -1,5 +1,6 @@
 """公开 HTTP → 持久 Job → 文件/Canonical → PostgreSQL 的真实接线。"""
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from io import BytesIO
@@ -8,12 +9,14 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from aima_ugc.adapters.providers.wisersone.export import WisersOneExporter
 from aima_ugc.adapters.providers.wisersone.models import (
     ExportProgress,
     ExportTask,
     SubmissionUnknown,
 )
 from aima_ugc.bootstrap import api as api_module
+from aima_ugc.bootstrap import wisersone_http
 from aima_ugc.bootstrap import worker as worker_module
 from aima_ugc.bootstrap.brand_vehicle_http import PostgresBrandVehicleHttpService
 from aima_ugc.bootstrap.scheduler import run_scheduler_once
@@ -60,27 +63,48 @@ def _xlsx() -> bytes:
 class _Website:
     """只替代外部网站；保留生产 Job、Reader、Mapper、Artifact 和数据库。"""
 
-    def __init__(self) -> None:
+    def __init__(self, *, auth_dir: Path | None = None) -> None:
         self.submissions = 0
         self.waits = 0
         self.unknown = False
+        self.receipt_before_failure = False
+        self.auth_dir = auth_dir
         self.receipts: dict[UUID, ExportTask] = {}
+        self.polled_tasks: list[ExportTask] = []
 
     def saved_task(self, run_id: UUID) -> ExportTask | None:
+        if self.auth_dir is not None:
+            return WisersOneExporter(auth_dir=self.auth_dir).saved_task(run_id)
         return self.receipts.get(run_id)
+
+    def _remember(self, run_id: UUID, task: ExportTask) -> None:
+        """模拟外部任务回执，恢复时仍调用生产 JSON 读取实现。"""
+        self.receipts[run_id] = task
+        if self.auth_dir is not None:
+            self.auth_dir.mkdir(parents=True, exist_ok=True)
+            (self.auth_dir / f"export-{run_id.hex}.json").write_text(
+                json.dumps(
+                    {"schema_version": "wisersone-export-receipt.v1", "task_id": task.task_id}
+                ),
+                encoding="utf-8",
+            )
 
     def submit(self, run_id: UUID, **callbacks: Any) -> ExportTask:
         callbacks["before_submit"]()
         self.submissions += 1
-        if self.unknown:
-            raise SubmissionUnknown
         task = ExportTask(f"website-{run_id}")
-        self.receipts[run_id] = task
+        if self.unknown:
+            if self.receipt_before_failure:
+                # 网站已返回 ID、宿主回执已落盘，PG 确认尚未提交的恢复窗口。
+                self._remember(run_id, task)
+            raise SubmissionUnknown
+        self._remember(run_id, task)
         callbacks["on_submitted"](task)
         return task
 
     def poll(self, task: ExportTask, destination: Path, **options: Any) -> ExportProgress:
         assert task in self.receipts.values()
+        self.polled_tasks.append(task)
         if self.waits:
             self.waits -= 1
             return ExportProgress(False, 25, None)
@@ -112,8 +136,9 @@ def workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             "TRUNCATE collection_plans, jobs, artifacts, keyword_packs, "
             "vehicle_brands, accounts CASCADE"
         )
-    website = _Website()
+    website = _Website(auth_dir=runtime.settings.wisersone_auth_dir)
     monkeypatch.setattr(api_module, "create_platform_runtime", lambda *_: runtime)
+    monkeypatch.setattr(wisersone_http, "WisersOneExporter", lambda **_: website)
     monkeypatch.setattr(
         worker_module,
         "PostgresWisersOneJobExecutor",

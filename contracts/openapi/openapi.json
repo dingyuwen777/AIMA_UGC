@@ -11518,7 +11518,8 @@
               "partial_failed",
               "failed",
               "cancelled",
-              "attention"
+              "attention",
+              "cancelling"
             ],
             "title": "Status",
             "type": "string"

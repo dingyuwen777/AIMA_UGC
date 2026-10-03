@@ -3770,6 +3770,7 @@ export const WisersOneDownloadResponseStatus = {
   failed: 'failed',
   cancelled: 'cancelled',
   attention: 'attention',
+  cancelling: 'cancelling',
 } as const;
 
 /**

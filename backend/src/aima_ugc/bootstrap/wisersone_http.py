@@ -6,6 +6,13 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID
 
+from aima_ugc.adapters.persistence.postgres.historical_cancellation import (
+    PostgresHistoricalCancellationRepository,
+    lock_historical_campaign_cancel_gate,
+)
+from aima_ugc.adapters.persistence.postgres.historical_import import (
+    PostgresHistoricalImportRepository,
+)
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.wisersone import (
     PostgresWisersOneRepository,
@@ -79,26 +86,65 @@ class PostgresWisersOneHttpService:
         )
 
     def cancel(self, download_id: UUID) -> WisersOneDownloadResponse:
-        with self.runtime.database.new_session() as session, session.begin():
-            repo = PostgresWisersOneRepository(session)
-            row = repo.get(download_id, lock=True)
-            if row is None:
+        # 先取得已知 Campaign 的独占写门，再锁下载；首次关联并发发生时重读后重新取得门。
+        # 取消意图、下游停止写入和传播 Job 同事务保存，HTTP 中断不丢失传播工作。
+        with self.runtime.database.new_session() as session:
+            observed = PostgresWisersOneRepository(session).get(download_id)
+            if observed is None:
                 raise KeyError(download_id)
-            if row["status"] in WISERSONE_TERMINAL:
-                return self._response(dict(row))
-            repo.update(download_id, cancel_requested_at=beijing_now())
-            job_id = cast(UUID | None, row["job_id"])
-            campaign_id = cast(UUID | None, row["campaign_id"])
+            campaign_id = cast(UUID | None, observed["campaign_id"])
+        while True:
+            with self.runtime.database.new_session() as session, session.begin():
+                if campaign_id is not None:
+                    lock_historical_campaign_cancel_gate(session, campaign_id, shared=False)
+                repo = PostgresWisersOneRepository(session)
+                row = repo.get(download_id, lock=True)
+                if row is None:
+                    raise KeyError(download_id)
+                current_campaign_id = cast(UUID | None, row["campaign_id"])
+                if current_campaign_id != campaign_id:
+                    campaign_id = current_campaign_id
+                    continue
+                if row["status"] in WISERSONE_TERMINAL or row["status"] == "cancelling":
+                    return self._response(dict(row))
+                job_id = cast(UUID | None, row["job_id"])
+                if current_campaign_id is None:
+                    repo.update(
+                        download_id,
+                        cancel_requested_at=beijing_now(),
+                        status="cancelled",
+                        finished_at=beijing_now(),
+                    )
+                else:
+                    campaign = PostgresHistoricalImportRepository(session).get_campaign(
+                        current_campaign_id
+                    )
+                    if campaign is None:
+                        raise WisersOneConflict("关联导入不存在。")
+                    if campaign["status"] not in {
+                        "succeeded",
+                        "partial_failed",
+                        "failed",
+                        "cancelled",
+                        "revoked",
+                    }:
+                        PostgresHistoricalCancellationRepository(session).begin_cancel(
+                            current_campaign_id
+                        )
+                    repo.update(
+                        download_id,
+                        cancel_requested_at=beijing_now(),
+                        status="cancelling",
+                        finished_at=None,
+                    )
+                    repo.enqueue(
+                        download_id, step=int(row["step"]) + 1, request_id=None, operation="cancel"
+                    )
+                break
         # 与既有取消路径保持短事务锁顺序；不持下载行锁再等待 Job/Campaign。
         if job_id is not None:
             with self.runtime.database.new_session() as session, session.begin():
                 PostgresJobRepository(session).request_cancel(job_id)
-        if campaign_id is not None:
-            self.imports.cancel_campaign(campaign_id)
-        with self.runtime.database.new_session() as session, session.begin():
-            PostgresWisersOneRepository(session).update(
-                download_id, status="cancelled", finished_at=beijing_now()
-            )
         return self.get(download_id)
 
     def retry(self, download_id: UUID) -> WisersOneDownloadResponse:
@@ -123,12 +169,5 @@ class PostgresWisersOneHttpService:
                 repo.update(download_id, status="queued", error_code=None, finished_at=None)
                 repo.enqueue(download_id, step=int(row["step"]) + 1, request_id=None)
                 return self._response(dict(repo.get(download_id) or row))
-        self.imports.retry_failed(campaign_id)
-        with self.runtime.database.new_session() as session, session.begin():
-            repo = PostgresWisersOneRepository(session)
-            current = repo.get(download_id, lock=True)
-            if current is None or current["cancel_requested_at"] is not None:
-                raise WisersOneConflict("恢复期间已取消。")
-            repo.update(download_id, status="importing", error_code=None, finished_at=None)
-            repo.enqueue(download_id, step=int(current["step"]) + 1, request_id=None)
+        self.imports.resume_wisersone(campaign_id)
         return self.get(download_id)

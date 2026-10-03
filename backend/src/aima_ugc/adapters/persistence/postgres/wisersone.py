@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy import Select, select, update
@@ -45,6 +45,16 @@ class PostgresWisersOneRepository:
             self.session.execute(self._view().order_by(table.c.created_at.desc()).limit(100))
             .mappings()
             .all()
+        )
+
+    def for_campaign(self, campaign_id: UUID) -> RowMapping | None:
+        """恢复与原文件删除共用下载行锁；必须先于 Campaign 行锁取得。"""
+        return (
+            self.session.execute(
+                select(table).where(table.c.campaign_id == campaign_id).with_for_update()
+            )
+            .mappings()
+            .one_or_none()
         )
 
     @staticmethod
@@ -107,9 +117,15 @@ class PostgresWisersOneRepository:
         return self.get(download_id) or row
 
     def enqueue(
-        self, download_id: UUID, *, step: int, request_id: str | None, delay: int = 0
+        self,
+        download_id: UUID,
+        *,
+        step: int,
+        request_id: str | None,
+        delay: int = 0,
+        operation: Literal["observe", "cancel"] = "observe",
     ) -> UUID:
-        payload = WisersOneJobPayload(download_id=download_id, step=step)
+        payload = WisersOneJobPayload(download_id=download_id, step=step, operation=operation)
         job = PostgresJobRepository(self.session).enqueue(
             job_type=WISERSONE_JOB_TYPE,
             payload_version=WISERSONE_JOB_TYPE,

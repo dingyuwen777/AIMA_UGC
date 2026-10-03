@@ -29,8 +29,10 @@ def test_stage8f_plan_contract_only_accepts_periodic_business_configuration() ->
     assert set(request["required"]) == {
         "name",
         "schedule_expr",
-        "platforms",
     }
+    assert request["properties"]["plan_type"]["enum"] == ["tikhub", "wisersone"]
+    assert request["properties"]["plan_type"]["default"] == "tikhub"
+    assert request["properties"]["platforms"]["default"] == []
     assert request["properties"]["platforms"]["maxItems"] == 5
     assert request["properties"]["keyword_pack_ids"]["maxItems"] == 20
     assert request["properties"]["brand_ids"]["maxItems"] == 100

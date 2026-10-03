@@ -1,13 +1,16 @@
-"""隔离全栈验收使用正式 Worker 与不出网的 TikHub Fixture Transport。"""
+"""隔离全栈验收使用正式 Worker 与不出网的 TikHub/WisersOne 外部 Fixture。"""
 
 from __future__ import annotations
 
 import json
 import os
 import socket
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
+from uuid import UUID
 
 from aima_ugc.adapters.providers.tikhub import account_runtime
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
@@ -18,6 +21,9 @@ from aima_ugc.adapters.providers.tikhub.operations import (
     weibo,
     xiaohongshu,
 )
+from aima_ugc.adapters.providers.wisersone.export import WisersOneExporter
+from aima_ugc.adapters.providers.wisersone.models import ExportCancelled, ExportProgress, ExportTask
+from aima_ugc.bootstrap.wisersone_worker import PostgresWisersOneJobExecutor
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_reaper,
@@ -29,9 +35,89 @@ from aima_ugc.modules.collection.providers.transport import (
     ProviderTransportRequest,
     ProviderTransportResponse,
 )
+from aima_ugc.platform.time import beijing_now
+from openpyxl import Workbook
 from pydantic import SecretStr
 
 _FIXTURES = Path("tests/fixtures/providers/tikhub")
+
+
+class _WisersOneFixtureExporter(WisersOneExporter):
+    """仅模拟外部网站；回执读取、下载后的正式流水线保持生产实现。"""
+
+    def __init__(self, *, fixture_root: Path) -> None:
+        super().__init__(auth_dir=fixture_root)
+
+    def _record(self, run_id: UUID, action: str, task: ExportTask) -> None:
+        self.auth_dir.mkdir(parents=True, exist_ok=True)
+        with (self.auth_dir / f"events-{run_id.hex}.jsonl").open("a", encoding="utf-8") as output:
+            output.write(json.dumps({"action": action, "task_id": task.task_id}) + "\n")
+
+    def submit(
+        self,
+        run_id: UUID,
+        *,
+        before_submit: Callable[[], None] = lambda: None,
+        on_submitted: Callable[[ExportTask], None] = lambda task: None,
+        cancelled: Callable[[], bool] = lambda: False,
+    ) -> ExportTask:
+        previous = self.saved_task(run_id)
+        if previous is not None:
+            return previous
+        if cancelled():
+            raise ExportCancelled
+        before_submit()
+        task = ExportTask(f"fullstack-wisersone-{run_id}")
+        self._record(run_id, "submit", task)
+        self._task_path(run_id).write_text(
+            json.dumps({"schema_version": "wisersone-export-receipt.v1", "task_id": task.task_id}),
+            encoding="utf-8",
+        )
+        on_submitted(task)
+        return task
+
+    def poll(
+        self,
+        task: ExportTask,
+        destination: Path,
+        *,
+        download: bool = True,
+        cancelled: Callable[[], bool] = lambda: False,
+    ) -> ExportProgress:
+        if cancelled():
+            raise ExportCancelled
+        assert task.task_id.startswith("fullstack-wisersone-")
+        run_id = UUID(task.task_id.removeprefix("fullstack-wisersone-"))
+        assert self.saved_task(run_id) == task
+        self._record(run_id, "download" if download else "poll", task)
+        if not download:
+            return ExportProgress(True, 100, None)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        book = Workbook()
+        sheet = book.active
+        assert sheet is not None
+        sheet.title = "文章"
+        sheet.append(["媒体名称（中文）", "标题", "内文", "作者", "出版日期", "原文链接"])
+        published = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
+        for suffix, title in (
+            ("matched", f"爱玛 WisersOne 全栈 {run_id}"),
+            ("unrelated", f"fixture-unrelated-{run_id}"),
+        ):
+            sheet.append(
+                [
+                    "小红书",
+                    title,
+                    title,
+                    "全栈 Fixture",
+                    published,
+                    f"https://www.xiaohongshu.com/explore/wisersone-{run_id.hex}-{suffix}",
+                ]
+            )
+        try:
+            book.save(destination)
+        finally:
+            book.close()
+        return ExportProgress(True, 100, destination)
 
 
 class _CommentFixtureTransport:
@@ -242,11 +328,19 @@ def main() -> None:
         raise RuntimeError("必须显式启用隔离的 Fake TikHub Worker")
     runtime = create_worker_runtime()
     transport = _CommentFixtureTransport()
-    registry = create_collection_job_registry(
-        runtime=runtime,
-        transport_factory=lambda _config: transport,
-        secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+    website = _WisersOneFixtureExporter(
+        fixture_root=runtime.settings.data_dir / "fullstack-wisersone"
     )
+    # 在唯一测试 Worker 中替换外部依赖；正式 Registry、Handler、领取与入库不替换。
+    with patch(
+        "aima_ugc.bootstrap.worker.PostgresWisersOneJobExecutor",
+        side_effect=lambda owner: PostgresWisersOneJobExecutor(owner, exporter=website),
+    ):
+        registry = create_collection_job_registry(
+            runtime=runtime,
+            transport_factory=lambda _config: transport,
+            secret_resolver=lambda _secret_ref: SecretStr("fixture-secret"),
+        )
     worker = create_job_worker(
         runtime=runtime,
         registry=registry,

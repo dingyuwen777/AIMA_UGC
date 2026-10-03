@@ -20,6 +20,7 @@ class WisersOneJobPayload(BaseModel):
     schema_version: Literal["ingestion.wisersone-download.v1"] = WISERSONE_JOB_TYPE
     download_id: UUID
     step: int = Field(ge=0)
+    operation: Literal["observe", "cancel"] = "observe"
 
 
 def register_wisersone_job(

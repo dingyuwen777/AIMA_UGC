@@ -2001,6 +2001,7 @@ class WisersOneDownloadResponse(BaseModel):
         "failed",
         "cancelled",
         "attention",
+        "cancelling",
     ]
     send_state: Literal["not_sent", "unknown", "confirmed"]
     website_task_id: str | None = None

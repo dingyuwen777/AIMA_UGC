@@ -14,11 +14,11 @@ const labels: Record<WisersOneDownloadResponse['status'], string> = {
   queued: '等待下载', submitting: '正在提交网站导出', waiting: '网站正在生成 Excel',
   downloading: '正在保存 Excel', preflight: '正在预检数据', importing: '正在导入系统',
   succeeded: '导入完成', partial_failed: '部分导入失败', failed: '任务失败',
-  cancelled: '已取消', attention: '需要核对网站提交结果',
+  cancelling: '正在取消并等待导入停止', cancelled: '已取消', attention: '需要核对网站提交结果',
 }
 const terminal = ['succeeded', 'partial_failed', 'failed', 'cancelled', 'attention']
 const current = computed(() => store.selectedWisersoneDownload)
-const canCancel = computed(() => current.value && !terminal.includes(current.value.status))
+const canCancel = computed(() => current.value && current.value.status !== 'cancelling' && !terminal.includes(current.value.status))
 const canRetry = computed(() => current.value && ['partial_failed', 'failed', 'attention'].includes(current.value.status))
 const canViewResult = computed(() => current.value?.campaign_id && terminal.includes(current.value.status))
 let timer: ReturnType<typeof setInterval> | undefined

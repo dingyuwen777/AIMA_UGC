@@ -14,7 +14,10 @@ from sqlalchemy.orm import Session
 from aima_ugc.adapters.persistence.postgres.historical_import import (
     PostgresHistoricalImportRepository,
 )
-from aima_ugc.adapters.persistence.postgres.wisersone import PostgresWisersOneRepository
+from aima_ugc.adapters.persistence.postgres.wisersone import (
+    PostgresWisersOneRepository,
+    WisersOneConflict,
+)
 from aima_ugc.adapters.providers.wisersone.export import WisersOneExporter
 from aima_ugc.adapters.providers.wisersone.models import (
     ExportCancelled,
@@ -49,11 +52,20 @@ class PostgresWisersOneJobExecutor:
         if not isinstance(payload, WisersOneJobPayload):
             raise TypeError("WisersOne Job Payload 类型错误。")
         try:
+            if payload.operation == "cancel":
+                return self._cancel(payload, context)
             return self._step(payload, context)
         except LeaseLostError:
             raise
         except ExportCancelled:
-            return JobHandlerResult.cancelled()
+            return (
+                JobHandlerResult.cancelled()
+                if context.cancel_requested()
+                else JobHandlerResult.succeeded({"cancel_requested": True})
+            )
+        except WisersOneConflict:
+            # 新阶段已接管；旧阶段不再拥有下载事实，也不能覆盖取消/恢复工作。
+            return JobHandlerResult.succeeded({"superseded": True})
         except SubmissionUnknown:
             self._change(
                 payload, context, status="attention", error_code="wisersone_submission_unknown"
@@ -70,6 +82,8 @@ class PostgresWisersOneJobExecutor:
                 step=payload.step,
                 error_type=type(exc).__name__,
             )
+            if payload.operation == "cancel":
+                return JobHandlerResult.retry("wisersone_cancel_propagation_failed")
             self._change(payload, context, status="failed", error_code="wisersone_stage_failed")
             return JobHandlerResult.failed("wisersone_stage_failed")
 
@@ -96,6 +110,45 @@ class PostgresWisersOneJobExecutor:
             repo.enqueue(payload.download_id, step=payload.step + 1, request_id=None, delay=delay)
         return JobHandlerResult.succeeded({"continuation": True})
 
+    def _cancel(
+        self, payload: WisersOneJobPayload, context: JobExecutionContextProtocol
+    ) -> JobHandlerResult:
+        """复用下游取消 Owner；持久阶段只在相关执行结清后投影最终结果。"""
+        with self.runtime.database.new_session() as session, session.begin():
+            row = PostgresWisersOneRepository(session).fenced(payload.download_id, context.fence)
+            campaign_id = cast(UUID, row["campaign_id"])
+            campaign = PostgresHistoricalImportRepository(session).get_campaign(campaign_id)
+            if campaign is None:
+                raise RuntimeError("取消关联的 Campaign 不存在。")
+            status = str(campaign["status"])
+        if status == "cancelling":
+            self.imports.cancel_campaign(campaign_id)
+        with self.runtime.database.new_session() as session, session.begin():
+            repo = PostgresWisersOneRepository(session)
+            repo.fenced(payload.download_id, context.fence)
+            campaign = PostgresHistoricalImportRepository(session).get_campaign(campaign_id)
+            if campaign is None:
+                raise RuntimeError("取消关联的 Campaign 不存在。")
+            status = str(campaign["status"])
+            if status in {"succeeded", "partial_failed", "failed", "cancelled", "revoked"}:
+                repo.update(
+                    payload.download_id,
+                    status="cancelled" if status == "revoked" else status,
+                    finished_at=campaign["finished_at"] or beijing_now(),
+                    error_code=None,
+                )
+                return JobHandlerResult.succeeded(
+                    {"campaign_id": str(campaign_id), "status": status}
+                )
+            repo.enqueue(
+                payload.download_id,
+                step=payload.step + 1,
+                request_id=None,
+                delay=30,
+                operation="cancel",
+            )
+        return JobHandlerResult.succeeded({"continuation": True})
+
     def _step(
         self, payload: WisersOneJobPayload, context: JobExecutionContextProtocol
     ) -> JobHandlerResult:
@@ -106,7 +159,7 @@ class PostgresWisersOneJobExecutor:
                 PostgresWisersOneRepository(session).fenced(payload.download_id, context.fence)
             )
         if row["status"] in WISERSONE_TERMINAL or row["cancel_requested_at"] is not None:
-            return JobHandlerResult.cancelled()
+            return JobHandlerResult.succeeded({"terminal_or_cancel_requested": True})
         context.heartbeat(progress=5)
         download_id = payload.download_id
         campaign_id = cast(UUID | None, row["campaign_id"])
@@ -234,6 +287,16 @@ def wisersone_terminal_callback(session: Session, job: JobRecord) -> None:
     repo = PostgresWisersOneRepository(session)
     row = repo.get(payload.download_id, lock=True)
     if row is None or row["job_id"] != job.id or row["status"] in WISERSONE_TERMINAL:
+        return
+    if row["cancel_requested_at"] is not None and row["campaign_id"] is not None:
+        # 通用任务取消/次数耗尽不能消除已承诺的下游传播；新阶段仍可由其他 Worker 接管。
+        repo.enqueue(
+            payload.download_id,
+            step=int(row["step"]) + 1,
+            request_id=None,
+            delay=30,
+            operation="cancel",
+        )
         return
     if job.status in {"failed", "cancelled"}:
         repo.update(

@@ -1,6 +1,7 @@
 import { createSSRApp, h, type Component } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it } from 'vitest'
+import { createPinia } from 'pinia'
 
 import type {
   CollectionPlanResponse,
@@ -30,7 +31,9 @@ const plan: CollectionPlanResponse = {
 
 async function renderComponent(component: Component, props: Record<string, unknown>): Promise<string> {
   const context: { teleports?: Record<string, string> } = {}
-  const html = await renderToString(createSSRApp({ render: () => h(component, props) }), context)
+  const app = createSSRApp({ render: () => h(component, props) })
+  app.use(createPinia())
+  const html = await renderToString(app, context)
   return html + Object.values(context.teleports ?? {}).join('')
 }
 
@@ -99,6 +102,7 @@ describe('采集策略正式 Figma 组件基线', () => {
   it('TikHub弹窗复用视口约束，保留五个频率预设并说明两种策略', async () => {
     const html = await renderComponent(TikHubPlanDialog, {
       modelValue: true,
+      initialPlan: plan,
       packs: [],
       packDetails: {},
       capabilities: null,
@@ -107,7 +111,7 @@ describe('采集策略正式 Figma 组件基线', () => {
       'onUpdate:modelValue': () => undefined,
     })
 
-    expect(html).toContain('新建 TikHub 采集计划')
+    expect(html).toContain('编辑采集计划')
     expect(html).toContain('通过 TikHub 按关键词持续发现并采集内容')
     expect(html).toContain('搜索条件 · 关键词包')
     expect(html).toContain('内容过滤 · 品牌')
@@ -132,5 +136,23 @@ describe('采集策略正式 Figma 组件基线', () => {
       expect(html).toContain(`value="${value}"`)
       expect(html).toContain(`>${label}</option>`)
     }
+  })
+
+  it('共用新建弹窗默认网站计划，显示名称频率品牌并隐藏 TikHub 专有配置', async () => {
+    const html = await renderComponent(TikHubPlanDialog, {
+      modelValue: true, packs: [], packDetails: {}, capabilities: null,
+      saving: false, loadingPackDetails: false,
+    })
+    expect(html).toContain('新建采集计划')
+    expect(html).toMatch(/<input checked type="radio" value="wisersone"/)
+    expect(html).toContain('WisersOne 网站下载')
+    expect(html).toContain('计划名称')
+    expect(html).toContain('执行频率')
+    expect(html).toContain('内容过滤 · 品牌')
+    expect(html).toContain('下载过去 24 小时')
+    expect(html).toContain('width:min(960px, calc(100vw - 48px))')
+    expect(html).not.toContain('搜索条件 · 关键词包')
+    expect(html).not.toContain('评论采集策略')
+    expect(html).not.toContain('目标平台')
   })
 })

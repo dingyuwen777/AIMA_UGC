@@ -31,6 +31,7 @@ from aima_ugc.adapters.persistence.postgres.historical_import import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
+from aima_ugc.adapters.persistence.postgres.wisersone import PostgresWisersOneRepository
 from aima_ugc.contracts.http import (
     HistoricalCampaignConflictListResponse,
     HistoricalCampaignConflictResponse,
@@ -684,6 +685,10 @@ class PostgresHistoricalImportHttpService:
             request_id=request_id,
         )
 
+    def resume_wisersone(self, campaign_id: UUID) -> HistoricalCampaignResponse:
+        """恢复来源父监控或前置预检；所有激活与原文件清理共享同一准入事务。"""
+        return self._change_campaign(campaign_id, action="resume", request_id=None)
+
     def _change_campaign(
         self,
         campaign_id: UUID,
@@ -694,6 +699,22 @@ class PostgresHistoricalImportHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                download = None
+                if action in {"retry", "resume"}:
+                    download = PostgresWisersOneRepository(session).for_campaign(campaign_id)
+                    if download is not None and (
+                        download["file_deleted_at"] is not None
+                        or download["file_delete_pending_at"] is not None
+                        or download["cancel_requested_at"] is not None
+                    ):
+                        raise HistoricalCampaignConflict(
+                            "来源文件已认领清理或任务已经取消，不能恢复"
+                        )
+                    if action == "resume" and (
+                        download is None
+                        or download["status"] not in {"failed", "partial_failed", "attention"}
+                    ):
+                        raise HistoricalCampaignConflict("当前来源任务不允许恢复")
                 repository = PostgresHistoricalImportRepository(session)
                 if action == "start":
                     batches = dict(repository.prepare_campaign_start(campaign_id))
@@ -707,7 +728,33 @@ class PostgresHistoricalImportHttpService:
                     )
                     if scheduled == 0:
                         raise HistoricalCampaignConflict("Campaign 没有可执行 Chunk")
-                elif action == "retry":
+                elif action == "resume" and not repository.has_failed_chunks(campaign_id):
+                    campaign = repository.get_campaign(campaign_id, for_update=True)
+                    if campaign is None:
+                        raise RepositoryCampaignNotFound
+                    if campaign["status"] == "failed":
+                        source_artifact_ids = repository.retry_wisersone_preflight(
+                            campaign_id,
+                            max_in_flight=self._runtime.job_window(
+                                "historical",
+                                ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                            ),
+                        )
+                        for artifact_id in source_artifact_ids:
+                            PostgresArtifactMetadataRepository(session).reactivate_import_source(
+                                artifact_id
+                            )
+                    elif campaign["status"] not in {
+                        "discovering",
+                        "snapshotting",
+                        "ready",
+                        "queued",
+                        "running",
+                        "succeeded",
+                        "cancelled",
+                    }:
+                        raise HistoricalCampaignConflict("当前导入无法恢复观察")
+                elif action in {"retry", "resume"}:
                     batches, source_artifact_ids = repository.prepare_failed_retry(campaign_id)
                     artifacts = PostgresArtifactMetadataRepository(session)
                     for artifact_id in source_artifact_ids:
@@ -725,6 +772,18 @@ class PostgresHistoricalImportHttpService:
                         raise HistoricalCampaignConflict("Campaign 没有可重试 Chunk")
                 else:
                     raise AssertionError("未知 Historical Campaign 动作")
+                if download is not None and download["status"] in {
+                    "failed",
+                    "partial_failed",
+                    "attention",
+                }:
+                    sources = PostgresWisersOneRepository(session)
+                    sources.update(
+                        download["id"], status="preflight", error_code=None, finished_at=None
+                    )
+                    sources.enqueue(
+                        download["id"], step=int(download["step"]) + 1, request_id=request_id
+                    )
                 self._audit(
                     session,
                     event_type=f"historical_campaign_{action}",
