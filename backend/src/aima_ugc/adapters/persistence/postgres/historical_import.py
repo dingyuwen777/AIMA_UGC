@@ -18,12 +18,15 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from aima_ugc.modules.ingestion.historical_directory import HistoricalDirectoryEntry
 from aima_ugc.modules.ingestion.historical_jobs import (
+    HISTORICAL_DISCOVER_JOB_TYPE,
+    HISTORICAL_DISCOVER_TIMEOUT_SECONDS,
     HISTORICAL_IMPORT_CHUNK_JOB_TYPE,
     HISTORICAL_IMPORT_TIMEOUT_SECONDS,
     HISTORICAL_JOB_MAX_ATTEMPTS,
     HISTORICAL_JOB_PRIORITY,
     HISTORICAL_SNAPSHOT_JOB_TYPE,
     HISTORICAL_SNAPSHOT_TIMEOUT_SECONDS,
+    HistoricalDiscoverJobPayload,
     HistoricalImportChunkJobPayload,
     HistoricalSnapshotJobPayload,
 )
@@ -916,6 +919,87 @@ class PostgresHistoricalImportRepository:
             .values(status="queued", started_at=func.clock_timestamp(), finished_at=None)
         )
         return tuple(batches)
+
+    def retry_wisersone_preflight(
+        self, campaign_id: UUID, *, max_in_flight: int
+    ) -> tuple[UUID, ...]:
+        """只恢复基础设施失败的预检，复用已冻结的 Campaign、Source 与过滤范围。"""
+        campaign = self.get_campaign(campaign_id, for_update=True)
+        if campaign is None:
+            raise HistoricalCampaignNotFound
+        if campaign["status"] != "failed" or campaign["source_kind"] != "server_path":
+            raise HistoricalCampaignConflict("当前 Campaign 不允许恢复预检")
+        sources = tuple(
+            self._session.execute(
+                select(historical_import_campaign_items_table)
+                .where(
+                    historical_import_campaign_items_table.c.campaign_id == campaign_id,
+                    historical_import_campaign_items_table.c.item_kind == "source_file",
+                )
+                .with_for_update()
+            ).mappings()
+        )
+        recoverable = {
+            "historical_discovery_io_failed",
+            "historical_snapshot_io_failed",
+            "attempt_timeout",
+        }
+        if not sources:
+            if campaign["error_summary"] not in recoverable:
+                raise HistoricalCampaignConflict("无效输入不能通过重新采集恢复")
+            self._session.execute(
+                update(historical_import_campaigns_table)
+                .where(historical_import_campaigns_table.c.id == campaign_id)
+                .values(status="discovering", error_summary=None, finished_at=None)
+            )
+            payload = HistoricalDiscoverJobPayload(campaign_id=campaign_id)
+            PostgresJobRepository(self._session).enqueue(
+                job_type=HISTORICAL_DISCOVER_JOB_TYPE,
+                payload_version=HISTORICAL_DISCOVER_JOB_TYPE,
+                payload=payload.model_dump(mode="json"),
+                internal_idempotency_key=f"historical-discover:{campaign_id}:retry:{uuid4()}",
+                request_id=None,
+                priority=HISTORICAL_JOB_PRIORITY,
+                max_attempts=HISTORICAL_JOB_MAX_ATTEMPTS,
+                timeout_seconds=HISTORICAL_DISCOVER_TIMEOUT_SECONDS,
+            )
+            return ()
+        failed = tuple(source for source in sources if source["status"] == "failed")
+        if not failed or any(source["error_code"] not in recoverable for source in failed):
+            raise HistoricalCampaignConflict("预检无效输入或缺少可恢复失败项")
+        self._session.execute(
+            update(historical_import_campaign_items_table)
+            .where(
+                historical_import_campaign_items_table.c.id.in_(
+                    tuple(source["id"] for source in failed)
+                )
+            )
+            .values(status="discovered", error_code=None, started_at=None, finished_at=None)
+        )
+        self._session.execute(
+            update(historical_import_campaigns_table)
+            .where(historical_import_campaigns_table.c.id == campaign_id)
+            .values(status="snapshotting", error_summary=None, finished_at=None)
+        )
+        self.schedule_snapshot_jobs(campaign_id, max_in_flight=max_in_flight)
+        return tuple(
+            cast(UUID, source["artifact_id"])
+            for source in failed
+            if source["artifact_id"] is not None
+        )
+
+    def has_failed_chunks(self, campaign_id: UUID) -> bool:
+        return bool(
+            self._session.scalar(
+                select(historical_import_campaign_items_table.c.id)
+                .where(
+                    historical_import_campaign_items_table.c.campaign_id == campaign_id,
+                    historical_import_campaign_items_table.c.item_kind == "chunk",
+                    historical_import_campaign_items_table.c.status == "failed",
+                )
+                .limit(1)
+            )
+        )
 
     def prepare_failed_retry(
         self,

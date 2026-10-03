@@ -1,0 +1,13 @@
+{
+  "environment": "Windows Python 3.14.7 Playwright 1.62.0",
+  "download_id": "e864723e-080b-4b36-886f-56ba37177e7e",
+  "task_id": "44974b1c-f8f0-5b99-bf71-d03a875b99d7",
+  "file_bytes": 17314136,
+  "sha256": "94efaa8cf6b178abbb3a024b76eb5020f06f53a1f248b327123a492ba79a9abe",
+  "zip_crc_valid": true,
+  "sheetnames": [
+    "文章"
+  ],
+  "required_headers_valid": true,
+  "business_data_audited": false
+}

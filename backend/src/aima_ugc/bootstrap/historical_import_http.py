@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import PurePosixPath
 from typing import BinaryIO, Literal, cast
 from uuid import UUID, uuid4
@@ -31,6 +31,7 @@ from aima_ugc.adapters.persistence.postgres.historical_import import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
+from aima_ugc.adapters.persistence.postgres.wisersone import PostgresWisersOneRepository
 from aima_ugc.contracts.http import (
     HistoricalCampaignConflictListResponse,
     HistoricalCampaignConflictResponse,
@@ -78,6 +79,7 @@ from aima_ugc.modules.ingestion.http import (
 from aima_ugc.modules.ingestion.xlsx_security import MAX_XLSX_FILE_BYTES
 from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.capacity import select_chunk_rows
+from aima_ugc.platform.jobs.models import JobExecutionFence
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.storage import (
     ArtifactRecord,
@@ -95,7 +97,10 @@ class PostgresHistoricalImportHttpService:
 
     def __init__(self, runtime: PlatformRuntime) -> None:
         self._runtime = runtime
-        self._browser = HistoricalDirectoryBrowser(runtime.settings.historical_import_root)
+        self._browser = HistoricalDirectoryBrowser(
+            runtime.settings.historical_import_root,
+            managed_wisersone_root=runtime.settings.wisersone_input_dir,
+        )
 
     def _log_campaign_capacity(
         self,
@@ -155,6 +160,9 @@ class PostgresHistoricalImportHttpService:
         request: HistoricalCampaignCreateRequest,
         *,
         request_id: str,
+        execution_fence: JobExecutionFence | None = None,
+        on_created: Callable[[Session, UUID], None] | None = None,
+        filter_snapshot: BrandVehicleFilterSnapshot | None = None,
     ) -> HistoricalCampaignCreatedResponse:
         """服务端目录 Campaign 冻结 Brand Scope；Excel Search 明确不适用。"""
 
@@ -165,7 +173,9 @@ class PostgresHistoricalImportHttpService:
             raise HistoricalDirectoryRequestInvalid from exc
         except InvalidHistoricalRelativePath as exc:
             raise HistoricalDirectoryRequestInvalid from exc
-        filter_snapshot = self._read_brand_vehicle_filter_snapshot(request.brand_ids)
+        filter_snapshot = filter_snapshot or self._read_brand_vehicle_filter_snapshot(
+            request.brand_ids
+        )
         profile_snapshot: dict[str, object] = {
             "schema_version": "historical-import-profile.v1",
             "profile": request.profile,
@@ -188,6 +198,11 @@ class PostgresHistoricalImportHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                sources = PostgresWisersOneRepository(session)
+                sources.lock_input_admission()
+                self._validate_input_admission(sources, request)
+                if execution_fence is not None:
+                    PostgresJobRepository(session).lock_current_execution(execution_fence)
                 repository = PostgresHistoricalImportRepository(session)
                 campaign = repository.create_campaign(
                     campaign_id=campaign_id,
@@ -210,6 +225,8 @@ class PostgresHistoricalImportHttpService:
                 ):
                     raise HistoricalCampaignStateConflict("Campaign 幂等键已绑定到不同冻结输入")
                 resolved_id = cast(UUID, campaign["id"])
+                if on_created is not None:
+                    on_created(session, resolved_id)
                 payload = HistoricalDiscoverJobPayload(campaign_id=resolved_id)
                 job = PostgresJobRepository(session).enqueue(
                     job_type=HISTORICAL_DISCOVER_JOB_TYPE,
@@ -247,6 +264,24 @@ class PostgresHistoricalImportHttpService:
             raise HistoricalCampaignStateConflict from exc
         finally:
             session.close()
+
+    def _validate_input_admission(
+        self, sources: PostgresWisersOneRepository, request: HistoricalCampaignCreateRequest
+    ) -> None:
+        """删除意图先提交时整次拒绝；准入先提交时冻结选择供清理保护。"""
+        for row in sources.undeleted_inputs():
+            if row["file_delete_pending_at"] is not None and self._browser.selects_managed_file(
+                f"wisersone/{row['id']}/wisersone_last24h.xlsx",
+                relative_paths=request.relative_paths,
+                recursive=request.recursive,
+            ):
+                raise HistoricalCampaignConflict("选择的来源文件已认领清理，请刷新目录后重试")
+        try:
+            for relative_path in request.relative_paths:
+                self._browser.resolve(relative_path)
+        except (HistoricalDirectoryUnavailable, InvalidHistoricalRelativePath) as exc:
+            # 与初次路径校验之间文件可能被清理；持锁复核避免接受一个已经消失的输入。
+            raise HistoricalCampaignConflict("选择的来源路径已经变化，请刷新目录后重试") from exc
 
     def create_local_campaign(
         self,
@@ -671,6 +706,10 @@ class PostgresHistoricalImportHttpService:
             request_id=request_id,
         )
 
+    def resume_wisersone(self, campaign_id: UUID) -> HistoricalCampaignResponse:
+        """恢复来源父监控或前置预检；所有激活与原文件清理共享同一准入事务。"""
+        return self._change_campaign(campaign_id, action="resume", request_id=None)
+
     def _change_campaign(
         self,
         campaign_id: UUID,
@@ -681,6 +720,23 @@ class PostgresHistoricalImportHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                PostgresWisersOneRepository(session).lock_input_admission()
+                download = None
+                if action in {"retry", "resume"}:
+                    download = PostgresWisersOneRepository(session).for_campaign(campaign_id)
+                    if download is not None and (
+                        download["file_deleted_at"] is not None
+                        or download["file_delete_pending_at"] is not None
+                        or download["cancel_requested_at"] is not None
+                    ):
+                        raise HistoricalCampaignConflict(
+                            "来源文件已认领清理或任务已经取消，不能恢复"
+                        )
+                    if action == "resume" and (
+                        download is None
+                        or download["status"] not in {"failed", "partial_failed", "attention"}
+                    ):
+                        raise HistoricalCampaignConflict("当前来源任务不允许恢复")
                 repository = PostgresHistoricalImportRepository(session)
                 if action == "start":
                     batches = dict(repository.prepare_campaign_start(campaign_id))
@@ -694,7 +750,33 @@ class PostgresHistoricalImportHttpService:
                     )
                     if scheduled == 0:
                         raise HistoricalCampaignConflict("Campaign 没有可执行 Chunk")
-                elif action == "retry":
+                elif action == "resume" and not repository.has_failed_chunks(campaign_id):
+                    campaign = repository.get_campaign(campaign_id, for_update=True)
+                    if campaign is None:
+                        raise RepositoryCampaignNotFound
+                    if campaign["status"] == "failed":
+                        source_artifact_ids = repository.retry_wisersone_preflight(
+                            campaign_id,
+                            max_in_flight=self._runtime.job_window(
+                                "historical",
+                                ceiling=self._runtime.settings.historical_max_in_flight_jobs,
+                            ),
+                        )
+                        for artifact_id in source_artifact_ids:
+                            PostgresArtifactMetadataRepository(session).reactivate_import_source(
+                                artifact_id
+                            )
+                    elif campaign["status"] not in {
+                        "discovering",
+                        "snapshotting",
+                        "ready",
+                        "queued",
+                        "running",
+                        "succeeded",
+                        "cancelled",
+                    }:
+                        raise HistoricalCampaignConflict("当前导入无法恢复观察")
+                elif action in {"retry", "resume"}:
                     batches, source_artifact_ids = repository.prepare_failed_retry(campaign_id)
                     artifacts = PostgresArtifactMetadataRepository(session)
                     for artifact_id in source_artifact_ids:
@@ -712,6 +794,18 @@ class PostgresHistoricalImportHttpService:
                         raise HistoricalCampaignConflict("Campaign 没有可重试 Chunk")
                 else:
                     raise AssertionError("未知 Historical Campaign 动作")
+                if download is not None and download["status"] in {
+                    "failed",
+                    "partial_failed",
+                    "attention",
+                }:
+                    sources = PostgresWisersOneRepository(session)
+                    sources.update(
+                        download["id"], status="preflight", error_code=None, finished_at=None
+                    )
+                    sources.enqueue(
+                        download["id"], step=int(download["step"]) + 1, request_id=request_id
+                    )
                 self._audit(
                     session,
                     event_type=f"historical_campaign_{action}",

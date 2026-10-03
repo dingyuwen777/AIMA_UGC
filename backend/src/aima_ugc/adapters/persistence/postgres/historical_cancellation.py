@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
+from aima_ugc.modules.ingestion.historical_jobs import HISTORICAL_DISCOVER_JOB_TYPE
 from aima_ugc.modules.ingestion.historical_tables import (
     historical_import_campaign_items_table,
     historical_import_campaigns_table,
@@ -122,7 +123,8 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
 
         discovery_job_id = self._session.scalar(
             select(jobs_table.c.id).where(
-                jobs_table.c.internal_idempotency_key == f"historical-discover:{campaign_id}",
+                jobs_table.c.job_type == HISTORICAL_DISCOVER_JOB_TYPE,
+                jobs_table.c.payload["campaign_id"].astext == str(campaign_id),
                 jobs_table.c.status.in_(_ACTIVE_JOB_STATUSES),
             )
         )
@@ -172,8 +174,8 @@ class PostgresHistoricalCancellationRepository(PostgresHistoricalImportRepositor
                     jobs_table.c.status.in_(_ACTIVE_JOB_STATUSES),
                     or_(
                         jobs_table.c.id.in_(item_job_ids),
-                        jobs_table.c.internal_idempotency_key
-                        == f"historical-discover:{campaign_id}",
+                        (jobs_table.c.job_type == HISTORICAL_DISCOVER_JOB_TYPE)
+                        & (jobs_table.c.payload["campaign_id"].astext == str(campaign_id)),
                     ),
                 )
             )

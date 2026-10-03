@@ -124,7 +124,7 @@ class KeywordPackItemRemoveRequest(ResourceExpectedVersionRequest):
 class CollectionPlanUpdateRequest(ResourceExpectedVersionRequest, TikHubPlanRequestConfig):
     """完整替换一个计划的下一版本配置；历史 Run/Occurrence 继续保留旧版本事实。"""
 
-    plan_type: Literal["tikhub"] = "tikhub"
+    plan_type: Literal["tikhub", "wisersone"] = "tikhub"
     name: str = Field(min_length=1, max_length=200)
     schedule_expr: str = Field(min_length=1, max_length=100)
     enabled: bool

@@ -1,0 +1,21 @@
+{
+  "source_commit": "18eec1e025eb1309dd39ba80b0bf69d3d422f234",
+  "python_file_count": 454,
+  "python_manifest_sha256": "d671ec7bde72f46f1321ee2d2726187cffbae51d48d06844cad51796c47753ce",
+  "package_artifacts": [
+    {
+      "name": "aima_ugc-0.1.0-py3-none-any.whl",
+      "bytes": 1539796,
+      "sha256": "fcb9b0954f4d468d8c0af6fb0d7d144fd6ff27cdc524ca3b63f52ddadb1a7673",
+      "bundled_auth_count": 2,
+      "parsed": true
+    },
+    {
+      "name": "aima_ugc-0.1.0.tar.gz",
+      "bytes": 1237405,
+      "sha256": "cd70a27c73d8b9a18478519e6ff4a9f6ae10376c7bbcb82c5e75341996e063bd",
+      "bundled_auth_count": 2,
+      "parsed": true
+    }
+  ]
+}

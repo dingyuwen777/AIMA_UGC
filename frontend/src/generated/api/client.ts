@@ -1189,12 +1189,20 @@ export interface CollectionPlanCopyRequest {
   name: string;
 }
 
-export type CollectionPlanCreateRequestCommentPolicy = typeof CollectionPlanCreateRequestCommentPolicy[keyof typeof CollectionPlanCreateRequestCommentPolicy];
+export type CollectionPlanCreateRequestCommentPolicy = typeof CollectionPlanCreateRequestCommentPolicy[keyof typeof CollectionPlanCreateRequestCommentPolicy] | null;
 
 
 export const CollectionPlanCreateRequestCommentPolicy = {
   adaptive: 'adaptive',
   full: 'full',
+} as const;
+
+export type CollectionPlanCreateRequestPlanType = typeof CollectionPlanCreateRequestPlanType[keyof typeof CollectionPlanCreateRequestPlanType];
+
+
+export const CollectionPlanCreateRequestPlanType = {
+  tikhub: 'tikhub',
+  wisersone: 'wisersone',
 } as const;
 
 /**
@@ -1221,12 +1229,9 @@ export interface CollectionPlanCreateRequest {
      * @maxLength 200
      */
   name: string;
-  plan_type?: 'tikhub';
-  /**
-     * @minItems 1
-     * @maxItems 5
-     */
-  platforms: CollectionPlanPlatformRequest[];
+  plan_type?: CollectionPlanCreateRequestPlanType;
+  /** @maxItems 5 */
+  platforms?: CollectionPlanPlatformRequest[];
   /**
      * @minLength 1
      * @maxLength 100
@@ -1234,12 +1239,20 @@ export interface CollectionPlanCreateRequest {
   schedule_expr: string;
 }
 
-export type CollectionPlanResponseCommentPolicy = typeof CollectionPlanResponseCommentPolicy[keyof typeof CollectionPlanResponseCommentPolicy];
+export type CollectionPlanResponseCommentPolicy = typeof CollectionPlanResponseCommentPolicy[keyof typeof CollectionPlanResponseCommentPolicy] | null;
 
 
 export const CollectionPlanResponseCommentPolicy = {
   adaptive: 'adaptive',
   full: 'full',
+} as const;
+
+export type CollectionPlanResponsePlanType = typeof CollectionPlanResponsePlanType[keyof typeof CollectionPlanResponsePlanType];
+
+
+export const CollectionPlanResponsePlanType = {
+  tikhub: 'tikhub',
+  wisersone: 'wisersone',
 } as const;
 
 export interface CollectionPlanPlatformResponse {
@@ -1249,20 +1262,20 @@ export interface CollectionPlanPlatformResponse {
 }
 
 /**
- * 当前唯一详情类型；保留既有扁平字段，plan_type 是显式类型事实。
+ * 保留既有扁平字段；WisersOne 的 TikHub 专属字段为空。
  */
 export interface CollectionPlanResponse {
   brand_ids?: string[];
   comment_policy: CollectionPlanResponseCommentPolicy;
   created_at: string;
-  detail_policy: 'on_change';
+  detail_policy: 'on_change' | null;
   enabled: boolean;
   id: string;
   keyword_pack_ids: string[];
   last_scheduled_at?: string | null;
   name: string;
   next_run_at?: string | null;
-  plan_type: 'tikhub';
+  plan_type: CollectionPlanResponsePlanType;
   platforms: CollectionPlanPlatformResponse[];
   schedule_expr: string;
   /** @exclusiveMinimum 0 */
@@ -1286,12 +1299,20 @@ export interface CollectionPlanListResponse {
   total: number;
 }
 
-export type CollectionPlanUpdateRequestCommentPolicy = typeof CollectionPlanUpdateRequestCommentPolicy[keyof typeof CollectionPlanUpdateRequestCommentPolicy];
+export type CollectionPlanUpdateRequestCommentPolicy = typeof CollectionPlanUpdateRequestCommentPolicy[keyof typeof CollectionPlanUpdateRequestCommentPolicy] | null;
 
 
 export const CollectionPlanUpdateRequestCommentPolicy = {
   adaptive: 'adaptive',
   full: 'full',
+} as const;
+
+export type CollectionPlanUpdateRequestPlanType = typeof CollectionPlanUpdateRequestPlanType[keyof typeof CollectionPlanUpdateRequestPlanType];
+
+
+export const CollectionPlanUpdateRequestPlanType = {
+  tikhub: 'tikhub',
+  wisersone: 'wisersone',
 } as const;
 
 /**
@@ -1311,12 +1332,9 @@ export interface CollectionPlanUpdateRequest {
      * @maxLength 200
      */
   name: string;
-  plan_type?: 'tikhub';
-  /**
-     * @minItems 1
-     * @maxItems 5
-     */
-  platforms: CollectionPlanPlatformRequest[];
+  plan_type?: CollectionPlanUpdateRequestPlanType;
+  /** @maxItems 5 */
+  platforms?: CollectionPlanPlatformRequest[];
   /**
      * @minLength 1
      * @maxLength 100
@@ -3712,6 +3730,76 @@ export interface VehicleModelUpdateRequest {
   display_name?: string | null;
   series_name?: string | null;
   status?: VehicleModelUpdateRequestStatus;
+}
+
+/**
+ * 系统固定下载过去24小时，并按选定品牌范围执行标准导入。
+ */
+export interface WisersOneDownloadCreateRequest {
+  /** @maxItems 100 */
+  brand_ids?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 128
+     * @pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+     */
+  client_idempotency_key: string;
+}
+
+export type WisersOneDownloadResponseSendState = typeof WisersOneDownloadResponseSendState[keyof typeof WisersOneDownloadResponseSendState];
+
+
+export const WisersOneDownloadResponseSendState = {
+  not_sent: 'not_sent',
+  unknown: 'unknown',
+  confirmed: 'confirmed',
+} as const;
+
+export type WisersOneDownloadResponseStatus = typeof WisersOneDownloadResponseStatus[keyof typeof WisersOneDownloadResponseStatus];
+
+
+export const WisersOneDownloadResponseStatus = {
+  queued: 'queued',
+  submitting: 'submitting',
+  waiting: 'waiting',
+  downloading: 'downloading',
+  preflight: 'preflight',
+  importing: 'importing',
+  succeeded: 'succeeded',
+  partial_failed: 'partial_failed',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  attention: 'attention',
+  cancelling: 'cancelling',
+} as const;
+
+/**
+ * 下载与导入分别呈现；远端生成结束不表示系统导入成功。
+ */
+export interface WisersOneDownloadResponse {
+  campaign_id?: string | null;
+  cancel_requested_at?: string | null;
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  id: string;
+  job_id?: string | null;
+  occurrence_id?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  percent: number;
+  plan_id?: string | null;
+  plan_name?: string | null;
+  send_state: WisersOneDownloadResponseSendState;
+  sha256?: string | null;
+  status: WisersOneDownloadResponseStatus;
+  website_task_id?: string | null;
+}
+
+export interface WisersOneDownloadListResponse {
+  items: WisersOneDownloadResponse[];
 }
 
 export interface WorkbenchDailyPointResponse {
@@ -9203,6 +9291,161 @@ export const mergeVehicleModel = async (vehicleModelId: string,
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: VehicleModelResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListWisersOneDownloadsUrl = () => {
+
+
+
+
+  return `/api/v1/wisersone-downloads`
+}
+
+/**
+ * @summary Listing
+ */
+export const listWisersOneDownloads = async ( options?: RequestInit): Promise<WisersOneDownloadListResponse> => {
+
+  const res = await fetch(getListWisersOneDownloadsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WisersOneDownloadListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateWisersOneDownloadUrl = () => {
+
+
+
+
+  return `/api/v1/wisersone-downloads`
+}
+
+/**
+ * @summary Create
+ */
+export const createWisersOneDownload = async (wisersOneDownloadCreateRequest: WisersOneDownloadCreateRequest, options?: RequestInit): Promise<WisersOneDownloadResponse> => {
+
+  const res = await fetch(getCreateWisersOneDownloadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(wisersOneDownloadCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WisersOneDownloadResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetWisersOneDownloadUrl = (downloadId: string,) => {
+
+
+
+
+  return `/api/v1/wisersone-downloads/${downloadId}`
+}
+
+/**
+ * @summary Get
+ */
+export const getWisersOneDownload = async (downloadId: string, options?: RequestInit): Promise<WisersOneDownloadResponse> => {
+
+  const res = await fetch(getGetWisersOneDownloadUrl(downloadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WisersOneDownloadResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCancelWisersOneDownloadUrl = (downloadId: string,) => {
+
+
+
+
+  return `/api/v1/wisersone-downloads/${downloadId}/cancel`
+}
+
+/**
+ * @summary Cancel
+ */
+export const cancelWisersOneDownload = async (downloadId: string, options?: RequestInit): Promise<WisersOneDownloadResponse> => {
+
+  const res = await fetch(getCancelWisersOneDownloadUrl(downloadId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WisersOneDownloadResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRetryWisersOneDownloadUrl = (downloadId: string,) => {
+
+
+
+
+  return `/api/v1/wisersone-downloads/${downloadId}/retry`
+}
+
+/**
+ * @summary Retry
+ */
+export const retryWisersOneDownload = async (downloadId: string, options?: RequestInit): Promise<WisersOneDownloadResponse> => {
+
+  const res = await fetch(getRetryWisersOneDownloadUrl(downloadId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: WisersOneDownloadResponse = body ? JSON.parse(body) : {}
   return data
 }
 

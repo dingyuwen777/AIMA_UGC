@@ -449,6 +449,7 @@ DEBUG   → 正常轮询和成功细节
 ## 11. 安全
 
 - Secret 不提交 Git、不写数据库明文、不进 Raw、日志、Job；
+- 用户在 Issue #700 明确批准唯一例外：[`backend/src/aima_ugc/adapters/providers/wisersone/wisersone-auth/wisersone_state.json`](backend/src/aima_ugc/adapters/providers/wisersone/wisersone-auth/wisersone_state.json) 与同目录 [`backend/src/aima_ugc/adapters/providers/wisersone/wisersone-auth/wisersone_runtime.json`](backend/src/aima_ugc/adapters/providers/wisersone/wisersone-auth/wisersone_runtime.json) 作为初始登录态进入 Git、包和镜像。例外仅限这两个文件；刷新状态使用 `AIMA_HOST_ROOT/runtime/wisersone-auth`，其它凭据、临时文件、日志、Job、数据库和证据仍遵守原规则。
 - 使用只读 Secret 文件/批准的运行时 Secret 边界；
 - Provider Config 只保存 `secret_ref`；
 - 当前第一版不实现本地账号密码、登录入口、MFA、Session、CSRF 或登录限流；真实企业身份接入需要独立 L3 Change；

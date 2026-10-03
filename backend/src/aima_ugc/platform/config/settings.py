@@ -35,6 +35,8 @@ class PlatformSettings(BaseModel):
     secret_dir: Path
     external_secret_dir: Path | None = None
     historical_import_root: Path | None = None
+    wisersone_auth_dir: Path | None = None
+    wisersone_input_dir: Path | None = None
     # 运行容量与目录安全边界只由代码管理；旧 env 值不得在不同机器上造成行为漂移。
     historical_chunk_rows: int = Field(default=4_000, ge=100, le=4_000)
     historical_max_scan_files: int = Field(default=10_000, ge=1, le=100_000)
@@ -321,6 +323,8 @@ _ENV_TO_FIELD = {
     "AIMA_SECRET_DIR": "secret_dir",
     "AIMA_EXTERNAL_SECRET_DIR": "external_secret_dir",
     "AIMA_HISTORICAL_IMPORT_ROOT": "historical_import_root",
+    "AIMA_WISERSONE_AUTH_DIR": "wisersone_auth_dir",
+    "AIMA_WISERSONE_INPUT_DIR": "wisersone_input_dir",
     "AIMA_LOG_LEVEL": "log_level",
     "AIMA_LOG_MAX_BYTES": "log_max_bytes",
     "AIMA_LOG_BACKUP_COUNT": "log_backup_count",
@@ -414,6 +418,8 @@ def load_settings(
         "secret_dir",
         "external_secret_dir",
         "historical_import_root",
+        "wisersone_auth_dir",
+        "wisersone_input_dir",
     ):
         value = values.get(field_name)
         if value is not None:

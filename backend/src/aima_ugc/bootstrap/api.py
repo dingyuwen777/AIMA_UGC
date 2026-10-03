@@ -3191,6 +3191,9 @@ def create_app(
     register_report_routes(
         application, service=current_report_runs_service, administrator=current_administrator
     )
+    from .wisersone_routes import register_wisersone_routes
+
+    register_wisersone_routes(application, get_runtime, current_principal)
     return application
 
 

@@ -599,6 +599,8 @@ jobs:
           host_root = Path(sys.argv[2]).resolve()
           expected = {
               "bootstrap": {
+                  "/host/runtime/wisersone-auth": "bind",
+                  "/host/aima-historical-input/wisersone": "bind",
                   "/host/runtime/data": "bind",
                   "/host/runtime/logs": "bind",
                   "/host/postgres": "volume",
@@ -610,6 +612,7 @@ jobs:
                   "/run/secrets": "volume",
               },
               "migrate": {
+                  "/run/wisersone-input": "bind",
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
@@ -623,6 +626,8 @@ jobs:
                   "/run/provider-secrets": "volume",
               },
               "api": {
+                  "/run/wisersone-auth": "bind",
+                  "/run/wisersone-input": "bind",
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
@@ -630,6 +635,8 @@ jobs:
                   "/run/provider-secrets": "volume",
               },
               "worker": {
+                  "/run/wisersone-auth": "bind",
+                  "/run/wisersone-input": "bind",
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
@@ -637,6 +644,7 @@ jobs:
                   "/run/provider-secrets": "volume",
               },
               "scheduler": {
+                  "/run/wisersone-input": "bind",
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
@@ -650,6 +658,8 @@ jobs:
                   assert mounts[target]["type"] == mount_type, (service, target, mounts[target])
 
           expected_bind_sources = {
+              "/run/wisersone-auth": str(host_root / "runtime/wisersone-auth"),
+              "/run/wisersone-input": str(host_root / "aima-historical-input/wisersone"),
               "/app/data": str(host_root / "runtime/data"),
               "/app/logs": str(host_root / "runtime/logs"),
               "/data/aima-historical-input": str(host_root / "historical-input"),
@@ -658,6 +668,16 @@ jobs:
           for target, source in expected_bind_sources.items():
               assert Path(api_mounts[target]["source"]).resolve() == Path(source), (target, api_mounts[target])
           assert api_mounts["/data/aima-historical-input"]["read_only"] is True
+          assert api_mounts["/run/wisersone-auth"]["read_only"] is True
+          assert api_mounts["/run/wisersone-input"]["read_only"] is True
+          worker_mounts = {item["target"]: item for item in model["services"]["worker"].get("volumes", [])}
+          for target in ("/run/wisersone-auth", "/run/wisersone-input"):
+              assert worker_mounts[target]["type"] == "bind"
+              assert worker_mounts[target]["source"] == api_mounts[target]["source"]
+              assert worker_mounts[target].get("read_only", False) is False
+          scheduler_mounts = {item["target"]: item for item in model["services"]["scheduler"].get("volumes", [])}
+          assert scheduler_mounts["/run/wisersone-input"]["source"] == api_mounts["/run/wisersone-input"]["source"]
+          assert scheduler_mounts["/run/wisersone-input"].get("read_only", False) is False
 
           bootstrap_command = model["services"]["bootstrap"]["command"]
           assert "--runtime-only" in bootstrap_command

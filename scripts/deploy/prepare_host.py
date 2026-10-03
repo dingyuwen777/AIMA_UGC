@@ -19,7 +19,9 @@ SECRET_GID = 11001
 DEFAULT_ROOT = Path("/data/AIMA_UGC")
 _POSTGRES_CLUSTER_MARKER = Path("postgres/18/docker/PG_VERSION")
 _POSTGRES_PASSWORD = Path("shared/secrets/postgres_password")
-_BIND_COMPATIBLE_RUNTIME_PATHS = frozenset({"runtime/data", "runtime/logs"})
+_BIND_COMPATIBLE_RUNTIME_PATHS = frozenset(
+    {"runtime/data", "runtime/logs", "runtime/wisersone-auth", "aima-historical-input/wisersone"}
+)
 
 
 class HostPreparationError(RuntimeError):
@@ -39,6 +41,9 @@ _RUNTIME_DIRECTORY_SPECS = (
     DirectorySpec("runtime", 0, 0, 0o750),
     DirectorySpec("runtime/data", APP_UID, APP_GID, 0o750),
     DirectorySpec("runtime/logs", APP_UID, APP_GID, 0o750),
+    DirectorySpec("runtime/wisersone-auth", APP_UID, APP_GID, 0o700),
+    DirectorySpec("aima-historical-input", 0, APP_GID, 0o750),
+    DirectorySpec("aima-historical-input/wisersone", APP_UID, APP_GID, 0o750),
     DirectorySpec("postgres", POSTGRES_UID, POSTGRES_GID, 0o700),
     DirectorySpec("shared", 0, 0, 0o750),
     DirectorySpec("shared/secrets", 0, SECRET_GID, 0o750),
@@ -90,7 +95,7 @@ def _ensure_directory(
             os.chmod(path, spec.mode)
         else:
             # Docker Desktop 的 Windows bind mount 可能无法回显容器侧 UID/GID/mode；
-            # 仍尽力收紧权限，但不让文件系统翻译能力阻塞 Artifact/日志目录。
+            # 仍尽力收紧权限，但不让文件系统翻译能力阻塞 Artifact/日志和 Wise 持久目录。
             try:
                 os.chown(path, spec.uid, spec.gid)
             except OSError:
@@ -245,14 +250,17 @@ def main() -> int:
     parser.add_argument(
         "--runtime-only",
         action="store_true",
-        help="只准备 Compose 运行所需 data/log/postgres/secrets；跳过 backups/releases/shared/env",
+        help=(
+            "只准备 Compose 运行所需 data/log/WisersOne/postgres/secrets；"
+            "跳过 backups/releases/shared/env"
+        ),
     )
     parser.add_argument(
         "--runtime-bind-compatible",
         action="store_true",
         help=(
-            "仅对 runtime/data 与 runtime/logs 放宽精确 POSIX owner/mode 校验，"
-            "用于 Windows bind mount"
+            "仅对 data/log 和 WisersOne 认证/输入 bind 目录放宽精确 POSIX owner/mode 校验，"
+            "用于 Windows bind mount；数据库和其它 Secret 仍严格校验"
         ),
     )
     args = parser.parse_args()

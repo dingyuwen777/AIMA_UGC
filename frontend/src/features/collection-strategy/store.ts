@@ -488,9 +488,10 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   }
 
   function planReason(request: CollectionPlanCreateRequest): string | null {
+    if (request.plan_type === 'wisersone') return null
     return planExecutionReason({
       keywordPackIds: request.keyword_pack_ids ?? [],
-      platforms: request.platforms,
+      platforms: request.platforms ?? [],
       packDetails: packDetails.value,
       capabilities: capabilities.value,
     })
@@ -548,6 +549,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
 
   function planToggleReason(plan: CollectionPlanResponse): string | null {
     if (plan.enabled) return null
+    if (plan.plan_type === 'wisersone') return null
     return planExecutionReason({
       keywordPackIds: plan.keyword_pack_ids ?? [],
       platforms: plan.platforms,

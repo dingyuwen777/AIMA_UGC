@@ -53,6 +53,17 @@ PATTERNS = [
     ),
 ]
 
+# Issue #700 用户明确批准的初始会话打包例外；不允许私钥或其它路径扩散。
+WISERSONE_INITIAL_AUTH = frozenset(
+    f"backend/src/aima_ugc/adapters/providers/wisersone/wisersone-auth/{name}"
+    for name in ("wisersone_state.json", "wisersone_runtime.json")
+)
+
+
+def approved_initial_auth(relative_path: str, rule_id: str) -> bool:
+    """只豁免两个批准文件的会话凭据模式，临时文件仍接受全部规则。"""
+    return relative_path in WISERSONE_INITIAL_AUTH and rule_id in {"SEC002", "SEC003"}
+
 
 def iter_files() -> list[Path]:
     """返回需要扫描的当前仓库文本文件。"""
@@ -74,6 +85,8 @@ def main() -> int:
     for path in iter_files():
         text = path.read_text(encoding="utf-8")
         for rule_id, pattern, message in PATTERNS:
+            if approved_initial_auth(path.relative_to(ROOT).as_posix(), rule_id):
+                continue
             if pattern.search(text):
                 errors.append(f"{rule_id} {path.relative_to(ROOT)}: {message}")
 

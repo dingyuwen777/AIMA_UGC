@@ -118,6 +118,22 @@ def require_tikhub_plan(plan: CollectionPlanDefinition | CollectionPlanRecord) -
         raise UnsupportedPlanDecisionPolicyError("collection plan decision policy is inconsistent")
 
 
+def require_supported_plan(plan: CollectionPlanDefinition | CollectionPlanRecord) -> None:
+    """调度只依赖共同生命周期；各类型的执行面仍明确分发。"""
+    if plan.plan_type == "tikhub":
+        require_tikhub_plan(plan)
+    elif plan.plan_type == "wisersone":
+        if (
+            plan.platforms
+            or plan.keyword_pack_ids
+            or plan.detail_policy != "not_applicable"
+            or plan.comment_policy != "not_applicable"
+        ):
+            raise UnsupportedPlanDecisionPolicyError("WisersOne plan contains TikHub configuration")
+    else:
+        raise UnsupportedPlanDecisionPolicyError("unsupported collection plan_type")
+
+
 @dataclass(frozen=True, slots=True)
 class CollectionPlanDefinition(TikHubPlanConfig):
     """创建 Plan 所需的稳定父事实；Scheduler 仅执行已批准策略。"""
@@ -131,7 +147,7 @@ class CollectionPlanDefinition(TikHubPlanConfig):
     max_catch_up_runs: int
     created_by: UUID | None
 
-    plan_type: Literal["tikhub"] = "tikhub"
+    plan_type: Literal["tikhub", "wisersone"] = "tikhub"
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -150,9 +166,9 @@ class CollectionPlanDefinition(TikHubPlanConfig):
             raise ValueError("detail_policy 不能为空")
         if not self.comment_policy.strip():
             raise ValueError("comment_policy 不能为空")
-        if not self.platforms:
+        if self.plan_type == "tikhub" and not self.platforms:
             raise EmptyPlanExecutionSurfaceError("plan platform 至少需要一个")
-        if not self.keyword_pack_ids:
+        if self.plan_type == "tikhub" and not self.keyword_pack_ids:
             raise EmptyPlanExecutionSurfaceError("plan 至少需要一个 Keyword Pack Search Term")
 
 
@@ -173,7 +189,7 @@ class CollectionPlanRecord(TikHubPlanConfig):
     created_by: UUID | None
     created_at: datetime
     updated_at: datetime
-    plan_type: Literal["tikhub"] = "tikhub"
+    plan_type: Literal["tikhub", "wisersone"] = "tikhub"
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,7 +245,7 @@ class CollectionPlanningService:
             raise UnsupportedPlanCatchUpError(
                 f"first release max_catch_up_runs must be {_FIRST_RELEASE_MAX_CATCH_UP_RUNS}"
             )
-        require_tikhub_plan(definition)
+        require_supported_plan(definition)
 
         platforms = [platform.platform for platform in definition.platforms]
         if len(platforms) != len(set(platforms)):

@@ -7,6 +7,9 @@
 
 x-windows-backend-volumes: &windows-backend-volumes
   - type: bind
+    source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
+    target: /run/wisersone-input
+  - type: bind
     source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
     target: /app/data
   - type: bind
@@ -31,6 +34,12 @@ services:
       - --runtime-only
       - --runtime-bind-compatible
     volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/wisersone-auth
+        target: /host/runtime/wisersone-auth
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
+        target: /host/aima-historical-input/wisersone
       - type: bind
         source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
         target: /host/runtime/data
@@ -83,6 +92,14 @@ services:
   api:
     volumes:
       - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/wisersone-auth
+        target: /run/wisersone-auth
+        read_only: true
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
+        target: /run/wisersone-input
+        read_only: true
+      - type: bind
         source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
         target: /app/data
       - type: bind
@@ -102,6 +119,12 @@ services:
 
   worker:
     volumes:
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/wisersone-auth
+        target: /run/wisersone-auth
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
+        target: /run/wisersone-input
       - type: bind
         source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
         target: /app/data

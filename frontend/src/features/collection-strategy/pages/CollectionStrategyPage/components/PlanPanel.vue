@@ -66,11 +66,13 @@ function discoveryScopeLines(
 
 /** 用当前 Contract 中可直接计数的词包和平台给出无歧义摘要，不发明“采集范围”口径。 */
 function planScopeSummary(plan: CollectionPlanResponse): string {
+  if (plan.plan_type === 'wisersone') return '网站过去 24 小时 · 自动导入'
   return `${plan.keyword_pack_ids.length} 个关键词包 · ${plan.platforms.length} 个平台`
 }
 
 /** 普通列表只展示业务平台名称，内部采集配置身份不进入用户视图。 */
 function channelLines(plan: CollectionPlanResponse): string[] {
+  if (plan.plan_type === 'wisersone') return ['WisersOne 网站 Excel']
   const lines = plan.platforms.map((item) => collectionPlatformLabel(item.platform))
   if (lines.length <= 2) return lines
   return [...lines.slice(0, 2), `另有 ${lines.length - 2} 个平台`]
@@ -85,7 +87,7 @@ function nextRun(value?: string | null): string {
 <template>
   <section class="plan-card">
     <AimaFeedbackBanner tone="info">
-      每次执行时，系统自动保存关键词包、品牌车型范围和平台搜索配置；后续修改不影响历史运行。重新启用后从下一周期执行，不补跑停用期间任务。
+      运行时固定本次配置，后续修改不影响历史任务；重新启用后从下一周期执行，不补跑停用期间任务。WisersOne 下载与导入状态可在采集运行中心查看。
     </AimaFeedbackBanner>
     <div class="table-heading">
       <strong>找到 {{ total }} 条采集计划</strong>
@@ -102,7 +104,7 @@ function nextRun(value?: string | null): string {
         v-else-if="plans.length === 0"
         class="table-state"
       >
-        <strong>暂无采集计划</strong><span>可新建 TikHub 采集计划，或调整当前筛选条件。</span>
+        <strong>暂无采集计划</strong><span>可新建 WisersOne 或 TikHub 采集计划，或调整当前筛选条件。</span>
       </div>
       <table
         v-else
@@ -115,7 +117,7 @@ function nextRun(value?: string | null): string {
             :key="plan.id"
           >
             <td><strong>{{ plan.name }}</strong><small>{{ planScopeSummary(plan) }}</small></td>
-            <td><span class="plan-type">{{ plan.plan_type === 'tikhub' ? 'TikHub' : '类型不可用' }}</span></td>
+            <td><span class="plan-type">{{ plan.plan_type === 'wisersone' ? 'WisersOne' : 'TikHub' }}</span></td>
             <td><span :class="['status', plan.enabled ? 'enabled' : 'disabled']">{{ plan.enabled ? '已启用' : '已停用' }}</span></td>
             <td class="scope-lines">
               <span
@@ -125,7 +127,7 @@ function nextRun(value?: string | null): string {
               >{{ line }}</span>
               <small>{{ channelLines(plan).join(' · ') }}</small>
             </td>
-            <td><strong>{{ plan.comment_policy === 'full' ? '全量采集' : '自适应采集' }}</strong></td>
+            <td><strong>{{ plan.plan_type === 'wisersone' ? '不适用' : plan.comment_policy === 'full' ? '全量采集' : '自适应采集' }}</strong></td>
             <td><strong>{{ collectionScheduleLabel(plan.schedule_expr) }}</strong><small>{{ nextRun(plan.next_run_at) }}</small></td>
             <td class="actions">
               <AimaButton

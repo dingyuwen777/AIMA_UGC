@@ -1,0 +1,42 @@
+{
+  "uid": 10001,
+  "headless_chromium_started": true,
+  "installed_package": true,
+  "bundled_auth_count": 2,
+  "host_auth_unchanged": true,
+  "source_hashes": {
+    "aima_ugc.adapters.providers.wisersone.auth": "dc099c16b654a6c0475bf7d934bd50a57453aa09e4f7ea13899ac7ddd4ebc7da",
+    "aima_ugc.adapters.providers.wisersone.export": "9f277a91d2741d13a48c3b05a1f5e931ed696534313a7306d6deec24ce57c72b",
+    "aima_ugc.adapters.providers.wisersone._browser": "d548f4de9521592c1cbbe79b7a1e930d849b010835572b9cec35384efed3f49a",
+    "aima_ugc.bootstrap.wisersone_worker": "e09803f768d7a05e3b126a7e7224385039685c0d65965dea236a0a57462e6357",
+    "aima_ugc.bootstrap.wisersone_http": "827ab54e30642221bb11ed2a77dff60640e68ef40a9c675e48e013bfa564cc31",
+    "aima_ugc.adapters.persistence.postgres.wisersone": "a9677667a7e63f123e4bdbae15b9e1ef9b077f6ad54eaf96c194c48d7c3d0fa5",
+    "aima_ugc.adapters.persistence.postgres.historical_import": "87ed41d85df772faac1026da66eef57a9a7607f8fd09f00b9e2d71c2b2c8f2e1",
+    "aima_ugc.modules.ingestion.wisersone_jobs": "7f23bd9f651640f51aa69de0ce692da23f25a866a5cda6ae15138525e258524b"
+  },
+  "source_commit": "e5baaaf6efcefd01b8bcc5c0a196c365458fb949",
+  "base_commit": "3e13cccf63a75b05eec12e302d557c3cf99dcaac",
+  "image": "sha256:eb5cffe47c32f68ad41c246de0cddf27dc9792f64521d48736f31aac784d3f34",
+  "source_matches_current": true,
+  "package_artifacts": [
+    {
+      "name": "aima_ugc-0.1.0-py3-none-any.whl",
+      "bytes": 1537938,
+      "sha256": "af006c9b03c76ff623a71409d358ad87b5e42c190a4a30529a4286873d00a09d",
+      "bundled_auth_count": 2,
+      "parsed": true
+    },
+    {
+      "name": "aima_ugc-0.1.0.tar.gz",
+      "bytes": 1235457,
+      "sha256": "525625b6b673a6ea454a87cc820732a7d6e30ff690a3445d050f499f6da2039e",
+      "bundled_auth_count": 2,
+      "parsed": true
+    }
+  ],
+  "linux_workflow_tests": 21,
+  "migration_head": "20261003_0082",
+  "python_file_count": 454,
+  "python_manifest_sha256": "a6d000320684b2e3655118e6e7343bd67ac63b5802f288073bc21084e7c49550",
+  "all_installed_python_sources_match": true
+}

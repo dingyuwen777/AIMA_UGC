@@ -44,8 +44,22 @@ class HistoricalDirectoryPage:
 class HistoricalDirectoryBrowser:
     """只枚举批准根内的直接子目录和 XLSX，不提供文件管理能力。"""
 
-    def __init__(self, root: Path | None) -> None:
+    def __init__(self, root: Path | None, *, managed_wisersone_root: Path | None = None) -> None:
         self._configured_root = root
+        self._managed_wisersone_root = managed_wisersone_root
+
+    def _is_managed(self, relative_path: str) -> bool:
+        parts = _relative_parts(relative_path)
+        # 既有批准根内同名目录优先，不能静默遮蔽用户已有文件。
+        return bool(
+            self._managed_wisersone_root is not None
+            and parts
+            and parts[0] == "wisersone"
+            and not (self._root() / "wisersone").exists()
+        )
+
+    def _path_root(self, relative_path: str) -> Path:
+        return self._root(managed=self._is_managed(relative_path))
 
     def list_entries(
         self,
@@ -56,10 +70,19 @@ class HistoricalDirectoryBrowser:
     ) -> HistoricalDirectoryPage:
         if limit < 1 or limit > _MAX_LIMIT:
             raise ValueError(f"limit 必须在 1 到 {_MAX_LIMIT} 之间")
-        root = self._root()
+        root = self._path_root(relative_path)
         directory = self.resolve(relative_path, require_directory=True)
+        candidates = self._iter_entries(root, directory)
+        if not _relative_parts(relative_path) and self._managed_wisersone_root is not None:
+            managed = self._managed_wisersone_root
+            if managed.is_dir() and not (root / "wisersone").exists():
+                candidates.append(
+                    HistoricalDirectoryEntry(
+                        "wisersone", "wisersone", "directory", None, managed.stat().st_mtime_ns
+                    )
+                )
         entries = sorted(
-            self._iter_entries(root, directory),
+            candidates,
             key=lambda item: (
                 0 if item.kind == "directory" else 1,
                 item.name.casefold(),
@@ -85,8 +108,12 @@ class HistoricalDirectoryBrowser:
     def resolve(self, relative_path: str, *, require_directory: bool = False) -> Path:
         """解析一个 POSIX 相对路径，并拒绝每一级链接/Junction/逃逸。"""
 
-        root = self._root()
+        root = self._path_root(relative_path)
         parts = _relative_parts(relative_path)
+        if self._managed_wisersone_root is not None and parts[:2] == ("wisersone", ".staging"):
+            raise InvalidHistoricalRelativePath("WisersOne 暂存文件尚未发布，不能导入。")
+        if self._is_managed(relative_path):
+            parts = parts[1:]
         current = root
         for part in parts:
             current = current / part
@@ -120,10 +147,10 @@ class HistoricalDirectoryBrowser:
             raise InvalidHistoricalRelativePath("至少选择一个目录或 XLSX 文件")
         if max_files < 1 or max_depth < 1:
             raise ValueError("扫描文件数和目录深度上限必须为正数")
-        root = self._root()
         discovered: dict[str, HistoricalDirectoryEntry] = {}
         pending: list[tuple[str, int]] = []
         for relative_path in relative_paths:
+            root = self._path_root(relative_path)
             resolved = self.resolve(relative_path)
             if resolved.is_file():
                 if resolved.suffix.casefold() != ".xlsx":
@@ -133,7 +160,7 @@ class HistoricalDirectoryBrowser:
                 if len(discovered) > max_files:
                     raise InvalidHistoricalRelativePath("历史目录文件数超过配置上限")
             elif resolved.is_dir():
-                pending.append((resolved.relative_to(root).as_posix(), 0))
+                pending.append((self._entry(root, resolved).relative_path, 0))
             else:
                 raise InvalidHistoricalRelativePath("选择路径不是目录或 XLSX 文件")
 
@@ -162,8 +189,37 @@ class HistoricalDirectoryBrowser:
                     pending.append((entry.relative_path, child_depth))
         return tuple(sorted(discovered.values(), key=lambda item: item.relative_path.casefold()))
 
-    def _root(self) -> Path:
-        root = self._configured_root
+    def describe(self, relative_path: str) -> HistoricalDirectoryEntry:
+        """读取同一批准视图的 Manifest 身份，受管 alias 不暴露宿主绝对路径。"""
+        return self._entry(self._path_root(relative_path), self.resolve(relative_path))
+
+    def selects_managed_file(
+        self, file_relative_path: str, *, relative_paths: tuple[str, ...], recursive: bool
+    ) -> bool:
+        """按同一批准视图判断冻结选择是否消费受管文件，无需文件仍然存在。"""
+        if self._managed_wisersone_root is None:
+            return False
+        target = _relative_parts(file_relative_path)
+        if not target or target[0] != "wisersone":
+            return False
+        # 同名用户目录仍优先；不能因文本路径相同而保护另一个物理文件。
+        path_root = self._path_root(file_relative_path)
+        visible = path_root.joinpath(
+            *(target[1:] if self._is_managed(file_relative_path) else target)
+        )
+        managed = self._managed_wisersone_root.joinpath(*target[1:])
+        if visible.resolve() != managed.resolve():
+            return False
+        for selected in relative_paths:
+            parts = _relative_parts(selected)
+            if parts == target or parts == target[:-1]:
+                return True
+            if recursive and target[: len(parts)] == parts:
+                return True
+        return False
+
+    def _root(self, *, managed: bool = False) -> Path:
+        root = self._managed_wisersone_root if managed else self._configured_root
         if root is None:
             raise HistoricalDirectoryUnavailable("未配置历史导入根目录")
         try:
@@ -201,7 +257,12 @@ class HistoricalDirectoryBrowser:
                 byte_size = stat.st_size
             else:
                 continue
-            result.append(self._entry(root, resolved, kind=kind, stat=stat, byte_size=byte_size))
+            entry = self._entry(root, resolved, kind=kind, stat=stat, byte_size=byte_size)
+            if self._managed_wisersone_root is not None and _relative_parts(entry.relative_path)[
+                :2
+            ] == ("wisersone", ".staging"):
+                continue
+            result.append(entry)
         return result
 
     def _entry(
@@ -221,7 +282,13 @@ class HistoricalDirectoryBrowser:
             else (resolved_stat.st_size if path.is_file() else None)
         )
         return HistoricalDirectoryEntry(
-            relative_path=path.relative_to(root).as_posix(),
+            relative_path=(
+                "wisersone/" + path.relative_to(root).as_posix()
+                if self._managed_wisersone_root is not None
+                and root == self._managed_wisersone_root.resolve()
+                and root != self._configured_root
+                else path.relative_to(root).as_posix()
+            ),
             name=path.name,
             kind=resolved_kind,
             byte_size=resolved_size,
@@ -238,7 +305,9 @@ def _relative_parts(value: str) -> tuple[str, ...]:
     parts = tuple(part for part in path.parts if part not in {"", "."})
     if any(part == ".." for part in parts):
         raise InvalidHistoricalRelativePath("历史路径不能包含上级目录")
-    return parts
+    # Windows 的文件系统接受大小写等价路径；保护判断与读取必须采用同一等价规则。
+    # Linux 的 normcase 保持原值，因此不会把两个不同文件或目录合并。
+    return tuple(os.path.normcase(part) for part in parts)
 
 
 def _inside(root: Path, candidate: Path) -> bool:

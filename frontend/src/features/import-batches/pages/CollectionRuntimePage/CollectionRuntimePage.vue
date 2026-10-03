@@ -9,6 +9,7 @@ import type {
 } from '../../../../generated/api/client'
 import AppShell from '../../../../app/layouts/AppShell.vue'
 import AimaButton from '../../../../shared/ui/AimaButton.vue'
+import AimaDialog from '../../../../shared/ui/AimaDialog.vue'
 import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
 import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
 import { useTransientNotice } from '../../../../shared/ui/useTransientNotice'
@@ -24,11 +25,13 @@ import CollectionRuntimeTable from './components/CollectionRuntimeTable.vue'
 import DataImportDialog from './components/DataImportDialog.vue'
 import ImportBatchDetailDrawer from './components/ImportBatchDetailDrawer.vue'
 import TikHubSupplementDialog from './components/TikHubSupplementDialog.vue'
+import WisersoneImportPanel from './components/WisersoneImportPanel.vue'
 
 const store = useImportBatchesStore()
 const route = useRoute()
 const router = useRouter()
 const dataImportOpen = ref(false)
+const wisersoneOpen = ref(false)
 const supplementOpen = ref(false)
 const taskCenter = useTaskCenterStore()
 const { message: notice, show: showNotice } = useTransientNotice()
@@ -90,6 +93,13 @@ async function openDataImport(): Promise<void> {
   store.selectedHistoricalCampaign = null
   dataImportOpen.value = true
   await store.openHistoricalWorkspace()
+}
+
+/** 下载阶段在 Campaign 建立前就可查看；结果复用正式导入详情。 */
+async function openWisersoneResult(campaignId: string): Promise<void> {
+  wisersoneOpen.value = false
+  await openDataImport()
+  await store.refreshHistoricalCampaign(campaignId)
 }
 
 /** 新建补采按发布时间选择已入库内容，复用共享居中弹窗。 */
@@ -180,6 +190,12 @@ async function viewRunResults(runId: string): Promise<void> {
       description="统一查看数据导入与辅助补采运行"
     >
       <template #actions>
+        <AimaButton
+          variant="secondary"
+          @click="wisersoneOpen = true"
+        >
+          WisersOne 任务
+        </AimaButton>
         <AimaButton
           class="runtime-action runtime-action--refresh"
           variant="secondary"
@@ -304,6 +320,27 @@ async function viewRunResults(runId: string): Promise<void> {
       v-model="dataImportOpen"
       @view-contents="viewContents"
     />
+    <AimaDialog
+      v-model="wisersoneOpen"
+      label="WisersOne 下载与导入任务"
+      width="720px"
+    >
+      <template #header>
+        <h2>WisersOne 下载与导入任务</h2>
+      </template>
+      <WisersoneImportPanel
+        v-if="wisersoneOpen"
+        @view-result="openWisersoneResult"
+      />
+      <template #footer>
+        <AimaButton
+          variant="secondary"
+          @click="wisersoneOpen = false"
+        >
+          关闭
+        </AimaButton>
+      </template>
+    </AimaDialog>
     <TikHubSupplementDialog
       v-model="supplementOpen"
       :capabilities="store.capabilities"

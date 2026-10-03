@@ -199,7 +199,7 @@ function closeConfirm(): void {
           :disabled="store.loading || store.saving"
           @click="openNewPlan"
         >
-          新建 TikHub 采集计划
+          新建采集计划
         </AimaButton>
       </template>
     </AimaPageHeader>

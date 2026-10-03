@@ -197,6 +197,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
         )
 
         assert registry.supported_types == (
+            "ingestion.wisersone-download.v1",
             "collection.run.v1",
             "ingestion.import-excel.v2",
             "ingestion.historical-discover.v1",

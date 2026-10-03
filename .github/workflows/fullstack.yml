@@ -47,6 +47,7 @@ jobs:
       AIMA_DB_USER: aima_ugc
       AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
       AIMA_HISTORICAL_IMPORT_ROOT: .runtime/ci-stage12/history
+      AIMA_WISERSONE_INPUT_DIR: .runtime/ci-stage12/history/wisersone
       AIMA_LLM_BASE_URL: http://127.0.0.1:8091/v1
       # 价格目录身份使用仓库已锁定条目；Base URL 仍只指向本机假服务，不会出网。
       AIMA_LLM_PROVIDER_NAME: api.deepseek.com
@@ -89,7 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}" "${AIMA_WISERSONE_INPUT_DIR}"
           printf '%s\n' 'stage8f-ci' > "${AIMA_SECRET_DIR}/postgres_password"
           printf '%s\n' 'stage8f-import-cursor-signing-key-000000000001' > "${AIMA_SECRET_DIR}/import_batch_cursor_signing_key"
           printf '%s\n' 'stage8f-content-cursor-signing-key-000000000001' > "${AIMA_SECRET_DIR}/content_cursor_signing_key"

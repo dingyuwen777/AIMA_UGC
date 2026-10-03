@@ -51,7 +51,7 @@ from aima_ugc.modules.collection.planning import (
     CollectionPlanDefinition,
     CollectionPlanningService,
     PlanPlatformDefinition,
-    require_tikhub_plan,
+    require_supported_plan,
 )
 from aima_ugc.modules.collection.scheduler import ScheduleExpressionError, next_schedule_time
 from aima_ugc.modules.collection.strategy_http import (
@@ -463,7 +463,11 @@ class PostgresResourceLifecycleHttpService:
                     current = planning.get_plan_for_update(plan_id)
                     if current is None or current.schedule_expr is None:
                         raise CollectionStrategyResourceNotFound
-                    require_tikhub_plan(current)
+                    require_supported_plan(current)
+                    if current.plan_type != body.plan_type:
+                        raise CollectionStrategyConflict(
+                            "已有采集计划不能切换类型，请新建另一类型计划"
+                        )
                     candidate = _plan_definition_from_update(body, current.created_by)
                     _validate_execution_surface(
                         session,
@@ -489,6 +493,7 @@ class PostgresResourceLifecycleHttpService:
                         brand_ids=body.brand_ids,
                         comment_policy=candidate.comment_policy,
                         decision_policy=candidate.decision_policy,
+                        plan_type=candidate.plan_type,
                     )
                     _audit(
                         session,
@@ -529,7 +534,7 @@ class PostgresResourceLifecycleHttpService:
                     source = repository.get_plan(plan_id)
                     if source is None or source.schedule_expr is None:
                         raise CollectionStrategyResourceNotFound
-                    require_tikhub_plan(source)
+                    require_supported_plan(source)
                     definition = CollectionPlanDefinition(
                         plan_type=source.plan_type,
                         name=body.name,
@@ -1033,9 +1038,9 @@ def _plan_definition_from_update(
         schedule_version=body.expected_version + 1,
         misfire_policy="latest_only",
         max_catch_up_runs=0,
-        detail_policy="on_change",
-        comment_policy=body.comment_policy,
-        decision_policy=CollectionDecisionPolicyV1(comment_mode=body.comment_policy),
+        detail_policy="not_applicable" if body.plan_type == "wisersone" else "on_change",
+        comment_policy=body.comment_policy or "not_applicable",
+        decision_policy=CollectionDecisionPolicyV1(comment_mode=body.comment_policy or "adaptive"),
         created_by=created_by,
         platforms=tuple(
             PlanPlatformDefinition(

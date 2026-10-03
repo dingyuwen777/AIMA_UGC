@@ -1,0 +1,13 @@
+{
+  "environment": "Linux/AMD64 Docker uid10001 headless, same host auth after image upgrade",
+  "image_manifest": "sha256:7287ad2ef1930694831439db7a86c159ca769b287445a58c7ddc106e5ff5686b",
+  "website_task_id": "19053251-95bf-515e-b976-0e4277df4de5",
+  "submitted_at": "2026-10-03T13:43:45+08:00",
+  "completed_at": "2026-10-03T14:31:51+08:00",
+  "bytes": 17782821,
+  "sha256": "a77b8646b52c43413886cba86e37e9fcfb83bc7702f2c0ea300f11db3682b28b",
+  "crc_valid": true,
+  "headers_valid": true,
+  "password_prompt": false,
+  "business_data_audited": false
+}

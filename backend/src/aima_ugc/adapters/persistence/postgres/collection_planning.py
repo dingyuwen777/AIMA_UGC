@@ -67,13 +67,14 @@ class PostgresCollectionPlanningRepository:
                 updated_at=now,
             )
         )
-        self._session.execute(
-            insert(collection_plan_decision_policies_table).values(
-                plan_id=plan_id,
-                policy=definition.decision_policy.model_dump(mode="json"),
-                updated_at=now,
+        if definition.plan_type == "tikhub":
+            self._session.execute(
+                insert(collection_plan_decision_policies_table).values(
+                    plan_id=plan_id,
+                    policy=definition.decision_policy.model_dump(mode="json"),
+                    updated_at=now,
+                )
             )
-        )
 
         if definition.platforms:
             self._session.execute(
@@ -394,9 +395,13 @@ class PostgresCollectionPlanningRepository:
                 collection_plan_decision_policies_table.c.plan_id == plan_id
             )
         )
-        if policy_payload is None:
+        if policy_payload is None and row["plan_type"] == "tikhub":
             raise RuntimeError(f"Collection Plan 缺少 Decision Policy: {plan_id}")
-        decision_policy = CollectionDecisionPolicyV1.model_validate(policy_payload)
+        decision_policy = (
+            CollectionDecisionPolicyV1.model_validate(policy_payload)
+            if policy_payload is not None
+            else CollectionDecisionPolicyV1()
+        )
         platforms = tuple(_row_to_platform(platform_row) for platform_row in platform_rows)
         return _row_to_plan(
             row,
@@ -426,7 +431,7 @@ def _row_to_plan(
     return CollectionPlanRecord(
         id=cast(UUID, row["id"]),
         name=cast(str, row["name"]),
-        plan_type=cast(Literal["tikhub"], row["plan_type"]),
+        plan_type=cast(Literal["tikhub", "wisersone"], row["plan_type"]),
         enabled=cast(bool, row["enabled"]),
         schedule_expr=cast(str | None, row["schedule_expr"]),
         timezone=cast(str, row["timezone"]),

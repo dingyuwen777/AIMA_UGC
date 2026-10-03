@@ -12,6 +12,7 @@ from aima_ugc.bootstrap.artifact_cleanup import (
 )
 from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
+from aima_ugc.bootstrap.wisersone_cleanup import cleanup_wisersone_files
 from aima_ugc.platform.logging import log_event, log_exception_event
 
 _SCHEDULER_POLL_SECONDS = 30.0
@@ -60,6 +61,7 @@ def run_scheduler_loop(
         if current >= next_cleanup_at:
             try:
                 cleanup_result = cleanup(runtime)
+                cleanup_wisersone_files(runtime)
             except Exception as exc:
                 # Retention 是辅助 housekeeping；失败必须可观察，但不能拖垮采集调度主循环。
                 log_exception_event(

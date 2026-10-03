@@ -46,7 +46,7 @@ from aima_ugc.modules.collection.planning import (
     CollectionPlanningService,
     CollectionPlanRecord,
     PlanPlatformDefinition,
-    require_tikhub_plan,
+    require_supported_plan,
 )
 from aima_ugc.modules.collection.scheduler import ScheduleExpressionError
 from aima_ugc.modules.collection.search_config import normalize_search_config
@@ -262,9 +262,11 @@ def _plan_definition(
         schedule_version=1,
         misfire_policy="latest_only",
         max_catch_up_runs=0,
-        detail_policy="on_change",
-        comment_policy=request.comment_policy,
-        decision_policy=CollectionDecisionPolicyV1(comment_mode=request.comment_policy),
+        detail_policy="not_applicable" if request.plan_type == "wisersone" else "on_change",
+        comment_policy=request.comment_policy or "not_applicable",
+        decision_policy=CollectionDecisionPolicyV1(
+            comment_mode=request.comment_policy or "adaptive"
+        ),
         created_by=None,
         platforms=tuple(
             PlanPlatformDefinition(
@@ -312,7 +314,17 @@ def _validate_execution_surface(
     *,
     require_explicit_search_config: bool,
 ) -> None:
-    require_tikhub_plan(plan)
+    require_supported_plan(plan)
+    if plan.plan_type == "wisersone":
+        try:
+            snapshot = PostgresBrandVehicleRepository(session).snapshot(
+                brand_ids=plan.brand_ids or None
+            )
+        except (LookupError, ValueError) as exc:
+            raise CollectionStrategyResourceNotFound from exc
+        if not snapshot.brands:
+            raise CollectionStrategyConflict("Brand Filter 当前没有可用 active Brand")
+        return
     keyword_repository = PostgresKeywordCatalogRepository(session)
     for pack_id in sorted(plan.keyword_pack_ids, key=str):
         pack = keyword_repository.get_pack_for_update(pack_id)
@@ -380,7 +392,7 @@ def _keyword_pack_summary(record: KeywordPackSummaryRecord) -> KeywordPackSummar
 
 def _plan_response(record: CollectionPlanRecord) -> CollectionPlanResponse:
     try:
-        require_tikhub_plan(record)
+        require_supported_plan(record)
     except ValueError as exc:
         raise RuntimeError("Collection Plan 策略事实不满足当前类型与执行约束") from exc
     if record.schedule_expr is None:
@@ -389,7 +401,7 @@ def _plan_response(record: CollectionPlanRecord) -> CollectionPlanResponse:
         record.timezone != "Asia/Shanghai"
         or record.misfire_policy != "latest_only"
         or record.max_catch_up_runs != 0
-        or record.detail_policy != "on_change"
+        or (record.plan_type == "tikhub" and record.detail_policy != "on_change")
     ):
         raise RuntimeError("Collection Plan 策略事实不满足 Stage 8F 首版约束")
     return CollectionPlanResponse(
@@ -402,8 +414,12 @@ def _plan_response(record: CollectionPlanRecord) -> CollectionPlanResponse:
         schedule_version=record.schedule_version,
         next_run_at=record.next_run_at,
         last_scheduled_at=record.last_scheduled_at,
-        detail_policy=cast(Literal["on_change"], record.detail_policy),
-        comment_policy=cast(Literal["adaptive", "full"], record.comment_policy),
+        detail_policy=None
+        if record.plan_type == "wisersone"
+        else cast(Literal["on_change"], record.detail_policy),
+        comment_policy=None
+        if record.plan_type == "wisersone"
+        else cast(Literal["adaptive", "full"], record.comment_policy),
         platforms=tuple(
             CollectionPlanPlatformResponse(
                 platform=item.platform,
