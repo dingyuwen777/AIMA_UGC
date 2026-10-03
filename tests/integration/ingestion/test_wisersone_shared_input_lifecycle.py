@@ -1,5 +1,6 @@
 """公开 server_path 的新消费者与 Wise 原 XLSX 清理共享同一物理生命周期。"""
 
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
@@ -32,7 +33,16 @@ from .test_wisersone_workflow import _create
 from .test_wisersone_workflow import workflow as workflow
 
 _SERVER = "/api/v1/data-import-campaigns/server"
-_KINDS = ("file", "parent", "multi", "root_recursive")
+_KINDS = (
+    "file",
+    "parent",
+    "multi",
+    "root_recursive",
+    pytest.param("file_case", marks=pytest.mark.skipif(os.name != "nt", reason="Windows 路径等价")),
+    pytest.param(
+        "parent_case", marks=pytest.mark.skipif(os.name != "nt", reason="Windows 路径等价")
+    ),
+)
 
 
 def _finished_native(workflow: Any) -> tuple[dict[str, Any], Path, Any]:
@@ -64,6 +74,8 @@ def _body(workflow: Any, native: dict[str, Any], kind: str) -> dict[str, Any]:
         "parent": [f"wisersone/{native['id']}"],
         "multi": ["manual-empty", exact],
         "root_recursive": [""],
+        "file_case": [f"wisersone/{native['id'].upper()}/WISERSONE_LAST24H.XLSX"],
+        "parent_case": [f"wisersone/{native['id'].upper()}"],
     }[kind]
     return {
         "client_idempotency_key": f"shared-input:{uuid4()}",
@@ -320,14 +332,23 @@ def test_source_copy_and_recheck_keep_original_protected_then_import_independent
     _complete_then_expire(workflow, consumer, canonical, published, cleanup_at)
 
 
-def test_staging_is_rejected_without_campaign_or_job(workflow: Any) -> None:
+@pytest.mark.parametrize(
+    "stage_name",
+    [
+        ".staging",
+        pytest.param(
+            ".STAGING", marks=pytest.mark.skipif(os.name != "nt", reason="Windows 路径等价")
+        ),
+    ],
+)
+def test_staging_is_rejected_without_campaign_or_job(workflow: Any, stage_name: str) -> None:
     runtime = workflow[0]
     native, published, _ = _finished_native(workflow)
     stage = runtime.settings.wisersone_input_dir / ".staging" / native["id"] / published.name
     stage.parent.mkdir(parents=True, exist_ok=True)
     stage.write_bytes(published.read_bytes())
     body = _body(workflow, native, "file")
-    body["relative_paths"] = [f"wisersone/.staging/{native['id']}/{published.name}"]
+    body["relative_paths"] = [f"wisersone/{stage_name}/{native['id']}/{published.name}"]
     _assert_atomic_rejection(workflow, body, 400)
     listed = workflow[2].get(
         "/api/v1/data-import-sources/server/directories", params={"relative_path": "wisersone"}

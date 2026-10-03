@@ -305,7 +305,9 @@ def _relative_parts(value: str) -> tuple[str, ...]:
     parts = tuple(part for part in path.parts if part not in {"", "."})
     if any(part == ".." for part in parts):
         raise InvalidHistoricalRelativePath("历史路径不能包含上级目录")
-    return parts
+    # Windows 的文件系统接受大小写等价路径；保护判断与读取必须采用同一等价规则。
+    # Linux 的 normcase 保持原值，因此不会把两个不同文件或目录合并。
+    return tuple(os.path.normcase(part) for part in parts)
 
 
 def _inside(root: Path, candidate: Path) -> bool:
