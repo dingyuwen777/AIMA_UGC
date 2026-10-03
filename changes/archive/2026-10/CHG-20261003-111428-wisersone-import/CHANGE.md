@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261003-111428-wisersone-import
 title: WisersOne 下载与统一导入接入
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/700-wisersone-import
 created: 2026-10-03
