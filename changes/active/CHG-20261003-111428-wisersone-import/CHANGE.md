@@ -48,7 +48,7 @@ data_changes: [WisersOne download lifecycle migration]
 
 ## 推断与待确认
 
-网站当前会话有效性和正式非 root Chromium 兼容需本轮真实验证。
+本轮 Windows 和 Linux 已免密码完成真实导出；网站未来可以撤销会话，需要人工更新认证目录。数据内容的业务正确性按用户决定不在验收范围。
 
 # 目标、成功标准与非目标
 
@@ -104,19 +104,21 @@ E1 要求提交/轮询/下载阶段拆分；E2 要求复用生产导入；E3 要
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 正式 Provider 和人工入口 | #700 / AC1 | not_satisfied | 实施中 |
-| R2 | 过去24小时、五平台和原子 Excel | #700 / AC2 | not_satisfied | 实施中 |
-| R3 | 两份初始 JSON 正式打包 | #700 / AC3 | not_satisfied | 实施中 |
-| R4 | host auth 首次播种、刷新与升级 | #700 / AC4 | not_satisfied | 实施中 |
-| R5 | 无总等待上限、持久恢复与取消 | #700 / AC5 | not_satisfied | 实施中 |
-| R6 | 受管文件接入标准统一导入 | #700 / AC6 | not_satisfied | 实施中 |
-| R7 | 现有页面入口与完整结果 | #700 / AC7 | not_satisfied | 实施中 |
-| R8 | 正式非 root Docker 与 Compose | #700 / AC8 | not_satisfied | 实施中 |
-| R9 | 七天原文件清理、Canonical 保留 | #700 / AC9 | not_satisfied | 实施中 |
-| R10 | Windows 实际免密码下载 | #700 / AC10 | not_satisfied | 实施中 |
-| R11 | 正式 Linux 实际下载和隔离导入 | #700 / AC11 | not_satisfied | 实施中 |
-| R12 | 文档、验证与完整交付收尾 | #700 / AC12 | not_satisfied | 实施中 |
-| R13 | 共用计划弹窗、名称/频率/品牌及自动下载导入 | 用户追加决定、#700 / AC13 | not_satisfied | 实施中 |
+| R1 | 正式 Provider 和人工入口 | #700 / AC1 | satisfied | providers/wisersone 与 sibling wisersone_test；实际 Windows/Linux 模块命令、正式 wheel 人工入口解析 |
+| R2 | 过去24小时、五平台和原子 Excel | #700 / AC2 | satisfied | 原生产选择器与字段配置、Windows/Linux 实际导出 JSON 证据、ZIP CRC 与表头解析 |
+| R3 | 两份初始 JSON 正式打包 | #700 / AC3 | satisfied | 两个精确 Secret 例外路径；当前 wheel/sdist 与正式镜像均解析到两份 JSON；不输出值 |
+| R4 | host auth 首次播种、刷新与升级 | #700 / AC4 | satisfied | auth 单元/跨进程锁/崩溃释放/原子失败保护；候选镜像实测同一宿主状态未被覆盖 |
+| R5 | 无总等待上限、持久恢复与取消 | #700 / AC5 | satisfied | 65 次正常 continuation、未知发送回执、取消持久传播/终态竞争、预检/监控/Chunk 恢复与耗尽重试边界；实际 Linux 导出跨30分钟 |
+| R6 | 受管文件接入标准统一导入 | #700 / AC6 | satisfied | 正式 server_path Campaign/Source/Canonical/Reader/Mapper/Owner；PG 工作流与真实 full-stack 自动入库 |
+| R7 | 现有页面入口与完整结果 | #700 / AC7 | satisfied | 采集运行中心 WisersOne 任务弹窗、取消/恢复/结果；3 项浏览器状态测试与19项正式 full-stack 回归 |
+| R8 | 正式非 root Docker 与 Compose | #700 / AC8 | satisfied | 根 Dockerfile 当前候选镜像构建、uid10001 Chromium 实际启动及 installed 包21项PG测试；Compose/Windows bind接线和既有构建源检查 |
+| R9 | 七天原文件清理、Canonical 保留 | #700 / AC9 | satisfied | 45项Windows PG PASS，持久目录消费者准入、发现/Source复制复核保护、清理先认领原子409、根递归及大小写等价、终态满七天释放、Canonical保留；独立复审机制闭合，最终Linux证据按R12待补 |
+| R10 | Windows 实际免密码下载 | #700 / AC10 | satisfied | changes/active/CHG-20261003-111428-wisersone-import/evidence/windows-download.json |
+| R11 | 正式 Linux 实际下载和隔离导入 | #700 / AC11 | satisfied | 同目录 linux-download.json/linux-final.json；当前候选镜像 installed 包21项PG与认证保留 smoke |
+| R12 | 文档、自动测试、生成消费者、静态检查、Completion和独立Review | #700 / AC12 | not_satisfied | 最终Windows检查通过；最终Linux镜像/installed PG/full-stack受D盘空间耗尽和Docker只读阻塞，独立Review最终证据及Ready记录仍未闭合 |
+| R14 | 当前head远端PR CI与guarded merge | #700 / AC12 | explicitly_deferred | 按canonical Coding ref23正式顺序，在本地载体ready_for_review后执行当前PR CI；这是最终PR Ready/guarded merge前硬门禁，不能作为post-merge延期或跳过。当前未触发最终CI，整体仍pending |
+| R15 | 合并后main-fresh、自动归档、Closure、cleanup | #700 / AC12 | explicitly_deferred | live Issue AC12、canonical Coding ref23与项目AGENTS明确属于merge后正式阶段，保留在同一任务scope；依赖R14真实merge，AC12和整体交付保持pending，不能以载体Ready视为任务完成 |
+| R13 | 共用计划弹窗、名称/频率/品牌及自动下载导入 | 用户追加决定、#700 / AC13 | satisfied | 前端10项计划测试；PG Scheduler唯一Occurrence、冻结快照、CRUD复制启停归档；正式浏览器→API→Scheduler→Worker→入库→结果工作流 |
 
 # 计划改动
 
@@ -126,14 +128,14 @@ Provider/wisersone 与 wisersone_test、Ingestion 下载模型与 Contract、PG 
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | required | auth/原子发布/任务恢复/UI |
-| 接口 / 契约 | required | HTTP/Job/OpenAPI/生成 client |
-| 集成 / 持久化 / 运行依赖 | required | 隔离真实 PG、Job、Campaign、Owner |
-| 用户 / 工作流验收 | required | 下载→导入结果与取消/重试 |
-| 跨组件关键路径 | required | API/worker/import/frontend |
-| 外部依赖 / 供应方探测 | required | Windows 与 Linux 各实际下载 |
-| 构建 / 打包 / 运行 | required | wheel 与非 root Docker |
-| 文档 / 治理 / 其他 | required | Completion、秘密扫描例外、Review、CI |
+| 行为 / 单元 / 组件 | required | 当前2066项后端PASS、16既有skip、12subtests；306项前端单元与205项浏览器PASS；4个取消/恢复/清理反例先Red后Green |
+| 接口 / 契约 | required | OpenAPI/client正式生成、drift/兼容PASS；旧TikHub默认及必填语义回归 |
+| 集成 / 持久化 / 运行依赖 | required | Windows隔离PG 13+独立8项PASS；正式Linux installed包21项PASS；空库全迁移至0082及alembic check无漂移 |
+| 用户 / 工作流验收 | required | 19项正式full-stack PASS，Wise默认创建/频率/品牌/自动下载导入/结果与既有Excel入口；Agent本地验证后直接交付是用户明确授权，不冒充用户本人已验收 |
+| 跨组件关键路径 | required | 同一真实API/持久Worker/PG/前端与生产Reader/Mapper/Owner；只替代网站边界，保留正式30秒continuation |
+| 外部依赖 / 供应方探测 | required | Windows与Linux免密码真实下载；只验证文件结构，不审核业务内容 |
+| 构建 / 打包 / 运行 | required | fresh wheel/sdist解析、JSON2份和人工入口；正式backend非root镜像构建/Chromium启动/源hash比对 |
+| 文档 / 治理 / 其他 | required | 正式产品/架构/运行/导入文档与Secret窄例外已同步；Review/Completion待最后记录，远端CI与post-merge按R14执行 |
 
 ## 验证计划
 
@@ -141,7 +143,7 @@ Provider/wisersone 与 wisersone_test、Ingestion 下载模型与 Contract、PG 
 
 # 风险、兼容性、迁移与回滚
 
-网站会话仍可失效，需要人工重新登录。新增下载生命周期表，不改旧导入 Contract 默认。保留既有历史数据与 Canonical。失败时停止新下载，旧导入流程保持可用；回滚代码前保留 host auth 和已完成输入。
+网站会话仍可失效，需要人工重新登录。HTTP增加WisersOne任务与可选plan_type（旧TikHub默认不变），Job增加默认observe/可选cancel，同一持久Runtime。迁移0080新增下载生命周期，0081新增计划/Occurrence关联与一致性约束，0082新增cancelling。已有Wise事实或取消传播未结清时downgrade明确拒绝，不能用删除历史任务作为常规回滚。失败时停用Wise计划、结清活动任务，保留host auth、输入与数据库备份；既有Canonical用于历史重筛。
 
 # 文档、依赖、部署与发布影响
 
@@ -149,24 +151,24 @@ Provider/wisersone 与 wisersone_test、Ingestion 下载模型与 Contract、PG 
 
 # 完成审计
 
-- [ ] upstream_re_read：重新读取用户决定和 live Issue。
-- [ ] change_coverage：覆盖全部 AC。
-- [ ] reverse_audit：API↔UI、Job↔结果、源码↔wheel/镜像。
+- [x] upstream_re_read：重新读取本轮全部用户决定、live Issue #700 AC1–AC13及项目正式采集/统一导入事实，未把本Change当上游全集。
+- [x] change_coverage：逐AC映射R1–R15；自动下载/计划/品牌未漏项；远端和合并后义务仍属完整范围。
+- [x] reverse_audit：计划创建/编辑/复制启停归档→类型化Contract/Scheduler；后端任务→运行中心取消恢复/导入详情/声音广场；Job→真实终态/取消/监控/预检恢复；源码→wheel/正式installed镜像；TTL→Canonical保留。
 - [ ] unresolved_cleared：未满足项清零。
 
 # 完成证据与状态
 
 ## 新鲜证据
 
-已验证 live Issue canonical create Contract 通过，分支从同步 main 建立。实现证据待本轮获取。
+最终产品实现冻结于 18eec1e025eb1309dd39ba80b0bf69d3d422f234，base为3e13cccf63a75b05eec12e302d557c3cf99dcaac。完整分层验证见同一任务的 evidence/validation.md 与 candidate.json，真实导出见windows-download.json/linux-download.json/linux-final.json。证据不含认证内容。后续仅Change/非敏感Evidence变动不失效产品检查；若产品改变必须补受影响验证。
 
 ## 未验证内容与剩余风险
 
-全部实现仍在进行；不声称功能完成。
+Windows最终45项PG与2066项后端已通过，前端205/306项PASS；当前Docker D盘约24MB，最终构建出现I/O/aborted journal和只读，最终Linux验证未完成，已请用户释放空间。不以既有Linux成功证据冒充最新候选。独立复审和远端CI/正式交付仍进行中。外部网站可能使登录态过期；只能保证本轮免密码成功，不能承诺永久会话有效。数据业务真伪按用户决定不审核。既有Pydantic/Starlette弃用和前端bundle体积提示未升级依赖处理。
 
 ## 交付状态
 
-Issue #700；本地 feature/700-wisersone-import。PR/CI/merge/archive/closure 尚未执行。Release/Deploy 不适用：用户只授权合并。
+Issue #700，feature/700-wisersone-import，早期Draft PR #701已建立。当前仍未Ready、未merge；最后Review/CI后按R14继续main-fresh/native archive/Closure/cleanup。Release/Deploy不适用：用户只授权验证后合并，未授权正式发布、部署或生产数据操作。
 
 ## 备注
 

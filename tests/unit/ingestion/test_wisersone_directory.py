@@ -43,3 +43,18 @@ def test_existing_directory_is_not_shadowed_by_managed_alias(tmp_path: Path) -> 
     browser = HistoricalDirectoryBrowser(approved, managed_wisersone_root=managed)
     assert browser.resolve("wisersone/old.xlsx") == original
     assert len(browser.list_entries(relative_path="").items) == 1
+
+
+def test_user_unicode_path_keeps_actual_io_spelling(tmp_path: Path) -> None:
+    directory = tmp_path / "İ"
+    directory.mkdir()
+    original = directory / "İ.xlsx"
+    original.write_bytes(b"unicode source")
+    browser = HistoricalDirectoryBrowser(tmp_path)
+    assert browser.resolve("İ/İ.xlsx").read_bytes() == b"unicode source"
+    assert [
+        entry.relative_path
+        for entry in browser.discover_xlsx(
+            relative_paths=("İ",), recursive=False, max_files=10, max_depth=3
+        )
+    ] == ["İ/İ.xlsx"]
