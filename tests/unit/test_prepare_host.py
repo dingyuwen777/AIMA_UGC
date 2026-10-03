@@ -13,7 +13,7 @@ import prepare_host as host_preparation  # noqa: E402
 
 
 @pytest.mark.skipif(os.name == "nt", reason="验证 POSIX geteuid/chown/chmod 行为")
-def test_runtime_bind_compatible_relaxes_only_data_and_logs(
+def test_runtime_bind_compatible_relaxes_only_runtime_bind_directories(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -45,7 +45,12 @@ def test_runtime_bind_compatible_relaxes_only_data_and_logs(
     relaxed = {
         relative for relative, strict_permissions in directory_calls if not strict_permissions
     }
-    assert relaxed == {"runtime/data", "runtime/logs"}
+    assert relaxed == {
+        "runtime/data",
+        "runtime/logs",
+        "runtime/wisersone-auth",
+        "aima-historical-input/wisersone",
+    }
     assert all(
         strict_permissions
         for relative, strict_permissions in directory_calls

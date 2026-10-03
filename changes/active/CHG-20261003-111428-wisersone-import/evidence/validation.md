@@ -78,3 +78,16 @@ WIS-DR-04：新增正式公开server_path消费者对同一受管原Excel的准�
 本机Docker只读导致的task-owned镜像/构建缓存清理限制是另一个收尾轴，不能冒充已清理，也不以清理阻塞撤回已经取得的产品验证事实。认证运行态已单独保留到默认AIMA_HOST_ROOT/runtime/wisersone-auth；该持久状态不属临时缓存。main-fresh、原生自动归档、Issue Closure及限定cleanup仍按实际结果继续。
 
 有限独立复审最终报告原文保存在 `review-final.md`：WIS-DR-01至04 resolved，代码范围 NO_FINDINGS_WITHIN_SCOPE，本地Completion准入获支持，当前CI/merge clearance仍pending。Owner据此准确更新R12/R14/R15/R16与完成审计，并实际执行 `scripts/quality/check_change_completion.py --root . --require-active-ready`：PASS（159 gated/strict，128 legacy）。初次严格检查暴露Change列表和来源的机器格式错误，已仅修正metadata为正式块列表和稳定AC绑定；未改变产品、验证断言或完成语义。canonical governance_contract validate-change及validate-pr亦PASS。
+
+## 正式 CI 首轮与检查同步
+
+carrier `02a23c3087ef551be52e27ed23bb55c1a090732b` 的实际完整CI：`37116942170`，Runtime `37116941912`，Release只读dry-run `37116941849`，Tooling `37116941841`。
+
+- 正式Linux full-stack通过；离线候选构建和严格回放通过；Linux/Windows工具链通过。当前CI总体仍失败，不据部分绿色合并。
+- Linux单元1822 PASS/1 FAIL：原 `test_prepare_host` 的精确放宽目录集合仍只列data/log，遗漏已批准的Wise认证和输入bind；default Linux严格权限逻辑不改变。
+- Linux PG collection236 PASS/1 FAIL：原 `test_collection_worker_runtime` 精确Registry列表遗漏正式新增的Wise Job，既有所有类型和顺序保持。
+- Compose已通过主Linux运行步骤，但Windows overlay精确mount字典仍漏新增Wise bind，失败在bootstrap集合比对。
+
+修正仅同步既有强断言：Windows兼容精确列四个bind目录且其它目录全部strict；Registry精确列表添加实际Wise类型；正式Runtime exact mounts补新增挂载并增加宿主源路径、API只读、Worker/Scheduler可写检查。没有删测试、改预算或把等号改成包含。prepare_host只改注释和CLI说明，不改运行逻辑；Operations记录既有Windows权限翻译边界。
+
+本地重新执行同一Runtime workflow内嵌validator，输入为实际 `docker compose -f compose.yaml -f compose.windows.yaml config --format json`：PASS。目标Unit/部署/CI检查51 PASS/6既有POSIX skip，0.49秒；Ruff检查和format通过。首次sandbox运行出现pytest目录WinError5属于宿主权限错误，已在授权正常宿主环境原断言重跑；不算产品失败或通过。三个Linux实际失败的修正仍须下一current-head正式CI得到Green；PR已返回Draft修正，不绕过门禁。
