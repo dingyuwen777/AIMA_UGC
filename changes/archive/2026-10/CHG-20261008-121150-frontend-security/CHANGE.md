@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261008-121150-frontend-security
 title: 修复前端依赖安全审计阻塞
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: tech/frontend-security-20261008
 created: 2026-10-08
