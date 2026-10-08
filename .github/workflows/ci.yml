@@ -328,13 +328,13 @@ jobs:
       - name: Setup Python
         if: >-
           (github.event_name != 'pull_request' || github.event.action != 'edited') &&
-          (needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true')
+          (needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true' || needs.ci-plan.outputs.frontend_required == 'true')
         uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.14.7
 
       - name: Cache uv downloads
-        if: needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true'
+        if: needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true' || needs.ci-plan.outputs.frontend_required == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/uv
@@ -361,7 +361,7 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.action != 'edited'
         shell: bash
         env:
-          PYTHON_REQUIRED: ${{ needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true' }}
+          PYTHON_REQUIRED: ${{ needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true' || needs.ci-plan.outputs.frontend_required == 'true' }}
           FRONTEND_REQUIRED: ${{ needs.ci-plan.outputs.frontend_required }}
         run: |
           set -euo pipefail
@@ -374,7 +374,7 @@ jobs:
           fi
 
       - name: Install frozen Python environment
-        if: needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true'
+        if: needs.ci-plan.outputs.backend_required == 'true' || needs.ci-plan.outputs.repository_quality_required == 'true' || needs.ci-plan.outputs.frontend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail

@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261008-121150-frontend-security
 title: 修复前端依赖安全审计阻塞
 level: L2
-status: ready_for_review
+status: in_progress
 owner: Codex
 branch: tech/frontend-security-20261008
 created: 2026-10-08
@@ -12,9 +12,12 @@ completion_gate: required
 depends_on: []
 affected_areas:
   - "frontend-dependencies"
+  - "frontend-ci-prerequisite"
 affected_paths:
   - "frontend/package.json"
   - "frontend/package-lock.json"
+  - ".github/workflows/ci.yml"
+  - "tests/unit/test_ci_workflow_structure.py"
 contracts: []
 data_changes: []
 ---
@@ -62,15 +65,15 @@ Requirement Source 为 #704；用户已明确批准上述最小升级并要求�
 
 ## 成功标准
 
-以 #704 / AC1–AC5 为上游完成定义。预合并 Ready 与实际 main-fresh/archive/Closure 不混为同一阶段。
+以 #704 / AC1–AC6 为上游完成定义。预合并 Ready 与实际 main-fresh/archive/Closure 不混为同一阶段。
 
 ## 范围
 
-两个 frontend 依赖文件与本独立 Change。只更新 Vue 同版本组件及两个已批准间接依赖。
+两个frontend依赖文件、现有CI的Python测试前置条件、前置回归与本Change。依赖仍只更新三组批准补丁；正式CI新失败要求补齐既有前端测试需要的锁定Python环境。
 
 ## 非目标
 
-其他依赖/Runtime/工具链升级、业务代码、API/Schema/Migration、CI/保护规则改造、Release、部署与生产数据操作。
+其他依赖/Runtime/工具链升级、业务代码、API/Schema/Migration、CI重构、删减检查或保护规则改造、Release、部署与生产数据操作。
 
 ## 必须保持不变
 
@@ -111,8 +114,10 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 | R1 | 三组精确升级且无无关漂移 | #704 / AC1 | satisfied | verify_security_lock.py PASS：12 个批准节点；无节点新增/删除，无关元数据不变；Babel 解析器保持原 7.29.8 |
 | R2 | 正式安装与审计 Green，保留报告 | #704 / AC2 | satisfied | npm ci exit0、npm audit --json exit0，各严重性及 total 均 0；npm ls exit0 无旧副本或 invalid |
 | R3 | 前端回归及生成一致性 | #704 / AC3 | satisfied | lint/typecheck/build exit0；38 文件306 unit PASS；205 Browser Mock PASS；Orval 生成无 Git diff |
-| R4 | 需求/实现完整审计及独立 Review | #704 / AC4 | satisfied | 独立 A1/A2 Completion Review PASS，reviewed head8c98d421/base cef8629；SEC-PF-01 CLOSED，无其他阻塞 Finding |
+| R4 | 需求/实现完整审计及独立 Review | #704 / AC4 | not_satisfied | 旧两依赖 A1/A2 PASS，SEC-PF-01 CLOSED；epoch3新增CI前置修复需取得新head独立复核，禁止复用旧PASS冒充当前完整范围 |
 | R5 | required CI、受保护合并、main-fresh 和原生 archive | #704 / AC5 | explicitly_deferred | 正式平台阶段：current-head required CI 为合并前门禁；guarded merge、main-fresh、native archive、Closure 只能在随后真实发生后确认。AGENTS.md/原生 Workflow 规定此阶段，不代表批准跳过或当前已完成；全部满足才关闭 Issue |
+
+| R6 | 正式前端测试的锁定Python环境与轻量边界 | #704 / AC6 | satisfied | V9：真实classifier8场景回归先4fail/4pass，修正4处前置条件后相关6文件100pass；docs/governance无安装，metadata/main复用边界由既有结构/行为检查保持；新head正式CI仍由R5合并前责任覆盖 |
 
 # 计划改动
 
@@ -120,6 +125,8 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 | --- | --- | --- | --- |
 | frontend/package.json | Vue 精确补丁版本 | 公告修复 | R1/E2 |
 | frontend/package-lock.json | Vue 同版本树及两个间接依赖 | 正式可复现安装 | R1/R2/E3 |
+| .github/workflows/ci.yml | frontend_required加入4处Python前置条件 | 正式Prompt解析测试缺少.venv | R6 |
+| tests/unit/test_ci_workflow_structure.py | 从真实classifier输入验证前置条件与轻量边界 | 防止纯前端测试环境再遗漏 | R6 |
 | 本 Change | 当前计划及有效证据 | 项目独立升级追溯 | R4/E4 |
 
 # 验证矩阵
@@ -137,7 +144,7 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 
 ## 验证计划
 
-旧锁 audit 已真实失败；Manifest/lock 任务不用新增镜像版本断言的永久测试。替代证据为 npm 解析/安装/审计及现有行为回归。执行正式 frontend scripts、生成 Client 一致性和项目 changed-scope preflight；Windows npm.cmd 原生子进程限制如实报告，必要命令从 PowerShell 执行，不改工作流。
+旧锁 audit 已真实失败；Manifest/lock 任务不用新增镜像版本断言的永久测试。替代证据为 npm 解析/安装/审计及现有行为回归。执行正式 frontend scripts、生成 Client 一致性和项目 changed-scope preflight；Windows npm.cmd原生子进程限制如实报告，必要命令从PowerShell执行；本次CI仅补齐已证实缺失的正式测试环境。
 
 # 风险、兼容性、迁移与回滚
 
@@ -155,10 +162,10 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 
 # 完成审计
 
-- [x] upstream_re_read：重新读取用户决定与 live #704，独立重建 AC1–AC5。
+- [x] upstream_re_read：重新读取用户决定与 live #704，独立重建 AC1–AC6。
 - [x] change_coverage：核对三组精确补丁、无关漂移、回归和平台交付全部责任。
 - [x] reverse_audit：Manifest → lock → npm ci 实际树 → audit → 现有用户/构建路径；公共业务入口无变化。
-- [x] unresolved_cleared：所有预合并实现 not_satisfied 清零，独立审查无阻塞；current-head CI 仍须在合并前通过，post-merge 责任保留且不冒充完成。
+- [ ] unresolved_cleared：所有预合并实现 not_satisfied 清零，独立审查无阻塞；current-head CI 仍须在合并前通过，post-merge 责任保留且不冒充完成。
 
 # 完成证据与状态
 
@@ -177,7 +184,7 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 
 ## 未验证内容与剩余风险
 
-依赖实现、本地 Green 与独立完成复核已完成；current-head required CI 尚未取得，禁止提前 merge。构建有既有 chunk size warning，未降低预算或改切包策略。真实部署和生产 Provider 不在此依赖修复范围。
+依赖实现及本地Green已完成，旧依赖边界Review PASS；Ready CI37728521340已在前端Prompt解析测试失败，依赖审计PASS。epoch3需修复正式测试前置、局部Green、重新独立Review与current-head CI，禁止merge。构建有既有 chunk size warning，未降低预算或改切包策略。真实部署和生产 Provider 不在此依赖修复范围。
 
 ## 交付状态
 
@@ -186,3 +193,22 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 ## 备注
 
 原 #702/#703 保持原意图和独立验收；本任务完成后其 Final Ready 集成最新 main 并重新取得所需证据。
+
+## epoch 3：正式前端测试环境修正
+
+上游live #704已追加AC6，保留AC1–AC5原验收责任；PR #705已返回Draft。失败日志为.runtime/sync-local-feishu-20261008/security-ci-failure.log。生产test从.venv调用正式PromptTaxonomyLoader，纯前端CI漏掉锁定Python环境；不复制解析器或改断言来规避。
+
+Workflow Responsibility Audit / Evidence Preservation Mapping：
+
+| 责任 / 前置 | 原位置与失败边界 | 修正与证据保持 |
+| --- | --- | --- |
+| Python setup、下载缓存、版本校验与uv frozen安装 | quality-core现有4处条件仅backend/repository_quality，frontend_only遗漏 | 仅加入frontend_required；Python3.14.7/uv锁、uv lock --check、uv sync --locked和正式package安装保持；不新增依赖或安装脚本 |
+| frontend lint/unit/build/browser与Prompt事实读取 | quality-core原前端step，305 pass/1 ENOENT | 原测试、全量选择器、失败退出、审计high阈值均保持；不使用系统Python降级、PYTHONPATH或平行Prompt解析 |
+| Draft/metadata/main证据复用 | Draft在安装前fail closed，metadata/main reuse classifier将产品flags置false | 原门禁/事件/同tree复用规则保持，无产品flags时不新增安装 |
+| 后端/Contract/PostgreSQL/Full-stack/Compose/Tooling | 原独立Owner及classifier | 全部保持；CI自身diff按原classifier full保守验证，无删除或转移责任 |
+
+R6局部修复已满足：新增回归Red→Green，相关6文件100pass；当前R4独立复核尚未满足，仍须新head Review及正式CI。旧依赖两blob不变，既有306/205本地回归继续按其实际范围保留。
+
+| V9 | epoch3现有CI4处条件及真实classifier | 新前置回归Red：4 failed/4 passed；修正后pytest test_ci_scope/test_ci_workflow_structure/test_ci_test_impact_optimization/test_ci_main_evidence_reuse/test_actions_runner_optimization/test_validate_changed | 100 passed、exit0；ruff format/check PASS，check_docs PASS | frontend-only正式解析器环境、docs/governance无额外安装、现有事件与复用责任保持 |
+
+V9第一次广测试因沙箱临时目录权限出现3个setup errors（97pass），独占路径仍受沙箱访问限制；随后在本机权限下使用新的本任务专用basetemp执行相同100项全部通过，没有修改测试、断言或依赖。旧依赖文件无进一步变化；正式Runner的原始ENOENT仍需新head完整CI验证切断。
