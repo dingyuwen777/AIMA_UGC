@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261008-105220-sync-local-feishu
 title: 保留本地飞书回归并安全同步远端主分支
 level: L2
-status: ready_for_review
+status: done
 owner: Codex
 branch: fix/sync-local-feishu-20261008
 created: 2026-10-08
