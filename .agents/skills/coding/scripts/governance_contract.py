@@ -83,6 +83,35 @@ class PullRequestProfile:
         self.required_headings = required_headings
 
 
+def _prepare_markdown_sections(
+    required_headings: Sequence[str],
+    sections: dict[str, str],
+    *,
+    asset_name: str,
+) -> str:
+    """按 canonical heading 顺序渲染 candidate，并拒绝缺失、空值或额外 Core。"""
+    missing = [
+        heading
+        for heading in required_headings
+        if heading not in sections or not str(sections[heading]).strip()
+    ]
+    extra = sorted(set(sections) - set(required_headings))
+    errors: list[str] = []
+    if missing:
+        errors.append(f"{asset_name} candidate 缺少或留空必需 section：{', '.join(missing)}")
+    if extra:
+        errors.append(f"{asset_name} candidate 包含非 canonical Core section：{', '.join(extra)}")
+    if errors:
+        raise GovernanceContractError("；".join(errors))
+    return (
+        "\n\n".join(
+            f"## {heading}\n\n{str(sections[heading]).strip()}"
+            for heading in required_headings
+        )
+        + "\n"
+    )
+
+
 def _frontmatter_and_body(text: str) -> tuple[dict[str, str], str]:
     """解析扁平 Change frontmatter，并返回剩余 Markdown 正文。"""
     lines = text.splitlines()
@@ -480,6 +509,32 @@ def validate_issue_instance(
     return errors
 
 
+def prepare_issue_candidate(
+    title: str,
+    sections: dict[str, str],
+    *,
+    profile: str | None = None,
+    forms_dir: Path = CANONICAL_ISSUE_FORM_DIR,
+) -> str:
+    """从 canonical Issue Profile 生成并自校验 create candidate。"""
+    contract = resolve_issue_profile(title, profile, forms_dir=forms_dir)
+    body = _prepare_markdown_sections(
+        contract.required_headings,
+        sections,
+        asset_name="Issue",
+    )
+    errors = validate_issue_instance(
+        title,
+        body,
+        profile=profile,
+        mode="create",
+        forms_dir=forms_dir,
+    )
+    if errors:
+        raise GovernanceContractError("；".join(errors))
+    return body
+
+
 def load_pr_profile(template_path: Path = CANONICAL_PR_TEMPLATE) -> PullRequestProfile:
     """从 canonical PR Template 动态恢复有序 Core headings。"""
     try:
@@ -531,6 +586,49 @@ def validate_pr_instance(
         if value.casefold() in INVALID_REQUIREMENT_SOURCE_VALUES:
             errors.append(f"PR Requirement-Source 不能使用占位值：{value or '<empty>'}")
     return errors
+
+
+def prepare_pr_candidate(
+    sections: dict[str, str],
+    *,
+    template_path: Path = CANONICAL_PR_TEMPLATE,
+) -> str:
+    """从 canonical PR Template 生成并自校验 create candidate。"""
+    profile = load_pr_profile(template_path)
+    body = _prepare_markdown_sections(
+        profile.required_headings,
+        sections,
+        asset_name="PR",
+    )
+    errors = validate_pr_instance(body, mode="create", template_path=template_path)
+    if errors:
+        raise GovernanceContractError("；".join(errors))
+    return body
+
+
+def _load_sections_json(path: Path) -> dict[str, str]:
+    """读取 candidate section JSON，并拒绝非对象或非字符串值。"""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise GovernanceContractError(f"无法读取 candidate sections：{exc}") from exc
+    if not isinstance(payload, dict):
+        raise GovernanceContractError("candidate sections JSON 必须是对象")
+    sections: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise GovernanceContractError("candidate sections 的 key/value 必须都是字符串")
+        sections[key] = value
+    return sections
+
+
+def _emit_candidate(candidate: str, output: Path | None) -> None:
+    """把已通过 create Contract 的 candidate 输出到 stdout 或指定文件。"""
+    if output is None:
+        print(candidate, end="")
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(candidate, encoding="utf-8", newline="\n")
 
 
 def validate_issue_form_projection(
@@ -607,6 +705,24 @@ def _build_parser() -> argparse.ArgumentParser:
     pull.add_argument("--mode", choices=sorted(VALID_PR_MODES), default="create")
     pull.add_argument("--json", action="store_true")
 
+    prepare_issue = subparsers.add_parser(
+        "prepare-issue",
+        help="按 canonical Issue Profile 生成并校验 create candidate",
+    )
+    prepare_issue.add_argument("--title", required=True)
+    prepare_issue.add_argument("--sections-file", type=Path, required=True)
+    prepare_issue.add_argument("--profile")
+    prepare_issue.add_argument("--forms-dir", type=Path, default=CANONICAL_ISSUE_FORM_DIR)
+    prepare_issue.add_argument("--output", type=Path)
+
+    prepare_pr = subparsers.add_parser(
+        "prepare-pr",
+        help="按 canonical PR Template 生成并校验 create candidate",
+    )
+    prepare_pr.add_argument("--sections-file", type=Path, required=True)
+    prepare_pr.add_argument("--template", type=Path, default=CANONICAL_PR_TEMPLATE)
+    prepare_pr.add_argument("--output", type=Path)
+
     projection = subparsers.add_parser("validate-projection", help="校验根 GitHub Issue/PR governance projections")
     projection.add_argument("--root", type=Path, required=True)
     projection.add_argument("--forms-dir", type=Path, default=CANONICAL_ISSUE_FORM_DIR)
@@ -618,6 +734,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     """执行治理资产机器 Contract CLI 并返回稳定退出码。"""
     args = _build_parser().parse_args(argv)
     json_output = bool(getattr(args, "json", False))
+    if args.command == "prepare-issue":
+        try:
+            candidate = prepare_issue_candidate(
+                args.title,
+                _load_sections_json(args.sections_file),
+                profile=args.profile,
+                forms_dir=args.forms_dir,
+            )
+            _emit_candidate(candidate, args.output)
+        except GovernanceContractError as exc:
+            print(f"GOVERNANCE_CONTRACT_ERROR: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "prepare-pr":
+        try:
+            candidate = prepare_pr_candidate(
+                _load_sections_json(args.sections_file),
+                template_path=args.template,
+            )
+            _emit_candidate(candidate, args.output)
+        except GovernanceContractError as exc:
+            print(f"GOVERNANCE_CONTRACT_ERROR: {exc}", file=sys.stderr)
+            return 1
+        return 0
     if args.command == "validate-change":
         errors = validate_new_change_file(args.path, template_path=args.template)
     elif args.command == "validate-projection":

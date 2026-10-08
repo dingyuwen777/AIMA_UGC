@@ -20,17 +20,17 @@ description: 面向不同项目形态、研发阶段和编程语言的可靠软�
 → 只交付证据真正支持的结论
 ```
 
-这里的核心不是让每次开发都走同样长的流水线，而是让**风险强度**与**流程重量**解耦：L1/L2/L3 决定需要控制和证明什么；Change、Docs、独立 Review、Completion Gate、Git/PR/Release 等能力只在当前事实真正需要时加载。能力存在不等于每个任务都要使用，发现新的风险、交接或交付事实后再单调升级。
+**风险强度与流程重量解耦**：L1/L2/L3 决定证明边界；Change、Docs、Review、Completion、Git/Release 仅按事实需要加载，出现新风险或交付事实再单调升级。
 
 ### 简单代码 Fast Path
 
 一次性 snippet / scratch code / 小脚本只在**无目标仓库持久修改、无 public/data/security/依赖/build/release 变化、无真实外部副作用、无正式交付门禁**时使用 Scratch Fast Path。完整前提、退出条件和“仓库持久修改不自动等于 L2/L3”的规则由 当前场景所需完整约束 §1.1–1.2 完整承担；进入 Repository L1 后再读取 当前场景所需完整约束。
 
-最小路径仍是“最少输入/输出与运行约束 → 最小代码 → 最便宜的直接验证 → 如实报告证据/限制”。一旦发现不再满足 Scratch/L1 前提，立即按新事实重新路由，不能用 Fast Path 降低真实风险。
+最小路径：约束 → 最小代码 → 最便宜直接验证 → 如实报告；不再满足 Scratch/L1 时按新事实重新路由，不得用 Fast Path 降低风险。
 
-本 规则 不是 Python、Web、Backend 或 PostgreSQL 专用流程。它的固定部分是“怎样可靠研发”；具体语言、框架、数据库、目录、包管理器、CI 和部署方式必须来自当前项目事实或 Greenfield 阶段经确认的新建工程决策。
+规则 只规定可靠研发方法；技术栈、CI、部署均来自项目事实或 Greenfield 已确认决策。
 
-详细规则分布在 `当前场景所需完整约束/`。**当本文件的触发条件命中时，对应 完整约束 是本 规则 的规范组成部分，必须在执行相关动作前读取；不能只读主文件后凭印象补流程。**
+命中 完整约束 时在动作前读取完整正文，只加载最少充分项；数字前缀仅作导航。
 
 **内容守恒优先于篇幅精简。** 规则重组只能改变组织方式，不能降低触发、例外、失败处理、验证责任、安全或兼容要求；只有逐项证明完全等价时才消除重复，无法证明时保留原细节并用回归与人工语义对照验证可达性。
 
@@ -67,9 +67,9 @@ CMakeLists.txt ≠ Linux-only
 
 ### 1.1 自主执行、澄清和阻塞边界
 
-**事实恢复 / 核验默认由 Agent 自行完成**；只有有界调查后仍无法确定且答案会实质改变业务/public Contract/数据/安全/不可逆动作/重大技术路线时，才**提请用户 / Owner 决策**；已固化决定**不重复确认**。除非条款明确要求审批，否则“确认/明确/确定/恢复/核对”均表示自行核验。
+`SELF_DECIDE` 处理局部低风险可逆且不改业务/public Contract/数据/安全/权限/Scope 的细节；`OWNER_DECISION / AUTHORIZATION_REQUIRED / REQUIRED_USER_INPUT / CAPABILITY_BLOCKER` 才请求人类。**No Choice-Prompt**：可自主解决的问题不变成选择题。
 
-**阻塞按依赖边界传播**：只停止依赖 blocker 的动作和完成声明；其他已授权工作继续。最终 `complete / mergeable / releasable / deployable` 仍必须满足各自全部 required gate。
+**事实恢复 / 核验默认由 Agent 自行**；Ask 状态才**提请用户 / Owner 决策**，已固化决定**不重复确认**；**阻塞按依赖边界传播**。
 
 ## 2. 四维任务路由
 
@@ -110,6 +110,7 @@ CMakeLists.txt ≠ Linux-only
 | 显式 Review/Audit、持久 Change/PR Ready、Git/Release 交付或项目明确要求独立复核 | 当前场景所需完整约束 |
 | Agent Outcome Eval / 跨模型规则效果 / 规则 heuristic 生命周期 | 当前场景所需完整约束 |
 | Git/PR/Release/Delivery、依赖变化、安全边界、最终交付报告或宿主能力降级 | 当前场景所需完整约束 |
+| develop-and-submit / develop-and-deliver / review-and-deliver 等完整交付终点 | 当前场景所需完整约束 |
 | 规则/完整约束/模板/项目 Overlay 的精简、重组、拆分、合并、改名、迁移或通用化 | 当前场景所需完整约束 |
 
 不要要求用户重复提供能够从仓库、缓存或工具确认的信息。只读取当前任务真正需要的事实和 完整约束，不用“全仓全部读一遍”替代理解调用链。
@@ -177,7 +178,7 @@ python <规则>/scripts/开发.py status --root <repo> --json
 
 ### 4.6 分类 L1/L2/L3 并固化任务契约
 
-编码前建立最小任务契约：当前事实、目标 / 非目标、可观察成功标准、不变项、受影响能力 / Owner、最小方案、直接 Evidence 和真实未知项。输入输出、复用点、预计文件、公共接口、数据 / Schema / Migration、依赖、文档、部署 / 回滚与 Git 授权只在本次触及对应边界时展开；不适用项不逐项提问。详细字段按 当前场景所需完整约束，项目 Overlay 的额外要求仍保留。
+编码前建立最小任务契约：事实、目标/非目标、Acceptance、不变项、Owner、方案、Evidence、未知项；其他边界按需，见 当前场景所需完整约束。**Development Preflight Gate** 校准需求/治理/CI/交付：CI 只问 **Broad Job / Duplicate Evidence / Duplicate Setup/Install/Build**；已有 selector 复用。命中 CI 成本/责任问题时读 当前场景所需完整约束，CI/Workflow 变更加 当前场景所需完整约束；Issue/PR **platform write** 前读 当前场景所需完整约束并写前校验。
 
 L1 可在工作说明内维护。L2 必须有**最小充分任务契约**，但可由本轮用户要求、PR body、Issue/工单、Spec/OpenSpec/RFC 或项目既有载体承载；只有跨 Owner/PR/会话、复杂依赖/阶段、正式审计、项目规则或 Completion Gate 等**持久治理价值**出现时才升级为独立持久施工契约。L3 必须有稳定持久契约并补方案比较、公共兼容、Migration/部署/回滚和安全/运维风险。项目 Overlay 可以更严格。
 
@@ -262,9 +263,7 @@ Bug 修复必须有回归证据。测试验证真实行为，不只验证 Mock �
 
 ### 4.13 Completion Audit、两阶段 Review 与新鲜验证
 
-对 `completion_gate: required` 的 开发 Change 或项目等价 gated L2/L3 单元，Ready 前执行完整 Completion Audit：重新读取上游正式事实源，独立重建完成定义，比较“上游要求 → Change”和“Change → 实现/测试/文档”，执行适用反向能力审计，复核 Validation Matrix，清零 `not_satisfied`。
-
-普通轻量 L2 不创建形式化 Audit，但强完成结论前至少重新读取当前 Requirement Source/任务事实，核对目标、范围/非目标、不变项、required 新鲜验证和未验证/延期/未知项。
+gated Change/等价 L2/L3 的 Ready 按 当前场景所需完整约束 审计，轻量 L2 做最小核对。**Requirement Change Gate**：**语义变化**先更新 Requirement Source，仅使**受影响**结果成为 `STALE_RESULT`；**非语义**不全量重跑。**Completion Gate**：强完成前重读**最新 Requirement Source**逐 AC→当前 Evidence，applicable unresolved 阻止 Ready。
 
 使用 `coding-change/v1` 时可运行：
 
@@ -284,11 +283,11 @@ python <规则>/scripts/ready_check.py --root <repo> --require-active-ready
 
 ## 5. 多 Agent / 多人协作
 
-只有互不依赖且不修改同一文件、接口、Schema、锁文件或共享状态的工作才并行。派发时给最少充分上下文：目标、范围、事实源、禁止项、验收和输出格式。主 Agent 必须复核子任务实际 diff、HEAD/Change 冲突、测试是否真实运行、证据范围和无关改动；不要直接相信“子 Agent 已完成”。详细规则见 当前场景所需完整约束。
+`Delegation Value` **先报** `NO_SPLIT/MAY_SPLIT/MUST_SPLIT`，**只拆有真实独立价值**，MUST **可独立验收**；另判 `Independence Requirement=OPTIONAL/REQUIRED`。无 delegation 可**降级为单 Agent**，不降 REQUIRED。
 
 ## 6. Git、依赖、安全、交付与宿主能力边界
 
-`Git/PR/Release/Delivery`、依赖变化、安全边界、最终交付报告或宿主能力降级命中时，必须读取 当前场景所需完整约束。原主文件中 Git、依赖、安全、最终报告和能力边界的详细规则已完整迁入该 完整约束；不能因为本节变短而把它们视为可选建议。
+命中 `Git/PR/Release/Delivery`、依赖、安全、交付报告或宿主能力降级时，必须读取 当前场景所需完整约束。细则归该 完整约束，Core 变薄不降强度。Git：同步 target → task branch → 本地充分验证 → **Human Local Acceptance Gate（适用时）** → push 前再同步 → 冲突复验 → PR；`Local Ready for User Acceptance` / `PENDING` 时不得自动 push/PR，普通冲突自主。
 
 ## 7. 规则内容守恒与 规则 维护
 
@@ -440,4 +439,4 @@ python <规则>/scripts/ready_check.py --root <repo> --require-active-ready
 
 ## 面向用户的项目表达
 
-向用户说明当前任务计划、进展、分工或结果时，用户明确提供的项目术语、计划和决定照常保留，并直接描述当前项目事实、工程动作、验证与真实状态。治理能力或规则的内部名称只服务执行，不把这些名称转写成用户可见的任务步骤、分工或计划；需要说明过程时，使用对应的项目工程动作表达。
+向用户说明当前任务计划、进展、分工或结果时，用户明确提供的项目术语、计划和决定照常保留，并直接描述当前项目事实、工程动作、验证与真实状态。治理能力或规则的内部名称只服务执行，不把这些名称转写成用户可见的任务步骤、分工或计划；需要说明过程时，使用对应的项目工程动作表达。规则已定、事实可恢复、项目惯例/安全默认可用或仅是低风险可逆实现细节时由 Agent 自行决定，不把这些事项重新包装成用户选择题；只有实质性 Owner 决策、授权升级、必需用户输入或真实能力 blocker 才请求用户。

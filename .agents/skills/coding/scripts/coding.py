@@ -787,12 +787,16 @@ def _bootstrap_fact_sources(root: Path) -> str:
 
 
 def _managed_asset_text() -> str:
-    """读取 Runtime/项目 Bootstrap 的薄 managed block，并拒绝重新引入内部治理导航。"""
+    """读取项目 Bootstrap managed block，只公开稳定 ENTRY，不泄漏其他内部导航。"""
     text = _asset_text("AGENTS.managed.md")
     if text.count(AGENTS_MANAGED_START) != 1 or text.count(AGENTS_MANAGED_END) != 1:
         raise ValueError("AGENTS.managed.md managed marker 不完整或重复")
-    if ".agents/skills/" in text or "ENTRY.md" in text or "router/SKILL.md" in text:
-        raise ValueError("AGENTS.managed.md 不得暴露 Runtime 内部治理路径")
+    public_entry = ".agents/skills/ENTRY.md"
+    if text.count(public_entry) != 1:
+        raise ValueError("AGENTS.managed.md 必须且只能公开一个稳定 ENTRY 入口")
+    hidden_view = text.replace(public_entry, "")
+    if ".agents/skills/" in hidden_view or "ENTRY.md" in hidden_view or "router/SKILL.md" in hidden_view:
+        raise ValueError("AGENTS.managed.md 除稳定 ENTRY 外不得暴露 Runtime 内部治理路径")
     return text
 
 

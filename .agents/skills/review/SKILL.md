@@ -28,7 +28,7 @@ Review 的职责不是再写一遍“怎样开发/怎样测试”，而是作为
 → 同仓有 开发 时读取 开发 作为唯一研发规范源
 → 同仓有 测试 时把它作为测试工程方法 Owner
 → 独立重建需求、风险和应有证据
-→ 审查实现 / diff / 测试 / 文档
+→ 审查实现 / diff / 测试 / 文档（docs diff 时做 Reverse Documentation Audit）
 → 判断测试充分性与 Evidence boundary
 → Test Gap 需要专业测试时 衔接 测试
 → 输出 Findings 与证据边界
@@ -41,6 +41,17 @@ Review **不复制** 开发 的编码、TDD、Git、兼容、安全、Contract�
 
 详细方法位于 `当前场景所需完整约束/`；命中对应场景时必须读取相关 完整约束。
 
+## Review Convergence Guard（核心）
+
+以 **Requirement / Acceptance** 判定交付，**不是持续优化机制**。**No-Finding Quota**：不要求至少一个 Finding；满足需求/Evidence 可直接 `NO_FINDINGS_WITHIN_SCOPE`。仅 Evidence 成立且 `Scope=IN_SCOPE`、`Delivery Effect=BLOCKING`、`Action=AUTO_REPAIR` 才自动返修；`NON_BLOCKING_FINDINGS` 不自动返修。
+
+## Review Phase State Machine（核心）
+
+`FIRST_ASSEMBLY → REPAIR_VERIFY → ESCAPE_CORRECTION → REVIEWER_RECOVERY → FINAL`；`REVIEW_PROCESS_FAILURE` 只进内部 recovery，不能成为用户/作者终态。
+
+## First Review Assembly Gate / No-Findings-Drip Gate
+
+冻结 Target 建 **Review Coverage Map**；复合根机制建 Material Projection Matrix。blind 视角只产内部 draft，Parent **一次 synthesis**。按 **Invariant → Lifecycle → Failure Boundary → Projection → Evidence → Omission / Coverage Audit** 闭合前**不得向作者发布部分 Findings**，也不得**递归开启 Full Review**；旧基线漏审 = **First-pass Coverage Miss**。细节见 当前场景所需完整约束。
 ## 1. 规则事实源与集成边界
 
 ### 1.1 与 开发 规则
@@ -100,7 +111,8 @@ Review 发现技术文档缺陷时：
 
 - 只读 Review：作为 Finding 报告；
 - 已授权修文档且存在 相关工程规则：按 Docs 的工作流处理，不由 Review 复制 Docs 写作规则；
-- Docs 发现实现问题后仍返回 开发，不由 Review 越权直接改生产实现。
+- Docs 发现实现问题后仍返回 开发，不由 Review 越权直接改生产实现；
+- docs diff：做 **Reverse Documentation Audit**，反查**已有 Owner**/机器镜像/**单文件 Growth**/退出；相似或长度不判重；**review-only 只报告**。
 
 ## 2. 三种工作模式
 
@@ -237,6 +249,9 @@ Review 不设置固定测试数量配额，也不要求所有状态复制成昂�
 
 ```text
 严重度
+Scope
+Delivery Effect
+Action
 位置 / 影响范围
 问题是什么
 触发条件
@@ -246,6 +261,8 @@ Review 不设置固定测试数量配额，也不要求所有状态复制成昂�
 建议修复方向
 需要增加/调整什么验证（适用时）
 ```
+
+其中三轴 classification 由 Reviewer 独立拥有；Parent 只拥有 repair scheduling，不能自行覆盖 Reviewer 的 Scope / Delivery Effect / Action。
 
 没有足够证据时写成“风险/待验证假设”，不要伪装成确定 Bug。
 
@@ -324,4 +341,4 @@ Findings（按严重度）
 
 ## 面向用户的项目表达
 
-向用户说明当前任务计划、进展、分工或结果时，用户明确提供的项目术语、计划和决定照常保留，并直接描述当前项目事实、工程动作、验证与真实状态。治理能力或规则的内部名称只服务执行，不把这些名称转写成用户可见的任务步骤、分工或计划；需要说明过程时，使用对应的项目工程动作表达。
+向用户说明当前任务计划、进展、分工或结果时，用户明确提供的项目术语、计划和决定照常保留，并直接描述当前项目事实、工程动作、验证与真实状态。治理能力或规则的内部名称只服务执行，不把这些名称转写成用户可见的任务步骤、分工或计划；需要说明过程时，使用对应的项目工程动作表达。规则已定、事实可恢复、项目惯例/安全默认可用或仅是低风险可逆实现细节时由 Agent 自行决定，不把这些事项重新包装成用户选择题；只有实质性 Owner 决策、授权升级、必需用户输入或真实能力 blocker 才请求用户。
