@@ -228,4 +228,3 @@ CI改动风险升级依据：当前canonical 19_CI审查升级门禁.md（source
 
 
 V10：epoch3独立A1需求覆盖、A2四条件表达式与局部证据PASS；Reviewer独立按完整布尔逻辑求值8场景，核对Draft/metadata/main复用及原产品检查段字节不变。SEC-CI-01仅要求风险分类L3，本载体按Source修正；CI blob d5c53fc7d936271c779f1d07bd820f6da1a5a02d、回归blob 0b76f228461be8ce4c5c8a2d13e432d6bcdd6536和两个依赖blob均保持91d14315冻结版本。最终Carrier及new-head CI分别取证，不替代mainfresh/归档/Closure。
-
