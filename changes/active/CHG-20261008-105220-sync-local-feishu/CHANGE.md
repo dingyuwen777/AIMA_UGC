@@ -40,6 +40,8 @@ Requirement Source 为 #702；本轮用户明确授权保留并合并本地改�
 
 起始基线 cef862941cf1a2bb9b67e0c0e32aa4edf2f265f1，远端已包含新版飞书多企业登录和后续业务实现。59 个原始改动中，49 个意图已有等价或更完整的远端实现；6 个独有文件适配当前接口后保留；3 个旧迁移和旧 Change 仅备份。正式 Alembic 单 head 为 20261003_0082。
 
+最终交付基线已同步到 d37d9b83aff4b83b9f6944efc4eb9c757355266b。先前正式 CI 37722547954 的依赖审计阻塞已由用户批准的独立 #704 / PR #705 修复；该 PR 已在全绿后合并、取得真实 main-fresh，并由仓库自动归档为 done，#704 已完成关闭。本任务沿用这一最新 main 的依赖与 CI 事实，不在本 PR 重复承载安全升级。正常 merge 同步无新冲突，原 8 个源码/测试 Git blob 全部与 38688f7 相同。
+
 ## 问题、根因或约束
 
 旧飞书迁移从旧节点分叉，与远端正式身份建表重叠，不能直接重新叠加。旧测试使用缓存字段与 Secret reader 签名也已变化，必须按当前生产实现适配；备份内容不能冒充当前 Ready 或迁移事实。
@@ -57,6 +59,7 @@ Requirement Source 为 #702；本轮用户明确授权保留并合并本地改�
 | E3 | 旧链与正式迁移重叠 | migrations/versions/20260921_0056_feishu_identity.py 与本地备份旧 0053–0055；uv run alembic heads | 不重新引入旧 migration；单 head 保持 |
 | E4 | 根 Compose 已定义脚本所用服务 | compose.yaml、compose.windows.yaml | 辅助入口复用既有本地环境，不能另建部署系统 |
 | E5 | 仓库已有 required CI 与自动归档 | .github/workflows/ci.yml、change-archive.yml、实时 main Rulesets | 通过现有 PR/CI/归档门禁交付 |
+| E6 | 独立安全修复已成为当前主分支基线，原整合源码保持 | #704/#705；merge 38782fa0884d1aaaa00af9b1f1b2a7a5be1e5a59；archive d37d9b83aff4b83b9f6944efc4eb9c757355266b；8 文件 Git blob 与 38688f7 比对 | 原 PR 的基线漏洞阻塞已闭合；按新 base/head 继续独立审查与正式 CI，不复用旧失败 head 的合并结论 |
 
 ## 推断与待确认
 
@@ -187,6 +190,8 @@ Requirement Source 为 #702；本轮用户明确授权保留并合并本地改�
 
 受验代码基线为首个本地提交 8ff43a2423d5e55fe3a65f4ad2e8a7b78e524ed8；后续仅更新该治理记录，生产/测试源码不变。
 
+同步最新 main 后，PR 相对新基线仍仅为原 8 个源码/测试文件及本 Change。依赖两文件与 CI 前置修复两文件逐个 Git blob 等于 main；独立安全修复不是本 Change 的实现差异。V1–V9 仅证明其明确范围，最终新 head 的全量正式 CI、新 base/head 的独立复核和合并后阶段必须另取真实平台证据。
+
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V1 | 仓库锁定 Python3.14/uv；PYTHONUTF8=1 | uv run python scripts/dev/validate_changed.py --base origin/main --execute | backend/Contract 阶段通过；npm 子进程阶段 WinError2 | 分类 full，正式本地命令没有降级；Windows npm.cmd 启动限制保留原错 |
@@ -198,12 +203,15 @@ Requirement Source 为 #702；本轮用户明确授权保留并合并本地改�
 | V7 | Windows PowerShell、仓库当前 Node/npm/lock | npm --prefix frontend run lint；npm --prefix frontend run test -- --run；npm --prefix frontend run build；npm --prefix frontend run test:e2e | lint/typecheck/build通过；306单元、205浏览器通过 | 按原生 preflight 相同命令补完 Windows npm 子进程未进入的前端层 |
 | V8 | Windows实际cmd；脚本字节相同的隔离副本、真实start_compose.py；仅Docker替身 | uv run python .runtime/sync-local-feishu-20261008/cmd-harness/verify_cmd.py | 12场景通过 | 两种构建目标、资源覆盖/完整服务启动、失败退出、继承HEALTH/自定义项目身份无误报；不证明真实部署 |
 | V9 | 当前仓库与 canonical Source模板/validator | scan_secrets.py；check_docs.py；check_agent_governance.py；canonical validate-change/issue/pr create | 均通过 | Secret、文档/治理接线与载体结构，不能替代语义 Review |
+| V10 | 最终 main 基线 d37d9b83aff4b83b9f6944efc4eb9c757355266b；同日独立安全任务 | 原 8 个源码/测试 Git blob 与 38688f7 比对；依赖/CI 4 文件与 origin/main 比对；#705 最终 CI 37731846686、真实 main CI 37733550157 与原生 archive 37733550315 | blob 无漂移；#705/main/archive SUCCESS、同一安全 Change status=done、#704 CLOSED | 依赖阻塞原因已修复且按独立 Owner 交付；不代替本任务新 head 的 required CI 或最终 merge/main-fresh/archive/Closure |
 
 最初完整 backend 的4项既有子进程测试因 Windows GBK 解码UTF8失败；统一测试进程UTF8后完整V2通过。未修改断言、生产Runtime或依赖来取得绿色。原生Windows npm调用限制由逐命令完成等价前端层处理，未改写仓库工具或正式CI。
 
 ## 未验证内容与剩余风险
 
 独立源码复审已通过，reviewed head=8ff43a2423d5e55fe3a65f4ad2e8a7b78e524ed8、base=cef862941cf1a2bb9b67e0c0e32aa4edf2f265f1、decision_epoch=1；仅治理记录和换行机械规范化后核对8源码Git blob未变。remote current-head CI在Draft转Ready后完成，未提前声称merge-ready。本地适用层已取得 V1–V9；原生Windows npm子进程限制按相同前端命令补完。真实飞书、用户业务库旧 migration 状态和真实部署未验证，均未对这些事实作交付声明。
+
+上述旧 head 的 CI 37722547954 曾因基线依赖漏洞失败，不能作为本次合并 Green。该阻塞已由 E6/V10 的独立修复闭合；本次新 main 基线下重新绑定独立 Review 与正式 CI，所有 required checks 通过后才执行用户已批准的合并。源码范围与需求 #702 / AC1–AC6 无变化，IR-05 的假协议证据边界仍保留。
 
 ## 交付状态
 
