@@ -2,8 +2,8 @@
 schema: coding-change/v1
 id: CHG-20261008-121150-frontend-security
 title: 修复前端依赖安全审计阻塞
-level: L2
-status: in_progress
+level: L3
+status: ready_for_review
 owner: Codex
 branch: tech/frontend-security-20261008
 created: 2026-10-08
@@ -107,6 +107,15 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 | 保留原解析策略 | E3 | 上游支持修复版本，无需新 override |
 | 独立安全 PR | E4 | 与飞书资产分开审查和回滚 |
 
+## 备选方案与取舍
+
+| 方案 | 覆盖与代价 | 决定 |
+| --- | --- | --- |
+| 在现有四处Python前置条件纳入frontend_required | 所有被选择的前端测试都有正式解析器所需环境；增加锁定安装成本，metadata/docs/main复用flags false仍保持轻量 | 采用；切断已复现遗漏且无需新分类协议或平行事实源 |
+| 在classifier新增frontend_python_required并逐个测试映射 | 可减少无需Python的前端target安装，但增加输出/Workflow耦合，今后调用解析器的新target需同步维护 | 当前缺陷无需该机制，不采用；不为了成本优化扩大重构 |
+| 生成可供前端读取的Prompt taxonomy fixture | 需增加生成/漂移检查与维护边界，避免复制生产解析器仍有额外成本 | 当前只缺测试环境，不改变正式事实读取，不采用 |
+
+不删除测试或弱化断言、审计阈值、required checks；本次无需用户业务/公共Contract/Schema/权限/不可逆行为的新决定。
 # 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
@@ -114,7 +123,7 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 | R1 | 三组精确升级且无无关漂移 | #704 / AC1 | satisfied | verify_security_lock.py PASS：12 个批准节点；无节点新增/删除，无关元数据不变；Babel 解析器保持原 7.29.8 |
 | R2 | 正式安装与审计 Green，保留报告 | #704 / AC2 | satisfied | npm ci exit0、npm audit --json exit0，各严重性及 total 均 0；npm ls exit0 无旧副本或 invalid |
 | R3 | 前端回归及生成一致性 | #704 / AC3 | satisfied | lint/typecheck/build exit0；38 文件306 unit PASS；205 Browser Mock PASS；Orval 生成无 Git diff |
-| R4 | 需求/实现完整审计及独立 Review | #704 / AC4 | not_satisfied | 旧两依赖 A1/A2 PASS，SEC-PF-01 CLOSED；epoch3新增CI前置修复需取得新head独立复核，禁止复用旧PASS冒充当前完整范围 |
+| R4 | 需求/实现完整审计及独立 Review | #704 / AC4 | satisfied | epoch3独立A1需求覆盖/A2源码与局部证据PASS，reviewed head91d14315/base cef8629；SEC-PF-01 CLOSED。SEC-CI-01要求CI风险升L3，本最终载体已修正并记录当前Source依据，最终Change与4个源码blob定点复核后启动正式CI |
 | R5 | required CI、受保护合并、main-fresh 和原生 archive | #704 / AC5 | explicitly_deferred | 正式平台阶段：current-head required CI 为合并前门禁；guarded merge、main-fresh、native archive、Closure 只能在随后真实发生后确认。AGENTS.md/原生 Workflow 规定此阶段，不代表批准跳过或当前已完成；全部满足才关闭 Issue |
 
 | R6 | 正式前端测试的锁定Python环境与轻量边界 | #704 / AC6 | satisfied | V9：真实classifier8场景回归先4fail/4pass，修正4处前置条件后相关6文件100pass；docs/governance无安装，metadata/main复用边界由既有结构/行为检查保持；新head正式CI仍由R5合并前责任覆盖 |
@@ -165,7 +174,7 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 - [x] upstream_re_read：重新读取用户决定与 live #704，独立重建 AC1–AC6。
 - [x] change_coverage：核对三组精确补丁、无关漂移、回归和平台交付全部责任。
 - [x] reverse_audit：Manifest → lock → npm ci 实际树 → audit → 现有用户/构建路径；公共业务入口无变化。
-- [ ] unresolved_cleared：所有预合并实现 not_satisfied 清零，独立审查无阻塞；current-head CI 仍须在合并前通过，post-merge 责任保留且不冒充完成。
+- [x] unresolved_cleared：所有预合并实现 not_satisfied 清零，独立审查无阻塞；current-head CI 仍须在合并前通过，post-merge 责任保留且不冒充完成。
 
 # 完成证据与状态
 
@@ -184,7 +193,7 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 
 ## 未验证内容与剩余风险
 
-依赖实现及本地Green已完成，旧依赖边界Review PASS；Ready CI37728521340已在前端Prompt解析测试失败，依赖审计PASS。epoch3需修复正式测试前置、局部Green、重新独立Review与current-head CI，禁止merge。构建有既有 chunk size warning，未降低预算或改切包策略。真实部署和生产 Provider 不在此依赖修复范围。
+依赖实现及本地Green已完成，旧依赖边界Review PASS；Ready CI37728521340已在前端Prompt解析测试失败，依赖审计PASS。epoch3正式测试前置、局部Green与独立A1/A2已PASS；最终载体升L3并补齐备选方案，仍须新head正式CI全绿，禁止提前merge。构建有既有 chunk size warning，未降低预算或改切包策略。真实部署和生产 Provider 不在此依赖修复范围。
 
 ## 交付状态
 
@@ -207,8 +216,16 @@ Workflow Responsibility Audit / Evidence Preservation Mapping：
 | Draft/metadata/main证据复用 | Draft在安装前fail closed，metadata/main reuse classifier将产品flags置false | 原门禁/事件/同tree复用规则保持，无产品flags时不新增安装 |
 | 后端/Contract/PostgreSQL/Full-stack/Compose/Tooling | 原独立Owner及classifier | 全部保持；CI自身diff按原classifier full保守验证，无删除或转移责任 |
 
-R6局部修复已满足：新增回归Red→Green，相关6文件100pass；当前R4独立复核尚未满足，仍须新head Review及正式CI。旧依赖两blob不变，既有306/205本地回归继续按其实际范围保留。
+R6局部修复满足：新增回归Red→Green、相关6文件100pass。R4独立A1/A2 PASS；SEC-CI-01风险等级已修正为L3，最终载体定点复核后启动新head正式CI；4个源码blob不变。旧依赖两blob不变，既有306/205本地回归继续按其实际范围保留。
 
 | V9 | epoch3现有CI4处条件及真实classifier | 新前置回归Red：4 failed/4 passed；修正后pytest test_ci_scope/test_ci_workflow_structure/test_ci_test_impact_optimization/test_ci_main_evidence_reuse/test_actions_runner_optimization/test_validate_changed | 100 passed、exit0；ruff format/check PASS，check_docs PASS | frontend-only正式解析器环境、docs/governance无额外安装、现有事件与复用责任保持 |
 
 V9第一次广测试因沙箱临时目录权限出现3个setup errors（97pass），独占路径仍受沙箱访问限制；随后在本机权限下使用新的本任务专用basetemp执行相同100项全部通过，没有修改测试、断言或依赖。旧依赖文件无进一步变化；正式Runner的原始ENOENT仍需新head完整CI验证切断。
+
+CI改动风险升级依据：当前canonical 19_CI审查升级门禁.md（source blob c60ed155439bbe8cefa347a972863751f8255844）将CI变更最低风险设为L3；本轮epoch3相应升级载体，继续使用既有两阶段独立Review与完整正式CI，不改变源码或授权边界。
+
+
+
+
+V10：epoch3独立A1需求覆盖、A2四条件表达式与局部证据PASS；Reviewer独立按完整布尔逻辑求值8场景，核对Draft/metadata/main复用及原产品检查段字节不变。SEC-CI-01仅要求风险分类L3，本载体按Source修正；CI blob d5c53fc7d936271c779f1d07bd820f6da1a5a02d、回归blob 0b76f228461be8ce4c5c8a2d13e432d6bcdd6536和两个依赖blob均保持91d14315冻结版本。最终Carrier及new-head CI分别取证，不替代mainfresh/归档/Closure。
+
