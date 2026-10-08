@@ -1,5 +1,9 @@
 import json
+import re
+import runpy
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 CI = ROOT / ".github" / "workflows" / "ci.yml"
@@ -402,3 +406,53 @@ def test_targeted_backend_does_not_pay_global_api_suite() -> None:
     assert "uv run pytest tests/api -q" in all_branch
     assert "uv run pytest tests/api -q" not in targeted_branch
     assert 'uv run pytest "${targets[@]}" -q' in targeted_branch
+
+
+@pytest.mark.parametrize(
+    ("paths", "python_required"),
+    [
+        (("frontend/package-lock.json",), True),
+        (("frontend/src/shared/ui/AimaMultiSelect.vue",), True),
+        (("frontend/tests/analysis-labels-editor.spec.ts",), True),
+        (("frontend/src/features/voice-plaza/store.ts",), True),
+        (("backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py",), True),
+        (("scripts/quality/check_docs.py",), True),
+        (("docs/product/README.md",), False),
+        (("changes/active/CHG-example/CHANGE.md",), False),
+    ],
+)
+def test_selected_product_tests_receive_locked_python_prerequisites(
+    paths: tuple[str, ...], python_required: bool
+) -> None:
+    """前端会调用正式 Prompt 解析器，所选产品测试必须获得同一锁定环境。"""
+    classify = runpy.run_path(str(ROOT / "scripts/quality/classify_ci_scope.py"))[
+        "classify_requirements"
+    ]
+    requirements = classify(paths)
+    text = CI.read_text(encoding="utf-8")
+    core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
+    for name in (
+        "Setup Python",
+        "Cache uv downloads",
+        "Verify required runtime versions",
+        "Install frozen Python environment",
+    ):
+        step = core.split(f"      - name: {name}\n", 1)[1].split("      - name:", 1)[0]
+        selector = (
+            step.split("PYTHON_REQUIRED:", 1)[1].split("\n", 1)[0]
+            if (name == "Verify required runtime versions")
+            else step.split("if:", 1)[1].split("uses:", 1)[0].split("shell:", 1)[0]
+        )
+        flags = re.findall(r"needs\.ci-plan\.outputs\.(\w+) == 'true'", selector)
+        assert flags, name
+        enabled = any(getattr(requirements, flag) for flag in flags)
+        assert enabled is python_required, (paths, name, flags)
+
+    installation = core.split("      - name: Install frozen Python environment\n", 1)[1]
+    installation = installation.split("      - name:", 1)[0]
+    assert "uv lock --check" in installation
+    assert "uv sync --locked" in installation
+    assert 'uv run python -c "import aima_ugc"' in installation
+    assert core.index("Install frozen Python environment") < core.index(
+        "Frontend unit, build and Browser Mock Acceptance"
+    )
