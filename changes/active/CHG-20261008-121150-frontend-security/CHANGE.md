@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261008-121150-frontend-security
 title: 修复前端依赖安全审计阻塞
 level: L2
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: tech/frontend-security-20261008
 created: 2026-10-08
@@ -111,8 +111,8 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 | R1 | 三组精确升级且无无关漂移 | #704 / AC1 | satisfied | verify_security_lock.py PASS：12 个批准节点；无节点新增/删除，无关元数据不变；Babel 解析器保持原 7.29.8 |
 | R2 | 正式安装与审计 Green，保留报告 | #704 / AC2 | satisfied | npm ci exit0、npm audit --json exit0，各严重性及 total 均 0；npm ls exit0 无旧副本或 invalid |
 | R3 | 前端回归及生成一致性 | #704 / AC3 | satisfied | lint/typecheck/build exit0；38 文件306 unit PASS；205 Browser Mock PASS；Orval 生成无 Git diff |
-| R4 | 需求/实现完整审计及独立 Review | #704 / AC4 | not_satisfied | 作者 Completion Audit 已执行，独立源码/完成复核尚未返回 |
-| R5 | required CI、受保护合并、main-fresh 和原生 archive | #704 / AC5 | explicitly_deferred | AGENTS.md 与原生 Workflow 规定后续平台阶段；当前不声明实际完成，全部执行后才关闭 Issue |
+| R4 | 需求/实现完整审计及独立 Review | #704 / AC4 | satisfied | 独立 A1/A2 Completion Review PASS，reviewed head8c98d421/base cef8629；SEC-PF-01 CLOSED，无其他阻塞 Finding |
+| R5 | required CI、受保护合并、main-fresh 和原生 archive | #704 / AC5 | explicitly_deferred | 正式平台阶段：current-head required CI 为合并前门禁；guarded merge、main-fresh、native archive、Closure 只能在随后真实发生后确认。AGENTS.md/原生 Workflow 规定此阶段，不代表批准跳过或当前已完成；全部满足才关闭 Issue |
 
 # 计划改动
 
@@ -158,7 +158,7 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 - [x] upstream_re_read：重新读取用户决定与 live #704，独立重建 AC1–AC5。
 - [x] change_coverage：核对三组精确补丁、无关漂移、回归和平台交付全部责任。
 - [x] reverse_audit：Manifest → lock → npm ci 实际树 → audit → 现有用户/构建路径；公共业务入口无变化。
-- [ ] unresolved_cleared：所有预合并 not_satisfied 清零；post-merge 责任保留且不冒充完成。
+- [x] unresolved_cleared：所有预合并实现 not_satisfied 清零，独立审查无阻塞；current-head CI 仍须在合并前通过，post-merge 责任保留且不冒充完成。
 
 # 完成证据与状态
 
@@ -173,14 +173,15 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 | V5 | 新 lock / 本地 Windows、Chrome | frontend lint；test -- --run；build（含 ts7/vue typecheck）；test:e2e | 全部 exit0；38 文件306 unit、205 Browser Mock PASS；858 modules build | 补丁升级后的既有组件、页面流程与产物兼容 |
 | V6 | 新 lock / 当前 OpenAPI | frontend generate:api；git diff --exit-code -- frontend/src/generated | exit0，无生成 Client 差异 | 现行 API 消费者不漂移 |
 | V7 | 当前 Change/文档/Source | check_docs.py；canonical validate-change；validate_changed.py --base origin/main | 全部 exit0；frontend_only，changed3 | 文档导航和载体合规；采用唯一 classifier 的4个前端命令已逐项执行，未声称 Windows 原生 --execute 成功 |
+| V8 | head8c98d421/base cef8629 | 独立 Requirement/代码/证据 Completion Review | A1/A2 PASS，SEC-PF-01 CLOSED | 冻结依赖文件、实际安装物与本地证据满足 AC1–AC4；最终载体只允许更新本 Change，两个依赖 blob 不变 |
 
 ## 未验证内容与剩余风险
 
-依赖实现和本地 Green 已完成；独立完成复核及 current-head CI 尚未取得。构建有既有 chunk size warning，未降低预算或改切包策略。真实部署和生产 Provider 不在此依赖修复范围。
+依赖实现、本地 Green 与独立完成复核已完成；current-head required CI 尚未取得，禁止提前 merge。构建有既有 chunk size warning，未降低预算或改切包策略。真实部署和生产 Provider 不在此依赖修复范围。
 
 ## 交付状态
 
-本地任务分支、独立 Requirement #704 与早期 Draft PR #705 已建立；当前为依赖实现 checkpoint。未合并、未归档、未关闭 Issue。
+本地任务分支、独立 Requirement #704 与早期 Draft PR #705 已建立；进入 Ready 载体与正式 CI 阶段。未合并、未归档、未关闭 Issue；main-fresh、归档、Acceptance/Closure 与 cleanup 保留为后续必需动作。
 
 ## 备注
 
