@@ -108,10 +108,10 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 三组精确升级且无无关漂移 | #704 / AC1 | not_satisfied | 依赖尚未修改 |
-| R2 | 正式安装与审计 Green，保留报告 | #704 / AC2 | not_satisfied | 当前 Red 为 exit 1 |
-| R3 | 前端回归及生成一致性 | #704 / AC3 | not_satisfied | 新依赖尚未验证 |
-| R4 | 需求/实现完整审计及独立 Review | #704 / AC4 | not_satisfied | 新实现尚未审查 |
+| R1 | 三组精确升级且无无关漂移 | #704 / AC1 | satisfied | verify_security_lock.py PASS：12 个批准节点；无节点新增/删除，无关元数据不变；Babel 解析器保持原 7.29.8 |
+| R2 | 正式安装与审计 Green，保留报告 | #704 / AC2 | satisfied | npm ci exit0、npm audit --json exit0，各严重性及 total 均 0；npm ls exit0 无旧副本或 invalid |
+| R3 | 前端回归及生成一致性 | #704 / AC3 | satisfied | lint/typecheck/build exit0；38 文件306 unit PASS；205 Browser Mock PASS；Orval 生成无 Git diff |
+| R4 | 需求/实现完整审计及独立 Review | #704 / AC4 | not_satisfied | 作者 Completion Audit 已执行，独立源码/完成复核尚未返回 |
 | R5 | required CI、受保护合并、main-fresh 和原生 archive | #704 / AC5 | explicitly_deferred | AGENTS.md 与原生 Workflow 规定后续平台阶段；当前不声明实际完成，全部执行后才关闭 Issue |
 
 # 计划改动
@@ -155,9 +155,9 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 
 # 完成审计
 
-- [ ] upstream_re_read：重新读取用户决定与 live #704，独立重建 AC1–AC5。
-- [ ] change_coverage：核对三组精确补丁、无关漂移、回归和平台交付全部责任。
-- [ ] reverse_audit：Manifest → lock → npm ci 实际树 → audit → 现有用户/构建路径；公共业务入口无变化。
+- [x] upstream_re_read：重新读取用户决定与 live #704，独立重建 AC1–AC5。
+- [x] change_coverage：核对三组精确补丁、无关漂移、回归和平台交付全部责任。
+- [x] reverse_audit：Manifest → lock → npm ci 实际树 → audit → 现有用户/构建路径；公共业务入口无变化。
 - [ ] unresolved_cleared：所有预合并 not_satisfied 清零；post-merge 责任保留且不冒充完成。
 
 # 完成证据与状态
@@ -168,14 +168,19 @@ Node/npm 精确版本、无关包版本、下载源与 integrity 校验、公共
 | --- | --- | --- | --- | --- |
 | V1 | cef8629 / Node24.19.0 npm11.17.0 | npm --prefix frontend audit --json | exit1；3 high/1 moderate | 旧 lock 的真实安全审计 Red |
 | V2 | 当前 Source / Issue704 | canonical prepare/validate-issue create、平台读回同检 | PASS | 独立 Requirement 已持久化且符合机器 Contract |
+| V3 | 新 Manifest/lock / Node24.19.0 npm11.17.0 | verify_security_lock.py；npm package-lock-only 普通校验 | PASS，12 节点、0 无关变化 | 三组批准补丁与原 registry/integrity 策略，无新增直接依赖/override |
+| V4 | 新 lock / 本地 Windows | npm --prefix frontend ci --no-audit；npm audit --json；npm ls | 全部 exit0；漏洞 total0 | 正式安装可复现，三公告均不再命中 |
+| V5 | 新 lock / 本地 Windows、Chrome | frontend lint；test -- --run；build（含 ts7/vue typecheck）；test:e2e | 全部 exit0；38 文件306 unit、205 Browser Mock PASS；858 modules build | 补丁升级后的既有组件、页面流程与产物兼容 |
+| V6 | 新 lock / 当前 OpenAPI | frontend generate:api；git diff --exit-code -- frontend/src/generated | exit0，无生成 Client 差异 | 现行 API 消费者不漂移 |
+| V7 | 当前 Change/文档/Source | check_docs.py；canonical validate-change；validate_changed.py --base origin/main | 全部 exit0；frontend_only，changed3 | 文档导航和载体合规；采用唯一 classifier 的4个前端命令已逐项执行，未声称 Windows 原生 --execute 成功 |
 
 ## 未验证内容与剩余风险
 
-新依赖尚未修改，Green/Review/current-head CI 尚未取得。真实部署和生产 Provider 不在此依赖修复范围。
+依赖实现和本地 Green 已完成；独立完成复核及 current-head CI 尚未取得。构建有既有 chunk size warning，未降低预算或改切包策略。真实部署和生产 Provider 不在此依赖修复范围。
 
 ## 交付状态
 
-本地任务分支与独立 Requirement 已建立；当前为开工治理 checkpoint。未合并、未归档、未关闭 Issue。
+本地任务分支、独立 Requirement #704 与早期 Draft PR #705 已建立；当前为依赖实现 checkpoint。未合并、未归档、未关闭 Issue。
 
 ## 备注
 
