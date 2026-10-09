@@ -7,21 +7,17 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, func, insert, or_, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_effective import load_effective_analysis
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.reporting import PostgresDataExportRepository
 from aima_ugc.contracts.export import UnifiedDataExcelV1
-from aima_ugc.modules.analysis.manual_override_tables import analysis_content_manual_overrides_table
-from aima_ugc.modules.analysis.tables import (
-    analysis_content_results_table,
-    analysis_content_runs_table,
-)
 from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.modules.reporting.report_tables import (
     report_artifacts_table,
@@ -272,40 +268,8 @@ class PostgresReportRepository:
             raise ValueError("报告 Job 身份不匹配")
 
     def _analysis_basis(self, versions: dict[UUID, int]) -> dict[UUID, dict[str, Any]]:
-        """记录投影实际使用的结果/Run/Scheme/Hash和人工覆盖，不把active配置冒充历史依据。"""
-        result, run = analysis_content_results_table, analysis_content_runs_table
-        ranked = (
-            select(
-                result,
-                run.c.analysis_scheme_version_id,
-                func.row_number()
-                .over(
-                    partition_by=(result.c.content_id, result.c.content_version),
-                    order_by=(run.c.sequence_no.desc(), result.c.id.desc()),
-                )
-                .label("rank"),
-            )
-            .join(run, run.c.id == result.c.analysis_run_id)
-            .where(
-                or_(
-                    *(
-                        and_(result.c.content_id == content_id, result.c.content_version == version)
-                        for content_id, version in versions.items()
-                    )
-                ),
-            )
-            .subquery()
-        )
-        # 排序与共用 Export 投影一致，只保存当前冻结版本实际使用的结果。
+        """记录冻结目标及真实来源，历史模型和人工操作不会冒充新执行。"""
         result_map = {}
-        for row in self._session.execute(select(ranked).where(ranked.c.rank == 1)).mappings():
-            result_map[row["content_id"]] = json.loads(json.dumps(dict(row), default=str))
-        for manual in self._session.execute(
-            select(analysis_content_manual_overrides_table).where(
-                analysis_content_manual_overrides_table.c.content_id.in_(tuple(versions)),
-            )
-        ).mappings():
-            identity = result_map.get(manual["content_id"])
-            if identity is not None and identity["content_version"] == manual["content_version"]:
-                identity["manual_override"] = json.loads(json.dumps(dict(manual), default=str))
+        for content_id, row in load_effective_analysis(self._session, versions).items():
+            result_map[content_id] = json.loads(json.dumps(dict(row), default=str))
         return result_map

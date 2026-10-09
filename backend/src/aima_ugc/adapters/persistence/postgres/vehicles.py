@@ -806,33 +806,61 @@ class PostgresVehicleCatalogRepository:
         return True
 
     def carry_manual_review_batch(self, entries: tuple[tuple[UUID, int, int], ...]) -> set[UUID]:
-        """先集合锁定并筛选人工锁，仅对确有人工结论的版本执行继承。"""
+        """集合锁定、读取和克隆人工结论，保留原操作人、时间及合法空锁。"""
 
         pairs = tuple((content_id, source) for content_id, source, _ in entries)
         if not pairs:
             return set()
         self._lock_vehicle_review_writes(pairs)
-        locked = set(
-            self._session.execute(
-                select(
-                    content_vehicle_review_locks_table.c.content_id,
-                    content_vehicle_review_locks_table.c.content_version,
-                ).where(
+        locked = {
+            (row["content_id"], row["content_version"]): row
+            for row in self._session.execute(
+                select(content_vehicle_review_locks_table).where(
                     tuple_(
                         content_vehicle_review_locks_table.c.content_id,
                         content_vehicle_review_locks_table.c.content_version,
                     ).in_(pairs),
                     content_vehicle_review_locks_table.c.is_locked.is_(True),
                 )
+            ).mappings()
+        }
+        if not locked:
+            return set()
+        evidence: dict[tuple[UUID, int], list[RowMapping]] = defaultdict(list)
+        for row in self._session.execute(
+            select(content_vehicle_evidence_table).where(
+                tuple_(
+                    content_vehicle_evidence_table.c.content_id,
+                    content_vehicle_evidence_table.c.content_version,
+                ).in_(tuple(locked)),
+                content_vehicle_evidence_table.c.is_manual_locked.is_(True),
+                content_vehicle_evidence_table.c.is_active.is_(True),
             )
-        )
-        carried: set[UUID] = set()
+        ).mappings():
+            evidence[(row["content_id"], row["content_version"])].append(row)
+        lock_values = []
+        evidence_values = []
         for content_id, source, target in entries:
-            if (content_id, source) in locked and self.carry_manual_review(
-                content_id=content_id, source_version=source, target_version=target
-            ):
-                carried.add(content_id)
-        return carried
+            lock = locked.get((content_id, source))
+            if lock is None:
+                continue
+            lock_values.append(
+                {
+                    "content_id": content_id,
+                    "content_version": target,
+                    "is_locked": True,
+                    "actor_ref": lock["actor_ref"],
+                    "updated_at": lock["updated_at"],
+                }
+            )
+            for row in evidence[(content_id, source)]:
+                evidence_values.append(dict(row, id=uuid4(), content_version=target))
+        # 不使用 upsert，调用方的当前直接审核或解锁记录不能被历史结论覆盖。
+        if lock_values:
+            self._session.execute(insert(content_vehicle_review_locks_table), lock_values)
+        if evidence_values:
+            self._session.execute(insert(content_vehicle_evidence_table), evidence_values)
+        return {row["content_id"] for row in lock_values}
 
     def restore_automatic_evidence_new_version_batch(
         self,

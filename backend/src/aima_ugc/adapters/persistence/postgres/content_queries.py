@@ -12,6 +12,7 @@ from sqlalchemy import BigInteger, and_, case, exists, func, literal, or_, selec
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_effective import effective_analysis_source
 from aima_ugc.contracts.brand_vehicle import (
     BrandRole,
     competition_scope_for_brand_roles,
@@ -226,16 +227,15 @@ class PostgresContentQueryRepository:
         """构造筛选目录所需的最小当前态投影。"""
 
         content = contents_table
-        analysis = _latest_analysis_subquery(self._analysis_identity)
+        source = effective_analysis_source(content.c.id, content.c.current_version)
+        analysis = analysis_content_results_table
         manual = analysis_content_manual_overrides_table
         current_analysis = and_(
-            analysis.c.content_id == content.c.id,
-            analysis.c.content_version == content.c.current_version,
-            analysis.c.rank == 1,
+            analysis.c.id == source.c.analysis_result_id,
         )
         current_manual = and_(
             manual.c.content_id == content.c.id,
-            manual.c.content_version == content.c.current_version,
+            manual.c.content_version == source.c.manual_override_version,
         )
         effective_voice_type = case(
             (manual.c.voice_type_locked.is_(True), manual.c.voice_type),
@@ -255,7 +255,9 @@ class PostgresContentQueryRepository:
                 manual.c.labels_locked,
             )
             .select_from(
-                content.outerjoin(analysis, current_analysis).outerjoin(manual, current_manual)
+                content.outerjoin(source, true())
+                .outerjoin(analysis, current_analysis)
+                .outerjoin(manual, current_manual)
             )
             .where(
                 content_has_active_source(
@@ -851,6 +853,9 @@ class PostgresContentQueryRepository:
             request = provider_requests_table
             scope = collection_scopes_table
             analysis = analysis_content_results_table
+            effective_source = effective_analysis_source(
+                projection.c.content_id, projection.c.content_version
+            )
             manual = analysis_content_manual_overrides_table
             target = analysis_content_run_targets_table
             run = analysis_content_runs_table
@@ -872,12 +877,13 @@ class PostgresContentQueryRepository:
                 source_join.join(attempt, attempt.c.id == version.c.provider_attempt_id)
                 .join(request, request.c.id == attempt.c.provider_request_id)
                 .outerjoin(scope, scope.c.id == request.c.scope_id)
+                .outerjoin(effective_source, true())
                 .outerjoin(analysis, analysis.c.id == projection.c.analysis_result_id)
                 .outerjoin(
                     manual,
                     and_(
                         manual.c.content_id == projection.c.content_id,
-                        manual.c.content_version == projection.c.content_version,
+                        manual.c.content_version == effective_source.c.manual_override_version,
                     ),
                 )
                 .outerjoin(latest_run, true())
@@ -964,29 +970,26 @@ class PostgresContentQueryRepository:
         attempt = provider_request_attempts_table
         request = provider_requests_table
         scope = collection_scopes_table
-        review = _latest_relevance_review_subquery()
+        source = effective_analysis_source(content.c.id, content.c.current_version)
+        review = analysis_content_relevance_reviews_table
         manual = analysis_content_manual_overrides_table
-        analysis = _latest_analysis_subquery(self._analysis_identity)
+        analysis = analysis_content_results_table
         latest_run = _latest_analysis_run_subquery()
         sort_at = func.coalesce(content.c.published_at, content.c.last_seen_at).label("sort_at")
         has_any_analysis = exists(
-            select(analysis_content_results_table.c.id).where(
-                analysis_content_results_table.c.content_id == content.c.id
-            )
+            select(analysis_content_results_table.c.id)
+            .where(analysis_content_results_table.c.content_id == content.c.id)
+            .correlate(content)
         )
         current_analysis = and_(
-            analysis.c.content_id == content.c.id,
-            analysis.c.content_version == content.c.current_version,
-            analysis.c.rank == 1,
+            analysis.c.id == source.c.analysis_result_id,
         )
         current_review = and_(
-            review.c.content_id == content.c.id,
-            review.c.content_version == content.c.current_version,
-            review.c.rank == 1,
+            review.c.id == source.c.relevance_review_id,
         )
         current_manual = and_(
             manual.c.content_id == content.c.id,
-            manual.c.content_version == content.c.current_version,
+            manual.c.content_version == source.c.manual_override_version,
         )
         current_latest_run = and_(
             latest_run.c.content_id == content.c.id,
@@ -1022,6 +1025,7 @@ class PostgresContentQueryRepository:
             .join(attempt, attempt.c.id == version.c.provider_attempt_id)
             .join(request, request.c.id == attempt.c.provider_request_id)
             .outerjoin(scope, scope.c.id == request.c.scope_id)
+            .outerjoin(source, true())
             .outerjoin(analysis, current_analysis)
             .outerjoin(latest_run, current_latest_run)
             .outerjoin(review, current_review)
@@ -1491,32 +1495,6 @@ class PostgresContentQueryRepository:
         )
 
 
-def _latest_analysis_subquery(
-    identity: AnalysisConfigurationIdentity | None,
-) -> Any:
-    del identity
-    result = analysis_content_results_table
-    run = analysis_content_runs_table
-    statement = select(
-        result.c.id,
-        result.c.content_id,
-        result.c.content_version,
-        result.c.relevance,
-        result.c.voice_type,
-        result.c.sentiment,
-        result.c.analyzed_at,
-        result.c.model_provider,
-        result.c.model,
-        func.row_number()
-        .over(
-            partition_by=(result.c.content_id, result.c.content_version),
-            order_by=(run.c.sequence_no.desc(), result.c.id.desc()),
-        )
-        .label("rank"),
-    ).select_from(result.join(run, run.c.id == result.c.analysis_run_id))
-    return statement.subquery("latest_content_analysis")
-
-
 def _latest_analysis_run_subquery() -> Any:
     target = analysis_content_run_targets_table
     run = analysis_content_runs_table
@@ -1536,22 +1514,6 @@ def _latest_analysis_run_subquery() -> Any:
         .select_from(target.join(run, run.c.id == target.c.run_id))
         .subquery("latest_content_analysis_run")
     )
-
-
-def _latest_relevance_review_subquery() -> Any:
-    review = analysis_content_relevance_reviews_table
-    return select(
-        review.c.id,
-        review.c.content_id,
-        review.c.content_version,
-        review.c.decision,
-        func.row_number()
-        .over(
-            partition_by=(review.c.content_id, review.c.content_version),
-            order_by=(review.c.review_no.desc(), review.c.reviewed_at.desc(), review.c.id.desc()),
-        )
-        .label("rank"),
-    ).subquery("latest_content_relevance_review")
 
 
 def _collection_ingestion_source_condition(content_id: Any, run_id: UUID) -> Any:

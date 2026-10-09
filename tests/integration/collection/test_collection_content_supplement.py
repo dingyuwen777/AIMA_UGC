@@ -119,6 +119,10 @@ def test_selected_preserves_irrelevant_and_blocked_without_unselected_scopes(run
             .one()
         )
         snapshot = run["config_snapshot"]["supplement_selection"]
+        catalog = run["config_snapshot"]["brand_vehicle_filter"]
+        assert catalog["search_semantics"] == "not_applicable"
+        assert catalog["catalog"]["filter_scope"] == "all_active"
+        assert catalog["catalog"]["resolver_semantics"] == "brand_scoped_vehicle_v2"
         assert run["config_snapshot"]["include_sub_comments"] is True
         assert run["config_snapshot"]["comment_policy"] == "full"
         assert run["config_snapshot"]["decision_policy"]["comment_mode"] == "full"

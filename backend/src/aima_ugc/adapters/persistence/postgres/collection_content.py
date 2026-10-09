@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_reuse import PostgresAnalysisReuseRepository
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import PreviousContentStateV1
 from aima_ugc.modules.collection.candidate_tables import collection_candidates_table
@@ -38,7 +39,7 @@ from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 from aima_ugc.platform.time import beijing_now
 
 from .brand_vehicle import PostgresBrandVehicleRepository
-from .brand_vehicle_classification import resolve_current_brand_vehicle_batch
+from .brand_vehicle_classification import converge_current_brand_vehicle_batch
 from .candidates import PostgresCandidateRepository
 from .content import PostgresIngestionResult
 from .content_complete import PostgresCompleteContentRepository
@@ -336,14 +337,13 @@ class PostgresFencedCollectionIngestionWriter:
         brand_vehicle_snapshot: BrandVehicleCatalogSnapshot | None = None,
         brand_vehicle_resolution: BrandVehicleResolution | None = None,
         identity_guard: tuple[str, str] | None = None,
+        expected_content_id: UUID | None = None,
     ) -> PostgresIngestionResult:
         """在同一 Fenced 事务写 Content、Candidate 与冻结目录解析证据。"""
 
         if (brand_vehicle_snapshot is None) != (brand_vehicle_resolution is None):
             raise ValueError("Brand/Vehicle Snapshot 与 Resolution 必须同时提供")
         if brand_vehicle_resolution is not None:
-            if not brand_vehicle_resolution.matched:
-                raise ValueError("只允许为通过过滤的 Content 写入 Brand/Vehicle Evidence")
             assert brand_vehicle_snapshot is not None
             if brand_vehicle_snapshot.catalog_version != brand_vehicle_resolution.catalog_version:
                 raise ValueError("Brand/Vehicle Resolution 与冻结 Snapshot 版本不一致")
@@ -358,6 +358,10 @@ class PostgresFencedCollectionIngestionWriter:
                     attempt_id=attempt_id,
                     raw_artifact_id=raw_artifact_id,
                     fence=fence,
+                    require_enrichment=(
+                        brand_vehicle_resolution is not None
+                        and not brand_vehicle_resolution.matched
+                    ),
                 )
                 candidate_service = CandidateIngestionService(PostgresCandidateRepository(session))
                 if candidate_id is None:
@@ -411,13 +415,15 @@ class PostgresFencedCollectionIngestionWriter:
                 content_repository = PostgresCompleteContentRepository(session)
                 content_service = ContentIngestionService(content_repository)
                 result = content_service.ingest_content(canonical)
+                if expected_content_id is not None and result.target_id != expected_content_id:
+                    raise CollectionContentIdentityConflictError("详情未收敛到原 Content")
                 if brand_vehicle_resolution is not None:
                     assert brand_vehicle_snapshot is not None
                     vehicle_repository = PostgresVehicleCatalogRepository(session)
                     brand_repository = PostgresBrandVehicleRepository(session)
                     v2 = brand_vehicle_snapshot.resolver_semantics == "brand_scoped_vehicle_v2"
-                    if v2 and not (result.version_created and result.version_no == 1):
-                        classifications = resolve_current_brand_vehicle_batch(
+                    if v2:
+                        converge_current_brand_vehicle_batch(
                             snapshot=brand_vehicle_snapshot,
                             inputs=content_repository.lock_current_classification_inputs(
                                 content_ids=(result.target_id,)
@@ -431,57 +437,40 @@ class PostgresFencedCollectionIngestionWriter:
                             if result.version_created and result.version_no > 1
                             else (),
                         )
-                        brand_vehicle_resolution = classifications[
-                            (result.target_id, result.version_no)
-                        ]
-                    vehicle_evidence = []
-                    for item in brand_vehicle_resolution.vehicle_evidence:
-                        if item.source != "alias_match":
-                            if v2 and item.source == "manual_review":
-                                continue
-                            raise ValueError("自动 Vehicle Evidence 只接受 alias_match")
-                        vehicle_evidence.append(
-                            ContentVehicleEvidence(
-                                id=uuid4(),
-                                content_id=result.target_id,
-                                content_version=result.version_no,
-                                vehicle_model_id=item.entity_id,
-                                source="alias_match",
-                                matched_text=item.matched_text,
-                                source_field=item.source_field,
-                                catalog_version=brand_vehicle_resolution.catalog_version,
-                                confidence=1.0,
-                                is_manual_locked=False,
-                                is_active=True,
-                                created_at=beijing_now(),
-                            )
-                        )
-                    if v2:
-                        vehicle_repository.converge_automatic_alias_evidence_for_replay(
-                            entries=(
-                                (result.target_id, result.version_no, tuple(vehicle_evidence)),
-                            ),
-                            source_pairs=((result.target_id, result.version_no),),
-                            replace_existing=brand_vehicle_snapshot.filter_scope == "all_active",
-                            include_import_text_matches=True,
-                            replace_vehicle_model_ids=(
-                                brand_vehicle_snapshot.automatic_evidence_vehicle_ids
-                            ),
-                        )
                     else:
-                        for evidence in vehicle_evidence:
-                            vehicle_repository.append_evidence(evidence)
-                    brand_repository.replace_automatic_brand_evidence(
-                        content_id=result.target_id,
-                        content_version=result.version_no,
-                        evidence=tuple(
-                            evidence
-                            for evidence in brand_vehicle_resolution.brand_evidence
-                            if evidence.source != "manual_review"
-                        ),
-                        catalog_version=brand_vehicle_resolution.catalog_version,
-                        catalog_snapshot=brand_vehicle_snapshot,
-                    )
+                        for item in brand_vehicle_resolution.vehicle_evidence:
+                            if item.source != "alias_match":
+                                raise ValueError("自动 Vehicle Evidence 只接受 alias_match")
+                            vehicle_repository.append_evidence(
+                                ContentVehicleEvidence(
+                                    id=uuid4(),
+                                    content_id=result.target_id,
+                                    content_version=result.version_no,
+                                    vehicle_model_id=item.entity_id,
+                                    source="alias_match",
+                                    matched_text=item.matched_text,
+                                    source_field=item.source_field,
+                                    catalog_version=brand_vehicle_resolution.catalog_version,
+                                    confidence=1.0,
+                                    is_manual_locked=False,
+                                    is_active=True,
+                                    created_at=beijing_now(),
+                                )
+                            )
+                        brand_repository.replace_automatic_brand_evidence(
+                            content_id=result.target_id,
+                            content_version=result.version_no,
+                            evidence=tuple(
+                                evidence
+                                for evidence in brand_vehicle_resolution.brand_evidence
+                                if evidence.source != "manual_review"
+                            ),
+                            catalog_version=brand_vehicle_resolution.catalog_version,
+                            catalog_snapshot=brand_vehicle_snapshot,
+                        )
+                PostgresAnalysisReuseRepository(session).converge_reuses(
+                    ((result.target_id, result.version_no),)
+                )
                 candidate_service.record_ingestion(
                     candidate_id=candidate_id,
                     canonical=canonical,
@@ -646,12 +635,16 @@ def _lock_matching_attempt(
     attempt_id: UUID,
     fence: JobExecutionFence,
     raw_artifact_id: UUID | None,
+    require_enrichment: bool = False,
 ) -> str:
+    """锁定 Fence 并验证真实来源；仅详情补采允许合法空品牌分类。"""
     PostgresJobRepository(session).lock_current_execution(fence)
     ownership = session.execute(
         select(
             collection_runs_table.c.job_id,
             collection_scopes_table.c.platform,
+            collection_scopes_table.c.source_type,
+            collection_scopes_table.c.operation_group,
             provider_request_attempts_table.c.raw_artifact_id,
         )
         .select_from(
@@ -675,6 +668,10 @@ def _lock_matching_attempt(
         raise LeaseLostError("Provider Attempt 不属于当前 Job Fence")
     if raw_artifact_id is not None and ownership.raw_artifact_id != raw_artifact_id:
         raise ValueError("Provider Attempt 与 Canonical Raw Artifact 来源不一致")
+    if require_enrichment and (
+        ownership.source_type != "content" or ownership.operation_group != "content_enrichment"
+    ):
+        raise ValueError("只允许为通过过滤的 Content 写入 Brand/Vehicle Evidence")
     return str(ownership.platform)
 
 

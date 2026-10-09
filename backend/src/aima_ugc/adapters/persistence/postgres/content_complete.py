@@ -38,6 +38,7 @@ from .content import (
     PostgresExistingContentBatchItem,
     PostgresIngestionResult,
     PostgresNewContentBatchItem,
+    _merge_content_author_snapshot,
 )
 from .content_contributions import (
     ContentContributionSnapshot,
@@ -903,6 +904,21 @@ class PostgresCompleteContentRepository:
             )
         )
         if changed and not result.version_created:
+            previous = self._session.execute(
+                select(
+                    content_versions_table.c.author_snapshot,
+                    content_versions_table.c.observed_at,
+                ).where(
+                    content_versions_table.c.content_id == result.target_id,
+                    content_versions_table.c.version_no == result.version_no,
+                )
+            ).one()
+            author_snapshot, _ = _merge_content_author_snapshot(
+                previous=previous.author_snapshot,
+                previous_observed_at=previous.observed_at,
+                observation=observation,
+                freshness=freshness,
+            )
             self._session.execute(
                 insert(content_versions_table).values(
                     id=uuid4(),
@@ -913,7 +929,7 @@ class PostgresCompleteContentRepository:
                     text=row["text"],
                     canonical_url=row["canonical_url"],
                     share_url=row["share_url"],
-                    author_snapshot=None,
+                    author_snapshot=author_snapshot,
                     published_at=row["published_at"],
                     source_updated_at=row["source_updated_at"],
                     status=row["status"],

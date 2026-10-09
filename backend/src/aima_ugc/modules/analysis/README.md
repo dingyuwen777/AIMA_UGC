@@ -271,19 +271,21 @@ Analysis Shard Worker
 
 ## 6. Analysis 为什么绑定 Content Version
 
-Content 正文/作者等发生变化后：
+成功 Result 永久保留实际分析的 Content Version、输入 Hash 和冻结的 Run 身份。正文或作者模型输入变化时，不能把旧 Result 的版本改成新版本，也不能复制成一次新的模型执行。
 
-```text
-Version A 的 Analysis
-≠ Version B 的当前 Analysis
-```
+读取明确目标版本时，先按 `analysis_content_runs.sequence_no` 选择该版本的最新直接成功 Result。没有直接结果时，才读取 Analysis Owner 保存的等价复用关联。关联指向真实 Result，保留原 Prompt、Scheme、Model、生成配置和分析时间；它不代表发生了新模型调用。
 
-Current Analysis 先要求 Content Version 相同，再按 Analysis Run 的数据库创建顺序选择最新成功结果：
+等价证明只复用 [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) 的 `content_labeling_input_hash()`：源不可变版本还原的生产 Hash、源成功 Result 实际保存的 Hash 与目标版本 Hash 必须一致，并且历史协议可证明兼容。输出格式版本本身不能证明输入协议；未知协议、失败结果或输入不同都不复用。连续版本直接指向原 Result，因此 `A → B → A` 不依赖递归复制相邻版本。
 
-```text
-content/version
-analysis_content_runs.sequence_no
-```
+人工修正与模型原始结果分别读取。当前版本直接审核或解锁事实优先；否则使用关联中明确记录的等价历史人工来源。继承不新增人工操作，也不改历史账本。修改继承的锁定维度仍需显式解锁；当前版本 `inherit_ai` 撤销有效人工相关性覆盖，回到有效 AI 原判。直接重新分析继续保留既有人工锁语义。
+
+补采及普通入库在 Content、Evidence 的同一事务内维护复用关联，不自动创建 Analysis Run。主动创建新 Run 仍冻结目标并正常调用模型。声音广场不会因为发布新 Prompt 就让全部历史成功结果失效；工作台继续限定其 active Scheme 范围。
+
+版本作者输入来自 Content Owner 按观察字段及新鲜度合并的不可变快照，未观察的字段不会被稀疏详情清空；接受的作者模型输入变化有独立版本边界。AI Worker 持久化前锁定 Content，版本已变化时保留原 Run 的 stale 审计。统一来源选择、复用写入与冻结消费者入口分别为：
+
+- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_effective.py`](../../adapters/persistence/postgres/analysis_effective.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis_reuse.py`](../../adapters/persistence/postgres/analysis_reuse.py)
+- [`migrations/versions/20261009_0083_analysis_version_reuse.py`](../../../../../migrations/versions/20261009_0083_analysis_version_reuse.py)
 
 兼容入口 `POST /api/v1/content-analysis-requests` 为保持既有 `request_id/job_id` Response，仍同步冻结 selected/query 目标并创建首个 Shard；新版 Run API 不在 HTTP 请求内扫描或冻结海量目标。公开 `all` 使用内部专用快照标记，与历史空筛选 `query` 明确区分；Planner 分批短事务冻结全部 Content Current（包含 irrelevant），全部目标校验完成后才创建首批 Shard。Lease 重试从已提交 Target 的最后 Content ID 与连续 ordinal 续跑，避免重复扫描或重复计数已冻结批次。
 
@@ -330,7 +332,7 @@ AI 层：
 
 当前 `contents` 没有 `is_relevant` AI 投影列。
 
-模型原始 `analysis_content_results.relevance` 是不可被人工复核覆盖的审计事实。人工相关性决定保存到 `analysis_content_relevance_reviews` 追加账本，同一 Content Version 以递增 `review_no` 记录 `relevant / irrelevant / inherit_ai`。默认业务列表、筛选、查询型 Analysis target 和查询型 Export 继续复用同一有效相关性表达式。
+模型原始 `analysis_content_results.relevance` 是不可被人工复核覆盖的审计事实。人工相关性决定保存到 `analysis_content_relevance_reviews` 追加账本，同一 Content Version 以递增 `review_no` 记录 `relevant / irrelevant / inherit_ai`。默认业务列表、筛选、查询型 Analysis target 和查询型 Export 使用同一有效相关性来源选择；版本等价继承与直接撤销规则见上节。
 
 ---
 

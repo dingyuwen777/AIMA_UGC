@@ -845,6 +845,11 @@ class PostgresCollectionHttpService:
                 None,
             )
         selected_platforms = tuple(selection.platform for selection in request.platforms)
+        # 补采分类针对完整 Current；新 Run 冻结全量目录，重试/接管不读取新目录。
+        supplement_filter = BrandVehicleFilterSnapshot(
+            search_semantics="not_applicable",
+            catalog=PostgresBrandVehicleRepository(session).snapshot(brand_ids=None),
+        ).model_dump(mode="json")
         if request.mode == "content_supplement":
             assert request.supplement_targets is not None
             target_selection = request.supplement_targets
@@ -891,7 +896,7 @@ class PostgresCollectionHttpService:
                     for item in source_items
                 ),
                 (),
-                {},
+                supplement_filter,
                 selection_snapshot,
             )
         reader = PostgresCollectionTargetReader(
@@ -939,7 +944,7 @@ class PostgresCollectionHttpService:
                 for target in source_items
             ),
             (),
-            {},
+            supplement_filter,
             None,
         )
 

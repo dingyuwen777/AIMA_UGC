@@ -560,9 +560,9 @@ class PostgresAnalysisRepository:
         if request_job_id != job.id:
             raise ValueError("Analysis Request 与当前 Job 不匹配")
         current_version = self._session.scalar(
-            select(contents_table.c.current_version).where(
-                contents_table.c.id == work_item.content_id
-            )
+            select(contents_table.c.current_version)
+            .where(contents_table.c.id == work_item.content_id)
+            .with_for_update()
         )
         if current_version != work_item.content_version:
             self._session.execute(
@@ -1003,7 +1003,10 @@ class PostgresAnalysisRepository:
         return status
 
 
-def _row_to_work_item(row: RowMapping) -> AnalysisWorkItem:
+def canonical_analysis_content_from_row(
+    row: RowMapping, *, model_input_only: bool = False
+) -> CanonicalContentV1:
+    """从不可变版本快照恢复实际模型输入，供执行和等价证明共用。"""
     author_snapshot = row["author_snapshot"]
     display_name = _snapshot_text(author_snapshot, "display_name")
     bio = _snapshot_text(author_snapshot, "bio")
@@ -1028,8 +1031,9 @@ def _row_to_work_item(row: RowMapping) -> AnalysisWorkItem:
         content_type=cast(str, row["content_type"]),
         title=cast(str | None, row["title"]),
         text=cast(str | None, row["text"]),
-        canonical_url=_http_url(row["canonical_url"]),
-        share_url=_http_url(row["share_url"]),
+        # Hash 证明仅涉及模型字段；旧 URL 格式不能成为额外的等价性判据。
+        canonical_url=None if model_input_only else _http_url(row["canonical_url"]),
+        share_url=None if model_input_only else _http_url(row["share_url"]),
         author=author,
         published_at=row["published_at"],
         source_updated_at=row["source_updated_at"],
@@ -1046,6 +1050,10 @@ def _row_to_work_item(row: RowMapping) -> AnalysisWorkItem:
             observed_at=cast(datetime, row["observed_at"]),
         ),
     )
+    return content
+
+
+def _row_to_work_item(row: RowMapping) -> AnalysisWorkItem:
     return AnalysisWorkItem(
         request_id=cast(UUID, row["request_id"]),
         analysis_run_id=cast(UUID, row["analysis_run_id"]),
@@ -1065,7 +1073,7 @@ def _row_to_work_item(row: RowMapping) -> AnalysisWorkItem:
         ordinal=cast(int, row["ordinal"]),
         content_id=cast(UUID, row["content_id"]),
         content_version=cast(int, row["content_version"]),
-        content=content,
+        content=canonical_analysis_content_from_row(row),
         retry_count=cast(int, row.get("retry_count", 0)),
         retry_kind=cast(str | None, row.get("retry_kind")),
         previous_validation_error_codes=tuple(

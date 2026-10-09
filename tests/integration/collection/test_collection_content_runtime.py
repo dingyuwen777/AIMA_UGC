@@ -8,13 +8,16 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.brand_vehicle import PostgresBrandVehicleRepository
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.collection_content import (
+    CollectionContentIdentityConflictError,
     PostgresCollectionContentStateReader,
     PostgresFencedCollectionIngestionWriter,
 )
 from aima_ugc.adapters.persistence.postgres.content_queries import PostgresContentQueryRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.canonical import (
     CanonicalContentV1,
     CanonicalMetricsV1,
@@ -37,6 +40,12 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.query import ContentReadQuery
 from aima_ugc.modules.content.read_model_tables import voice_plaza_projection_state_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
+from aima_ugc.modules.vehicles.brand_vehicle import BrandVehicleResolver
+from aima_ugc.modules.vehicles.tables import (
+    content_brand_evidence_table,
+    content_brand_review_locks_table,
+    content_vehicle_review_locks_table,
+)
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
@@ -76,7 +85,10 @@ def _clear_data(connection: Connection) -> None:
     connection.exec_driver_sql("TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE")
 
 
-def _create_live_source(runtime: DatabaseRuntime, *, source_value: str) -> _LiveSource:
+def _create_live_source(
+    runtime: DatabaseRuntime, *, source_value: str, enrichment: bool = False
+) -> _LiveSource:
+    """建立真实 Fence/Attempt 来源；补采场景使用正式 content_enrichment Scope。"""
     session = runtime.new_session()
     request_id = uuid4()
     attempt_id = uuid4()
@@ -107,9 +119,9 @@ def _create_live_source(runtime: DatabaseRuntime, *, source_value: str) -> _Live
                 scopes=(
                     CollectionScopeDefinition(
                         platform="xiaohongshu",
-                        source_type="keyword_search",
+                        source_type="content" if enrichment else "keyword_search",
                         source_value=source_value,
-                        operation_group="content_discovery",
+                        operation_group="content_enrichment" if enrichment else "content_discovery",
                     ),
                 ),
             )
@@ -248,6 +260,344 @@ def _content_id_for_external(
             )
     finally:
         session.close()
+
+
+def test_supplement_reclassifies_merged_current_and_accepts_empty_evidence(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """稀疏详情沿用完整正文，无命中仍入库；重试不重复当前品牌证据。"""
+    source = _create_live_source(database_runtime, source_value="supplement", enrichment=True)
+    brand_alias = f"补采{uuid4().hex}"
+    with database_runtime.new_session() as session, session.begin():
+        repository = PostgresBrandVehicleRepository(session)
+        brand = repository.create_brand(
+            code=f"SUPPLEMENT-{uuid4()}",
+            display_name=brand_alias,
+            role="owned",
+            aliases=(brand_alias,),
+            actor_ref="test",
+        )
+        snapshot = repository.snapshot(brand_ids=None)
+    writer = PostgresFencedCollectionIngestionWriter(database_runtime.new_session)
+    initial = _canonical(source).model_copy(update={"title": f"{brand_alias} 原标题"})
+    first = writer.ingest_content(canonical=initial, fence=source.fence)
+    sparse = initial.model_copy(
+        update={
+            "title": None,
+            "text": None,
+            "share_url": "https://example.com/supplement",
+            "observed_fields": ["share_url"],
+            "observed_at": _NOW + timedelta(seconds=1),
+        }
+    )
+    empty = BrandVehicleResolver().resolve(
+        snapshot, title=None, raw_text=None, transcript_text=None
+    )
+    second = writer.ingest_content(
+        canonical=sparse,
+        fence=source.fence,
+        brand_vehicle_snapshot=snapshot,
+        brand_vehicle_resolution=empty,
+    )
+    assert second.target_id == first.target_id and second.version_no == 2
+    writer.ingest_content(
+        canonical=sparse,
+        fence=source.fence,
+        brand_vehicle_snapshot=snapshot,
+        brand_vehicle_resolution=empty,
+    )
+    with database_runtime.new_session() as session, session.begin():
+        rows = (
+            session.execute(
+                select(content_brand_evidence_table).where(
+                    content_brand_evidence_table.c.content_id == first.target_id,
+                    content_brand_evidence_table.c.content_version == 2,
+                    content_brand_evidence_table.c.is_active,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        assert [row["brand_id"] for row in rows] == [brand.id]
+        assert rows[0]["source_field"] == "title"
+        assert rows[0]["catalog_version"] == snapshot.catalog_version
+    removed = sparse.model_copy(
+        update={
+            "title": "没有目录品牌的正文",
+            "observed_fields": ["title"],
+            "observed_at": _NOW + timedelta(seconds=2),
+        }
+    )
+    third = writer.ingest_content(
+        canonical=removed,
+        fence=source.fence,
+        brand_vehicle_snapshot=snapshot,
+        brand_vehicle_resolution=empty,
+    )
+    assert third.version_no == 3
+    with database_runtime.new_session() as session, session.begin():
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(content_brand_evidence_table)
+                .where(
+                    content_brand_evidence_table.c.content_id == first.target_id,
+                    content_brand_evidence_table.c.content_version == 3,
+                    content_brand_evidence_table.c.is_active,
+                )
+            )
+            == 0
+        )
+        assert session.scalar(select(contents_table.c.current_version)) == 3
+
+
+@pytest.mark.parametrize("changed_field", ("title", "text"))
+def test_supplement_adds_new_brand_from_changed_current_field(
+    database_runtime: DatabaseRuntime, changed_field: str
+) -> None:
+    """已有帖子后来出现新品牌时，按新 Current 保留所有品牌及实际命中字段。"""
+    source = _create_live_source(database_runtime, source_value="new-brand", enrichment=True)
+    old_alias = f"原有品牌{uuid4().hex}"
+    new_alias = f"新增品牌{uuid4().hex}"
+    with database_runtime.new_session() as session, session.begin():
+        repository = PostgresBrandVehicleRepository(session)
+        old_brand = repository.create_brand(
+            code=f"ORIGINAL-{uuid4()}",
+            display_name=old_alias,
+            role="owned",
+            aliases=(old_alias,),
+            actor_ref="test",
+        )
+        new_brand = repository.create_brand(
+            code=f"NEW-{uuid4()}",
+            display_name=new_alias,
+            role="competitor",
+            aliases=(new_alias,),
+            actor_ref="test",
+        )
+        snapshot = repository.snapshot(brand_ids=None)
+    empty = BrandVehicleResolver().resolve(
+        snapshot, title=None, raw_text=None, transcript_text=None
+    )
+    writer = PostgresFencedCollectionIngestionWriter(database_runtime.new_session)
+    initial = _canonical(source).model_copy(update={"title": old_alias})
+    first = writer.ingest_content(
+        canonical=initial,
+        fence=source.fence,
+        brand_vehicle_snapshot=snapshot,
+        brand_vehicle_resolution=empty,
+    )
+    with database_runtime.new_session() as session, session.begin():
+        assert set(
+            session.scalars(
+                select(content_brand_evidence_table.c.brand_id).where(
+                    content_brand_evidence_table.c.content_id == first.target_id,
+                    content_brand_evidence_table.c.content_version == first.version_no,
+                    content_brand_evidence_table.c.is_active,
+                )
+            )
+        ) == {old_brand.id}
+    changed = initial.model_copy(
+        update={
+            changed_field: f"{old_alias} {new_alias}" if changed_field == "title" else new_alias,
+            "observed_fields": [changed_field],
+            "observed_at": _NOW + timedelta(seconds=1),
+        }
+    )
+    supplemented = writer.ingest_content(
+        canonical=changed,
+        fence=source.fence,
+        brand_vehicle_snapshot=snapshot,
+        brand_vehicle_resolution=empty,
+        expected_content_id=first.target_id,
+    )
+    assert supplemented.target_id == first.target_id
+    assert supplemented.version_no == first.version_no + 1
+    with database_runtime.new_session() as session, session.begin():
+        evidence = (
+            session.execute(
+                select(content_brand_evidence_table).where(
+                    content_brand_evidence_table.c.content_id == first.target_id,
+                    content_brand_evidence_table.c.content_version == supplemented.version_no,
+                    content_brand_evidence_table.c.is_active,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        assert {row["brand_id"] for row in evidence} == {old_brand.id, new_brand.id}
+        added = next(row for row in evidence if row["brand_id"] == new_brand.id)
+        assert added["source_field"] == ("title" if changed_field == "title" else "raw_text")
+        assert added["matched_text"] == new_alias
+        assert added["catalog_version"] == snapshot.catalog_version
+
+
+def test_discovery_does_not_accept_empty_brand_resolution(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """空分类结果只放行明确的详情补采来源，不放宽 Discovery Filter。"""
+    source = _create_live_source(database_runtime, source_value="discovery")
+    with database_runtime.new_session() as session, session.begin():
+        snapshot = PostgresBrandVehicleRepository(session).snapshot(brand_ids=None)
+    empty = BrandVehicleResolver().resolve(
+        snapshot, title=None, raw_text=None, transcript_text=None
+    )
+    with pytest.raises(ValueError):
+        PostgresFencedCollectionIngestionWriter(database_runtime.new_session).ingest_content(
+            canonical=_canonical(source),
+            fence=source.fence,
+            brand_vehicle_snapshot=snapshot,
+            brand_vehicle_resolution=empty,
+        )
+    assert (
+        _content_id_for_external(database_runtime, _canonical(source).external_content_id) is None
+    )
+
+
+@pytest.mark.parametrize("empty_manual", [False, True])
+def test_supplement_carries_manual_brand_and_empty_vehicle_locks(
+    database_runtime: DatabaseRuntime, empty_manual: bool
+) -> None:
+    """人工品牌选择及人工空车型锁随版本继承，自动解析不能覆盖。"""
+    source = _create_live_source(database_runtime, source_value="manual", enrichment=True)
+    writer = PostgresFencedCollectionIngestionWriter(database_runtime.new_session)
+    initial = _canonical(source)
+    first = writer.ingest_content(canonical=initial, fence=source.fence)
+    with database_runtime.new_session() as session, session.begin():
+        brands = PostgresBrandVehicleRepository(session)
+        brand = brands.create_brand(
+            code=f"MANUAL-{uuid4()}",
+            display_name=f"人工{uuid4().hex}",
+            role="owned",
+            aliases=(),
+            actor_ref="test",
+        )
+        PostgresVehicleCatalogRepository(session).replace_manual_evidence(
+            content_id=first.target_id,
+            content_version=1,
+            model_ids=(),
+            unlock_existing=False,
+            actor_ref="reviewer",
+        )
+        brands.replace_manual_brand_evidence(
+            content_id=first.target_id,
+            content_version=1,
+            brand_ids=() if empty_manual else (brand.id,),
+            unlock_existing=False,
+            actor_ref="reviewer",
+        )
+        snapshot = brands.snapshot(brand_ids=None)
+    changed = initial.model_copy(
+        update={
+            "title": "更新后没有品牌",
+            "observed_at": _NOW + timedelta(seconds=1),
+        }
+    )
+    resolution = BrandVehicleResolver().resolve(
+        snapshot, title=changed.title, raw_text=changed.text, transcript_text=None
+    )
+    second = writer.ingest_content(
+        canonical=changed,
+        fence=source.fence,
+        brand_vehicle_snapshot=snapshot,
+        brand_vehicle_resolution=resolution,
+    )
+    with database_runtime.new_session() as session, session.begin():
+        for table in (content_brand_review_locks_table, content_vehicle_review_locks_table):
+            assert (
+                session.scalar(
+                    select(table.c.is_locked).where(
+                        table.c.content_id == second.target_id,
+                        table.c.content_version == 2,
+                    )
+                )
+                is True
+            )
+        active = (
+            session.execute(
+                select(content_brand_evidence_table).where(
+                    content_brand_evidence_table.c.content_id == second.target_id,
+                    content_brand_evidence_table.c.content_version == 2,
+                    content_brand_evidence_table.c.is_active,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        assert {row["brand_id"] for row in active} == (set() if empty_manual else {brand.id})
+        assert all(row["source"] == "manual_review" for row in active)
+
+
+def test_supplement_evidence_failure_rolls_back_version_and_ingestion(
+    database_runtime: DatabaseRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Content 已变更后 Evidence Owner 抛错，原版本和来源账本仍整体保持原状。"""
+    source = _create_live_source(database_runtime, source_value="rollback", enrichment=True)
+    writer = PostgresFencedCollectionIngestionWriter(database_runtime.new_session)
+    initial = _canonical(source)
+    first = writer.ingest_content(canonical=initial, fence=source.fence)
+    with database_runtime.new_session() as session, session.begin():
+        snapshot = PostgresBrandVehicleRepository(session).snapshot(brand_ids=None)
+        ingestion_count = session.scalar(
+            select(func.count()).select_from(collection_candidate_ingestions_table)
+        )
+    changed = initial.model_copy(
+        update={
+            "title": "失败的新版本",
+            "observed_at": _NOW + timedelta(seconds=1),
+        }
+    )
+    resolution = BrandVehicleResolver().resolve(
+        snapshot, title=changed.title, raw_text=changed.text, transcript_text=None
+    )
+
+    def fail_after_content(*args: object, **kwargs: object) -> None:
+        """在生产 Owner 的事务中模拟数据库派生写入失败。"""
+        raise RuntimeError("evidence-write-failure")
+
+    monkeypatch.setattr(
+        PostgresBrandVehicleRepository,
+        "converge_automatic_brand_evidence_for_replay",
+        fail_after_content,
+    )
+    with pytest.raises(RuntimeError, match="evidence-write-failure"):
+        writer.ingest_content(
+            canonical=changed,
+            fence=source.fence,
+            brand_vehicle_snapshot=snapshot,
+            brand_vehicle_resolution=resolution,
+        )
+    with database_runtime.new_session() as session, session.begin():
+        assert (
+            session.scalar(
+                select(contents_table.c.current_version).where(
+                    contents_table.c.id == first.target_id
+                )
+            )
+            == 1
+        )
+        assert session.scalar(select(func.count()).select_from(content_versions_table)) == 1
+        assert (
+            session.scalar(select(func.count()).select_from(collection_candidate_ingestions_table))
+            == ingestion_count
+        )
+
+
+def test_supplement_wrong_content_identity_rolls_back_before_commit(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """详情映射到错误主身份时，在同一入库事务撤销新 Content 与 Candidate。"""
+    source = _create_live_source(database_runtime, source_value="identity", enrichment=True)
+    with pytest.raises(CollectionContentIdentityConflictError):
+        PostgresFencedCollectionIngestionWriter(database_runtime.new_session).ingest_content(
+            canonical=_canonical(source),
+            fence=source.fence,
+            expected_content_id=uuid4(),
+        )
+    assert _candidate_id_for_attempt(database_runtime, source.attempt_id) is None
+    assert (
+        _content_id_for_external(database_runtime, _canonical(source).external_content_id) is None
+    )
 
 
 def test_current_fence_ingests_candidate_and_content_atomically(

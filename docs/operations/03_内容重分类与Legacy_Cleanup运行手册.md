@@ -1,9 +1,10 @@
 # 内容品牌车型重分类与 Legacy Cleanup 运行手册
 
-这份手册用于两个已经具备代码支持、但不会由系统自动执行的运维动作：
+这份手册用于已经具备代码支持、需要显式限定范围和执行的运维动作：
 
 1. 按一个冻结的 Brand/Vehicle Catalog Snapshot，对既有 Current Content 补齐 Brand/Vehicle Evidence；
 2. 在确认旧过滤链没有任何数据或执行事实后，通过 Migration 删除旧关系表和 Global Keyword Relevance 表。
+3. 对明确指定的历史帖子修复当前品牌/车型缺证，以及可以证明输入等价的 Analysis 引用和人工继承来源。
 
 它不授权生产部署、生产 Migration 或生产数据写入。执行者仍须先取得目标环境授权、备份/恢复能力和维护窗口；当前完整协调 Backup/Restore 仍未实现。
 
@@ -128,3 +129,49 @@ Cancel 是持久请求。Worker 会完成或回滚当前短事务后收敛取消
 - CI 的 PostgreSQL 18 回归证明软件行为，不替代目标服务器容量、锁等待、I/O 和维护窗口验证。
 
 生产执行后应把实际 Revision、Run ID、范围、统计、异常处置和恢复证据放入获批的运维记录，不写入本手册形成第二套易失事实。
+
+## 7. 补采后历史一致性修复
+
+这项修复适用于已受影响的有限帖子集合。新补采会在详情入库事务内自动收敛，历史数据仍需由操作者先预检、确认范围，再显式创建修复 Run。它与前面的全目录重分类使用各自的业务父事实，共用现有 Job Runtime、分类器与 Analysis 复用规则。
+
+正式入口是 [`scripts/operations/content_consistency_repair.py`](../../scripts/operations/content_consistency_repair.py)。范围必须提供可重复的 `--content-id` 或一个 `--collection-run-id`，两者互斥；后者只选取该 Run 已有成功入库账本中的有限帖子。`--max-contents` 必填且不超过10000，超限整次拒绝，不截断后冒充完整修复；`--batch-size` 默认200，允许1–1000。没有自动全库选择入口。
+
+先在已批准的目标环境执行只读预检：
+
+```powershell
+uv run python scripts/operations/content_consistency_repair.py dry-run `
+  --content-id <CONTENT_UUID_1> `
+  --content-id <CONTENT_UUID_2> `
+  --max-contents 2 `
+  --batch-size 200
+```
+
+也可以把两条 Content 参数替换为 `--collection-run-id <COLLECTION_RUN_UUID>`，并给出与批准范围相符的上限。输出包括目标数、候选数、品牌缺证候选数、预计等价数、目录版本及 Analysis 拒绝原因。预检在可重复读的只读事务内完成，不创建 Job、修复 Run、Evidence 或复用关系，不调用 Provider/模型；预检结果不预留后续 Current 状态。
+
+取得**生产实际执行的单独授权、备份可恢复性和操作范围确认**后，才创建持久任务：
+
+```powershell
+uv run python scripts/operations/content_consistency_repair.py start `
+  --collection-run-id <COLLECTION_RUN_UUID> `
+  --max-contents 100 `
+  --batch-size 200 `
+  --idempotency-key <APPROVED_OPERATION_KEY> `
+  --created-by <OPERATOR>
+
+uv run python scripts/operations/content_consistency_repair.py status --run-id <REPAIR_RUN_UUID>
+uv run python scripts/operations/content_consistency_repair.py cancel --run-id <REPAIR_RUN_UUID>
+```
+
+创建命令只入队，由正式 Worker 领取 `content.consistency-repair.v1`。同一幂等键和同一参数返回原 Run；改变范围、上限、批大小或操作身份会拒绝。Run 冻结当时有限目标及完整 active 目录，接管不会吸收迟到的新来源帖子或切换目录版本。执行读取每页锁定的最新 Current，按 UUID Keyset 推进已提交检查点。
+
+每批缺证分类、合法 AI 引用、人工来源、必要的增量投影和检查点在同一事务提交。数据库异常按原 Job 策略重试，旧 Fence 不能继续写；取消阻止下一批。已提交的合法修复保留，不把取消当作撤回。第二次修复不会复制 Result、人工操作、来源账本或已有效的 Evidence；只刷新真正变化的帖子，不做全局投影重建。
+
+对账应同时核对 `job_status/job_error_code`、`processed_count/target_count`、`checkpoint_content_id`、品牌变更数、复用新增/既有数、空匹配数和 `analysis_reasons`，以及声音广场与冻结导出/报告中的实际值。`input_mismatch`、`unknown_protocol` 和 `no_success` 不会被猜测成成功等价引用；具体算法与人工优先级由 [Analysis Owner](../../backend/src/aima_ugc/modules/analysis/README.md#6-版本身份与-stale) 维护。
+
+## 8. 一致性结构升级和回滚边界
+
+新应用需要 [`migrations/versions/20261009_0083_analysis_version_reuse.py`](../../migrations/versions/20261009_0083_analysis_version_reuse.py) 的 Analysis 引用、统一读取函数和增量触发器，以及 [`migrations/versions/20261009_0084_content_consistency_repair.py`](../../migrations/versions/20261009_0084_content_consistency_repair.py) 的有限修复 Run/Targets。两项 Migration 只扩展结构，不扫描 Content、不运行修复、不调用 Provider/AI。正式发布应先确认备份和当前 revision，暂停写入进程，升级结构，再启用同一版本的 API/Worker；本地空库往返通过不替代生产授权和验证。
+
+回退应用前先停止新修复入队，取消或排空新类型 Job，并停掉新 Worker。旧 Worker 不注册该类型，不会将其误执行成旧重分类；不要留下没有对应处理器的待运行任务后就宣布回滚完成。默认保留新增结构及引用审计，原 Result/Run/人工操作始终不改写。旧应用没有新补采和引用读取能力，回退后的功能口径必须另行验证，不能承诺继续提供新功能。
+
+删除结构的 downgrade 只用于已批准且已备份的结构回退：`0084→0083` 删除修复父事实和检查点，不撤销已提交业务修复；继续退到`0082`会删除复用关系并恢复原投影函数，已经产生的引用审计需事先保存。历史 Result/Run 不会因此复制或改写，既有有效数据也不能通过伪造新 Content Version 恢复。生产不自动执行这些 downgrade 或历史修复。

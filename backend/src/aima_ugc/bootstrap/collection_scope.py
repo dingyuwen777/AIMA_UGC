@@ -1106,12 +1106,30 @@ class TikHubCollectionScopeExecutor:
                 resolved_comment_count=_observed_comment_count(latest),
                 fence=context.fence,
             )
+            # 旧补采 Run 没有目录快照，继续原协议；新 Run 即使稀疏详情为空
+            # 也传递完整冻结目录，由 Writer 在字段合并后重新解析 Current。
+            supplement_filter = (
+                _discovery_filter(run) if run.config_snapshot.get("brand_vehicle_filter") else None
+            )
             for candidate in details:
                 try:
                     ingestion = self._content_writer.ingest_content(
                         canonical=candidate.content,
                         fence=context.fence,
                         candidate_id=candidate.candidate_id,
+                        expected_content_id=target.content_id,
+                        brand_vehicle_snapshot=(
+                            supplement_filter.catalog if supplement_filter is not None else None
+                        ),
+                        brand_vehicle_resolution=(
+                            resolve_canonical_brand_vehicle(
+                                supplement_filter,
+                                candidate.content,
+                                resolver=self._brand_vehicle_resolver,
+                            )
+                            if supplement_filter is not None
+                            else None
+                        ),
                         identity_guard=(
                             (latest_identity.lookup_id_type, latest_identity.lookup_id)
                             if latest_identity.lookup_id_type is not None
@@ -3102,7 +3120,8 @@ def _discovery_filter(
     )
     expected_semantics = (
         "not_applicable"
-        if run.config_snapshot.get("mode") == "account_discovery"
+        if run.config_snapshot.get("mode")
+        in {"account_discovery", "content_supplement", "batch_supplement", "date_supplement"}
         else "keyword_pack"
     )
     if snapshot.search_semantics != expected_semantics:

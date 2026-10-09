@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_reuse import PostgresAnalysisReuseRepository
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
@@ -384,6 +385,7 @@ def ingest_unified_content_batch(
                     raise ValueError("过滤后 Content 与冻结 Brand/Vehicle Snapshot 发生解释漂移")
                 pending.append((content.model_copy(update={"source": source}), resolution))
             rows_ingested += _ingest_import_content_batch(
+                session=session,
                 content_repository=content_repository,
                 resolver=resolver,
                 content_service=content_service,
@@ -421,6 +423,7 @@ def _iter_unified_content_lines(
 
 def _ingest_import_content_batch(
     *,
+    session: Session,
     content_service: ContentIngestionService[PostgresIngestionResult],
     vehicle_repository: PostgresVehicleCatalogRepository,
     brand_repository: PostgresBrandVehicleRepository,
@@ -435,6 +438,9 @@ def _ingest_import_content_batch(
         return 0
     results = content_service.ingest_contents_batch(tuple(item[0] for item in pending))
     if filter_snapshot is None:
+        PostgresAnalysisReuseRepository(session).converge_reuses(
+            tuple((result.target_id, result.version_no) for result in results)
+        )
         return len(results)
     v2 = filter_snapshot.catalog.resolver_semantics == "brand_scoped_vehicle_v2"
     current_resolutions = (
@@ -546,6 +552,9 @@ def _ingest_import_content_batch(
             for result, resolution, _vehicle_evidence in existing_entries
         ),
         catalog_snapshot=filter_snapshot.catalog,
+    )
+    PostgresAnalysisReuseRepository(session).converge_reuses(
+        tuple((result.target_id, result.version_no) for result in results)
     )
     return len(results)
 

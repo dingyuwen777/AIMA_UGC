@@ -193,7 +193,7 @@ Content 是 UGC 事实，Analysis 是对某个 Content Version 的推理结果�
 
 ### 工作台为什么不用声音广场的“最新 AI 结果”直接聚合
 
-声音广场需要兼容当前可见内容中的历史分类值，因此它的读模型可以投影“该 Content Version 最近一次 Analysis”。工作台的 AI 指标口径不同：它必须严格对应**当前 active Analysis Scheme Version**。
+声音广场需要兼容当前可见内容中的历史分类值，因此它的读模型选择当前版本的直接成功结果或可信输入等价引用。工作台的 AI 指标口径不同：它必须严格对应**当前 active Analysis Scheme Version**。
 
 因此工作台读取链是：
 
@@ -201,7 +201,7 @@ Content 是 UGC 事实，Analysis 是对某个 Content Version 的推理结果�
 当前业务可见 Content / 品牌车型维度
 + 当前 active Analysis Scheme Version
 → 投影已对应 active Version 时复用其有效结果
-→ 尚未对应时选择该 Version 下当前 Content Version 的最新 Result
+→ 尚未对应时在 active Scheme 范围选择当前 Content Version 的直接成功或合法等价来源
 → 保持现有人工相关性与 Analysis 维度纠正
 → 声音流签名 Keyset Cursor 直接读取
 → 心智 / 趋势持久聚合快照与后台刷新 Job

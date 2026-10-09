@@ -411,7 +411,7 @@ comment_thread_coverage_observations
 Content Current
 + Current Version author snapshot/source
 + Account Current follower count
-+ Current Analysis Identity 对应 Analysis
++ 当前版本直接成功或可信等价引用的 Analysis
 + 当前有效 Label Pairs / 人工标签覆盖
 + Current Version 的有效 Brand/Vehicle Evidence
 + Provider/Raw/Run/Batch Source
@@ -439,14 +439,16 @@ Brand 与 Vehicle 是两组独立 Evidence。列表返回当前 Content Version 
 
 ```text
 completed
-→ 当前 Content Version 有当前 Prompt/Taxonomy/Model Identity 的 Analysis
+→ 当前版本有直接成功 Result，或存在合法输入等价复用关联
 
 stale
-→ 当前版本没有当前 Analysis，但历史有 Analysis
+→ 当前版本没有有效来源，但历史有成功 Analysis
 
 pending
 → 从未分析
 ```
+
+输入等价性、直接结果优先及人工审核继承由 Analysis Owner 统一维护，具体规则见 [`backend/src/aima_ugc/modules/analysis/README.md`](../analysis/README.md#6-analysis-为什么绑定-content-version)。补采只补齐非模型输入字段时可以保留有效分析；无法证明等价时保持 stale，不自动发起付费分析。
 
 ### 默认 irrelevant 过滤
 
@@ -615,7 +617,7 @@ Metric Observation reason
 ```text
 contents
 → 查询 filter
-→ 当前 Analysis Identity
+→ 当前版本的有效 Analysis 来源与人工覆盖
 → current irrelevant 默认过滤
 → Cursor
 → API
@@ -673,3 +675,9 @@ Data Import Campaign 撤销由 Ingestion 表达用户动作，但实际 Current 
 ```
 
 这不等于删除历史。Content 身份、Raw Artifact、旧 Version、来源追溯和撤销生成的 Version 都继续保留；共享 Content 不会因为其中一个导入 Campaign 被撤销而误删其它来源贡献。完整边界见 [`docs/appendix/11_业务资源生命周期与数据撤销实现.md`](../../../../../docs/appendix/11_业务资源生命周期与数据撤销实现.md)。
+
+## 19. 有界历史一致性修复
+
+Content Owner 保存显式有限目标、冻结目录与持久检查点；Worker 在每页 Current 行锁内调用既有 Vehicles 分类 Owner 和 Analysis 复用 Owner，不复制内容事实、品牌识别器或 Hash 算法。缺证品牌/车型才重新分类；已有合法 Evidence 的等价 AI 候选只维护引用，重复执行不更新时间伪造业务变化。品牌与车型人工来源分别追溯，较新的解锁记录阻止旧锁复活。
+
+[`backend/src/aima_ugc/modules/content/consistency_repair.py`](consistency_repair.py) 定义版本化 Job；[`backend/src/aima_ugc/bootstrap/content_consistency_repair_worker.py`](../../bootstrap/content_consistency_repair_worker.py) 原子提交业务变化、必要投影与检查点。运行范围、只读预检、启动/取消、生产单独授权和回退步骤统一见 [历史一致性修复运行说明](../../../../../docs/operations/03_内容重分类与Legacy_Cleanup运行手册.md#7-补采后历史一致性修复)。

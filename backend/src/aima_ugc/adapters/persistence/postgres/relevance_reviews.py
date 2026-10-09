@@ -9,6 +9,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_effective import load_effective_analysis
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.relevance_review import (
     ContentRelevanceReviewConflict,
@@ -16,10 +17,6 @@ from aima_ugc.modules.analysis.relevance_review import (
 )
 from aima_ugc.modules.analysis.relevance_review_tables import (
     analysis_content_relevance_reviews_table,
-)
-from aima_ugc.modules.analysis.tables import (
-    analysis_content_results_table,
-    analysis_content_runs_table,
 )
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.platform.time import beijing_now
@@ -93,59 +90,31 @@ class PostgresContentRelevanceReviewRepository:
                 continue
             latest_review_by_content.setdefault(content_id, row)
 
-        needs_ai_result: list[UUID] = []
-        for content_id in content_ids:
-            latest = latest_review_by_content.get(content_id)
-            latest_decision = cast(str, latest["decision"]) if latest is not None else None
-            active_override = latest_decision if latest_decision in _OVERRIDE_DECISIONS else None
-            if decision == "inherit_ai":
-                continue
-            if active_override is None:
-                needs_ai_result.append(content_id)
-
-        current_ai_by_content: dict[UUID, RowMapping] = {}
-        if needs_ai_result:
-            del analysis_identity
-            result = analysis_content_results_table
-            run = analysis_content_runs_table
-            result_rows = tuple(
-                self._session.execute(
-                    select(
-                        result.c.id,
-                        result.c.content_id,
-                        result.c.content_version,
-                        result.c.relevance,
-                        result.c.analyzed_at,
-                    )
-                    .select_from(result.join(run, run.c.id == result.c.analysis_run_id))
-                    .where(
-                        result.c.content_id.in_(needs_ai_result),
-                    )
-                    .order_by(
-                        result.c.content_id,
-                        run.c.sequence_no.desc(),
-                        result.c.id.desc(),
-                    )
-                ).mappings()
-            )
-            for row in result_rows:
-                content_id = cast(UUID, row["content_id"])
-                current_ai_by_content.setdefault(content_id, row)
+        del analysis_identity
+        current_ai_by_content = load_effective_analysis(self._session, current_versions)
+        reviews_by_id = {row["id"]: row for row in review_rows}
+        effective_reviews = {
+            content_id: reviews_by_id.get(result["relevance_review_id"])
+            for content_id, result in current_ai_by_content.items()
+        }
 
         planned_events: list[dict[str, object]] = []
         unchanged_count = 0
         reviewed_at = beijing_now()
         for content_id in content_ids:
-            latest = latest_review_by_content.get(content_id)
+            direct_latest = latest_review_by_content.get(content_id)
+            latest = effective_reviews.get(content_id)
             latest_decision = cast(str, latest["decision"]) if latest is not None else None
             active_override = latest_decision if latest_decision in _OVERRIDE_DECISIONS else None
-            next_review_no = cast(int, latest["review_no"]) + 1 if latest is not None else 1
+            next_review_no = (
+                cast(int, direct_latest["review_no"]) + 1 if direct_latest is not None else 1
+            )
 
             if decision == "inherit_ai":
                 if active_override is None or latest is None:
                     unchanged_count += 1
                     continue
-                analysis_result_id = cast(UUID, latest["analysis_result_id"])
+                analysis_result_id = cast(UUID, current_ai_by_content[content_id]["id"])
             elif active_override is not None:
                 if active_override == decision:
                     unchanged_count += 1
@@ -154,8 +123,6 @@ class PostgresContentRelevanceReviewRepository:
             else:
                 current_result = current_ai_by_content.get(content_id)
                 if current_result is None:
-                    raise ContentRelevanceReviewConflict
-                if cast(int, current_result["content_version"]) != current_versions[content_id]:
                     raise ContentRelevanceReviewConflict
                 if cast(str, current_result["relevance"]) == decision:
                     unchanged_count += 1

@@ -80,7 +80,9 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path != "/health":
             self.send_error(404)
             return
-        self._send_json({"status": "ok"})
+        with type(self).item_request_lock:
+            request_count = sum(type(self).item_request_counts.values())
+        self._send_json({"status": "ok", "request_count": request_count})
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path != "/v1/chat/completions":

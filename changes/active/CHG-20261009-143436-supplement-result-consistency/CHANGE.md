@@ -7,7 +7,7 @@ status: in_progress
 owner: maintainer
 branch: fix/supplement-result-consistency
 created: 2026-10-09T14:34:36+08:00
-updated: 2026-10-09T14:34:36+08:00
+updated: 2026-10-09T16:40:45+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -27,10 +27,13 @@ contracts:
   - CanonicalContentV1
   - BrandVehicleCatalogSnapshot
   - analysis.content-label.v1
+  - content.consistency-repair.v1
 data_changes:
   - content_versions.author_snapshot
   - analysis_content_version_reuses
   - voice_plaza_content_projection
+  - content_consistency_repair_runs
+  - content_consistency_repair_targets
 ---
 
 # 变更摘要
@@ -67,7 +70,7 @@ data_changes:
 
 ## 推断与待确认
 
-数据库回归、投影/消费者边界和历史修复运行状态尚需验证，不把代码调查当作执行证据。
+定向数据库回归、投影/消费者、历史修复 Runtime 和真实浏览器均已有执行证据；广域 PostgreSQL 回归及最终独立 Review 正在闭合，不把已完成的静态阅读替代未结束的执行结果。
 
 # 目标、成功标准与非目标
 
@@ -130,28 +133,28 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 评论/回复/互动不破坏版本及分析 | user:supplement-consistency#AC01 | not_satisfied | 待验证 |
-| R2 | URL/发布时间等非输入变更复用 AI | user:supplement-consistency#AC02 | not_satisfied | 待验证 |
-| R3 | 稀疏 Detail 保留正文并按完整 Current 分类 | user:supplement-consistency#AC03 | not_satisfied | 待验证 |
-| R4 | 新品牌全部命中 | user:supplement-consistency#AC04 | not_satisfied | 待验证 |
-| R5 | 删除旧品牌撤销自动命中 | user:supplement-consistency#AC05 | not_satisfied | 待验证 |
-| R6 | 多品牌车型归属正确 | user:supplement-consistency#AC06 | not_satisfied | 待验证 |
-| R7 | 无品牌仍补采成功 | user:supplement-consistency#AC07 | not_satisfied | 待验证 |
-| R8 | 人工品牌车型锁继承 | user:supplement-consistency#AC08 | not_satisfied | 待验证 |
-| R9 | 同输入跨版本零 LLM 复用 | user:supplement-consistency#AC09 | not_satisfied | 待验证 |
-| R10 | 任一输入字段不同保持 stale | user:supplement-consistency#AC10 | not_satisfied | 待验证 |
-| R11 | 未知协议/失败结果不猜测继承 | user:supplement-consistency#AC11 | not_satisfied | 待验证 |
-| R12 | 等价输入保留情感标签发声人工修正 | user:supplement-consistency#AC12 | not_satisfied | 待验证 |
-| R13 | 人工相关性及 inherit_ai 正确 | user:supplement-consistency#AC13 | not_satisfied | 待验证 |
-| R14 | 主动新 Run 执行且直接 Result 优先 | user:supplement-consistency#AC14 | not_satisfied | 待验证 |
-| R15 | A→B→A 可引用原始结果 | user:supplement-consistency#AC15 | not_satisfied | 待验证 |
-| R16 | 补采/AI/审核并发无错误覆盖 | user:supplement-consistency#AC16 | not_satisfied | 待验证 |
-| R17 | 事务中途异常完整回滚 | user:supplement-consistency#AC17 | not_satisfied | 待验证 |
-| R18 | Retry/Fence/接管幂等 | user:supplement-consistency#AC18 | not_satisfied | 待验证 |
-| R19 | List/Count/详情/筛选一致 | user:supplement-consistency#AC19 | not_satisfied | 待验证 |
-| R20 | 导出/工作台/报告/历史冻结一致 | user:supplement-consistency#AC20 | not_satisfied | 待验证 |
-| R21 | 历史修复有界恢复且重复运行幂等 | user:supplement-consistency#AC21 | not_satisfied | 待验证 |
-| R22 | 批量投影无明显 N+1 或全表扫描 | user:supplement-consistency#AC22 | not_satisfied | 待验证 |
+| R1 | 评论/回复/互动不破坏版本及分析 | user:supplement-consistency#AC01 | satisfied | V6/V7/V14/V22；EVIDENCE AC01 |
+| R2 | URL/发布时间等非输入变更复用 AI | user:supplement-consistency#AC02 | satisfied | V14/V20/V22；EVIDENCE AC02 |
+| R3 | 稀疏 Detail 保留正文并按完整 Current 分类 | user:supplement-consistency#AC03 | satisfied | V6/V14；EVIDENCE AC03 |
+| R4 | 新品牌全部命中 | user:supplement-consistency#AC04 | satisfied | V24 title/text新增时序两参数；EVIDENCE AC04 |
+| R5 | 删除旧品牌撤销自动命中 | user:supplement-consistency#AC05 | satisfied | V6/V24；EVIDENCE AC05 |
+| R6 | 多品牌车型归属正确 | user:supplement-consistency#AC06 | satisfied | V20/V22，真实爱玛+雅迪及各自车型；EVIDENCE AC06 |
+| R7 | 无品牌仍补采成功 | user:supplement-consistency#AC07 | satisfied | V6/V24/V25，Discovery过滤保留；EVIDENCE AC07 |
+| R8 | 人工品牌车型锁继承 | user:supplement-consistency#AC08 | satisfied | V6/V25，分维来源、空锁和墓碑；EVIDENCE AC08 |
+| R9 | 同输入跨版本零 LLM 复用 | user:supplement-consistency#AC09 | satisfied | V14/V20/V22；EVIDENCE AC09 |
+| R10 | 任一输入字段不同保持 stale | user:supplement-consistency#AC10 | satisfied | V14，生产Hash与变化字段参数；EVIDENCE AC10 |
+| R11 | 未知协议/失败结果不猜测继承 | user:supplement-consistency#AC11 | satisfied | V14/V25；EVIDENCE AC11 |
+| R12 | 等价输入保留情感标签发声人工修正 | user:supplement-consistency#AC12 | satisfied | V14/V20/V22；EVIDENCE AC12 |
+| R13 | 人工相关性及 inherit_ai 正确 | user:supplement-consistency#AC13 | satisfied | V14/V22；EVIDENCE AC13 |
+| R14 | 主动新 Run 执行且直接 Result 优先 | user:supplement-consistency#AC14 | satisfied | V14，真实Planner/Shard调用与新Result断言；EVIDENCE AC14 |
+| R15 | A→B→A 可引用原始结果 | user:supplement-consistency#AC15 | satisfied | V14，非相邻Result来源；EVIDENCE AC15 |
+| R16 | 补采/AI/审核并发无错误覆盖 | user:supplement-consistency#AC16 | satisfied | V14实际双Session锁等待、V25现有Owner锁回归；EVIDENCE AC16 |
+| R17 | 事务中途异常完整回滚 | user:supplement-consistency#AC17 | satisfied | V6/V14/V25；EVIDENCE AC17 |
+| R18 | Retry/Fence/接管幂等 | user:supplement-consistency#AC18 | satisfied | V6/V14/V25，正式Job故障重试/接管/取消；EVIDENCE AC18 |
+| R19 | List/Count/详情/筛选一致 | user:supplement-consistency#AC19 | satisfied | V14/V20/V22；EVIDENCE AC19 |
+| R20 | 导出/工作台/报告/历史冻结一致 | user:supplement-consistency#AC20 | satisfied | V14/V22/V23，冻结目标/人工来源及各自Scheme范围；EVIDENCE AC20 |
+| R21 | 历史修复有界恢复且重复运行幂等 | user:supplement-consistency#AC21 | satisfied | V25，30项repair包含真实CLI/Worker/故障/二次运行；EVIDENCE AC21 |
+| R22 | 批量投影无明显 N+1 或全表扫描 | user:supplement-consistency#AC22 | satisfied | V14/V26，有限UUID页与1/100固定SQL数；不宣称生产40M压测；EVIDENCE AC22 |
 
 # 计划改动
 
@@ -207,14 +210,43 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
 | V0 | caf06ae1 / Windows | git fetch origin main、git status --short、git switch -c fix/supplement-result-consistency origin/main | 成功；起始工作区干净 | 本地开发基线 |
+| V1 | 4f84afc8 / decision_epoch=1 | Parent 与独立 Reviewer 对照用户任务书执行 Development Preflight | PASS；不代表实现完成 | 需求、范围、验证与本地交付边界可进入实现 |
+| V2 | 隔离 localhost:25439 / PostgreSQL 18.4 | .venv/Scripts/python.exe -m alembic upgrade head | exit 0 | 正式 Migration 在本任务空测试库可执行 |
+| V3 | 本地 Change | .venv/Scripts/python.exe scripts/quality/check_change_completion.py --root D:/test/AIMA_UGC | PASS | in_progress Change 元数据与项目 carrier 合法，尚未执行 Ready 门禁 |
+| V4 | 仅治理 diff | .venv/Scripts/python.exe scripts/dev/validate_changed.py --base origin/main --json | governance_only | 初始治理 checkpoint 的 CI 范围；实现完成后重新计算 |
+| V5 | caf06ae1 原实现 / 隔离 PostgreSQL | 新作者快照参数回归、补采空匹配和新 Run 快照回归 | 作者四参数 4 failed；空补采 1 failed/Discovery 1 passed；目录快照 1 failed | 修复前直接失败证据 |
+| V6 | Content/Brand 切片工作树 / 4f84afc8 | pytest：test_supplement_author_snapshots、test_collection_content_runtime、test_collection_content_supplement、test_collection_date_supplement、test_excel_follower_count_voice_plaza | 23 passed / 16.40s | 稀疏快照、完整 Current、空匹配、人工锁、错误身份及事务回滚 |
+| V7 | 同切片 | pytest：test_content_current_concurrency、test_content_audit_regressions、test_brand_replay_owner_baseline、test_collection_scope_runtime、test_collection_scope_decision_bridge | 25 passed / 7.58s | Content、来源审计、Replay、Scope 和桥接相邻回归 |
+| V8 | 同切片最后类型修复后 | 作者快照四参数 pytest；mypy 五个生产文件；ruff check/format 九文件；git diff --check | 4 passed；类型/格式/diff PASS | 最后局部变量及行尾修正后的新鲜证据 |
+| V9 | Analysis C/D 工作树 / 专用隔离库 | test_analysis_version_reuse：正式 Excel → Analysis Planner/Shard → 只修改发布时间再导入 | 旧实现 stale 真 Red；新实现 completed Green，Result/Run 数未增加 | 非模型输入跨版本复用的首条直接回归；尚非完整 C/D 验收 |
+| V10 | 前端现有实现 / Windows + Chrome | D:/node/npm.ps1 --prefix frontend run test -- --run | 38 文件 / 306 tests passed | 完整前端单元回归，不作为真实服务端接线证据 |
+| V11 | 同前端 revision | D:/node/npm.ps1 --prefix frontend run test:e2e -- --workers=3 | 206 passed / 3.4m | 完整 Browser Mock 回归；真实 Full-stack 仍单独执行 |
+| V12 | 同前端 revision | D:/node/npm.ps1 --prefix frontend run build | TypeScript Native、Vue 类型检查及 Vite Build PASS | 当前前端生产构建；既有大 chunk 提示不阻塞构建 |
+| V13 | 既有 frontend/package-lock.json | D:/node/npm.ps1 --prefix frontend audit --audit-level=high | found 0 vulnerabilities | 当前锁定前端依赖只读审计；没有升级依赖 |
+| V14 | Analysis C/D 与作者解绑修复最终工作树 / 隔离 PostgreSQL | pytest test_analysis_version_reuse、test_supplement_author_snapshots、test_content_current_concurrency、test_excel_follower_count_voice_plaza，-q --tb=short --show-capture=no | 36 passed / 36.69s | 22 Analysis、8作者快照、6相邻回归；包含真实锁等待、关联写入后整体回滚及100目标固定查询数 |
+| V15 | 同 C/D 工作树 | pytest：stage8d_voice_plaza、stage12_analysis_runs、manual/bidirectional relevance、workbench、database_reports、u1_u5、schema_runtime_invariants、collection_content_runtime | 39 passed / 10 report guard skipped / 24.93s | 相邻消费者；报告跳过将由固定专用隔离库补跑 |
+| V16 | 0083 / 专用隔离库 | alembic downgrade 20261003_0082 → upgrade head → check → current；mypy 20生产文件；ruff check/format 29文件；git diff --check | 全部 PASS；head=20261009_0083；No new upgrade operations detected | 新结构往返、Schema 与当前切片静态质量 |
+| V17 | Parent Full-stack/Docs 切片 | npm --prefix frontend run lint；ruff check/format 三个 fullstack fixture；check_docs.py；check_docs_facts.py | 全部 PASS | 新增真实浏览器回归静态接线、定向文档链接和当前机器事实；尚未运行 Full-stack |
+| V18 | 本地完整后端 / 本任务隔离配置 | pytest tests/unit tests/contracts tests/api -q --tb=short --show-capture=no；移除本进程 AIMA_EXTERNAL_SECRET_DIR 后 pytest tests/api 同参数 | 首轮 2094 passed / 16 skipped / 12 subtests，1 项 API 因测试 Secret 路径环境覆盖失败；清理覆盖后 API 全套 106 passed | Unit/Contract 与 API 全量通过；跳过是既有 Windows/POSIX、符号链接及 Linux Noto 字体条件，不作为通过计数；未修改测试或生产 Secret |
+| V19 | 当前内部表和公开 Contract | check_agent_governance.py、scan_secrets.py、check_architecture.py、check_table_ownership.py、scripts/contracts/generate.py --check、check_compatibility.py | 全部 PASS | 新 Owner 接线、架构、Secret、生成 Contract 和 HTTP 兼容性未漂移；不代表 repair 运行已验收 |
+| V20 | browser 专用库 / head 20261009_0084 / 真 API、PostgreSQL、Worker，Fake Provider/LLM | npm --prefix frontend run test:e2e:fullstack -- comment-supplement.spec.ts -g 补采形成等价 | 1 passed / 25.9s；首轮 spec 误用 POST 已改为正式 PUT | 页面导入→补采→AI→三项人工纠正→非输入补采；版本+1、原 Result 时间/Model/人工锁有效、多品牌车型归属和 mixed、Run/LLM 请求不增加；详情不导航/不手刷自动显示新发布时间；成功截图保存在本任务 runtime |
+| V21 | 同专用真实全栈 | scripts/dev/check_local_stack.py --require-ready | PASS | 8090 API readiness、5173 Vite 与代理，以及 PostgreSQL 联调；尚不代表全量 Full-stack 通过 |
+| V22 | 同真实 API/DB/Worker/Chrome 隔离环境 | npm --prefix frontend run test:e2e:fullstack；修正后 npm --prefix frontend run lint | 20 passed / 4.6m；lint PASS | 全部 Full-stack 回归及新增补采链实际通过；测试拥有的5个进程树按PID/启动时间清理，8090/8091/4174/5173均释放 |
+| V23 | 独立 Tester / report专用空库55437 / 0083、0084内容哈希稳定 | alembic upgrade/current/check；verify_migration_compatibility.py；pytest tests/integration/reporting；显式REPORT_BROWSER_ACCEPTANCE单跑浏览器项 | 14个历史checkpoint（含base）升级/降级/Schema无漂移；9 passed + browser 1 passed | 全10项报告实际执行；Chrome→Vue→正式API/Worker→DOCX下载；无数据库guard残余skip；55439/55440自有资源清理完毕 |
+| V24 | 最终Content测试 / 25439专用库 | pytest tests/integration/collection/test_collection_content_runtime.py -q --tb=short --show-capture=no | 14 passed / 6.82s | 新增title/text后来出现新品牌的真实补采时序两参数；版本+1、旧/新全部品牌、实际匹配字段/文本/目录版本 |
+| V25 | 最终repair与两Owner batch / 专用库 | pytest test_content_consistency_repair + test_content_reclassification_postgres + test_brand_first_frozen_cleanup + test_collection_content_runtime -q；canonical_replay_worker -k人工锁 | 47 passed / 59.05s（30repair+17相邻）；Replay 2 passed / 6.32s；0084→0083→0084/check PASS | 只读预检、显式有限目标、冻结目录、空锁/墓碑、独立人工来源、正式Runtime重试/接管/取消、业务+checkpoint原子回滚、二次修复不重复 |
+| V26 | 同最终repair / 真实SQLAlchemy执行事件 | pytest repair -k query_count或owner_batch_queries --junitxml=.runtime/supplement-consistency/repair-performance.xml | 3 passed / 8.67s；1/100：预检11/11、自动apply54/54、人工carry10/10 | 原人工carry Red 14/1004，集合化Green固定查询数；无单Content N+1或全库目标扫描；局部量级证据 |
+| V27 | Writer释放后最终后端 | pytest tests/unit tests/contracts tests/api -q -rs --tb=short --show-capture=no，移除测试外部Secret覆盖 | 2095 passed / 16既有平台skip / 12subtests / 162.15s；全461源mypy PASS；956文件ruffformat与lint PASS | 最终Owner修改后的完整单元/Contract/API与静态质量 |
+| V28 | 最终文档/Contract/Package | 文档/事实/治理/Secret/架构/Owner全部项目检查；正式generate.py + npm generate:api + check/compat；uv离线build、按uv.lock导出依赖同步全新Wheel环境、-I安装包导入 | 全PASS；生成物语义无变化；导入来自Wheel独立site-packages，包含新模块及Prompt资源 | 正式文档与代码一致；无公共API变化；唯一根工程打包可用、无依赖升级 |
+| V29 | 最终相邻测试修正 / 25439专用库 | pytest test_collection_worker_runtime.py + test_xiaohongshu_incremental_comments_runtime.py -q --tb=short --show-capture=no | 2 passed / 4.18s | 新Job注册完整集合断言同步；小红书历史种子由正式Content Owner和真实来源夹具创建Current+Version，原评论分页断言不变 |
 
 ## 未验证内容与剩余风险
 
-当前处于开发前调查，行为验证和独立 Review 尚未执行，不能声明完成或 Ready。
+Content/Brand、Analysis、作者快照、有界历史修复、完整Full-stack、专用报告、正式文档、静态与Wheel已验证。独立Tester继续全PostgreSQL分层回归，逐AC Completion和独立实现Review尚待最终版本绑定；当前不声明Ready。来源撤销路径保持既有语义，不新增无要求的自动复用触发；定向历史修复仍可对当前冻结版本重新证明。Windows平台的Linux专属跳过项、40M生产规模性能与真实付费Probe不在本轮通过结论内。
 
 ## 交付状态
 
-- 提交：未提交。
+- 提交：本地治理 checkpoint 4f84afc8；实现尚未提交。
 - 拉取请求：未创建；等待用户本地验收。
 - CI：远程未触发。
 - 合并：未执行。
@@ -223,4 +255,4 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 
 ## 备注
 
-同一 checkout 只有一个生产代码 Writer；独立 Explorer/Reviewer 只读。当前无用户未提交修改。开发前 preflight 必须完成后才修改生产代码。
+同一 checkout 的生产代码写入已按切片依次移交并释放，当前唯一 Writer 为 Parent；独立 Reviewer 只读，Tester 仅写任务专用数据库及忽略目录。Parent 管理 Change、最终集成和资源清理。起始无用户未提交修改。Development Preflight 已通过，最终 Completion 尚待收齐。
