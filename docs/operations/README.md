@@ -10,7 +10,8 @@ docs/operations/ 承担：**已经存在的运行/部署/迁移能力怎样安�
 2. [docs/operations/02_4000万历史迁移与Analysis Run运行手册.md](02_4000万历史迁移与Analysis%20Run运行手册.md)：Data Import Campaign、Persistent Canonical Replay、Historical Fill Only、容量验证、迁移对账与手动 Analysis Run；
 3. [docs/operations/03_内容重分类与Legacy_Cleanup运行手册.md](03_内容重分类与Legacy_Cleanup运行手册.md)：内容重分类与 Legacy Cleanup 的 fail-closed 操作；
 4. [docs/operations/04_声音广场读模型回填与性能验证.md](04_声音广场读模型回填与性能验证.md)：当前仍需要的声音广场读模型部署后回填与验证步骤；
-5. [docs/operations/05_性能审计服务器复测.md](05_性能审计服务器复测.md)：本轮性能修复的服务器功能、耗时、锁等待与脱敏日志复核。
+5. [docs/operations/05_性能审计服务器复测.md](05_性能审计服务器复测.md)：本轮性能修复的服务器功能、耗时、锁等待与脱敏日志复核；
+6. [docs/operations/06_飞书身份接入配置手册.md](06_飞书身份接入配置手册.md)：单/多企业飞书身份接入的飞书后台配置、AIMA 侧变量、App Secret 落盘与验证。
 
 ## Operations 与 Roadmap 的区别
 
