@@ -25,6 +25,7 @@ from aima_ugc.modules.content.extended_tables import (
     content_mentions_table,
     content_topics_table,
 )
+from aima_ugc.modules.content.media_observations import merge_media_rows
 from aima_ugc.modules.content.tables import (
     comment_versions_table,
     comments_table,
@@ -657,6 +658,11 @@ class PostgresCompleteContentRepository:
             )
             if not accepted_items:
                 continue
+            if field_name == "media":
+                self._sync_media_batch(
+                    tuple((item.result.target_id, item.observation) for item in accepted_items)
+                )
+                continue
             values: list[dict[str, object]] = []
             for item in accepted_items:
                 attempt_id, raw_id = _source_ids(item.observation)
@@ -705,6 +711,57 @@ class PostgresCompleteContentRepository:
             raw_id=raw_id,
         )
         return result
+
+    def _sync_media_batch(
+        self,
+        entries: tuple[tuple[UUID, CanonicalContentV1], ...],
+    ) -> None:
+        """集合预读一次并共享纯合并器；upsert 保留未删除媒体的播放状态外键。"""
+        content_ids = tuple(content_id for content_id, _ in entries)
+        previous: dict[UUID, list[dict[str, object]]] = {key: [] for key in content_ids}
+        for row in self._session.execute(
+            select(content_media_table).where(content_media_table.c.content_id.in_(content_ids))
+        ).mappings():
+            previous[cast(UUID, row["content_id"])].append(dict(row))
+        rows: list[dict[str, object]] = []
+        for content_id, observation in entries:
+            attempt_id, raw_id = _source_ids(observation)
+            rows.extend(
+                merge_media_rows(
+                    previous[content_id],
+                    observation,
+                    content_id=content_id,
+                    attempt_id=attempt_id,
+                    raw_id=raw_id,
+                )
+            )
+        remaining = tuple((row["content_id"], row["position"]) for row in rows)
+        deletion = delete(content_media_table).where(
+            content_media_table.c.content_id.in_(content_ids)
+        )
+        if remaining:
+            deletion = deletion.where(
+                tuple_(
+                    content_media_table.c.content_id,
+                    content_media_table.c.position,
+                ).not_in(remaining)
+            )
+        self._session.execute(deletion)
+        for chunk in batched(rows, _MULTI_VALUES_INSERT_ROWS, strict=False):
+            statement = pg_insert(content_media_table).values(list(chunk))
+            self._session.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[
+                        content_media_table.c.content_id,
+                        content_media_table.c.position,
+                    ],
+                    set_={
+                        column.name: statement.excluded[column.name]
+                        for column in content_media_table.c
+                        if not column.primary_key
+                    },
+                )
+            )
 
     def record_comment_coverage(self, **kwargs: Any) -> UUID:
         return self._core.record_comment_coverage(**kwargs)
@@ -825,6 +882,9 @@ class PostgresCompleteContentRepository:
                     field_name=field_name,
                     observed_at=observation.observed_at,
                 ):
+                    continue
+                if field_name == "media":
+                    self._sync_media_batch(((content_id, observation),))
                     continue
                 self._session.execute(delete(table).where(table.c.content_id == content_id))
             rows = _content_extension_rows(
@@ -1106,10 +1166,15 @@ def _content_extension_rows(
             for id_type, external_id in sorted(observation.alternate_ids.items())
         ]
     if field_name == "media":
-        return [
-            {"content_id": content_id, **_media_values(item, index), **source}
-            for index, item in enumerate(observation.media)
-        ]
+        return list(
+            merge_media_rows(
+                (),
+                observation,
+                content_id=content_id,
+                attempt_id=attempt_id,
+                raw_id=raw_id,
+            )
+        )
     if field_name == "topics":
         return [
             {

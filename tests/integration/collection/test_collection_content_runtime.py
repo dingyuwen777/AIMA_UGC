@@ -86,7 +86,7 @@ def _clear_data(connection: Connection) -> None:
 
 
 def _create_live_source(
-    runtime: DatabaseRuntime, *, source_value: str, enrichment: bool = False
+    runtime: DatabaseRuntime, *, source_value: str, enrichment: bool = False, account: bool = False
 ) -> _LiveSource:
     """建立真实 Fence/Attempt 来源；补采场景使用正式 content_enrichment Scope。"""
     session = runtime.new_session()
@@ -114,12 +114,37 @@ def _create_live_source(
                     "plan_type": "tikhub",
                     "comment_policy": "adaptive",
                     "decision_policy": {"comment_mode": "adaptive"},
-                    "schema_version": "collection-run-config.v4",
+                    "schema_version": "collection-run-config.v5"
+                    if account
+                    else "collection-run-config.v4",
+                    **(
+                        {
+                            "mode": "account_discovery",
+                            "account_selection": {
+                                "kind": "accounts",
+                                "accounts": [
+                                    {
+                                        "platform": "xiaohongshu",
+                                        "account_id_type": "user_id",
+                                        "account_id": "synthetic-user",
+                                    }
+                                ],
+                                "published_from": "2026-10-01T00:00:00+08:00",
+                                "published_to": "2026-10-09T23:59:59+08:00",
+                            },
+                        }
+                        if account
+                        else {}
+                    ),
                 },
                 scopes=(
                     CollectionScopeDefinition(
                         platform="xiaohongshu",
-                        source_type="content" if enrichment else "keyword_search",
+                        source_type="account"
+                        if account
+                        else "content"
+                        if enrichment
+                        else "keyword_search",
                         source_value=source_value,
                         operation_group="content_enrichment" if enrichment else "content_discovery",
                     ),
@@ -262,11 +287,15 @@ def _content_id_for_external(
         session.close()
 
 
+@pytest.mark.parametrize("account", [False, True])
 def test_supplement_reclassifies_merged_current_and_accepts_empty_evidence(
     database_runtime: DatabaseRuntime,
+    account: bool,
 ) -> None:
     """稀疏详情沿用完整正文，无命中仍入库；重试不重复当前品牌证据。"""
-    source = _create_live_source(database_runtime, source_value="supplement", enrichment=True)
+    source = _create_live_source(
+        database_runtime, source_value="supplement", enrichment=not account, account=account
+    )
     brand_alias = f"补采{uuid4().hex}"
     with database_runtime.new_session() as session, session.begin():
         repository = PostgresBrandVehicleRepository(session)

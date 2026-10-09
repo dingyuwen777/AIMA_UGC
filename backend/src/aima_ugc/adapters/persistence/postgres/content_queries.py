@@ -538,7 +538,8 @@ class PostgresContentQueryRepository:
 
     def list_media(self, content_id: UUID) -> tuple[ContentMediaResponse, ...]:
         rows = self._session.execute(
-            select(content_media_table)
+            select(content_media_table, contents_table.c.platform)
+            .join(contents_table, contents_table.c.id == content_media_table.c.content_id)
             .where(content_media_table.c.content_id == content_id)
             .order_by(content_media_table.c.position)
         ).mappings()
@@ -546,9 +547,12 @@ class PostgresContentQueryRepository:
             ContentMediaResponse(
                 position=cast(int, row["position"]),
                 media_type=cast(str, row["media_type"]),
-                url=cast(str | None, row["url"]),
+                url=None
+                if row["platform"] == "xiaohongshu" and row["media_type"] == "video"
+                else cast(str | None, row["url"]),
                 preview_url=cast(str | None, row["preview_url"]),
                 alt_text=cast(str | None, row["alt_text"]),
+                duration_ms=cast(int | None, row["duration_ms"]),
             )
             for row in rows
         )

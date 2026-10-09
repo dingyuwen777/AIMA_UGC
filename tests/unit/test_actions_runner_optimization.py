@@ -24,12 +24,19 @@ def test_runtime_draft_required_check_fails_closed_then_ready_uses_changed_scope
     assert "- ready_for_review" in workflow
     assert "      - name: Block Draft required evidence\n" in job
     assert "github.event.pull_request.draft == true" in job
-    assert job.index("Block Draft required evidence") < job.index("      - name: Checkout")
+    assert job.index("Lightweight source and template preflight") < job.index(
+        "Block Draft required evidence"
+    )
+    assert job.index("Block Draft required evidence") < job.index(
+        "Setup template validation Python"
+    )
     assert (
         "if: github.event_name != 'pull_request' || github.event.pull_request.draft == false"
         not in job
     )
     assert "Fast-path unchanged Runtime" in workflow
-    assert "Detect Runtime risk changes" in workflow
+    assert "Classify shared Runtime responsibility" in workflow
+    assert "scripts/quality/classify_ci_scope.py" in workflow
+    assert "steps.scope.outputs.runtime_required == 'true'" in workflow
     assert "Canonical Compose startup, security, persistence, and recovery" in workflow
     assert "paths:" not in workflow.split("permissions:", 1)[0]

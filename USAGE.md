@@ -9,6 +9,8 @@
 
 AI 的自动测试、构建、Browser / Workflow 检查或 CI 不能替代你本人对实际功能的本地验收。只有任务确实没有有意义或可行的本地用户验收路径，或者你明确要求本次跳过等待，才可以不经过“等你确认”这一步。
 
+本地先运行 `python scripts/dev/validate_changed.py --base origin/main` 查看真实改动和验证计划；默认同时包含已提交、暂存、未暂存和未忽略的新文件。该入口与 CI 使用同一分类器，优先执行直接相关测试。验证选择、配置模板和各 Workflow 的证据责任见 [docs/blueprint/06_开发约束与分阶段实施.md](docs/blueprint/06_开发约束与分阶段实施.md)。没有新的代码、配置、环境或独立风险时，保留仍有效的验证证据。
+
 ## 1. 快速开始
 
 ### 1.1 第一步：先完成本地开发
@@ -595,11 +597,7 @@ Follow-up 不会自动创建新的 Issue / Branch / PR，不会自动执行，�
 
 ### 7.4 DeepSeek Harness（Windows）
 
-Windows 项目中，如果项目已提供启动器，可以从项目根双击：
-
-~~~text
-DeepSeek-Harness.cmd
-~~~
+Windows 项目中，如果项目已提供启动器，可以从项目根双击 [`DeepSeek-Harness.cmd`](DeepSeek-Harness.cmd)。
 
 启动后直接使用本说明中的自然语言 Prompt。普通功能开发仍遵循“本地开发 → 用户验收 → PR”的同一流程。
 

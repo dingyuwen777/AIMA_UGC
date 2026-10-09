@@ -275,11 +275,12 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
         filters.recordType === 'tikhub_account_discovery' ||
         filters.recordType === 'tikhub_discovery' ||
         filters.recordType === 'tikhub_batch_supplement' ||
+        filters.recordType === 'tikhub_media_refresh' ||
         filters.recordType === 'tikhub_content_supplement'
       ) {
         return [filters.recordType]
       }
-      return ['tikhub_discovery', 'tikhub_batch_supplement', 'tikhub_content_supplement', 'tikhub_account_discovery']
+      return ['tikhub_discovery', 'tikhub_batch_supplement', 'tikhub_content_supplement', 'tikhub_account_discovery', 'tikhub_media_refresh']
     }
     return filters.recordType ? [filters.recordType] : undefined
   }

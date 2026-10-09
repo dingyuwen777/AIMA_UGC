@@ -15,7 +15,7 @@ function detail(
 }
 
 describe('voice plaza media preview projection', () => {
-  it('小红书只投影有源 URL 的图片，并过滤完全不可展示的媒体', () => {
+  it('小红书图片与视频封面使用同源缓存，保留可准备的视频身份', () => {
     const original = detail('xiaohongshu', [
       {
         position: 0,
@@ -51,13 +51,20 @@ describe('voice plaza media preview projection', () => {
     )
     expect(projected.media?.[0]?.url).toBe('https://sns-img-bd.xhscdn.com/image-0')
     expect(projected.media?.some((media) => media.position === 1)).toBe(false)
-    expect(projected.media?.[1]?.preview_url).toBe('https://example.invalid/cover')
+    expect(projected.media?.[1]?.preview_url).toBe(`/api/v1/contents/${original.id}/media/2`)
     expect(projected.media?.[2]?.preview_url).toBe('https://example.invalid/existing-preview')
     expect(projected.media?.[2]?.url).toBeNull()
   })
 
-  it('其它平台保持原媒体地址不变', () => {
-    const original = detail('douyin', [
+  it('没有播放地址或封面的视频也保留，避免将视频笔记伪装成无媒体', () => {
+    const original = detail('xiaohongshu', [
+      { position: 0, media_type: 'video', url: null, preview_url: null, duration_ms: 65000 },
+    ])
+    expect(withLocalMediaPreview(original).media).toEqual(original.media)
+  })
+
+  it.each(['douyin', 'weibo', 'bilibili', 'kuaishou'])('%s 保持原媒体地址不变', (platform) => {
+    const original = detail(platform, [
       {
         position: 0,
         media_type: 'image',

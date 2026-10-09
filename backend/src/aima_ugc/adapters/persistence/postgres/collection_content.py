@@ -637,11 +637,12 @@ def _lock_matching_attempt(
     raw_artifact_id: UUID | None,
     require_enrichment: bool = False,
 ) -> str:
-    """锁定 Fence 并验证真实来源；仅详情补采允许合法空品牌分类。"""
+    """锁定 Fence 并验证来源；详情补采和已准入账号作品允许合法空品牌分类。"""
     PostgresJobRepository(session).lock_current_execution(fence)
     ownership = session.execute(
         select(
             collection_runs_table.c.job_id,
+            collection_runs_table.c.config_snapshot,
             collection_scopes_table.c.platform,
             collection_scopes_table.c.source_type,
             collection_scopes_table.c.operation_group,
@@ -668,8 +669,13 @@ def _lock_matching_attempt(
         raise LeaseLostError("Provider Attempt 不属于当前 Job Fence")
     if raw_artifact_id is not None and ownership.raw_artifact_id != raw_artifact_id:
         raise ValueError("Provider Attempt 与 Canonical Raw Artifact 来源不一致")
-    if require_enrichment and (
-        ownership.source_type != "content" or ownership.operation_group != "content_enrichment"
+    if require_enrichment and not (
+        (ownership.source_type == "content" and ownership.operation_group == "content_enrichment")
+        or (
+            ownership.source_type == "account"
+            and ownership.operation_group == "content_discovery"
+            and ownership.config_snapshot.get("mode") == "account_discovery"
+        )
     ):
         raise ValueError("只允许为通过过滤的 Content 写入 Brand/Vehicle Evidence")
     return str(ownership.platform)

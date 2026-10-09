@@ -8,6 +8,7 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.content_media_cache import (
     ContentMediaCacheBinding,
     ContentMediaSource,
+    _source_from_row,
 )
 from aima_ugc.bootstrap.content_media_cache import (
     ContentMediaCacheUnavailable,
@@ -16,6 +17,20 @@ from aima_ugc.bootstrap.content_media_cache import (
     normalize_xiaohongshu_image_url,
 )
 from aima_ugc.platform.storage.retention import MEDIA_CACHE_ITEM_MAX_BYTES
+
+
+def test_video_cache_source_is_cover_only_and_never_playback_binary() -> None:
+    """同一视频行的播放 URL 不能进入现有图片 Artifact 缓存。"""
+    row = {
+        "content_id": uuid4(),
+        "position": 0,
+        "platform": "xiaohongshu",
+        "media_type": "video",
+        "url": "https://sns-v11.rednotecdn.com/video.mp4",
+        "preview_url": "https://sns-i11.rednotecdn.com/cover.webp",
+    }
+    assert _source_from_row(row).source_url == row["preview_url"]
+    assert _source_from_row({**row, "preview_url": None}).source_url is None
 
 
 def test_normalize_xiaohongshu_image_url_accepts_only_trusted_origin() -> None:
@@ -66,6 +81,7 @@ def test_xiaohongshu_image_fetcher_sends_required_headers_and_returns_raster() -
     [
         (302, "image/jpeg", None),
         (200, "image/svg+xml", None),
+        (200, "video/mp4", None),
         (200, "image/jpeg", str(MEDIA_CACHE_ITEM_MAX_BYTES + 1)),
     ],
 )

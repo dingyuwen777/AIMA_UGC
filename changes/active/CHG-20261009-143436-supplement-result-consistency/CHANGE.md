@@ -1,13 +1,13 @@
 ---
 schema: coding-change/v1
 id: CHG-20261009-143436-supplement-result-consistency
-title: 补采后品牌车型与分析结果一致性修复
+title: 补采一致性、小红书媒体与开发交付效率整改
 level: L3
-status: ready_for_review
+status: in_progress
 owner: maintainer
 branch: fix/supplement-result-consistency
 created: 2026-10-09T14:34:36+08:00
-updated: 2026-10-09T17:07:00+08:00
+updated: 2026-10-09T22:00:56+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -17,34 +17,45 @@ affected_areas:
   - analysis
   - reporting
   - workbench
+  - frontend
+  - ci
+  - developer-tooling
 affected_paths:
   - backend/src/aima_ugc
   - migrations/versions
   - tests
-  - frontend/e2e-fullstack
+  - frontend
+  - scripts
+  - .github/workflows
+  - AGENTS.md
   - docs
 contracts:
   - CanonicalContentV1
   - BrandVehicleCatalogSnapshot
   - analysis.content-label.v1
   - content.consistency-repair.v1
+  - CanonicalMediaV1
+  - ContentMediaResponse
+  - Content playback prepare/stream
+  - CI changed-scope outputs
 data_changes:
   - content_versions.author_snapshot
   - analysis_content_version_reuses
   - voice_plaza_content_projection
   - content_consistency_repair_runs
   - content_consistency_repair_targets
+  - content_media attribute observations and playback state
 ---
 
 # 变更摘要
 
-补采成功后，按合并后的完整 Current 原子维护当前版本品牌/车型 Evidence；通过生产输入 Hash 证明等价时引用真实历史 AI Result，保留有效人工审核。输入变化或历史协议不明时保持 stale，补采不创建 AI Run。本轮只开发和本地验证，等待用户本地验收，不 push、不建 PR、不合并、不部署、不操作生产数据。
+补采成功后，按合并后的完整 Current 原子维护当前版本品牌/车型 Evidence；通过生产输入 Hash 证明等价时引用真实历史 AI Result，保留有效人工审核。输入变化或历史协议不明时保持 stale，补采不创建 AI Run。补采阶段已在90013af0完成本地验证与独立复审；本轮按用户新增两份任务书扩展小红书图文/视频全链路及开发交付效率，统一上游需求为Issue #711。最新直接指令授权全部本地成果经验证和保护PR合并main及清理；不部署、不Release、不操作生产数据。用户人工验收不能由自动测试冒充。
 
 # 背景、现状与问题
 
 ## 背景
 
-上游是用户在本会话提供并批准的《Codex 开发任务书：补采后品牌车型识别与 AI 打标结果一致性修复》，包含 AC01–AC22。引用会话为 chatgpt-conversation://6ac87f50-c62c-83e8-a2b9-7a7343b6d0e8；正式要求以用户粘贴正文及本轮本地交付指令为准。
+上游是用户在本会话提供并批准的《Codex 开发任务书：补采后品牌车型识别与 AI 打标结果一致性修复》，包含 AC01–AC22。引用会话为 chatgpt-conversation://6ac87f50-c62c-83e8-a2b9-7a7343b6d0e8；补采阶段要求以用户粘贴正文为准；2026-10-09后续追加小红书20项AC和效率整改方案，55项统一验收见Issue #711。最新直接主分支交付指令覆盖两份粘贴方案的PR Ready终点。
 
 ## 当前现状
 
@@ -70,7 +81,7 @@ data_changes:
 
 ## 推断与待确认
 
-定向及广域数据库回归、投影/消费者、历史修复Runtime、真实浏览器和两轮独立Review已闭合。当前状态仅为本地技术完成并等待用户本地验收，不表示用户已验收或PR Ready。
+定向及广域数据库回归、投影/消费者、历史修复Runtime、真实浏览器和两轮独立Review已闭合。以上仅说明90013af0补采阶段的已完成边界；本轮新增媒体/CI范围尚在开发，整体不表示PR Ready或用户已验收。
 
 # 目标、成功标准与非目标
 
@@ -78,11 +89,13 @@ data_changes:
 
 品牌/车型/竞品、有效 AI 结果、人工审核、列表/详情/筛选/导出/报告在补采和恢复后保持一致。
 
-## 成功标准
+## 补采阶段成功标准（本轮扩展前）
 
 - [x] AC01–AC22 均有直接证据，逐项定位于EVIDENCE。
 - [x] Schema、Migration、Owner、Contract、文档及必要真实浏览器链验证闭环。
 - [x] 两个独立Reviewer在最终返修checkpoint无unresolved blocking Finding，完成到本地待用户验收。
+
+以上三项只对应90013af0补采阶段。扩展后的整体成功标准为Issue #711全部55项验收，当前媒体、CI与正式交付仍在进行；新增直接证据记录于同目录MEDIA_CI_EVIDENCE.md，不据旧checkbox宣称整体完成。
 
 ## 范围
 
@@ -90,7 +103,7 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 
 ## 非目标
 
-不改 Prompt/标签体系、TikHub 评论分页、Job Runtime、依赖、生产数据；不伪造模型或人工执行历史；不合并远程 main。
+不改Prompt/标签体系、评论分页、既有Job Runtime机制或依赖；不伪造模型/人工历史，不全量计费或历史Content迁移，不缓存完整视频，不改其他四平台视频产品能力，不修改Agent_Skills受管资产，不Release/Deploy/生产操作或绕过保护。
 
 ## 必须保持不变
 
@@ -129,34 +142,82 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 
 历史 Result 原地改版本或复制成新 Result 会污染模型执行历史，用户明确禁止。只在前端显示 completed 不能统一服务端消费者，用户明确禁止。采用用户推荐的独立关联表，最小表达目标版本到真实成功结果的引用和人工继承来源。
 
+
+## 本轮新增范围与执行计划
+
+Development Preflight：保留当前分支和四个本地提交，唯一上游Issue #711已canonical create校验、平台创建及live同检PASS。风险L3；实现与验证存在可独立调查价值，独立Review必需；共享checkout单一tracked Writer租约，Parent顺序集成。所有下游状态按新增范围重开，原补采证据仅在相关实现/Contract/环境未变化时复用。
+
+1. CI正确性与生命周期 → classifier/validate_changed/check_docs、永久Workflow和对应测试 → PR merge-base真实范围、env风险、synchronize、Preflight fail-closed → 构造Git DAG/真实#710四文件、控制面目标回归；保持三个required identity。
+2. Workflow成本 → Runtime/Tooling/Release真实消费者与Evidence Preservation Mapping → 模板-only执行配置/Compose渲染/正式打包，保留真实镜像与Runtime风险 → 对照#710真实Runner时间与本轮CI，避免重构整个DB体系。
+3. 媒体根因 → Canonical/Mapper/Content Owner及所有scalar/batch/贡献账本路径 → 明确unknown、完整/部分/删除、属性新鲜度与追溯，封面合并和缓存 → 真PostgreSQL Red/Green、旧/新Raw与Replay兼容。
+4. 播放准备与流 → 正式Collection父事实/Job/Attempt/Raw、Content窄更新与短期状态、Principal/可信CDN Transport/API → 并发去重、一次刷新、URL变更不改版本AI证据、Range/断开与SSRF防护 → 可控HTTP/真实DB故障恢复与有界真实TikHub/CDN。
+5. 前端及Contract → Pydantic/OpenAPI/Orval、Drawer/Table/api、Nginx/CSP → 图片完整比例、视频标识封面/原生播放/一次恢复、稳定切帖 → 定向Unit/Browser及少量真实全栈。
+6. 交付 → 受影响正式Docs/Completion/独立主审与盲审 → 全部55AC直接证据、当前head/base required CI → 保护PR合并、main-fresh、原生Change归档、Issue Closure与任务资源/分支清理。
+
+真实Probe采用现有生产Operation/Transport/Mapper与价格限制器，最多6次物理请求、计划总费用0.06 USD，先核价；Secret/签名URL/Raw仅在安全内存或忽略审计边界，不入Git或输出。部署服务器出口不可用时保留明确验证边界，不把本机/Mock成功冒充该环境通过。
+
 # 需求追溯
 
 上游AC01–AC09在机器来源绑定中规范为AC1–AC9；编号和语义对应不变，展示及Evidence继续使用用户任务书编号。
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 评论/回复/互动不破坏版本及分析 | user:supplement-consistency#AC1 | satisfied | V6/V7/V14/V22；EVIDENCE AC01 |
-| R2 | URL/发布时间等非输入变更复用 AI | user:supplement-consistency#AC2 | satisfied | V14/V20/V22；EVIDENCE AC02 |
-| R3 | 稀疏 Detail 保留正文并按完整 Current 分类 | user:supplement-consistency#AC3 | satisfied | V6/V14；EVIDENCE AC03 |
-| R4 | 新品牌全部命中 | user:supplement-consistency#AC4 | satisfied | V24 title/text新增时序两参数；EVIDENCE AC04 |
-| R5 | 删除旧品牌撤销自动命中 | user:supplement-consistency#AC5 | satisfied | V6/V24；EVIDENCE AC05 |
-| R6 | 多品牌车型归属正确 | user:supplement-consistency#AC6 | satisfied | V20/V22，真实爱玛+雅迪及各自车型；EVIDENCE AC06 |
-| R7 | 无品牌仍补采成功 | user:supplement-consistency#AC7 | satisfied | V6/V24/V25，Discovery过滤保留；EVIDENCE AC07 |
-| R8 | 人工品牌车型锁继承 | user:supplement-consistency#AC8 | satisfied | V6/V25，分维来源、空锁和墓碑；EVIDENCE AC08 |
-| R9 | 同输入跨版本零 LLM 复用 | user:supplement-consistency#AC9 | satisfied | V14/V20/V22；EVIDENCE AC09 |
-| R10 | 任一输入字段不同保持 stale | user:supplement-consistency#AC10 | satisfied | V14，生产Hash与变化字段参数；EVIDENCE AC10 |
-| R11 | 未知协议/失败结果不猜测继承 | user:supplement-consistency#AC11 | satisfied | V14/V25；EVIDENCE AC11 |
-| R12 | 等价输入保留情感标签发声人工修正 | user:supplement-consistency#AC12 | satisfied | V14/V20/V22；EVIDENCE AC12 |
-| R13 | 人工相关性及 inherit_ai 正确 | user:supplement-consistency#AC13 | satisfied | V14/V22；EVIDENCE AC13 |
-| R14 | 主动新 Run 执行且直接 Result 优先 | user:supplement-consistency#AC14 | satisfied | V14，真实Planner/Shard调用与新Result断言；EVIDENCE AC14 |
-| R15 | A→B→A 可引用原始结果 | user:supplement-consistency#AC15 | satisfied | V14，非相邻Result来源；EVIDENCE AC15 |
-| R16 | 补采/AI/审核并发无错误覆盖 | user:supplement-consistency#AC16 | satisfied | V14实际双Session锁等待、V25现有Owner锁回归；EVIDENCE AC16 |
-| R17 | 事务中途异常完整回滚 | user:supplement-consistency#AC17 | satisfied | V6/V14/V25；EVIDENCE AC17 |
-| R18 | Retry/Fence/接管幂等 | user:supplement-consistency#AC18 | satisfied | V6/V14/V25，正式Job故障重试/接管/取消；EVIDENCE AC18 |
-| R19 | List/Count/详情/筛选一致 | user:supplement-consistency#AC19 | satisfied | V14/V20/V22；EVIDENCE AC19 |
-| R20 | 导出/工作台/报告/历史冻结一致 | user:supplement-consistency#AC20 | satisfied | V14/V22/V23及V30；F-B1/F-B2直接Red/Green、完整Analysis30及两个独立Reviewer在8a10f441限定复审resolved，见EVIDENCE整批审查记录 |
-| R21 | 历史修复有界恢复且重复运行幂等 | user:supplement-consistency#AC21 | satisfied | V25，30项repair包含真实CLI/Worker/故障/二次运行；EVIDENCE AC21 |
-| R22 | 批量投影无明显 N+1 或全表扫描 | user:supplement-consistency#AC22 | satisfied | V14/V26，有限UUID页与1/100固定SQL数；不宣称生产40M压测；EVIDENCE AC22 |
+| R1 | 评论/回复/互动不破坏版本及分析 | #711 / AC1 | satisfied | V6/V7/V14/V22；EVIDENCE AC01 |
+| R2 | URL/发布时间等非输入变更复用 AI | #711 / AC2 | satisfied | V14/V20/V22；EVIDENCE AC02 |
+| R3 | 稀疏 Detail 保留正文并按完整 Current 分类 | #711 / AC3 | satisfied | V6/V14；EVIDENCE AC03 |
+| R4 | 新品牌全部命中 | #711 / AC4 | satisfied | V24 title/text新增时序两参数；EVIDENCE AC04 |
+| R5 | 删除旧品牌撤销自动命中 | #711 / AC5 | satisfied | V6/V24；EVIDENCE AC05 |
+| R6 | 多品牌车型归属正确 | #711 / AC6 | satisfied | V20/V22，真实爱玛+雅迪及各自车型；EVIDENCE AC06 |
+| R7 | 无品牌仍补采成功 | #711 / AC7 | satisfied | V6/V24/V25，Discovery过滤保留；EVIDENCE AC07 |
+| R8 | 人工品牌车型锁继承 | #711 / AC8 | satisfied | V6/V25，分维来源、空锁和墓碑；EVIDENCE AC08 |
+| R9 | 同输入跨版本零 LLM 复用 | #711 / AC9 | satisfied | V14/V20/V22；EVIDENCE AC09 |
+| R10 | 任一输入字段不同保持 stale | #711 / AC10 | satisfied | V14，生产Hash与变化字段参数；EVIDENCE AC10 |
+| R11 | 未知协议/失败结果不猜测继承 | #711 / AC11 | satisfied | V14/V25；EVIDENCE AC11 |
+| R12 | 等价输入保留情感标签发声人工修正 | #711 / AC12 | satisfied | V14/V20/V22；EVIDENCE AC12 |
+| R13 | 人工相关性及 inherit_ai 正确 | #711 / AC13 | satisfied | V14/V22；EVIDENCE AC13 |
+| R14 | 主动新 Run 执行且直接 Result 优先 | #711 / AC14 | satisfied | V14，真实Planner/Shard调用与新Result断言；EVIDENCE AC14 |
+| R15 | A→B→A 可引用原始结果 | #711 / AC15 | satisfied | V14，非相邻Result来源；EVIDENCE AC15 |
+| R16 | 补采/AI/审核并发无错误覆盖 | #711 / AC16 | satisfied | V14实际双Session锁等待、V25现有Owner锁回归；EVIDENCE AC16 |
+| R17 | 事务中途异常完整回滚 | #711 / AC17 | satisfied | V6/V14/V25；EVIDENCE AC17 |
+| R18 | Retry/Fence/接管幂等 | #711 / AC18 | satisfied | V6/V14/V25，正式Job故障重试/接管/取消；EVIDENCE AC18 |
+| R19 | List/Count/详情/筛选一致 | #711 / AC19 | satisfied | V14/V20/V22；EVIDENCE AC19 |
+| R20 | 导出/工作台/报告/历史冻结一致 | #711 / AC20 | satisfied | V14/V22/V23及V30；F-B1/F-B2直接Red/Green、完整Analysis30及两个独立Reviewer在8a10f441限定复审resolved，见EVIDENCE整批审查记录 |
+| R21 | 历史修复有界恢复且重复运行幂等 | #711 / AC21 | satisfied | V25，30项repair包含真实CLI/Worker/故障/二次运行；EVIDENCE AC21 |
+| R22 | 批量投影无明显 N+1 或全表扫描 | #711 / AC22 | satisfied | V14/V26，有限UUID页与1/100固定SQL数；不宣称生产40M压测；EVIDENCE AC22 |
+
+| R23 | 小红书明确normal/video与未知；未知不默认图片。 | #711 / AC23 | satisfied | MEDIA_CI_EVIDENCE媒体基础层；真实normal/video/unknown Fixture与生产Mapper Unit；未知不默认image |
+| R24 | 已知视频选视频详情；未知先图文确认后至多一次视频详情。 | #711 / AC24 | satisfied | 同文件媒体基础层60PG/610Unit与可选视频失败Red22；已知视频及同ID未知至多一次补充 |
+| R25 | URL/封面/毫秒时长/尺寸来自真实验证字段，不用cache_url。 | #711 / AC25 | satisfied | 同文件TikHub直接6请求与脱敏Fixture；真实h264/封面/尺寸/毫秒，不用cache_url；本机实际解码 |
+| R26 | 无播放URL仍保留视频类型封面。 | #711 / AC26 | satisfied | 同文件媒体基础层及真实首次cover-only入库；无URL保留video和封面 |
+| R27 | 重复补采、部分属性、完整替换、删除、迟到并发正确合并媒体。 | #711 / AC27 | satisfied | 同文件60PG与三项返修10PG/48相邻PG；partial/full/delete/late/batch/并发和来源撤销 |
+| R28 | 横竖长图及多图窄屏完整无裁切拉伸。 | #711 / AC28 | satisfied | 同文件真实Chrome横1200×600/竖600×1200/长400×2400及390px详情；contain、558×440稳定 |
+| R29 | 标题附近及详情有真实视频标识，不恢复类型筛选或列。 | #711 / AC29 | satisfied | 同文件前端FE-R4永久Red/Green及真实列表和详情视频标识截图；不增加类型筛选/列 |
+| R30 | 受支持合法源站内播放，真实CDN证据与Mock区别。 | #711 / AC30 | satisfied | 同文件正式Nginx/API/Worker/Chrome/真实CDN；720×1280/17.833s/readyState4，exit0 |
+| R31 | 真实Range/206/416与进度拖动遵循上游能力。 | #711 / AC31 | satisfied | 同文件实际206/1024bytes及416空正文；原生seek到10秒完成解码；53代理Unit |
+| R32 | 视频不落盘、不入Artifact或长期缓存，Nginx禁视频临时缓冲。 | #711 / AC32 | satisfied | 同文件14组业务/Artifact审计video MIME0，真实Nginx仅pid无proxy_temp，遥测保存视频字节0 |
+| R33 | 每次明确播放意图最多一次受控URL刷新，失败冷却无循环。 | #711 / AC33 | satisfied | 同文件BR-R3及完整受控恢复Chrome；首次{}+一次failed_revision、固定Job只读观察、90s截止，无循环 |
+| R34 | CDN403/404/410/429/5xx/超时及不支持格式正确分类降级。 | #711 / AC34 | satisfied | 同文件53代理Unit及播放Service/HTTP；403/404/410/429/5xx/超时/格式/终态分类，失败保留封面 |
+| R35 | 同视频并发准备去重，正式Job/Attempt/Raw/Fence与费用可审计。 | #711 / AC35 | satisfied | 同文件104PG及三项返修/BR-R3；正式collection Job/Attempt/Raw/Fence去重、重放、未知费用和冷却 |
+| R36 | 纯URL刷新不改Content Version、AI、Evidence或评论。 | #711 / AC36 | satisfied | 同文件首次缺URL到正式发布及实际恢复/播放/关闭14组摘要全等，V5/评论3/非空AI人工Evidence；零LLM增加 |
+| R37 | 正文真实变化仍按已有版本、品牌和AI输入规则收敛。 | #711 / AC37 | satisfied | 原EVIDENCE AC03–AC18 + 新媒体60PG/相邻57PG；正文变化走原Content Owner与生产hash/Evidence |
+| R38 | 兼容历史图片/多图/仅封面/旧note unknown/人工确认与旧Run，不全量重新计费。 | #711 / AC38 | satisfied | 同文件五种90013af0真实旧wire/20比较/25Scope、旧v1与v2账本、带数据0085/86往返；无全量计费 |
+| R39 | Principal/可信HTTPS CDN/逐跳DNS与IP/SSRF/Range/连接带宽保护、断开释放有效。 | #711 / AC39 | satisfied | 同文件53安全代理Unit、真实PG/API Principal绑定及26条Nginx别名；公网IP固定/TLS/SSRF/Range/配额/退出连接0 |
+| R40 | 后台刷新不清正文评论封面，关闭切换终止播放器轮询，无明显闪烁。 | #711 / AC40 | satisfied | 同文件FE-R1–R5、BR-R3独立复审及19Vitest/2Chrome Mock/真实关闭；轮询停止、节点稳定、late epoch拒绝 |
+| R41 | 其他四平台与评论补采不回归。 | #711 / AC41 | satisfied | 同文件宽层2245通过与4项限定20全绿、610Unit/60PG及原补采回归；五平台原正式入口保持 |
+| R42 | OpenAPI/generated client/Migration/Docs与实现一致。 | #711 / AC42 | satisfied | 同文件0085/86空库及带数据往返、当前Pydantic/OpenAPI/Client同步、generate --check和11Docs限定独立复核 |
+| R43 | #710及base前进PR范围仅分支实际4文件，merge-base异常诊断且fail-closed。 | #711 / AC43 | satisfied | 同文件真实#710新4/旧14、唯一merge-base；166控制面回归覆盖base前进/缺对象/多基线fail-closed |
+| R44 | 新增删除重命名及staged/unstaged/untracked与本地CI同源选择正确。 | #711 / AC44 | satisfied | 同文件166回归：本地与CI唯一classifier，staged/unstaged/untracked/新增删除改名及删除测试Owner suite |
+| R45 | CI自身/Migration仍full fail-closed；其他真实边界精准选择并解释。 | #711 / AC45 | satisfied | 同文件高风险反例及当前171文件full计划；CI自身/Migration/未知路径不自免验证 |
+| R46 | env注释/值/结构/敏感配置有独立分类和语法重复键、真实Settings/Connector/Secret/Compose/打包证据。 | #711 / AC46 | satisfied | 同文件env实际Settings/Connector/Secret/引号插值/重复键、两次真实Compose config和Release模板保留回归 |
+| R47 | 未暂存文档非法引用本地失败，忽略目录不误报。 | #711 / AC47 | satisfied | 同文件未暂存新增文档坏引用真Red及忽略目录回归、check_docs本地静态PASS |
+| R48 | 轻量Preflight失败不执行重型Job且required checks明确失败；成功后重型并行。 | #711 / AC48 | satisfied | 同文件CI-R1–R6独立闭合；Preflight needs图、显式required失败、成功后重层并行永久回归 |
+| R49 | opened/synchronize/Ready/修复push/base更新最新HEAD有可靠自动检查入口，取消旧运行。 | #711 / AC49 | satisfied | 同文件synchronize/Ready/base edited、merge ref/head guard/metadata lane身份与cancel-in-progress控制面回归 |
+| R50 | main Evidence reuse、Change Archive、正式Release与三个strict required identity不回归。 | #711 / AC50 | satisfied | 同文件main tree reuse/archive/release/3 strict identity永久回归；实时保护在合并前再次读取，不能用本地替代远程事实 |
+| R51 | 项目自有规则默认本地两步验收，USER_WAIVED如实记录，不改managed资产。 | #711 / AC51 | satisfied | AGENTS自有区/USAGE/Blueprint06本地两步流程；managed区无改动；人工验收当前PENDING，不冒充通过 |
+| R52 | Workflow责任审计/Evidence保留映射后消除确认重复Setup/Install/Build，保持必要Runtime/Release验证。 | #711 / AC52 | satisfied | Blueprint06 Workflow责任与Evidence Preservation Mapping；#710配置风险避免无关Runtime/镜像/DB/Browser，真实部署风险保留 |
+| R53 | 定向验证优先、充分旧证据复用、Review整批收敛；DB热点有真实基线而不无界重构。 | #711 / AC53 | satisfied | 同文件定向Red/Green、冻结hash证据复用/整批修复限定复审；真实PG suite耗时/固定1与100查询数，无共享DB并行或timeout放宽 |
+| R54 | 用#710及本轮真实CI执行次数/时长/关键路径证明优化，不能仅宣称YAML减少。 | #711 / AC54 | explicitly_deferred | explicitly_deferred仅指已批准PRA→PRB顺序中的post-merge真实模板Runner采样；MEDIA_CI_EVIDENCE已有#710真实旧时长/4文件反例，新Workflow自身须full；Issue AC54保持未勾选，采样后回写，不免除该验收 |
+| R55 | 三项本地成果经独立Review、current-head/base required CI及受保护PR合并main，取得implementation main-fresh、原生归档及archive governance fresh；全部AC闭合后完成Closure和关单，再清理本次已合并未使用的任务分支和临时资源；不Release/Deploy/生产操作。 | #711 / AC55 与生命周期附录 | explicitly_deferred | explicitly_deferred仅指授权的post-merge main-fresh/原生归档/Closure及清理阶段；独立Review已闭合，人工Gate仍PENDING，正式current-head/base CI及保护须在merge前实际满足；Issue AC55保持未勾选，禁止据此先关单 |
 
 # 计划改动
 
@@ -166,6 +227,11 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 | Analysis tables/Repository 与 Migration | 正式复用、有效结果/人工来源 | 保留真实历史 | R9–R18 |
 | Content projection/query、Reporting/Workbench | 消费统一有效结果 | 端到端一致 | R19–R20 |
 | 既有 Job/管理接线、tests、frontend/e2e-fullstack | 历史修复与回归 | 有界恢复和真实接线 | R21–R22 |
+| 小红书 Operation/Mapper、Content 媒体 Owner、缓存与来源撤销 | 真实类型、媒体完整性、属性新鲜度及视频封面 | 重复补采不丢有效事实，保持生产单一写入口 | R23–R27、R36–R38 |
+| Content Playback Service/Repository、Collection media_refresh、流式 Provider 与 HTTP | 正式持久准备任务、短期会话、一次收费预算及受控转发 | 站内播放和失败恢复；稳定事实与可失效来源分离 | R30–R39 |
+| Content Contract、生成 OpenAPI/Client、0085/0086 | 媒体观测元数据、播放状态与公共能力 | 兼容历史数据并明确部署/回滚边界 | R38–R42 |
+| 声音广场 Gallery/Player/Drawer/Table、采集中心及任务中心消费者、Nginx | 完整图片、真实视频标识、原生播放状态和安全代理配置 | 用户路径和服务端实际能力闭环 | R28–R41 |
+| 唯一 CI classifier、validate_changed、模板/文档检查、四 Workflow 与项目自有规则 | 正确变更范围、配置风险分层、同步触发、Preflight及证明责任 | 提速保留 required checks、安全和正式发布责任 | R43–R54 |
 
 # 验证矩阵
 
@@ -174,9 +240,9 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 | 行为 / 单元 / 组件 | required | Hash、解析、作者合并和持久任务规则 |
 | 接口 / 契约 | required | Schema/Migration、生成物及管理入口兼容 |
 | 集成 / 持久化 / 运行依赖 | required | 隔离 PostgreSQL：事务、约束、并发、Fencing、人工与消费者 |
-| 用户 / 工作流验收 | required | 声音广场/采集中心补采刷新及本地用户验收 |
+| 用户 / 工作流验收 | required | 原补采刷新证据可复用；新增图片/视频/准备恢复与切帖Browser验收；人工验收状态如实单列 |
 | 跨组件关键路径 | required | 真实 Vue/API/DB/Worker，外部 Provider 用受控 Fake |
-| 外部依赖 / 供应方探测 | not_applicable | 确定性修复无需付费 TikHub/LLM 当前事实 |
+| 外部依赖 / 供应方探测 | required | 新增媒体范围要求有界真实TikHub字段与CDN证据；已完成6次TikHub Probe，不追加付费请求；部署出口边界单列 |
 | 构建 / 打包 / 运行 | required | 前端 Build、隔离 Migration/服务启动 |
 | 文档 / 治理 / 其他 | required | changed-scope、Owner、架构、Secret、文档与完成检查 |
 
@@ -191,23 +257,23 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 | 主要风险 | 作者快照、人工来源和投影跨层一致性 | 锁保护、统一选择与 PostgreSQL 回归 |
 | 兼容性 | 历史 Run/Result/Prompt 不变 | 只新增引用事实，直接结果优先 |
 | 数据 / Migration | 新 DDL，无自动全量回填 | 历史修复独立有界 Job |
-| 部署 / 运行 | 本轮仅隔离本地 | 不迁移用户在用库，不调用付费接口 |
-| 回滚 / 恢复 | 排空新协议任务后回退代码 | 保留历史 Result，关联可审计，不自动生产执行 |
+| 部署 / 运行 | 仅隔离本地与受保护 Git 交付 | 不迁移用户在用库；已授权的六次真实 TikHub Probe 已完成，不追加付费请求；部署出口验证未完成 |
+| 回滚 / 恢复 | 先排空新协议任务再按兼容版本回退 | 新 v2 Media Delta、新 v6 Run 不能由不支持它们的旧业务 Worker 继续处理；DDL往返不代表任意旧软件可安全回滚 |
 
 # 文档、依赖、部署与发布影响
 
-同步相关 Blueprint、Analysis/Content README、历史修复操作说明。依赖/Runtime 保持锁定版本。无 Secret/Provider 变更。本轮不发布部署；迁移仅用于隔离测试库。
+同步 Product、Blueprint、Operations、开发指南及 Analysis/Content/Collection/Provider 模块 README。依赖和 Runtime 保持锁定版本；真实 Probe 凭据不入 Git、日志或报告，未添加公共 CDN 签名地址。新增 Playback Contract 通过生产生成器同步 OpenAPI 和 TypeScript Client；0085/0086 仅升级隔离测试库。本轮不发布、不部署、不操作生产数据。
 
 # 完成审计
 
-- [x] upstream_re_read：重新逐节读取本会话用户完整任务书§1–§11、AC01–AC22与当前AGENTS/USAGE；非目标、旧Run兼容、本地待人工验收和生产操作授权边界均保留。
-- [x] change_coverage：独立从上游重建需求后逐项核R1–R22，EVIDENCE逐AC列出实际断言；目录冻结、稀疏作者、合法空匹配、非相邻Hash证明、两套人工继承和有界修复无遗漏。
-- [x] reverse_audit：逐一核对补采/Excel/历史导入/Replay生产者到Content→Evidence→Analysis→投影的原子链；反查正式/兼容查询、List/Count/筛选、人工写资格、主动重打标、冻结导出/报告与工作台到同一有效来源函数；额外核报告人工计数及带数据降级的持久投影。CLI真实接正式Job Runtime，无新增HTTP能力需前端入口。
-- [x] unresolved_cleared：R1–R22全部satisfied；两项首轮P2经真实Red/Green、两个独立限定复审及受影响独立运行闭合。无未决业务决定或阻塞发现；用户本地验收、远程CI/PR与生产执行留在本轮明确交付边界之后。
+- [x] upstream_re_read：已live重读Issue #711，55AC及生命周期附录与canonical已澄清正文逐字一致；重新对照三份用户任务书与最新合并清理授权，逐55AC重建本地完成定义。
+- [x] change_coverage：R1–R53直接证据已逐项映射，受影响旧路径经相邻PG/真实浏览器复验；R54/R55仅按上游既定交付顺序保留post-merge阶段，未提前勾选Issue，pre-merge门禁不豁免。
+- [x] reverse_audit：逐层反查正常补采/Replay到媒体Owner、prepare到正式Job/Attempt/Raw和只读观察、stream到Principal/安全CDN/取消、前端到生成Contract、selector到CI/Runtime/Tooling/Release及三个required identity；main收尾仍按授权后续阶段执行。
+- [x] unresolved_cleared：补采、媒体基础/代理/Service、CI、前端及Docs的整批material Findings均经独立限定复审closed；BR-R3与真实Chrome/CDN最后路径通过。人工Gate、远程required CI及post-merge事实仍如实单列，未冒充已取得。
 
 # 完成证据与状态
 
-## 新鲜证据
+## 补采阶段已取得证据（90013af0完成边界）
 
 | 证据 | 版本 / 环境 | 命令 / 检查 | 结果 | 证明了什么 |
 | --- | --- | --- | --- | --- |
@@ -249,17 +315,17 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 
 ## 未验证内容与剩余风险
 
-全部本轮技术验证已闭合：稳定广域套件与返修后受影响完整文件/新回归均通过，两个独立Reviewer的最终结论无阻塞。用户本地验收尚未发生，远程CI未触发，不声明PR Ready。Windows完整后端16项平台skip及Jobs1项Linux专属skip保留为未验证边界；没有40M生产规模、真实付费Probe、生产Migration或生产修复结论。来源撤销保持既有语义。
+原补采阶段技术证据见上表及EVIDENCE.md，Windows/POSIX skip和无40M生产容量/生产Migration/生产修复结论仍保持。新增媒体与CI的本地技术证据和独立复审已闭合；人工Gate、远程CI及后续交付事实尚未取得。真实CDN部署出口、费用实际账单与Mock/本地证据需分别报告，不作无依据强结论。
 
 ## 交付状态
 
-- 提交：本地治理 checkpoint 4f84afc8；完整实现 checkpoint 9ddc6513；返修 checkpoint 8a10f441。后续仅补最终验收证据。
-- 拉取请求：未创建；等待用户本地验收。
-- CI：远程未触发。
-- 合并：未执行。
-- Change 归档：未归档。
-- 发布 / 部署：未执行；用户只要求本地开发验证。
+- Requirement Source：#711，canonical create与live同检PASS；55AC为当前完整完成定义。
+- 分支：fix/supplement-result-consistency，保留4f84afc8/9ddc6513/8a10f441/90013af0四个本地提交。
+- 整体：in_progress，新增范围重新执行适用Completion与独立Review。
+- 用户人工验收：未发生，不冒充通过；主分支交付及任务清理已获明确授权。
+- PR/远程CI/merge/main-fresh/archive/Closure/清理：尚未执行。
+- Release/Deploy/生产数据：非目标。
 
 ## 备注
 
-同一 checkout 的生产代码写入已按切片依次移交并释放，当前唯一 Writer 为 Parent；独立 Reviewer 只读，Tester 仅写任务专用数据库及忽略目录。Parent 管理 Change、最终集成和资源清理。起始无用户未提交修改。Development Preflight 已通过，最终 Completion 尚待收齐。
+Parent管理唯一Change、集成及资源清理。所有Agent共享checkout；CI切片已冻结后，后端Writer独占Backend/Contract/Generated与PostgreSQL 25449，前端Writer仅负责声音广场、视频准备任务消费者、相关前端测试和Nginx，公共播放Contract已冻结且生成物由后端单独维护。Parent仅维护Change/定向文档与隔离浏览器PostgreSQL 25450，避免路径和运行环境交叉写入。独立Reviewer只读，测试仅操作已验证属于任务的隔离环境。既有EVIDENCE保留补采阶段历史，新增证据单独记入本Change的MEDIA_CI_EVIDENCE.md。

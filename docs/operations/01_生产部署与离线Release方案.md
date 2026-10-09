@@ -523,6 +523,10 @@ PostgreSQL、Artifact、日志和 Secret 不随应用版本目录切换。使用
 
 代码回滚本身不删除已经写入的业务数据，也不能替代数据补偿方案。
 
+小红书媒体改造应先应用 [migrations/versions/20261009_0085_media_observations.py](../../migrations/versions/20261009_0085_media_observations.py) 与 [migrations/versions/20261009_0086_media_playback.py](../../migrations/versions/20261009_0086_media_playback.py)，再启动兼容的 API、Worker 和前端。新视频准备沿用 Collection Job，并使用版本化的配置与来源增量；排空正在执行的任务只消除在途工作，不能让旧应用理解已经持久化的新配置、Canonical 字段或媒体来源增量。0085/0086 的数据库降级会移除媒体属性观测元数据或播放运行状态，不能把 DDL 往返验证表述为业务数据完整回滚。回到不支持新协议的旧版本时，保留兼容代码与 Schema，或按另行批准、验证的发布前 Backup Set 恢复；不得改写历史 Raw、Run 或来源增量以制造兼容。
+
+上线视频播放前还需从实际部署出口验证 CDN 的 TLS、Range 与浏览器编码，并核对外层网关没有缓冲视频到临时文件、缓存私有响应或记录含播放会话的查询 URI。本机 CDN/Chrome 证据不替代部署环境验收。此次开发不执行生产迁移、部署或历史付费补采。
+
 TikHub 全量计划升级先执行 [migrations/versions/20261002_0079_tikhub_plan_full_comments.py](../../migrations/versions/20261002_0079_tikhub_plan_full_comments.py)，再启动同版本 Scheduler/Worker/API/前端。旧 Worker 不支持新的 v4 快照及全量策略，不能对新工作直接切回旧镜像。该 Migration 在存在全量计划、历史 `fetch_full` 审计动作或排队/运行中的 v4 Run 时拒绝降级；即使停用计划、任务已结束，历史全量动作仍阻止删除其执行语义。应用排空、计划切回自适应不等于已经获得安全 Schema 降级条件，不得为通过降级篡改历史动作或 Run。确需回到不支持全量的旧版本时，按批准且已验证的 Backup Set 恢复边界处理；本功能的本地验证不代表生产迁移或恢复已执行。
 
 浏览器安全策略的回滚要单独处理：CSP/Permissions-Policy 回归可以回退应用镜像后重新验证；HSTS 已被浏览器从 HTTPS 响应接受后会在 `max-age` 内持久存在，不能把“回退镜像”当成立即撤销 HSTS。确需撤销时必须在可用 HTTPS 入口返回 `Strict-Transport-Security: max-age=0`，因此当前不启用 `includeSubDomains` 或 `preload`。

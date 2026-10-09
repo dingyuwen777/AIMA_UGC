@@ -17,7 +17,7 @@ import {
 const props = defineProps<{ modelValue: boolean; item: CollectionRunResponse | null; acting?: boolean }>()
 const confirmingRetry = ref(false)
 watch(() => [props.modelValue, props.item?.run_id, props.item?.status], () => { confirmingRetry.value = false })
-const modeLabel = computed(() => props.item?.mode === 'content_supplement'
+const modeLabel = computed(() => props.item?.mode === 'media_refresh' ? '视频播放准备' : props.item?.mode === 'content_supplement'
   ? props.item.supplement_selection?.kind === 'selected' ? '评论补采' : '按发布时间补采'
   : props.item?.mode === 'account_discovery' ? '按账号补采'
     : props.item?.mode === 'discovery' ? '独立发现新内容' : '历史导入补采')
@@ -60,13 +60,13 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
 <template>
   <AimaDrawer
     :model-value="modelValue"
-    label="辅助补采运行详情"
+    :label="item?.mode === 'media_refresh' ? '视频准备运行详情' : '辅助补采运行详情'"
     width="510px"
     @update:model-value="emit('update:modelValue', $event)"
   >
     <template #header>
       <header class="drawer-header">
-        <strong>辅助补采运行详情</strong>
+        <strong>{{ item?.mode === 'media_refresh' ? '视频准备运行详情' : '辅助补采运行详情' }}</strong>
         <AimaButton
           variant="text"
           size="small"
@@ -89,9 +89,9 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         <b :class="`status status--${item.status}`">{{ runtimeStatusLabels[item.status] }}</b>
       </div>
       <section class="facts">
-        <div><span>补采方式</span><strong>{{ modeLabel }}</strong></div>
+        <div><span>{{ item.mode === 'media_refresh' ? '处理方式' : '补采方式' }}</span><strong>{{ modeLabel }}</strong></div>
         <div><span>目标平台</span><strong>{{ item.platforms.map((platform) => platformLabels[platform]).join(' / ') }}</strong></div>
-        <div><span>内容来源</span><strong>{{ item.mode === 'account_discovery' ? '指定账号的可访问作品' : item.mode === 'content_supplement' ? item.supplement_selection?.kind === 'selected' ? '声音广场已选内容' : '日期范围内的已入库内容' : item.mode === 'discovery' ? (item.keywords?.join(' / ') || '关键词发现') : '已关联导入来源' }}</strong></div>
+        <div><span>内容来源</span><strong>{{ item.mode === 'media_refresh' ? '声音广场播放请求' : item.mode === 'account_discovery' ? '指定账号的可访问作品' : item.mode === 'content_supplement' ? item.supplement_selection?.kind === 'selected' ? '声音广场已选内容' : '日期范围内的已入库内容' : item.mode === 'discovery' ? (item.keywords?.join(' / ') || '关键词发现') : '已关联导入来源' }}</strong></div>
         <div><span>总耗时</span><strong>{{ elapsed(item.started_at, item.finished_at) }}</strong></div>
       </section>
       <section class="progress-panel">
@@ -129,13 +129,15 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         <div class="stat-error">
           <span>失败</span><strong>{{ formatNumber(item.stats.failed_count) }}</strong>
         </div>
-        <div><span>内容（按范围累计）</span><strong>{{ formatNumber(item.stats.content_count) }}</strong></div>
-        <div><span>评论（按范围累计）</span><strong>{{ formatNumber(item.stats.comment_count) }}</strong></div>
-        <div><span>一级评论</span><strong>{{ formatNumber(item.stats.root_comment_count) }}</strong></div>
-        <div><span>回复</span><strong>{{ formatNumber(item.stats.reply_count) }}</strong></div>
-        <div><span>品牌车型过滤</span><strong>{{ formatNumber(item.stats.filtered_count) }}</strong></div>
+        <template v-if="item.mode !== 'media_refresh'">
+          <div><span>内容（按范围累计）</span><strong>{{ formatNumber(item.stats.content_count) }}</strong></div>
+          <div><span>评论（按范围累计）</span><strong>{{ formatNumber(item.stats.comment_count) }}</strong></div>
+          <div><span>一级评论</span><strong>{{ formatNumber(item.stats.root_comment_count) }}</strong></div>
+          <div><span>回复</span><strong>{{ formatNumber(item.stats.reply_count) }}</strong></div>
+          <div><span>品牌车型过滤</span><strong>{{ formatNumber(item.stats.filtered_count) }}</strong></div>
+        </template>
       </section>
-      <template v-if="item.mode !== 'discovery'">
+      <template v-if="item.mode !== 'discovery' && item.mode !== 'media_refresh'">
         <h3>平台评论覆盖</h3>
         <section
           class="coverage-summary"
@@ -156,9 +158,21 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
           v-for="scope in item.scopes"
           :key="scope.id"
         >
-          <i :class="`dot dot--${scope.status}`" /><span>{{ platformLabels[scope.platform] }} · {{ scope.account ? scope.account.nickname || scope.account.account_id : runtimeStageLabel(scope.operation_group) }}<small v-if="scope.account">账号：{{ scope.account.account_id }} · 已发现 {{ scope.posts_discovered }} · 已入库 {{ scope.posts_admitted }}</small><small v-if="scope.account_stage">{{ scope.account_stage === 'resolving' ? '账号解析中' : scope.account_stage === 'posts' ? '作品遍历中' : '账号遍历结束' }}</small><small v-if="scope.identity_status">目标身份：{{ identityStatusLabels[scope.identity_status] }}</small><small v-if="scope.comment_stage">{{ commentStageLabels[scope.comment_stage] }}</small><small v-if="scope.comment_coverage">一级评论 {{ scope.stats.root_comment_count }} · 回复 {{ scope.stats.reply_count }} · 评论覆盖：{{ scope.comment_coverage === 'complete' ? '完整' : scope.comment_coverage === 'partial' ? '部分' : scope.comment_coverage === 'unavailable' ? '不可用' : '未请求' }}</small><small
-            v-if="(scope.status === 'failed' || scope.status === 'partial_success') && scope.stop_reason"
-          >{{ runtimeFailureMessage(scope.stop_reason) }}</small></span><b :class="`scope-state scope-state--${scope.status}`">{{ runtimeStatusLabels[scope.status] }} · {{ scope.progress }}%</b>
+          <i :class="`dot dot--${scope.status}`" />
+          <span>
+            {{ platformLabels[scope.platform] }} · {{ item.mode === 'media_refresh' ? runtimeStageLabel(scope.operation_group) : scope.account ? scope.account.nickname || scope.account.account_id : runtimeStageLabel(scope.operation_group) }}
+            <template v-if="item.mode !== 'media_refresh'">
+              <small v-if="scope.account">账号：{{ scope.account.account_id }} · 已发现 {{ scope.posts_discovered }} · 已入库 {{ scope.posts_admitted }}</small>
+              <small v-if="scope.account_stage">{{ scope.account_stage === 'resolving' ? '账号解析中' : scope.account_stage === 'posts' ? '作品遍历中' : '账号遍历结束' }}</small>
+              <small v-if="scope.identity_status">目标身份：{{ identityStatusLabels[scope.identity_status] }}</small>
+              <small v-if="scope.comment_stage">{{ commentStageLabels[scope.comment_stage] }}</small>
+              <small v-if="scope.comment_coverage">一级评论 {{ scope.stats.root_comment_count }} · 回复 {{ scope.stats.reply_count }} · 评论覆盖：{{ scope.comment_coverage === 'complete' ? '完整' : scope.comment_coverage === 'partial' ? '部分' : scope.comment_coverage === 'unavailable' ? '不可用' : '未请求' }}</small>
+            </template>
+            <small
+              v-if="(scope.status === 'failed' || scope.status === 'partial_success') && scope.stop_reason"
+            >{{ item.mode === 'media_refresh' ? '视频准备未完成，可返回声音广场重新准备或查看原帖。' : runtimeFailureMessage(scope.stop_reason) }}</small>
+          </span>
+          <b :class="`scope-state scope-state--${scope.status}`">{{ runtimeStatusLabels[scope.status] }} · {{ scope.progress }}%</b>
         </div>
       </section>
       <AimaFeedbackBanner
@@ -167,7 +181,7 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
         :tone="item.status === 'partial_success' ? 'warning' : 'error'"
         role="alert"
       >
-        {{ runtimeFailureMessage(item.error_code ?? item.error_summary) }}
+        {{ item.mode === 'media_refresh' ? '视频准备未完成。已保留已入库内容，请返回声音广场查看原帖或稍后重新准备。' : runtimeFailureMessage(item.error_code ?? item.error_summary) }}
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-else-if="item.status === 'partial_success'"
@@ -234,7 +248,7 @@ const coverageByPlatform = computed(() => (props.item?.platforms ?? []).map((pla
       >
         <span>创建于 {{ formatDateTime(item.created_at) }}</span>
         <AimaButton
-          v-if="item.mode !== 'discovery'"
+          v-if="item.mode !== 'discovery' && item.mode !== 'media_refresh'"
           variant="secondary"
           @click="emit('viewResults', item.run_id)"
         >

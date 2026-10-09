@@ -1,0 +1,206 @@
+{
+  "code": 200,
+  "data": {
+    "code": 0,
+    "data": [
+      {
+        "ip_location": "<redacted-string>",
+        "user": {
+          "red_official_verified": false,
+          "id": "id-0001",
+          "fstatus": "<redacted-string>",
+          "userid": "<redacted-string>",
+          "show_red_official_verify_icon": false,
+          "red_official_verify_type": 0,
+          "track_duration": 0,
+          "level": {
+            "image": "<redacted-string>"
+          },
+          "image": "https://sns-avatar-qc.rednotecdn.com/fixture-20.webp",
+          "followed": false,
+          "red_id": "id-0002",
+          "nickname": "<redacted-string>",
+          "name": "<redacted-string>"
+        },
+        "feedback_info": {
+          "dislike_status": 0
+        },
+        "pre_view_count": -1,
+        "last_update_time": 1720000000,
+        "has_related_goods": false,
+        "comments_count": 30,
+        "liked": false,
+        "collected": false,
+        "foot_tags": [],
+        "id": "a00000000000000000000001",
+        "share_code_flag": 0,
+        "biz_map": {},
+        "liked_count": 33,
+        "head_tags": [],
+        "title": "<redacted-string>",
+        "share_info": {
+          "content": "<redacted-string>",
+          "show_wechat_tag": false,
+          "title": "<redacted-string>",
+          "image": "http://sns-img-qc.xhscdn.com/fixture-21.webp",
+          "function_entries": [
+            {
+              "type": "generate_image"
+            },
+            {
+              "type": "quote_note"
+            },
+            {
+              "type": "copy_link"
+            }
+          ],
+          "link": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "is_star": false,
+          "guide_audited": true,
+          "wechat_share_desc": "<redacted-string>",
+          "block_private_msg": false
+        },
+        "sticky": false,
+        "seeded_count": 0,
+        "need_next_step": false,
+        "content_trans_info": {
+          "strategy": 9
+        },
+        "hash_tag": [],
+        "text_language_code": "<redacted-string>",
+        "type": "video",
+        "topics": [],
+        "desc": "<redacted-string>",
+        "countdown": 0,
+        "ats": [],
+        "widgets_groups": [
+          [
+            "<redacted-string>",
+            "<redacted-string>",
+            "<redacted-string>"
+          ],
+          [
+            "<redacted-string>",
+            "<redacted-string>",
+            "<redacted-string>"
+          ]
+        ],
+        "enable_brand_lottery": false,
+        "mini_program_info": {
+          "title": "<redacted-string>",
+          "webpage_url": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "thumb": "http://sns-img-qc.xhscdn.com/fixture-24.webp",
+          "share_title": "<redacted-string>",
+          "user_name": "<redacted-string>",
+          "path": "<redacted-string>",
+          "desc": "<redacted-string>"
+        },
+        "in_censor": false,
+        "api_upgrade": -1,
+        "use_water_color": false,
+        "need_product_review": false,
+        "media_save_config": {
+          "disable_save": false,
+          "disable_watermark": false,
+          "disable_weibo_cover": false
+        },
+        "enable_co_produce": false,
+        "red_envelope_note": false,
+        "shared_count": 6,
+        "images_list": [
+          {
+            "index": 0,
+            "fileid": "<redacted-string>",
+            "scale_to_large": 4,
+            "width": 1080,
+            "original": "https://sns-i11.rednotecdn.com/fixture-25.webp",
+            "longitude": 0,
+            "latitude": 0,
+            "url": "https://sns-i11.rednotecdn.com/fixture-26.webp",
+            "url_multi_level": {
+              "low": "https://sns-i11.rednotecdn.com/fixture-27.webp",
+              "high": "https://sns-i11.rednotecdn.com/fixture-28.webp",
+              "medium": "https://sns-i11.rednotecdn.com/fixture-29.webp"
+            },
+            "need_load_original_image": true,
+            "origin_img": {
+              "width": 1080,
+              "size": 0,
+              "height": 1920
+            },
+            "height": 1920,
+            "trace_id": "id-0004",
+            "text_intention": 0
+          }
+        ],
+        "may_have_red_packet": false,
+        "comment_prompt_config": {
+          "placeholder_short": "<redacted-string>",
+          "placeholder_long": "<redacted-string>",
+          "forbidden_cmt_type": 0
+        },
+        "has_music": false,
+        "enable_fls_bridge_cards": false,
+        "model_type": "<redacted-string>",
+        "seeded": false,
+        "goods_info": {},
+        "view_count": 0,
+        "cooperate_binds": [],
+        "function_switch": [
+          {
+            "type": "video_download",
+            "enable": false,
+            "reason": "<redacted-string>"
+          },
+          {
+            "type": "quote_note",
+            "enable": true
+          },
+          {
+            "enable": true,
+            "type": "heat_for_author"
+          }
+        ],
+        "time": 1778505633,
+        "has_co_produce": false,
+        "long_press_share_info": {
+          "content": "<redacted-string>",
+          "show_wechat_tag": false,
+          "title": "<redacted-string>",
+          "function_entries": [
+            {
+              "type": "image_download"
+            }
+          ],
+          "guide_audited": false,
+          "is_star": false,
+          "block_private_msg": false
+        },
+        "collected_count": 9,
+        "note_text_press_options": [
+          {
+            "key": "<redacted-string>",
+            "extra": "<redacted-string>"
+          }
+        ],
+        "privacy": {
+          "type": 0,
+          "show_tips": false,
+          "nick_names": "<redacted-string>"
+        },
+        "enable_fls_related_cards": false,
+        "qq_mini_program_info": {
+          "share_title": "<redacted-string>",
+          "webpage_url": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "thumb": "http://sns-img-qc.xhscdn.com/fixture-31.webp",
+          "title": "<redacted-string>",
+          "user_name": "<redacted-string>",
+          "path": "<redacted-string>",
+          "desc": "<redacted-string>"
+        },
+        "widgets_context": "<redacted-string>",
+        "liked_users": []
+      }
+    ]
+  }
+}

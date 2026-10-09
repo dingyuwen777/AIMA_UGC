@@ -4,9 +4,32 @@ import ast
 import runpy
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 RESOLVER = runpy.run_path(str(ROOT / "scripts" / "quality" / "resolve_main_evidence.py"))
 EVALUATE_REUSE = RESOLVER["evaluate_reuse"]
+
+
+@pytest.mark.parametrize(
+    "identity", ["Linux Local Development Tooling", "Windows Development and Compose Tooling"]
+)
+@pytest.mark.parametrize("metadata", [True, False])
+def test_review_only_distinct_metadata_identity_preserves_formal_success(
+    identity: str, metadata: bool
+) -> None:
+    """正式同名 skipped 仍必须失效；独立 metadata 身份不能置换正式结果。"""
+    latest = f"Metadata: {identity}" if metadata else identity
+    result = EVALUATE_REUSE(
+        current_tree="same",
+        source_tree="same",
+        required_checks=(identity,),
+        check_runs=(
+            _check(identity),
+            _check(latest, conclusion="skipped", completed_at="2026-09-28T00:01:00Z"),
+        ),
+    )
+    assert result.reusable is metadata
 
 
 def _check(

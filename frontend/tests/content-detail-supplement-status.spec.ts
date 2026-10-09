@@ -33,6 +33,27 @@ async function render(item: ContentDetailResponse): Promise<string> {
 }
 
 describe('content supplement status', () => {
+  it.each([{ media: [] }, { media: [{ position: 0, media_type: 'video', url: null, preview_url: null }] }])('详情顶部依据真实视频类型显示标识，媒体为空仍可识别', async ({ media }) => {
+    const html = await render({ ...baseItem, content_type: 'video', media })
+    const hero = html.match(/<section[^>]*hero[^>]*>([\s\S]*?)<\/section>/)?.[1]
+    expect(hero).toContain('视频')
+    const imageHtml = await render({ ...baseItem, media })
+    expect(imageHtml.match(/<section[^>]*hero[^>]*>([\s\S]*?)<\/section>/)?.[1]).not.toContain('视频')
+  })
+
+  it('无 URL 的小红书视频显示真实类型、时长和显式准备入口', async () => {
+    const html = await render({
+      ...baseItem,
+      content_type: 'video',
+      media: [{ position: 0, media_type: 'video', url: null, preview_url: null, duration_ms: 65000 }],
+    })
+    expect(html).toContain('视频')
+    expect(html).toContain('1:05')
+    expect(html).toContain('准备播放视频')
+    expect(html).not.toContain('autoplay')
+    expect(html).not.toContain('<video')
+  })
+
   it('uses the same-origin cached preview for both display and click-through', async () => {
     const item = {
       ...baseItem,
@@ -115,7 +136,7 @@ describe('content supplement status', () => {
 
     expect(html).toContain('内容补充失败')
     expect(html).toContain('暂时无法获取完整详情与评论')
-    expect(html).toContain('已保留原始导入内容')
+    expect(html).toContain('已保留已入库内容')
     expect(html).toContain('采集中心')
     expect(html).not.toContain('TikHub补采失败')
     expect(html).not.toContain('内容无法浏览')

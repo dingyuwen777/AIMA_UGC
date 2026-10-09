@@ -27,6 +27,7 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
   if (item.record_type === 'canonical_replay') return '全部历史 Canonical'
   if (item.record_type === 'excel_import') return '本地文件导入'
   if (item.record_type === 'data_import_campaign') return '统一数据导入'
+  if (item.record_type === 'tikhub_media_refresh') return '按播放请求更新视频地址'
   if (item.record_type === 'tikhub_discovery' && item.keywords?.length) {
     return `关键词：${item.keywords.slice(0, 2).join(' / ')}`
   }
@@ -123,6 +124,13 @@ function taskSubtitle(item: CollectionRuntimeItemResponse): string {
         <span>过滤 {{ formatNumber(item.import_stats.rows_filtered_out) }} 行 · 重复 {{ formatNumber(item.import_stats.duplicates_removed) }} 行</span>
         <span>{{ item.record_type === 'data_import_campaign' ? '新建/补空/更新' : '本次处理' }} {{ formatNumber(item.import_stats.rows_ingested) }} 行 · 异常 {{ formatNumber(item.import_stats.rows_rejected) }} 行</span>
         <span v-if="item.record_type === 'data_import_campaign' && ['revoking', 'revoked'].includes(item.stage) && item.revocation_recomputed_content_count != null">撤销已重组 {{ formatNumber(item.revocation_recomputed_content_count) }} 个内容</span>
+      </div>
+      <div
+        v-else-if="item.record_type === 'tikhub_media_refresh'"
+        class="stats-cell"
+      >
+        <span>请求 {{ formatNumber(item.collection_stats?.requested_count) }} · 成功 {{ formatNumber(item.collection_stats?.succeeded_count) }} · 失败 {{ formatNumber(item.collection_stats?.failed_count) }}</span>
+        <span>准备视频地址，已入库内容可继续查看</span>
       </div>
       <div
         v-else

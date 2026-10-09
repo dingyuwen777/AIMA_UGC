@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import runpy
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = runpy.run_path(str(ROOT / "scripts" / "quality" / "classify_ci_scope.py"))
@@ -9,6 +13,299 @@ CLASSIFY_REQUIREMENTS = SCRIPT["classify_requirements"]
 WRITE_GITHUB_OUTPUT = SCRIPT["_write_github_output"]
 FULLSTACK_ALL = SCRIPT["FULLSTACK_ALL"]
 POSTGRES_ALL = SCRIPT["POSTGRES_ALL"]
+
+
+def test_review_runtime_artifacts_keep_real_consumers() -> None:
+    """镜像内 Nginx 配置必须保留真实容器与离线镜像证据。"""
+    nginx = CLASSIFY_REQUIREMENTS(["frontend/nginx.conf"])
+    assert nginx.runtime_required and nginx.release_required
+    assert not nginx.tooling_linux_required and not nginx.tooling_windows_required
+    assert "COPY frontend/nginx.conf /etc/nginx/nginx.conf" in (ROOT / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    runtime = (ROOT / ".github/workflows/runtime.yml").read_text(encoding="utf-8")
+    assert "steps.scope.outputs.runtime_required == 'true'" in runtime
+    assert "compose up -d --build --wait" in runtime
+    for path in (*SCRIPT["RUNTIME_EXACT"], *SCRIPT["LINUX_SOURCE_BOOTSTRAP_EXACT"]):
+        assert (ROOT / path).is_file(), path
+
+
+def test_review_source_bootstrap_keeps_linux_provider_consumer() -> None:
+    system = CLASSIFY_REQUIREMENTS(["backend/src/aima_ugc/adapters/persistence/postgres/system.py"])
+    assert system.tooling_linux_required
+    assert not system.tooling_windows_required
+
+
+def test_review_usage_is_controlled_docs_only_without_blanket_markdown_exemption() -> None:
+    assert CLASSIFY_REQUIREMENTS(["USAGE.md"]).profile == "docs_only"
+    assert CLASSIFY_REQUIREMENTS(["unknown-root.md"]).profile == "full"
+
+
+def test_review_target_availability_uses_resolved_merge_checkout_not_pr_head(
+    tmp_path: Path,
+) -> None:
+    """三点范围来自 PR，执行目标必须来自已经解决冲突的实际 merge checkout。"""
+
+    def git(*arguments: str) -> str:
+        return subprocess.check_output(["git", "-C", str(tmp_path), *arguments]).decode().strip()
+
+    git("init", "-b", "main")
+    git("config", "user.email", "fixture@example.invalid")
+    git("config", "user.name", "Fixture")
+    relative = "tests/unit/analysis/test_analysis_scheme_compilation.py"
+    leaf = tmp_path / relative
+    leaf.parent.mkdir(parents=True)
+    leaf.write_text("# original\n")
+    git("add", ".")
+    git("commit", "-m", "base")
+    git("checkout", "-b", "feature")
+    leaf.unlink()
+    git("add", ".")
+    git("commit", "-m", "feature deletes leaf")
+    head = git("rev-parse", "HEAD")
+    git("checkout", "main")
+    leaf.write_text("# main changes leaf\n")
+    git("add", ".")
+    git("commit", "-m", "main advances")
+    base = git("rev-parse", "HEAD")
+    conflict = subprocess.run(
+        ["git", "-C", str(tmp_path), "merge", "--no-commit", head], capture_output=True
+    )
+    assert conflict.returncode == 1
+    leaf.write_text("# resolved merge retains leaf\n")
+    git("add", ".")
+    git("commit", "-m", "resolve merge")
+    result, changed = SCRIPT["classify_scope"](base, head, root=tmp_path)
+    assert changed == [relative]
+    assert result.backend_targets == (relative,)
+
+
+@pytest.mark.parametrize("mode", ["unstaged_delete", "committed_rename"])
+@pytest.mark.parametrize(
+    "path,field,expected",
+    [
+        (
+            "tests/unit/analysis/test_analysis_scheme_compilation.py",
+            "backend_targets",
+            ("tests/unit/analysis",),
+        ),
+        ("frontend/tests/voice-plaza.spec.ts", "frontend_unit_targets", ("all",)),
+        ("frontend/e2e/voice-plaza.spec.ts", "frontend_e2e_specs", ("all",)),
+        ("tests/integration/content/test_workbench_runtime.py", "postgres_suites", ("content",)),
+        ("frontend/e2e-fullstack/analysis-streaming.spec.ts", "fullstack_specs", ("all",)),
+    ],
+)
+def test_review_missing_targets_use_actual_checkout_owner_not_process_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    path: str,
+    field: str,
+    expected: tuple[str, ...],
+) -> None:
+    """保留删除/改名的风险，同时只按目标 checkout 选择仍能执行的 Owner 责任。"""
+
+    def git(*arguments: str) -> str:
+        return subprocess.check_output(["git", "-C", str(tmp_path), *arguments]).decode().strip()
+
+    git("init", "-b", "main")
+    git("config", "user.email", "fixture@example.invalid")
+    git("config", "user.name", "Fixture")
+    original = tmp_path / path
+    original.parent.mkdir(parents=True)
+    original.write_text("# old test\n")
+    survivor = original.with_name(
+        "test_survivor.py" if path.endswith(".py") else "survivor.spec.ts"
+    )
+    survivor.write_text("# current owner\n")
+    git("add", ".")
+    git("commit", "-m", "base")
+    git("branch", "base")
+    if mode == "committed_rename":
+        original.rename(original.with_name("renamed_" + original.name))
+        git("add", ".")
+        git("commit", "-m", "rename test")
+    else:
+        original.unlink()
+    monkeypatch.chdir(ROOT)
+    assert (ROOT / path).exists()
+    result, changed = SCRIPT["classify_scope"](
+        "base", "HEAD", root=tmp_path, include_worktree=mode == "unstaged_delete"
+    )
+    assert path in changed
+    assert getattr(result, field) == expected
+    assert path not in (
+        *result.backend_targets,
+        *result.frontend_unit_targets,
+        *result.frontend_e2e_specs,
+        *result.postgres_targets,
+    )
+    if path.startswith("tests/integration/"):
+        assert result.postgres_required and not result.postgres_targets
+    elif path.startswith("frontend/e2e-fullstack/"):
+        assert result.fullstack_required
+    local = runpy.run_path(str(ROOT / "scripts/dev/validate_changed.py"))["classify"]
+    local.__globals__["ROOT"] = tmp_path
+    local_result = local("base", "HEAD", include_worktree=mode == "unstaged_delete")
+    assert tuple(local_result[field]) == expected
+    assert local_result["changed_paths"] == changed
+
+
+def test_pr_scope_uses_unique_merge_base_and_excludes_new_main_files(tmp_path: Path) -> None:
+    """真实分叉历史不能把 main 的 CI 修改算进四文件模板 PR。"""
+
+    def git(*arguments: str) -> str:
+        return subprocess.check_output(["git", "-C", str(tmp_path), *arguments]).decode().strip()
+
+    git("init", "-b", "main")
+    git("config", "user.email", "fixture@example.invalid")
+    git("config", "user.name", "Fixture")
+    (tmp_path / "base.txt").write_text("base")
+    git("add", ".")
+    git("commit", "-m", "base")
+    git("checkout", "-b", "feature")
+    paths = ("env.local.example", "env.production.example", "docs/guide.md", "docs/README.md")
+    for name in paths:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# fixture\n")
+    git("add", ".")
+    git("commit", "-m", "four files")
+    head = git("rev-parse", "HEAD")
+    git("checkout", "main")
+    path = tmp_path / ".github/workflows/ci.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text("name: unrelated\n")
+    git("add", ".")
+    git("commit", "-m", "main advances")
+    changed = SCRIPT["changed_scope"]("main", head, root=tmp_path)
+    assert set(changed) == set(paths)
+    assert len(changed) == 4
+    with pytest.raises(ValueError, match="Git|对象|基线"):
+        SCRIPT["changed_scope"]("missing-base", head, root=tmp_path)
+    shallow = tmp_path / "shallow-clone"
+    git("clone", "--depth", "1", tmp_path.as_uri(), str(shallow))
+    with pytest.raises(ValueError, match="shallow.*fetch-depth"):
+        SCRIPT["changed_scope"]("HEAD", "HEAD", root=shallow)
+    assert SCRIPT["changed_scope"]("HEAD", "HEAD", comparison="direct", root=shallow) == []
+
+
+def test_env_template_risk_is_content_sensitive_and_does_not_require_product_stacks() -> None:
+    """模板注释与身份值变化具有独立配置责任，不能一律归 docs/full。"""
+    for expected, before, after in (
+        ("comments", "AIMA_LOG_LEVEL=INFO\n", "# note\nAIMA_LOG_LEVEL=INFO\n"),
+        ("values", "AIMA_LOG_LEVEL=INFO\n", "AIMA_LOG_LEVEL=DEBUG\n"),
+        ("sensitive", "AIMA_FEISHU_CONNECTORS=\n", "AIMA_FEISHU_CONNECTORS=[]\n"),
+    ):
+        result = CLASSIFY_REQUIREMENTS(
+            ["env.local.example"], template_changes={"env.local.example": (before, after)}
+        )
+        assert result.template_risk == expected
+        assert result.template_required
+        assert not result.postgres_required
+        assert not result.frontend_required
+        assert not result.fullstack_required
+        assert not result.release_required
+        assert result.tooling_windows_required is (expected != "comments")
+
+
+def test_template_validator_rejects_duplicate_keys_with_lines() -> None:
+    validator = runpy.run_path(str(ROOT / "scripts/quality/check_env_templates.py"))
+    with pytest.raises(ValueError, match="fixture:2.*重复"):
+        validator["parse_template"]("AIMA_LOG_LEVEL=INFO\nAIMA_LOG_LEVEL=DEBUG\n", "fixture")
+
+
+def test_real_git_scope_covers_staged_unstaged_untracked_deleted_and_renamed(
+    tmp_path: Path,
+) -> None:
+    """本地同源范围必须包含索引与工作区的全部业务变更，忽略运行产物。"""
+
+    def git(*arguments: str) -> str:
+        return subprocess.check_output(["git", "-C", str(tmp_path), *arguments]).decode().strip()
+
+    git("init", "-b", "main")
+    git("config", "user.email", "fixture@example.invalid")
+    git("config", "user.name", "Fixture")
+    for name in ("edited.py", "removed.py", "old name.py"):
+        (tmp_path / name).write_text("original\n")
+    (tmp_path / ".gitignore").write_text(".runtime/\n")
+    git("add", ".")
+    git("commit", "-m", "base")
+    git("branch", "base")
+    git("mv", "old name.py", "new name.py")
+    (tmp_path / "edited.py").write_text("changed\n")
+    (tmp_path / "removed.py").unlink()
+    (tmp_path / "untracked.py").write_text("new\n")
+    (tmp_path / ".runtime").mkdir()
+    (tmp_path / ".runtime/ignored.py").write_text("ignored\n")
+    assert set(SCRIPT["changed_scope"]("base", "HEAD", root=tmp_path, include_worktree=True)) == {
+        "edited.py",
+        "removed.py",
+        "old name.py",
+        "new name.py",
+        "untracked.py",
+    }
+    assert SCRIPT["changed_scope"]("base", "HEAD", root=tmp_path) == []
+
+
+def test_real_criss_cross_merge_bases_and_unrelated_histories_fail_closed(tmp_path: Path) -> None:
+    """多个合法祖先或无共同祖先都不能静默选一个风险范围。"""
+
+    def git(*arguments: str) -> str:
+        return subprocess.check_output(["git", "-C", str(tmp_path), *arguments]).decode().strip()
+
+    git("init", "-b", "main")
+    git("config", "user.email", "fixture@example.invalid")
+    git("config", "user.name", "Fixture")
+    (tmp_path / "file").write_text("base")
+    git("add", ".")
+    git("commit", "-m", "base")
+    tree, original = git("rev-parse", "HEAD^{tree}"), git("rev-parse", "HEAD")
+    a = git("commit-tree", tree, "-p", original, "-m", "a")
+    b = git("commit-tree", tree, "-p", original, "-m", "b")
+    ab = git("commit-tree", tree, "-p", a, "-p", b, "-m", "ab")
+    ba = git("commit-tree", tree, "-p", b, "-p", a, "-m", "ba")
+    orphan = git("commit-tree", tree, "-m", "orphan")
+    assert len(git("merge-base", "--all", ab, ba).splitlines()) == 2
+    for base, head in ((ab, ba), (original, orphan), ("0" * 40, original)):
+        with pytest.raises(ValueError):
+            SCRIPT["changed_scope"](base, head, root=tmp_path)
+
+
+def test_template_validator_uses_production_identity_validation_without_secret_echo(
+    tmp_path: Path,
+) -> None:
+    """非法 Connector JSON 必须由生产 Settings 拒绝，错误不得回显其值。"""
+    validator = runpy.run_path(str(ROOT / "scripts/quality/check_env_templates.py"))
+    for name in (
+        "env.local.example",
+        "env.production.example",
+        "compose.yaml",
+        "scripts/dev/local_runtime.py",
+    ):
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / name, target)
+    template = tmp_path / "env.local.example"
+    text = template.read_text(encoding="utf-8").replace(
+        "AIMA_FEISHU_CONNECTORS=\n", "AIMA_FEISHU_CONNECTORS=invalid-private-marker\n"
+    )
+    template.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError, match="PlatformSettings") as failure:
+        validator["check_templates"](tmp_path)
+    assert "invalid-private-marker" not in str(failure.value)
+
+
+def test_deployment_template_and_unknown_template_risks_preserve_strong_evidence() -> None:
+    deployment = CLASSIFY_REQUIREMENTS(
+        ["env.production.example"],
+        template_changes={"env.production.example": ("AIMA_IMAGE_TAG=a\n", "AIMA_IMAGE_TAG=b\n")},
+    )
+    assert deployment.runtime_required and deployment.release_required
+    assert deployment.tooling_windows_required
+    assert not deployment.postgres_required
+    unknown = CLASSIFY_REQUIREMENTS(["env.production.example"])
+    assert unknown.profile == "full" and unknown.postgres_required and unknown.fullstack_required
 
 
 def _requirements(*paths: str):  # type: ignore[no-untyped-def]

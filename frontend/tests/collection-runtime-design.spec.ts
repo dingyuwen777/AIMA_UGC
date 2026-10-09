@@ -5,12 +5,14 @@ import { createSSRApp, h, type Component } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it } from 'vitest'
+import type { CollectionScopeResponse } from '../src/generated/api/client'
 
 import CollectionRuntimePage from '../src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue'
 import CollectionRuntimeFilters from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeFilters.vue'
 import CollectionRuntimeKpiCards from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeKpiCards.vue'
 import CollectionRuntimeTable from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRuntimeTable.vue'
 import CanonicalReplayDetailDrawer from '../src/features/import-batches/pages/CollectionRuntimePage/components/CanonicalReplayDetailDrawer.vue'
+import CollectionRunDetailDrawer from '../src/features/import-batches/pages/CollectionRuntimePage/components/CollectionRunDetailDrawer.vue'
 import DataImportDialog from '../src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue'
 import { useImportBatchesStore } from '../src/features/import-batches/store'
 
@@ -53,6 +55,59 @@ async function readCollectionRuntimeSource(filename: string): Promise<string> {
 }
 
 describe('采集运行中心正式 Figma 基线', () => {
+  it.each([null, 'finished'] as const)('视频准备的合法非空范围只展示准备阶段和停止原因，不渲染评论抓取事实 %s', async (commentStage) => {
+    const scope: CollectionScopeResponse = {
+      id: 'scope-1', platform: 'xiaohongshu', source_type: 'content', operation_group: 'media_refresh',
+      status: 'failed', progress: 100, comment_stage: commentStage, comment_coverage: 'not_requested',
+      stop_reason: 'provider_failed',
+      stats: { requested_count: 1, succeeded_count: 0, failed_count: 1, content_count: 0, comment_count: 0, root_comment_count: 0, reply_count: 0, filtered_count: 0 },
+    }
+    const html = await renderComponent(CollectionRunDetailDrawer, {
+      modelValue: true,
+      item: {
+        run_id: 'media-run', job_id: 'media-job', mode: 'media_refresh', status: 'failed', stage: 'media_refresh',
+        platforms: ['xiaohongshu'], scopes: [scope], stats: scope.stats, keywords: [], progress: 100,
+        attempt: 1, max_attempts: 1, created_at: '2026-10-09T20:00:00+08:00',
+      },
+    })
+    const scopes = html.match(/<section class="scopes"[^>]*>([\s\S]*?)<\/section>/)?.[1]
+    expect(scopes).toContain('准备视频地址')
+    expect(scopes).toContain('视频准备未完成')
+    expect(scopes).not.toContain('评论')
+    expect(scopes).not.toContain('回复')
+    expect(scopes).not.toContain('未请求')
+    expect(scopes).not.toContain('抓取结束')
+    const supplement = await renderComponent(CollectionRunDetailDrawer, {
+      modelValue: true,
+      item: {
+        run_id: 'supplement-run', job_id: 'supplement-job', mode: 'content_supplement', status: 'failed', stage: 'comments',
+        platforms: ['xiaohongshu'], scopes: [{ ...scope, operation_group: 'comments' }], stats: scope.stats,
+        keywords: [], progress: 100, attempt: 1, max_attempts: 1, created_at: '2026-10-09T20:00:00+08:00',
+      },
+    })
+    const supplementScopes = supplement.match(/<section class="scopes"[^>]*>([\s\S]*?)<\/section>/)?.[1]
+    expect(supplementScopes).toContain('一级评论 0 · 回复 0 · 评论覆盖：未请求')
+    if (commentStage) expect(supplementScopes).toContain('抓取结束')
+  })
+
+  it('视频准备运行使用正式模式和错误文案，不展示评论覆盖或补采结果动作', async () => {
+    const html = await renderComponent(CollectionRunDetailDrawer, {
+      modelValue: true,
+      item: {
+        run_id: 'media-run', job_id: 'media-job', mode: 'media_refresh', status: 'failed', stage: 'media_refresh',
+        platforms: ['xiaohongshu'], scopes: [], stats: {}, keywords: [], progress: 100,
+        attempt: 1, max_attempts: 1, error_code: 'provider_failed', created_at: '2026-10-09T20:00:00+08:00',
+      },
+    })
+    expect(html).toContain('视频准备运行详情')
+    expect(html).toContain('声音广场播放请求')
+    expect(html).toContain('准备视频地址')
+    expect(html).toContain('已保留已入库内容')
+    expect(html).not.toContain('平台评论覆盖')
+    expect(html).not.toContain('评论（按范围累计）')
+    expect(html).not.toContain('查看补采结果')
+    expect(html).not.toContain('重试失败账号')
+  })
   it('复用公共页面标题和按钮组件，并使用正式业务文案', async () => {
     const html = await renderComponent(CollectionRuntimePage)
 
@@ -405,7 +460,7 @@ describe('采集运行中心正式 Figma 基线', () => {
     expect(importSource).toContain('导入 ID')
     expect(importSource).not.toContain('后台任务状态')
     expect(importSource).not.toContain('上传与 Artifact')
-    expect(runSource).toContain('label="辅助补采运行详情"')
+    expect(runSource).toContain(':label="item?.mode === \'media_refresh\' ? \'视频准备运行详情\' : \'辅助补采运行详情\'"')
     expect(runSource).toContain('<summary>技术详情</summary>')
     expect(runSource).toContain('运行 ID')
     expect(runSource).not.toContain('TikHub 运行详情')

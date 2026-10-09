@@ -19,6 +19,8 @@ from sqlalchemy import values as sql_values
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from aima_ugc.platform.jobs import JobExecutionFence
+
 if TYPE_CHECKING:
     from .content_contributions import ContentContributionSnapshot
 
@@ -153,6 +155,39 @@ class PostgresContentRepository:
         self._session = session
         self._prepared_new_accounts: set[UUID] = set()
         self._prepared_author_by_content: dict[tuple[str, str], UUID | None] = {}
+
+    def publish_media_refresh(
+        self,
+        *,
+        fence: JobExecutionFence,
+        content_id: UUID,
+        position: int,
+        identity_token: str,
+        expected_source_revision: str,
+        generation: int,
+        url: str,
+        attempt_id: UUID,
+        raw_id: UUID,
+        observed_at: datetime,
+        observed_external_media_id: str | None = None,
+    ) -> str | None:
+        """纯媒体 URL 刷新复用 Content 唯一 Owner，不触碰任何业务版本或分类。"""
+        from .content_media_playback import publish_media_refresh
+
+        return publish_media_refresh(
+            self._session,
+            fence=fence,
+            content_id=content_id,
+            position=position,
+            identity_token=identity_token,
+            expected_source_revision=expected_source_revision,
+            generation=generation,
+            url=url,
+            attempt_id=attempt_id,
+            raw_id=raw_id,
+            observed_at=observed_at,
+            observed_external_media_id=observed_external_media_id,
+        )
 
     def ingest_content(
         self,

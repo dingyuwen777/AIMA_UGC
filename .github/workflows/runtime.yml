@@ -1,4 +1,6 @@
 name: Runtime Acceptance
+run-name: >-
+  Runtime evidence head=${{ github.event.pull_request.head.sha || github.sha }} base=${{ github.event.pull_request.base.sha || github.event.before }} merge=${{ github.sha }} lane=${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'metadata' || 'full' }}
 
 on:
   pull_request:
@@ -7,7 +9,9 @@ on:
     types:
       - opened
       - reopened
+      - synchronize
       - ready_for_review
+      - edited
   push:
     branches:
       - main
@@ -16,11 +20,13 @@ on:
 
 permissions:
   contents: read
+  issues: read
   pull-requests: read
   checks: read
+  actions: read
 
 concurrency:
-  group: runtime-${{ github.event.pull_request.number || github.ref }}
+  group: runtime-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'metadata' || 'full' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -28,17 +34,45 @@ jobs:
     name: Compose Golden Path
     runs-on: ubuntu-24.04
     steps:
-      - name: Block Draft required evidence
-        if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
-        shell: bash
-        run: |
-          echo "Draft PR does not produce merge-ready Runtime evidence. Mark it ready for review to run final Runtime acceptance." >&2
-          exit 1
-
       - name: Checkout
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+
+      - name: Verify actual PR merge checkout
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: >-
+          python3 scripts/quality/verify_pr_baseline.py --verify-checkout
+          --head "${{ github.event.pull_request.head.sha }}"
+          --base "${{ github.event.pull_request.base.sha }}"
+          --merge "${GITHUB_SHA}"
+
+      - name: Verify metadata Runtime baseline
+        id: metadata
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft == false && github.event.action == 'edited' && !github.event.changes.base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 360); do
+            set +e
+            python3 scripts/quality/verify_pr_baseline.py \
+              --head "${{ github.event.pull_request.head.sha }}" \
+              --base "${{ github.event.pull_request.base.sha }}" \
+              --merge "${GITHUB_SHA}" \
+              --require "Runtime Acceptance:Compose Golden Path"
+            baseline_status=$?
+            set -e
+            case "${baseline_status}" in
+              0) echo "reusable=true" >> "${GITHUB_OUTPUT}"; exit 0 ;;
+              75) sleep 5 ;;
+              *) exit "${baseline_status}" ;;
+            esac
+          done
+          echo "Timed out waiting for current HEAD/base/merge Runtime evidence." >&2
+          exit 1
 
       - name: Resolve reusable Runtime evidence on main
         id: reuse
@@ -69,47 +103,60 @@ jobs:
             echo "::warning::Runtime evidence resolver failed; falling back to real Runtime validation (exit=${resolver_status})"
           fi
 
-      - name: Detect Runtime risk changes
+      - name: Classify shared Runtime responsibility
         id: scope
+        if: steps.metadata.outputs.reusable != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ steps.reuse.outputs.reusable }}" == "true" ]]; then
-            echo "runtime_required=false" >> "${GITHUB_OUTPUT}"
-            echo "main tree matches merged PR #${{ steps.reuse.outputs.source_pr }} and source Compose Golden Path is green; reuse Runtime evidence."
-            exit 0
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            python3 scripts/quality/classify_ci_scope.py --full --github-output "${GITHUB_OUTPUT}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            python3 scripts/quality/classify_ci_scope.py --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --github-output "${GITHUB_OUTPUT}"
+          else
+            python3 scripts/quality/classify_ci_scope.py --comparison direct --base "${{ github.event.before }}" --head "${GITHUB_SHA}" --github-output "${GITHUB_OUTPUT}"
           fi
 
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          else
-            BASE_SHA="${{ github.event.before }}"
-          fi
+      - name: Lightweight source and template preflight
+        if: steps.metadata.outputs.reusable != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
+          python3 scripts/quality/scan_secrets.py
+          python3 scripts/quality/check_env_templates.py --static
 
-          RUNTIME_REQUIRED=false
-          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            RUNTIME_REQUIRED=true
-          else
-            while IFS= read -r path; do
-              case "${path}" in
-                .github/workflows/runtime.yml|.dockerignore|Dockerfile|alembic.ini|compose.yaml|compose.windows.yaml|deploy/nginx.conf|env.production.example|pyproject.toml|uv.lock|frontend/package.json|frontend/package-lock.json|frontend/vite.config.*)
-                  RUNTIME_REQUIRED=true
-                  break
-                  ;;
-                scripts/deploy/*|scripts/deploy/**/*|migrations/*|migrations/**/*|backend/src/aima_ugc/entrypoints/*|backend/src/aima_ugc/entrypoints/**/*|backend/src/aima_ugc/bootstrap/*|backend/src/aima_ugc/bootstrap/**/*|backend/src/aima_ugc/platform/*|backend/src/aima_ugc/platform/**/*|backend/src/aima_ugc/modules/system/*|backend/src/aima_ugc/modules/system/**/*|backend/src/aima_ugc/adapters/persistence/postgres/system.py)
-                  RUNTIME_REQUIRED=true
-                  break
-                  ;;
-              esac
-            done < <(git diff --name-only "${BASE_SHA}" "${GITHUB_SHA}")
-          fi
+      - name: Block Draft required evidence
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
+        shell: bash
+        run: |
+          echo "Draft PR does not produce merge-ready Runtime evidence. Mark it ready for review to run final Runtime acceptance." >&2
+          exit 1
 
-          echo "runtime_required=${RUNTIME_REQUIRED}" >> "${GITHUB_OUTPUT}"
-          if [[ "${RUNTIME_REQUIRED}" == "true" ]]; then
-            echo "Runtime-relevant changes detected; running Compose acceptance."
-          else
-            echo "No Runtime-relevant changes detected; stable Compose Golden Path check succeeds without rebuilding the stack."
-          fi
+      - name: Verify PR requirement and readiness before expensive validation
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/check_pr_requirement_source.py --event "${GITHUB_EVENT_PATH}" --root .
+          python3 scripts/quality/check_change_completion.py --root . --changed-since "${{ github.event.pull_request.base.sha }}"
+
+      - name: Setup template validation Python
+        if: steps.scope.outputs.configuration_required == 'true'
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Validate template configuration packaging and Compose
+        if: steps.scope.outputs.configuration_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "uv==$(tr -d '\r\n' < .uv-version)"
+          uv sync --locked
+          uv run python scripts/quality/check_env_templates.py --compose
 
       - name: Reuse merged PR Runtime evidence
         if: steps.reuse.outputs.reusable == 'true'
@@ -117,12 +164,12 @@ jobs:
         run: echo "Compose Golden Path evidence is reused from the final merged PR because both revisions have the same Git tree."
 
       - name: Fast-path unchanged Runtime
-        if: steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required != 'true'
+        if: steps.metadata.outputs.reusable != 'true' && steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required != 'true'
         shell: bash
-        run: echo "Runtime topology, packaging, bootstrap, migration and startup surfaces are unchanged."
+        run: echo "No Runtime-relevant changes detected; configuration/template evidence is validated before this fast path."
 
       - name: Prepare canonical Runtime env
-        if: steps.scope.outputs.runtime_required == 'true'
+        if: steps.metadata.outputs.reusable != 'true' && steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -156,7 +203,7 @@ jobs:
           chmod 0600 "${ENV_FILE}"
 
       - name: Validate canonical Compose topology
-        if: steps.scope.outputs.runtime_required == 'true'
+        if: steps.metadata.outputs.reusable != 'true' && steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -172,7 +219,7 @@ jobs:
           fi
 
       - name: Canonical Compose startup, security, persistence, and recovery
-        if: steps.scope.outputs.runtime_required == 'true'
+        if: steps.metadata.outputs.reusable != 'true' && steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -462,7 +509,7 @@ jobs:
           trap - EXIT
 
       - name: Repository-relative host root smoke
-        if: steps.scope.outputs.runtime_required == 'true'
+        if: steps.metadata.outputs.reusable != 'true' && steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -546,7 +593,7 @@ jobs:
           sudo test -d "${LOCAL_ROOT_ABS}/postgres/18/docker"
 
       - name: Prepare Windows overlay Runtime env
-        if: steps.scope.outputs.runtime_required == 'true'
+        if: steps.metadata.outputs.reusable != 'true' && steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -580,7 +627,7 @@ jobs:
           chmod 0600 "${ENV_FILE}"
 
       - name: Validate Windows overlay storage model
-        if: steps.scope.outputs.runtime_required == 'true'
+        if: steps.metadata.outputs.reusable != 'true' && steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -688,7 +735,7 @@ jobs:
           PY
 
       - name: Windows overlay startup, permissions, host visibility, and restart persistence
-        if: steps.scope.outputs.runtime_required == 'true'
+        if: steps.metadata.outputs.reusable != 'true' && steps.reuse.outputs.reusable != 'true' && steps.scope.outputs.runtime_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -781,7 +828,7 @@ jobs:
           trap - EXIT
 
       - name: Clean canonical Runtime data
-        if: always() && steps.scope.outputs.runtime_required == 'true'
+        if: always() && env.AIMA_RUNTIME_ROOT != ''
         shell: bash
         run: |
           docker compose --env-file "${AIMA_RUNTIME_ENV_FILE}" down --remove-orphans >/dev/null 2>&1 || true

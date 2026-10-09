@@ -281,6 +281,11 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
       <div class="content-copy">
         <div class="title-line">
           <AimaPlatformMark :platform="item.platform" />
+          <span
+            v-if="item.content_type === 'video'"
+            class="content-video-badge"
+            aria-label="视频内容"
+          >视频</span>
           <button
             type="button"
             class="content-title"
@@ -370,6 +375,7 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
 </template>
 
 <style scoped>
+.content-video-badge { flex: none; padding: 2px 5px; border-radius: 4px; color: var(--aima-primary); background: var(--aima-primary-soft); font-size: 10px; line-height: 16px; }
 .content-list { min-width: 0; overflow-x: auto; overflow-y: hidden; border-radius: 8px; background: var(--aima-surface); box-shadow: inset 0 0 0 1px var(--aima-border); }
 .table-head, .content-row { display: grid; min-width: 1212px; grid-template-columns: 16px minmax(422px, 1fr) 80px 200px 150px 120px 120px; column-gap: 12px; align-items: center; }
 .table-head > :nth-child(2), .table-head > :nth-child(4), .table-head > :nth-child(5) { text-align: center; }

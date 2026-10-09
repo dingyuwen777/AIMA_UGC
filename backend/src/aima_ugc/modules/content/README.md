@@ -681,3 +681,49 @@ Data Import Campaign 撤销由 Ingestion 表达用户动作，但实际 Current 
 Content Owner 保存显式有限目标、冻结目录与持久检查点；Worker 在每页 Current 行锁内调用既有 Vehicles 分类 Owner 和 Analysis 复用 Owner，不复制内容事实、品牌识别器或 Hash 算法。缺证品牌/车型才重新分类；已有合法 Evidence 的等价 AI 候选只维护引用，重复执行不更新时间伪造业务变化。品牌与车型人工来源分别追溯，较新的解锁记录阻止旧锁复活。
 
 [`backend/src/aima_ugc/modules/content/consistency_repair.py`](consistency_repair.py) 定义版本化 Job；[`backend/src/aima_ugc/bootstrap/content_consistency_repair_worker.py`](../../bootstrap/content_consistency_repair_worker.py) 原子提交业务变化、必要投影与检查点。运行范围、只读预检、启动/取消、生产单独授权和回退步骤统一见 [历史一致性修复运行说明](../../../../../docs/operations/03_内容重分类与Legacy_Cleanup运行手册.md#7-补采后历史一致性修复)。
+
+## 20. 媒体的完整集合与部分属性观察
+
+小红书搜索卡片、图文详情中的视频封面和视频详情提供的信息不同。Canonical 的 `media_collection_mode=partial` 只合并已观察到的位置，`complete` 才允许删除缺失位置或显式空集合；每个媒体的 `observed_fields` 说明本次确实观察到哪些属性，未列出的播放源、封面和尺寸保持已有值。旧 Canonical 缺少这两个声明时继续使用完整集合、完整行语义。
+
+Content Owner 先按父级媒体观察时间拒绝晚到数据，再由 [`backend/src/aima_ugc/modules/content/media_observations.py`](media_observations.py) 共享同一纯合并规则，scalar 和批量路径均适用。批量路径一次读取已有媒体，按集合 upsert；Contribution After 来自实际最终行。`content_media.observation_metadata` 保存媒体身份和属性来源，首次补齐外部 ID 保留已有身份及封面，真正替换身份或从图片变为视频时不能沿用旧 URL。属性贡献使用 v2 撤销规则，只有值、来源与身份仍匹配时才回退；历史 v1 不改写，后续部分观察或播放刷新后仍按可证明的属性归属撤销，保留其他有效来源。
+
+视频没有播放 URL 时仍保留视频行与封面。现有 raster Artifact 缓存只读取视频 `preview_url`，拒绝视频 MIME；播放二进制不进入该缓存。媒体观察和属性撤销的 PostgreSQL 回归见 [`tests/integration/content/test_content_audit_regressions.py`](../../../../../tests/integration/content/test_content_audit_regressions.py)，真实详情结构见 [`tests/fixtures/providers/tikhub/xiaohongshu/README.md`](../../../../../tests/fixtures/providers/tikhub/xiaohongshu/README.md)。
+
+详情的 Search、图文和视频响应分别保留各自 Raw、Canonical 与 Candidate。过滤与评论决策读取派生的完整有效字段，派生视图不作为某个 Raw 的 Observation 写入。额外视频详情失败时，已成功并通过现有接受校验的图文封面先由 Owner 原子摄取，再按真实失败进入重试或失败审计。历史 Search Chunk 若保存了最终 Detail，仅在内容与本轮重放 Raw 的真实 Canonical 逐项完全相同时兼容读取，不重写冻结 Artifact。
+
+升级应先停止 API/Worker 的写入与任务投放，完成新增 Migration 后再启动兼容媒体观察、v2 贡献与播放协议的新版本。DDL downgrade 不能把新贡献改回旧业务协议；已存在 v2 贡献或播放任务时，旧 Writer 不能安全解释它们。回退应用必须使用同样理解这些持久协议的兼容版本，并先排空任务；不得仅删除列后让旧 Worker 继续处理新账本。
+
+## 21. 小红书视频的站内播放与来源刷新
+
+公开媒体查询只向小红书视频返回封面、时长与位置，真实 CDN URL 仍保存在 `content_media.url`。
+用户明确播放时，准备接口读取当前可见内容，返回绑定查看者、内容、位置、媒体身份和 URL
+来源代次的短期站内会话。流接口每次重新验证会话及可见性；GET/Range 不调用 TikHub。
+来源更新后旧会话失效，封面单独更新不影响现有可用流。会话查询值在访问日志 scope 中隐藏。
+
+仅缺少来源或当前来源出现服务器确认的可恢复错误时，准备接口创建专用 Collection v6
+任务。同一媒体持 Content 锁去重，失败与成功刷新后设冷却；浏览器解码失败本身不授权
+再次收费。播放状态只有 Job、来源身份和错误等最小信息，没有第二份 URL。纯 URL 发布由
+既有 `PostgresContentRepository` 执行：按 Job→Content→state 锁序校验 Fence、代次、原 URL
+来源和真实成功 Attempt/Raw。正常补采已更新 URL、媒体类型或身份时，迟到刷新不能覆盖。
+成功 Raw 恢复可重复完成同一次发布，不生成第二次请求。
+
+准备响应中的任务由同一接口按 `observed_job_id` 只读观察，每次仍验证当前内容、媒体和
+Principal。观察只能读取绑定任务或当前合法来源，不创建下一次任务；终态失败即使冷却
+已结束也不会重新收费。现有通用路径的 Job 查询只服务 Excel 导入，不用于视频任务。
+来源撤销原位维护仍存活的媒体行，保留播放状态和代次；真正删除后恢复相同媒体身份时，
+新刷新意图与历史终态 Job 分开，避免覆盖历史审计或碰撞既存 Run。
+
+纯 URL 发布不经过普通 Content ingest，不改 ContentVersion、正文、评论、分类 Evidence、AI
+引用或人工纠正；正常正文或类型变化仍走已有原子摄取链。实现入口是
+[`backend/src/aima_ugc/adapters/persistence/postgres/content_media_playback.py`](../../adapters/persistence/postgres/content_media_playback.py)
+与 [`backend/src/aima_ugc/bootstrap/content_playback_service.py`](../../bootstrap/content_playback_service.py)。
+站内代理只接收数据库来源，逐次验证 HTTPS、可信 CDN、所有 DNS 地址均为公网，并固定
+连接 IP、Host 与 TLS SNI；连接数、传输时间、响应字节和带宽有界。视频响应 private/no-store，
+取消、断开与异常都会释放上游连接；视频二进制不写 Artifact 或磁盘缓存。
+
+新增 0085 只加观察元数据列，0086 只创建惰性播放状态表，均不扫描回填历史内容。隔离库
+带数据往返验证见 [`tests/integration/database/test_media_migration_lifecycle.py`](../../../../../tests/integration/database/test_media_migration_lifecycle.py)：
+降至 0084 保留稳定媒体字段和原始 Delta，明确移除新元数据与播放状态；再次升级只恢复空
+元数据/状态，不能还原被删除的信息。排空 v6 任务也不能使升级前旧程序理解 v2 贡献，业务
+回退必须保留兼容 Schema/程序，或从升级前备份恢复并明确新事实的处理范围。

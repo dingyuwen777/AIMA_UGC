@@ -34,7 +34,7 @@ def _is_current_project_doc(root: Path, path: Path) -> bool:
     relative = path.relative_to(root)
     if any(part in EXCLUDED_DOC_ROOTS for part in relative.parts):
         return False
-    if relative in {Path("README.md"), Path("AGENTS.md")}:
+    if relative in {Path("README.md"), Path("AGENTS.md"), Path("USAGE.md")}:
         return True
     if relative.parts and relative.parts[0] == "docs":
         return True
@@ -66,7 +66,7 @@ def _repository_files(root: Path) -> tuple[Path, ...]:
     if owner.returncode != 0 or Path(owner.stdout.strip()).resolve() != root:
         return _fallback_repository_files(root)
     result = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z"],
+        ["git", "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
         check=False,
         capture_output=True,
         text=False,
@@ -79,10 +79,12 @@ def _repository_files(root: Path) -> tuple[Path, ...]:
         if not raw_path:
             continue
         relative = Path(raw_path.decode("utf-8"))
+        if any(part in FALLBACK_EXCLUDED_ROOTS for part in relative.parts):
+            continue
         path = root / relative
         if path.is_file():
             files.append(path)
-    return tuple(sorted(files))
+    return tuple(sorted(set(files)))
 
 
 def _iter_current_docs(root: Path, repository_files: tuple[Path, ...]) -> tuple[Path, ...]:
