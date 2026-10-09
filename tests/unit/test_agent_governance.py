@@ -331,9 +331,7 @@ def test_checker_requires_issue_and_pr_requirement_traceability(tmp_path: Path) 
 def test_gov014_accepts_rephrased_repository_path_guidance(tmp_path: Path) -> None:
     """仓库路径说明可以调整措辞，但 Issue/路径示例仍必须有效。"""
     _minimal_repository(tmp_path)
-    template = (tmp_path / ".github/PULL_REQUEST_TEMPLATE.md").read_text(
-        encoding="utf-8"
-    )
+    template = (tmp_path / ".github/PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
     assert "仓库内真实存在" not in template
     errors = CHECK_REPOSITORY(tmp_path)
     assert not any(error.startswith("GOV014") for error in errors)
@@ -360,9 +358,11 @@ def test_gov014_rejects_invalid_source_examples(tmp_path: Path) -> None:
         assert before in original
         template_path.write_text(original.replace(before, after), encoding="utf-8")
         errors = CHECK_REPOSITORY(tmp_path)
-        assert any(
-            error.startswith("GOV014") and "机器可验证" in error for error in errors
-        ), (before, after, errors)
+        assert any(error.startswith("GOV014") and "机器可验证" in error for error in errors), (
+            before,
+            after,
+            errors,
+        )
 
 
 def test_checker_requires_installed_canonical_governance_contract(tmp_path: Path) -> None:

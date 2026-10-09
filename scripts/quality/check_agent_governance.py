@@ -119,8 +119,7 @@ def _check_issue_form_projection(root: Path) -> list[str]:
 def _has_pr_source_examples(template: str) -> bool:
     """根据真实 Issue 与安全仓库路径示例校验模板，不依赖中文说明原文。"""
     examples = tuple(
-        value.strip()
-        for value in re.findall(r"`Requirement-Source:\s*([^`\r\n]+)`", template)
+        value.strip() for value in re.findall(r"`Requirement-Source:\s*([^`\r\n]+)`", template)
     )
     has_issue = any(re.fullmatch(r"#[1-9][0-9]*", value) for value in examples)
     has_path = any(
