@@ -44,5 +44,12 @@ def test_checker_rejects_issue_projection_drift(tmp_path: Path) -> None:
 def test_checker_rejects_missing_post_merge_closure_contract(tmp_path: Path) -> None:
     """项目 checker 必须阻止 PR Template 丢失 post-merge Closure 时序。"""
     MINIMAL_REPOSITORY(tmp_path)
+    template = tmp_path / ".github/PULL_REQUEST_TEMPLATE.md"
+    content = template.read_text(encoding="utf-8")
+    assert "需要 post-merge evidence" in content
+    template.write_text(
+        content.replace("需要 post-merge evidence", "缺少合并后证据要求"),
+        encoding="utf-8",
+    )
     errors = CHECK_REPOSITORY(tmp_path)
     assert any(error.startswith("GOV014") and "post-merge" in error for error in errors)
