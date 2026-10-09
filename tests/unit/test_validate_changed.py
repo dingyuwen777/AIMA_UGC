@@ -7,6 +7,18 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = ROOT / "scripts" / "dev" / "validate_changed.py"
 
 
+def test_local_targeted_validation_does_not_repeat_global_api_and_runs_docs_first() -> None:
+    script = runpy.run_path(str(SCRIPT_PATH))
+    commands = script["build_validation_commands"](
+        {
+            "backend_required": True,
+            "backend_targets": ["tests/unit/analysis", "tests/api/test_analysis_all_scope.py"],
+        }
+    )
+    assert ("uv", "run", "pytest", "tests/api", "-q") not in commands
+    assert "check_docs.py" in " ".join(commands[0])
+
+
 def test_validate_changed_reuses_classifier_and_builds_targeted_commands() -> None:
     """开发期入口只消费 classifier 输出，不维护第二套 changed-scope 映射。"""
     script = runpy.run_path(str(SCRIPT_PATH))
@@ -120,16 +132,15 @@ def test_validate_changed_default_scope_includes_worktree_and_untracked(monkeypa
     script = runpy.run_path(str(SCRIPT_PATH))
     calls: list[tuple[str, ...]] = []
 
-    def fake_git_paths(command: list[str]) -> tuple[str, ...]:
-        calls.append(tuple(command))
-        if command[1:3] == ["diff", "--no-renames"]:
-            return (
-                "backend/src/aima_ugc/modules/analysis/content_analysis_job.py",
-                "frontend/src/features/voice-plaza/store.ts",
-            )
-        return ("tests/unit/analysis/test_new_rule.py",)
+    def fake_scope(base, head, **options):
+        calls.append((base, head, options["include_worktree"]))
+        return (
+            "backend/src/aima_ugc/modules/analysis/content_analysis_job.py",
+            "frontend/src/features/voice-plaza/store.ts",
+            "tests/unit/analysis/test_new_rule.py",
+        )
 
-    monkeypatch.setitem(script["_git_paths"].__globals__, "_git_paths", fake_git_paths)
+    monkeypatch.setitem(script["changed_paths"].__globals__, "CHANGED_SCOPE", fake_scope)
     paths = script["changed_paths"]("origin/main", "HEAD", include_worktree=True)
 
     assert paths == (
@@ -137,8 +148,7 @@ def test_validate_changed_default_scope_includes_worktree_and_untracked(monkeypa
         "frontend/src/features/voice-plaza/store.ts",
         "tests/unit/analysis/test_new_rule.py",
     )
-    assert any(command[:3] == ("git", "diff", "--no-renames") for command in calls)
-    assert any(command[:3] == ("git", "ls-files", "--others") for command in calls)
+    assert calls == [("origin/main", "HEAD", True)]
 
 
 def test_validate_changed_committed_only_keeps_explicit_base_head_diff(monkeypatch) -> None:
@@ -146,12 +156,12 @@ def test_validate_changed_committed_only_keeps_explicit_base_head_diff(monkeypat
     script = runpy.run_path(str(SCRIPT_PATH))
     calls: list[tuple[str, ...]] = []
 
-    def fake_git_paths(command: list[str]) -> tuple[str, ...]:
-        calls.append(tuple(command))
+    def fake_scope(base, head, **options):
+        calls.append((base, head, options["include_worktree"]))
         return ("backend/src/aima_ugc/modules/content/service.py",)
 
-    monkeypatch.setitem(script["_git_paths"].__globals__, "_git_paths", fake_git_paths)
+    monkeypatch.setitem(script["changed_paths"].__globals__, "CHANGED_SCOPE", fake_scope)
     paths = script["changed_paths"]("main", "feature-head", include_worktree=False)
 
     assert paths == ("backend/src/aima_ugc/modules/content/service.py",)
-    assert calls == [("git", "diff", "--no-renames", "--name-only", "-z", "main", "feature-head")]
+    assert calls == [("main", "feature-head", False)]

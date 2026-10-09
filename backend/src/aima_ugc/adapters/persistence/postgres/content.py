@@ -19,6 +19,8 @@ from sqlalchemy import values as sql_values
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from aima_ugc.platform.jobs import JobExecutionFence
+
 if TYPE_CHECKING:
     from .content_contributions import ContentContributionSnapshot
 
@@ -64,6 +66,7 @@ _CONTENT_BUSINESS_COLUMNS = (
     "source_updated_at",
     "status",
 )
+_AUTHOR_INPUT_FIELDS = ("display_name", "bio", "verification_label")
 _COMMENT_BUSINESS_COLUMNS = (
     "root_comment_id",
     "parent_comment_id",
@@ -153,12 +156,46 @@ class PostgresContentRepository:
         self._prepared_new_accounts: set[UUID] = set()
         self._prepared_author_by_content: dict[tuple[str, str], UUID | None] = {}
 
+    def publish_media_refresh(
+        self,
+        *,
+        fence: JobExecutionFence,
+        content_id: UUID,
+        position: int,
+        identity_token: str,
+        expected_source_revision: str,
+        generation: int,
+        url: str,
+        attempt_id: UUID,
+        raw_id: UUID,
+        observed_at: datetime,
+        observed_external_media_id: str | None = None,
+    ) -> str | None:
+        """纯媒体 URL 刷新复用 Content 唯一 Owner，不触碰任何业务版本或分类。"""
+        from .content_media_playback import publish_media_refresh
+
+        return publish_media_refresh(
+            self._session,
+            fence=fence,
+            content_id=content_id,
+            position=position,
+            identity_token=identity_token,
+            expected_source_revision=expected_source_revision,
+            generation=generation,
+            url=url,
+            attempt_id=attempt_id,
+            raw_id=raw_id,
+            observed_at=observed_at,
+            observed_external_media_id=observed_external_media_id,
+        )
+
     def ingest_content(
         self,
         observation: CanonicalContentV1,
         *,
         collection_fields: frozenset[str] = frozenset(),
     ) -> PostgresIngestionResult:
+        """合并新鲜字段与冻结作者输入；作者模型输入变化也建立不可变版本边界。"""
         attempt_id, raw_id = _source_ids(observation)
         author_id = self._upsert_author(observation)
         content_id = uuid4()
@@ -215,12 +252,21 @@ class PostgresContentRepository:
             field_columns=_CONTENT_FIELD_COLUMNS,
             observed_at=observation.observed_at,
         )
+        previous_author, previous_author_at = self._current_author_snapshots(
+            ((content_id, int(current["current_version"])),)
+        )[(content_id, int(current["current_version"]))]
+        author_snapshot, field_observed_at = _merge_content_author_snapshot(
+            previous=previous_author,
+            previous_observed_at=previous_author_at,
+            observation=observation,
+            freshness=field_observed_at,
+        )
         version_no = int(current["current_version"])
         merged = dict(current)
         merged.update(current_updates)
         business_changed = _business_tuple(current, _CONTENT_BUSINESS_COLUMNS) != _business_tuple(
             merged, _CONTENT_BUSINESS_COLUMNS
-        )
+        ) or _author_input_tuple(previous_author) != _author_input_tuple(author_snapshot)
         version_no += 1 if business_changed else 0
         updates: dict[str, Any] = {
             "first_seen_at": min(current["first_seen_at"], observation.observed_at),
@@ -242,6 +288,7 @@ class PostgresContentRepository:
                 observation=observation,
                 attempt_id=attempt_id,
                 raw_id=raw_id,
+                author_snapshot=author_snapshot,
             )
 
         metric_recorded = False
@@ -355,11 +402,7 @@ class PostgresContentRepository:
                 "text": state.get("text"),
                 "canonical_url": state.get("canonical_url"),
                 "share_url": state.get("share_url"),
-                "author_snapshot": (
-                    observation.author.model_dump(mode="json")
-                    if observation.author is not None
-                    else None
-                ),
+                "author_snapshot": _initial_content_author_snapshot(observation),
                 "published_at": state.get("published_at"),
                 "source_updated_at": state.get("source_updated_at"),
                 "status": state.get("status"),
@@ -443,6 +486,12 @@ class PostgresContentRepository:
         }
         if set(current_by_identity) != set(identities):
             raise ValueError("既有 Content 集合更新发现缺失身份")
+        author_snapshots = self._current_author_snapshots(
+            tuple(
+                (cast(UUID, row["id"]), int(row["current_version"]))
+                for row in current_by_identity.values()
+            )
+        )
         if any(
             current_by_identity[identity]["author_account_id"] is not None
             and "author.external_account_id" in observation.observed_fields
@@ -526,6 +575,15 @@ class PostgresContentRepository:
                 field_columns=_CONTENT_FIELD_COLUMNS,
                 observed_at=observation.observed_at,
             )
+            previous_author, previous_author_at = author_snapshots[
+                (content_id, int(current["current_version"]))
+            ]
+            author_snapshot, field_observed_at = _merge_content_author_snapshot(
+                previous=previous_author,
+                previous_observed_at=previous_author_at,
+                observation=observation,
+                freshness=field_observed_at,
+            )
             accepted_collections: set[str] = set()
             for field_name in collection_fields:
                 if field_name not in observation.observed_fields:
@@ -541,7 +599,9 @@ class PostgresContentRepository:
             merged.update(current_updates)
             business_changed = _business_tuple(
                 current, _CONTENT_BUSINESS_COLUMNS
-            ) != _business_tuple(merged, _CONTENT_BUSINESS_COLUMNS)
+            ) != _business_tuple(merged, _CONTENT_BUSINESS_COLUMNS) or _author_input_tuple(
+                previous_author
+            ) != _author_input_tuple(author_snapshot)
             version_no = int(current["current_version"]) + (1 if business_changed else 0)
             values: dict[str, Any] = {
                 "record_id": content_id,
@@ -568,11 +628,7 @@ class PostgresContentRepository:
                         "text": merged.get("text"),
                         "canonical_url": merged.get("canonical_url"),
                         "share_url": merged.get("share_url"),
-                        "author_snapshot": (
-                            observation.author.model_dump(mode="json")
-                            if observation.author is not None
-                            else None
-                        ),
+                        "author_snapshot": author_snapshot,
                         "published_at": merged.get("published_at"),
                         "source_updated_at": merged.get("source_updated_at"),
                         "status": merged.get("status"),
@@ -1403,6 +1459,27 @@ class PostgresContentRepository:
             elif row["external_id"] != external_id:
                 raise ValueError(f"账号稳定外部 ID 冲突: account_id={account_id} id_type={id_type}")
 
+    def _current_author_snapshots(
+        self, pairs: tuple[tuple[UUID, int], ...]
+    ) -> dict[tuple[UUID, int], tuple[dict[str, Any] | None, datetime]]:
+        """Content 已加锁后一次读取其不可变快照，集合路径不引入逐条查询。"""
+
+        return {
+            (row.content_id, row.version_no): (row.author_snapshot, row.observed_at)
+            for row in self._session.execute(
+                select(
+                    content_versions_table.c.content_id,
+                    content_versions_table.c.version_no,
+                    content_versions_table.c.author_snapshot,
+                    content_versions_table.c.observed_at,
+                ).where(
+                    tuple_(
+                        content_versions_table.c.content_id, content_versions_table.c.version_no
+                    ).in_(pairs)
+                )
+            )
+        }
+
     def _append_content_version(
         self,
         *,
@@ -1412,7 +1489,9 @@ class PostgresContentRepository:
         observation: CanonicalContentV1,
         attempt_id: UUID,
         raw_id: UUID,
+        author_snapshot: dict[str, Any] | None = None,
     ) -> None:
+        """只追加合并后的内容与作者快照，绝不改写旧版本。"""
         self._session.execute(
             insert(content_versions_table).values(
                 id=uuid4(),
@@ -1424,9 +1503,9 @@ class PostgresContentRepository:
                 canonical_url=state.get("canonical_url"),
                 share_url=state.get("share_url"),
                 author_snapshot=(
-                    observation.author.model_dump(mode="json")
-                    if observation.author is not None
-                    else None
+                    _initial_content_author_snapshot(observation)
+                    if version_no == 1
+                    else author_snapshot
                 ),
                 published_at=state.get("published_at"),
                 source_updated_at=state.get("source_updated_at"),
@@ -1632,6 +1711,7 @@ def _new_content_state(
     *,
     collection_fields: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
+    """初始化 Current，并为内容自己的作者输入保留独立字段观测时间。"""
     state: dict[str, Any] = {
         "id": content_id,
         "platform": observation.platform,
@@ -1649,7 +1729,10 @@ def _new_content_state(
             ),
             **{
                 field: observation.observed_at.isoformat()
-                for field in collection_fields
+                for field in (
+                    *collection_fields,
+                    *(f"author.{name}" for name in CanonicalAuthorV1.model_fields),
+                )
                 if field in observation.observed_fields
             },
         },
@@ -1657,6 +1740,70 @@ def _new_content_state(
     }
     state.update(_content_updates(observation, author_id))
     return state
+
+
+def _initial_content_author_snapshot(observation: CanonicalContentV1) -> dict[str, Any] | None:
+    """初始作者只冻结真正观测到的字段，不把稀疏默认值解释成事实。"""
+
+    if observation.author is None:
+        return None
+    values = observation.author.model_dump(mode="json")
+    return {
+        name: value
+        for name, value in values.items()
+        if f"author.{name}" in observation.observed_fields
+    }
+
+
+def _author_input_tuple(snapshot: dict[str, Any] | None) -> tuple[str, ...]:
+    """按模型实际空值语义比较作者字段，用于 Content 的版本边界而非另造 Hash。"""
+
+    return tuple(str((snapshot or {}).get(name) or "") for name in _AUTHOR_INPUT_FIELDS)
+
+
+def _merge_content_author_snapshot(
+    *,
+    previous: dict[str, Any] | None,
+    previous_observed_at: datetime,
+    observation: CanonicalContentV1,
+    freshness: dict[str, str],
+) -> tuple[dict[str, Any] | None, dict[str, str]]:
+    """用该帖子的冻结快照合并作者；共享 Account 更新不能悄悄改变模型输入。"""
+
+    merged = dict(previous or {})
+    updated_freshness = dict(freshness)
+    values = observation.author.model_dump(mode="json") if observation.author else {}
+    fields = [path for path in observation.observed_fields if path.startswith("author.")]
+    # 换成另一个稳定账号不能继承旧作者；仅解绑账号并不能证明未观察的文本消失。
+    identity_path = "author.external_account_id"
+    if identity_path in fields:
+        identity_previous_at = datetime.fromisoformat(
+            updated_freshness.get(identity_path, previous_observed_at.isoformat())
+        )
+        if (
+            observation.observed_at >= identity_previous_at
+            and values.get("external_account_id") is not None
+            and values.get("external_account_id") != merged.get("external_account_id")
+        ):
+            merged = {}
+            updated_freshness = {
+                key: value
+                for key, value in updated_freshness.items()
+                if not key.startswith("author.") or key == identity_path
+            }
+    for path in fields:
+        name = path.removeprefix("author.")
+        previous_raw = updated_freshness.get(path)
+        previous_at = (
+            datetime.fromisoformat(previous_raw)
+            if previous_raw
+            else (previous_observed_at if name in merged else None)
+        )
+        if previous_at is not None and observation.observed_at < previous_at:
+            continue
+        merged[name] = values.get(name)
+        updated_freshness[path] = observation.observed_at.isoformat()
+    return (merged if merged else None), updated_freshness
 
 
 def _content_updates(

@@ -8,16 +8,16 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import Uuid, any_, literal, select
+from sqlalchemy import Uuid, any_, literal, select, true
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_effective import effective_analysis_source
 from aima_ugc.contracts.platform import PlatformName, require_platform_name
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
-    analysis_content_runs_table,
 )
 from aima_ugc.modules.collection.comment_target import (
     identity_block_reason,
@@ -544,28 +544,21 @@ class PostgresCollectionTargetReader:
         content_ids: tuple[UUID, ...],
     ) -> set[UUID]:
         analysis = analysis_content_results_table
-        run = analysis_content_runs_table
         content = contents_table
+        source = effective_analysis_source(content.c.id, content.c.current_version)
         latest = (
             select(
                 analysis.c.content_id,
                 analysis.c.relevance,
             )
             .select_from(
-                analysis.join(content, content.c.id == analysis.c.content_id).join(
-                    run, run.c.id == analysis.c.analysis_run_id
+                content.join(source, true()).join(
+                    analysis, analysis.c.id == source.c.analysis_result_id
                 )
             )
             .where(
                 # UUID 数组使用一个绑定参数，宽日期范围不会超过驱动参数数上限。
-                analysis.c.content_id == any_(literal(list(content_ids), type_=ARRAY(Uuid()))),
-                analysis.c.content_version == content.c.current_version,
-            )
-            .distinct(analysis.c.content_id)
-            .order_by(
-                analysis.c.content_id,
-                run.c.sequence_no.desc(),
-                analysis.c.id.desc(),
+                content.c.id == any_(literal(list(content_ids), type_=ARRAY(Uuid()))),
             )
             .subquery()
         )

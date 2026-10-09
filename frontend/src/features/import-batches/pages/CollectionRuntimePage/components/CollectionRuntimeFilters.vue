@@ -22,7 +22,7 @@ function recordTypeVisible(value: CollectionRuntimeRecordType): boolean {
   if (props.activeTab === 'excel') {
     return value === 'excel_import' || value === 'data_import_campaign'
   }
-  return value === 'tikhub_discovery' || value === 'tikhub_batch_supplement' || value === 'tikhub_content_supplement' || value === 'tikhub_account_discovery'
+  return value === 'tikhub_discovery' || value === 'tikhub_batch_supplement' || value === 'tikhub_content_supplement' || value === 'tikhub_account_discovery' || value === 'tikhub_media_refresh'
 }
 </script>
 

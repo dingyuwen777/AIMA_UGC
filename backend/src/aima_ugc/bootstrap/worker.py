@@ -31,6 +31,10 @@ from aima_ugc.modules.collection.collection_run_job import (
     register_collection_run_job,
 )
 from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
+from aima_ugc.modules.content.consistency_repair import (
+    ContentConsistencyRepairHandler,
+    register_content_consistency_repair_job,
+)
 from aima_ugc.modules.content.read_model_job import (
     VoicePlazaProjectionJobHandler,
     register_voice_plaza_projection_job,
@@ -103,6 +107,7 @@ from .canonical_replay_reversal_worker import (
     canonical_replay_reversal_terminal_callback,
 )
 from .canonical_replay_worker import PostgresCanonicalReplayJobExecutor
+from .content_consistency_repair_worker import PostgresContentConsistencyRepairExecutor
 from .content_media_cache import PostgresContentMediaCacheService
 from .content_reclassification_worker import PostgresContentReclassificationJobExecutor
 from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
@@ -267,6 +272,10 @@ def create_collection_job_registry(
         registry,
         ContentReclassificationJobHandler(PostgresContentReclassificationJobExecutor(runtime)),
     )
+    register_content_consistency_repair_job(
+        registry,
+        ContentConsistencyRepairHandler(PostgresContentConsistencyRepairExecutor(runtime)),
+    )
     register_canonical_replay_plan_job(
         registry,
         CanonicalReplayPlanJobHandler(PostgresCanonicalReplayPlanJobExecutor(runtime)),
@@ -342,9 +351,20 @@ def create_collection_job_registry(
 
 
 def collection_job_terminal_callback(session: Session, job: JobRecord) -> None:
-    """共享 Job Worker/Reaper 的同一终态事务结清账号采集业务状态。"""
+    """共享 Job Worker/Reaper 的终态事务结清账号与视频播放准备状态。"""
     PostgresCollectionRepository(session).settle_account_job_terminal(
         job.id, status=job.status, error_code=job.error_code
+    )
+    PostgresCollectionRepository(session).settle_media_refresh_job_terminal(
+        job.id, status=job.status, error_code=job.error_code
+    )
+    from aima_ugc.adapters.persistence.postgres.content_playback import (
+        PostgresContentPlaybackRepository,
+    )
+    from aima_ugc.platform.time import beijing_now
+
+    PostgresContentPlaybackRepository(session).settle_job(
+        job.id, code=job.error_code or job.status, now=beijing_now()
     )
 
 

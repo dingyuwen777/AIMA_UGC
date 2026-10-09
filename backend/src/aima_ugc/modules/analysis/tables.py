@@ -6,6 +6,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -198,6 +199,55 @@ Index(
     analysis_content_results_table.c.content_id,
     analysis_content_results_table.c.content_version,
     analysis_content_results_table.c.analysis_run_id,
+)
+
+analysis_content_version_reuses_table = Table(
+    "analysis_content_version_reuses",
+    metadata,
+    Column("content_id", Uuid(), primary_key=True),
+    Column("target_content_version", Integer(), primary_key=True),
+    Column(
+        "source_analysis_result_id",
+        Uuid(),
+        ForeignKey("analysis_content_results.id"),
+        nullable=False,
+    ),
+    Column("source_content_version", Integer(), nullable=False),
+    Column("input_hash", Text(), nullable=False),
+    Column("input_hash_algorithm", Text(), nullable=False),
+    Column("manual_override_source_version", Integer()),
+    Column("relevance_review_source_version", Integer()),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    ForeignKeyConstraint(
+        ["content_id", "target_content_version"],
+        ["content_versions.content_id", "content_versions.version_no"],
+    ),
+    ForeignKeyConstraint(
+        ["content_id", "source_content_version"],
+        ["content_versions.content_id", "content_versions.version_no"],
+    ),
+    ForeignKeyConstraint(
+        ["content_id", "manual_override_source_version"],
+        ["content_versions.content_id", "content_versions.version_no"],
+    ),
+    ForeignKeyConstraint(
+        ["content_id", "relevance_review_source_version"],
+        ["content_versions.content_id", "content_versions.version_no"],
+    ),
+    CheckConstraint(
+        "source_content_version < target_content_version", name="source_precedes_target"
+    ),
+    CheckConstraint(
+        "manual_override_source_version < target_content_version", name="manual_precedes_target"
+    ),
+    CheckConstraint(
+        "relevance_review_source_version < target_content_version", name="review_precedes_target"
+    ),
+    CheckConstraint("char_length(input_hash) = 64", name="input_hash_sha256_length"),
+    CheckConstraint(
+        "input_hash_algorithm = 'content-labeling-input-sha256-v1'", name="hash_protocol_known"
+    ),
+    info={"owner": "analysis"},
 )
 
 analysis_content_requests_table = Table(

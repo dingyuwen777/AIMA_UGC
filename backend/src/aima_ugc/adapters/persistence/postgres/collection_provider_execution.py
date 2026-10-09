@@ -200,10 +200,20 @@ class PostgresFencedProviderAttemptPreparer:
         try:
             with session.begin():
                 PostgresJobRepository(session).lock_current_execution(fence)
-                self._require_request_scope(session, request=request, fence=fence)
-                return ProviderPersistenceService(
-                    PostgresProviderRepository(session)
-                ).prepare_billable_attempt(
+                media_refresh = self._require_request_scope(session, request=request, fence=fence)
+                repository = PostgresProviderRepository(session)
+                service = ProviderPersistenceService(repository)
+                if media_refresh:
+                    persisted = service.ensure_request(
+                        request, provider_config_id=provider_config_id
+                    )
+                    attempts = repository.list_attempts(persisted.id)
+                    if attempts:
+                        return PreparedProviderAttempt(
+                            request=persisted,
+                            attempt=max(attempts, key=lambda item: item.attempt_no),
+                        )
+                return service.prepare_billable_attempt(
                     request=request,
                     provider_config_id=provider_config_id,
                     attempt_id=attempt_id,
@@ -226,7 +236,7 @@ class PostgresFencedProviderAttemptPreparer:
         try:
             with session.begin():
                 PostgresJobRepository(session).lock_current_execution(fence)
-                self._require_request_scope(session, request=request, fence=fence)
+                media_refresh = self._require_request_scope(session, request=request, fence=fence)
 
                 repository = PostgresProviderRepository(session)
                 service = ProviderPersistenceService(repository)
@@ -260,6 +270,13 @@ class PostgresFencedProviderAttemptPreparer:
                     return PreparedProviderAttempt(
                         request=persisted_request,
                         attempt=successful,
+                    )
+
+                # v6 一次发送预算覆盖 Provider 重试；unknown/失败不能隐式第二次收费。
+                if media_refresh and attempts:
+                    return PreparedProviderAttempt(
+                        request=persisted_request,
+                        attempt=max(attempts, key=lambda item: item.attempt_no),
                     )
 
                 if attempts:
@@ -338,12 +355,16 @@ class PostgresFencedProviderAttemptPreparer:
         *,
         request: ProviderRequestV1,
         fence: JobExecutionFence,
-    ) -> None:
+    ) -> bool:
         ownership = session.execute(
             select(
                 collection_scopes_table.c.run_id,
                 collection_scopes_table.c.platform,
                 collection_runs_table.c.job_id,
+                collection_runs_table.c.config_snapshot,
+                collection_scopes_table.c.source_type,
+                collection_scopes_table.c.source_value,
+                collection_scopes_table.c.operation_group,
             )
             .select_from(
                 collection_scopes_table.join(
@@ -352,6 +373,7 @@ class PostgresFencedProviderAttemptPreparer:
                 )
             )
             .where(collection_scopes_table.c.id == request.scope_id)
+            .with_for_update(of=collection_scopes_table)
         ).one_or_none()
         if ownership is None:
             raise LeaseLostError("Provider Request Scope 不属于当前 Job Fence")
@@ -361,6 +383,46 @@ class PostgresFencedProviderAttemptPreparer:
             or ownership.job_id != fence.job_id
         ):
             raise LeaseLostError("Provider Request Scope 不属于当前 Job Fence")
+        snapshot = ownership.config_snapshot
+        if (
+            snapshot.get("mode") != "media_refresh"
+            and snapshot.get("schema_version") != "collection-run-config.v6"
+        ):
+            return False
+        from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
+            build_video_detail_request,
+        )
+        from aima_ugc.modules.collection.media_refresh import validate_media_refresh_snapshot
+
+        target = validate_media_refresh_snapshot(snapshot)
+        operation = build_video_detail_request(note_id=target.note_id)
+        if (
+            request.platform != "xiaohongshu"
+            or request.provider != "tikhub"
+            or request.operation != "get_video_note_detail"
+            or ownership.source_type != "content"
+            or ownership.source_value != str(target.content_id)
+            or ownership.operation_group != "media_refresh"
+            or request.request_params
+            != {"method": "GET", "path": operation.path, "params": dict(operation.params)}
+            or request.pagination_input != {}
+        ):
+            raise ProviderPersistenceConflictError(
+                "media_refresh Request 不符合冻结的唯一视频详情调用"
+            )
+        others = session.scalar(
+            select(provider_requests_table.c.id)
+            .where(
+                provider_requests_table.c.scope_id == request.scope_id,
+                provider_requests_table.c.request_fingerprint != request.request_fingerprint,
+            )
+            .limit(1)
+        )
+        if others is not None:
+            raise ProviderPersistenceConflictError(
+                "media_refresh Scope 只允许一个逻辑 Provider Request"
+            )
+        return True
 
 
 _RETRYABLE_HTTP_STATUSES = {408, 425, 429}

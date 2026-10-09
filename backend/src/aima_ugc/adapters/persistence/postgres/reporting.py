@@ -12,6 +12,7 @@ from sqlalchemy import Integer, and_, func, insert, literal, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_effective import load_effective_analysis
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.brand_vehicle import (
@@ -27,15 +28,7 @@ from aima_ugc.contracts.export import (
     UnifiedDataExcelV1,
 )
 from aima_ugc.contracts.platform import require_platform_name
-from aima_ugc.modules.analysis.manual_override_tables import (
-    analysis_content_manual_overrides_table,
-)
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
-from aima_ugc.modules.analysis.tables import (
-    analysis_content_label_pairs_table,
-    analysis_content_results_table,
-    analysis_content_runs_table,
-)
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
@@ -333,100 +326,22 @@ class PostgresDataExportRepository:
         self,
         versions: dict[UUID, int],
     ) -> dict[UUID, UnifiedDataExcelAnalysisV1]:
-        result = analysis_content_results_table
-        run = analysis_content_runs_table
-        conditions = [
-            and_(result.c.content_id == content_id, result.c.content_version == version)
-            for content_id, version in versions.items()
-        ]
-        ranked = (
-            select(
-                result,
-                func.row_number()
-                .over(
-                    partition_by=(result.c.content_id, result.c.content_version),
-                    order_by=(run.c.sequence_no.desc(), result.c.id.desc()),
-                )
-                .label("rank"),
-            )
-            .select_from(result.join(run, run.c.id == result.c.analysis_run_id))
-            .where(
-                or_(*conditions),
-            )
-            .subquery()
-        )
-        rows = tuple(self._session.execute(select(ranked).where(ranked.c.rank == 1)).mappings())
-        manual_rows = self._session.execute(
-            select(analysis_content_manual_overrides_table).where(
-                or_(
-                    *(
-                        and_(
-                            analysis_content_manual_overrides_table.c.content_id == content_id,
-                            analysis_content_manual_overrides_table.c.content_version == version,
-                        )
-                        for content_id, version in versions.items()
-                    )
-                )
-            )
-        ).mappings()
-        manual_by_content = {cast(UUID, manual["content_id"]): manual for manual in manual_rows}
-        result_ids = tuple(cast(UUID, row["id"]) for row in rows)
-        labels: dict[UUID, list[tuple[int, str, str]]] = defaultdict(list)
-        if result_ids:
-            for row in self._session.execute(
-                select(analysis_content_label_pairs_table).where(
-                    analysis_content_label_pairs_table.c.analysis_result_id.in_(result_ids)
-                )
-            ).mappings():
-                labels[cast(UUID, row["analysis_result_id"])].append(
-                    (
-                        cast(int, row["ordinal"]),
-                        cast(str, row["primary_label"]),
-                        cast(str, row["secondary_label"]),
-                    )
-                )
-        projected: dict[UUID, UnifiedDataExcelAnalysisV1] = {}
-        for row in rows:
-            content_id = cast(UUID, row["content_id"])
-            manual = manual_by_content.get(content_id)
-            if manual is not None and bool(manual["labels_locked"]):
-                pairs = tuple(
-                    UnifiedDataExcelLabelPairV1.model_validate(item)
-                    for item in cast(list[dict[str, str]], manual["labels"])
-                )
-            else:
-                pairs = tuple(
-                    UnifiedDataExcelLabelPairV1(primary_label=primary, secondary_label=secondary)
-                    for _, primary, secondary in sorted(
-                        labels[cast(UUID, row["id"])], key=lambda item: item[0]
-                    )
-                )
-            voice_type = cast(
-                ContentVoiceType,
-                (
-                    manual["voice_type"]
-                    if manual is not None and bool(manual["voice_type_locked"])
-                    else row["voice_type"]
-                ),
-            )
-            sentiment = cast(
-                str | None,
-                (
-                    manual["sentiment"]
-                    if manual is not None and bool(manual["sentiment_locked"])
-                    else row["sentiment"]
-                ),
+        """冻结版本使用与声音广场同一来源及人工效果，不改变历史模型身份。"""
+        projected = {}
+        for content_id, row in load_effective_analysis(self._session, versions).items():
+            pairs = tuple(
+                UnifiedDataExcelLabelPairV1.model_validate(item) for item in row["effective_labels"]
             )
             projected[content_id] = UnifiedDataExcelAnalysisV1(
-                relevance=cast(ContentRelevance, row["relevance"]),
-                voice_type=voice_type,
-                sentiment=sentiment,
+                relevance=cast(ContentRelevance, row["effective_relevance"]),
+                voice_type=cast(ContentVoiceType, row["effective_voice_type"]),
+                sentiment=row["effective_sentiment"],
                 primary_label="\n".join(item.primary_label for item in pairs),
                 secondary_label="\n".join(item.secondary_label for item in pairs),
                 label_pairs=pairs,
-                model=cast(str, row["model"]),
-                prompt_version=cast(str, row["prompt_version"]),
-                taxonomy_version=cast(str, row["taxonomy_sha256"]),
+                model=row["model"],
+                prompt_version=row["prompt_version"],
+                taxonomy_version=row["taxonomy_sha256"],
             )
         return projected
 

@@ -1563,7 +1563,19 @@ def test_all_replay_batches_contribution_ledger_writes(tmp_path: Path, row_count
         assert len(content_updates) == 0
         assert len(reconciliation_updates) == 1
         assert len(source_pair_reads) <= 1
-        assert len(content_reads) == 0
+        # Analysis 等价证明需要两条限定批次的集合读取，不允许恢复逐条 Content 查询。
+        assert len(content_reads) == 2
+        assert all("contents.id IN (" in statement for statement in content_reads)
+        assert (
+            sum("ORDER BY contents.id FOR UPDATE" in statement for statement in content_reads) == 1
+        )
+        assert (
+            sum(
+                "EXISTS (SELECT analysis_content_results.id" in statement
+                for statement in content_reads
+            )
+            == 1
+        )
         if row_count == 101:
             # 新内容主路径必须保持集合式 SQL；该上限同时防止 Content、来源贡献、
             # 自动证据或 Replay ledger 中任一环节重新退化为逐行往返。

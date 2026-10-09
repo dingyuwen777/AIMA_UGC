@@ -300,10 +300,10 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
             )
             for contribution in ordered:
                 delta = contribution["delta"]
-                if (
-                    not isinstance(delta, dict)
-                    or delta.get("schema_version") != "content-source-contribution.v1"
-                ):
+                if not isinstance(delta, dict) or delta.get("schema_version") not in {
+                    "content-source-contribution.v1",
+                    "content-source-contribution.v2",
+                }:
                     raise ValueError("Content 来源贡献 Delta 版本不受支持")
                 author_snapshot = self._apply_delta(
                     content_id=content_id,
@@ -447,7 +447,10 @@ class PostgresImportRevocationLifecycleRepository(PostgresContentLifecycleReposi
                 )
                 for contribution in ordered:
                     delta = contribution["delta"]
-                    if delta.get("schema_version") != "content-source-contribution.v1":
+                    if delta.get("schema_version") not in {
+                        "content-source-contribution.v1",
+                        "content-source-contribution.v2",
+                    }:
                         raise ValueError("Content 来源贡献 Delta 版本不受支持")
                     author_snapshot = self._apply_delta(
                         content_id=content_id,

@@ -413,6 +413,7 @@ class PostgresCollectionRuntimeQueryRepository:
             else_=run.c.status,
         )
         running_stage = case(
+            (run.c.config_snapshot["mode"].astext == "media_refresh", "media_refresh"),
             (
                 run.c.config_snapshot["mode"].astext.in_(
                     ["batch_supplement", "content_supplement", "date_supplement"]
@@ -430,6 +431,10 @@ class PostgresCollectionRuntimeQueryRepository:
                 run.c.id.label("record_id"),
                 job.c.id.label("job_id"),
                 case(
+                    (
+                        run.c.config_snapshot["mode"].astext == "media_refresh",
+                        "tikhub_media_refresh",
+                    ),
                     (
                         run.c.config_snapshot["mode"].astext == "account_discovery",
                         "tikhub_account_discovery",

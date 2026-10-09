@@ -107,7 +107,7 @@ Pydantic
 | Collection | Plan / Run / Scope / Runtime Read Model | Run 创建 Job，Runtime 聚合多类父事实 |
 | Data Import | Campaign / Source Item / Conflict / Revocation | Discover / Snapshot / Chunk / Revocation Job |
 | Replay | Replay Request / Run / Reversal | Planner / Replay / Shard / Reversal Job |
-| Content | Content / Comment / Filter / Manual Review | 主要是 Query；部分人工动作短事务 |
+| Content | Content / Comment / Filter / Manual Review / 视频播放准备 | Query 与人工短事务；视频缺少来源时复用 Collection 持久任务，流读取只消费已保存来源 |
 | Analysis | Scheme / Run / Result / Manual Override | Planner / Label Shard Job |
 | Reporting | Export Request / ReportRun / 冻结报告数据 / Artifact | Export Job；报告生成与飞书发布各自独立 Job，发布失败不影响文件下载。机制见 [backend/src/aima_ugc/modules/reporting/README.md](../../backend/src/aima_ugc/modules/reporting/README.md) |
 | Administration | Provider / Brand / Vehicle / Scheme / Audit | 多为配置短事务 |
@@ -115,6 +115,8 @@ Pydantic
 | Workbench | 声音流 / 品牌用户心智 / UGC 趋势 / 用户布局 | 从 Content/Analysis/Identity 读取当前口径，只有用户布局属于 Workbench 写事实 |
 
 调用者需要精确 Path 时直接查 [contracts/openapi/openapi.json](../../contracts/openapi/openapi.json)，不要从 Blueprint 复制 URL。
+
+小红书视频由用户点击后准备，打开详情只读取封面和稳定媒体事实。Content 服务验证 Principal、当前可见内容及媒体身份；可用来源签发绑定用户、内容、媒体位置和来源代次的短期同源会话，缺少来源时复用正式 Collection 的视频准备任务。前端通过同一准备接口的只读观察等待已绑定任务，不使用仅面向 Excel 导入的 Job 查询；任务结束、失效或冷却结束都不能让观察请求创建下一次收费任务。关闭抽屉只释放本地播放器与轮询，不取消其他观看者共享的准备任务。流请求不调用 TikHub，也不把 CDN 签名 URL 作为公共内容字段返回。请求、响应和精确状态以 [backend/src/aima_ugc/contracts/content_playback.py](../../backend/src/aima_ugc/contracts/content_playback.py) 为准；持久化及 URL 窄更新边界见 [backend/src/aima_ugc/modules/content/README.md](../../backend/src/aima_ugc/modules/content/README.md)，Provider 审计与恢复见 [backend/src/aima_ugc/modules/collection/README.md](../../backend/src/aima_ugc/modules/collection/README.md)。
 
 管理员数据库报告的关键词采用已保存的有效品牌、车型命中证据，标准名称与结果在创建时冻结；每条内容内去重，按报告全量内容计数和计算占比。该业务口径与旧离线词包或采集搜索上下文区分，具体机制由 Reporting 模块说明维护。
 
@@ -193,7 +195,7 @@ Content 是 UGC 事实，Analysis 是对某个 Content Version 的推理结果�
 
 ### 工作台为什么不用声音广场的“最新 AI 结果”直接聚合
 
-声音广场需要兼容当前可见内容中的历史分类值，因此它的读模型可以投影“该 Content Version 最近一次 Analysis”。工作台的 AI 指标口径不同：它必须严格对应**当前 active Analysis Scheme Version**。
+声音广场需要兼容当前可见内容中的历史分类值，因此它的读模型选择当前版本的直接成功结果或可信输入等价引用。工作台的 AI 指标口径不同：它必须严格对应**当前 active Analysis Scheme Version**。
 
 因此工作台读取链是：
 
@@ -201,7 +203,7 @@ Content 是 UGC 事实，Analysis 是对某个 Content Version 的推理结果�
 当前业务可见 Content / 品牌车型维度
 + 当前 active Analysis Scheme Version
 → 投影已对应 active Version 时复用其有效结果
-→ 尚未对应时选择该 Version 下当前 Content Version 的最新 Result
+→ 尚未对应时在 active Scheme 范围选择当前 Content Version 的直接成功或合法等价来源
 → 保持现有人工相关性与 Analysis 维度纠正
 → 声音流签名 Keyset Cursor 直接读取
 → 心智 / 趋势持久聚合快照与后台刷新 Job

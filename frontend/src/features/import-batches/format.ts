@@ -43,6 +43,7 @@ export const recordTypeLabels: Record<CollectionRuntimeRecordType, string> = {
   tikhub_account_discovery: '账号补采',
   tikhub_batch_supplement: '辅助补采',
   tikhub_content_supplement: '内容补采',
+  tikhub_media_refresh: '视频播放准备',
   canonical_replay: '历史重筛',
 }
 
@@ -64,6 +65,7 @@ const runtimeStageLabels: Record<string, string> = {
   ingesting: '保存内容',
   content_discovery: '平台采集中',
   content_enrichment: '补充内容信息',
+  media_refresh: '准备视频地址',
   planning: '规划重筛任务',
   replaying: '重筛并写入',
   reverting: '正在撤回入库数据',

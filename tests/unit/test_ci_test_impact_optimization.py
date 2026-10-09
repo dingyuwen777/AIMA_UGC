@@ -163,38 +163,22 @@ def test_runtime_draft_pr_fails_closed_before_compose_setup() -> None:
 
     assert "      - name: Block Draft required evidence\n" in job
     assert "github.event.pull_request.draft == true" in job
-    assert job.index("Block Draft required evidence") < job.index("      - name: Checkout")
-    assert "github.event.pull_request.draft == false" not in job
+    assert job.index("Lightweight source and template preflight") < job.index(
+        "Block Draft required evidence"
+    )
+    assert job.index("Block Draft required evidence") < job.index("Prepare canonical Runtime env")
+    assert "github.event.pull_request.draft == false" not in job.split("    steps:", 1)[0]
 
 
 def test_release_dry_run_only_tracks_release_machine_inputs() -> None:
     text = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     trigger_block = _section(text, "on:\n", "permissions:\n")
 
-    assert (
-        "  pull_request:\n"
-        "    branches:\n"
-        "      - main\n"
-        "    types:\n"
-        "      - opened\n"
-        "      - reopened\n"
-        "      - ready_for_review\n"
-        "    paths:\n"
-        "      - .github/workflows/release.yml\n"
-        "      - Dockerfile\n"
-        "      - compose.yaml\n"
-        "      - compose.windows.yaml\n"
-        "      - env.production.example\n"
-        "      - scripts/release/release_bundle.py\n"
-        "      - scripts/deploy/start_compose.py\n"
-        "      - scripts/deploy/stop_compose.py\n"
-        "      - scripts/deploy/reset_keep_vehicle_catalog.sh\n"
-        "      - scripts/release/build_local_release.ps1\n"
-        "      - tests/unit/test_docker_build_sources.py\n"
-        "      - tests/unit/test_release_workflow.py\n"
-        "      - tests/unit/test_release_bundle.py\n"
-        "      - tests/unit/test_compose_auto_scripts.py\n" in trigger_block
-    )
+    assert "- synchronize" in trigger_block
+    assert "Classify shared Release responsibility" in text
+    assert "needs.release-plan.outputs.release_required == 'true'" in text
+    for path in CLASSIFIER["RELEASE_EXACT"]:
+        assert CLASSIFY_REQUIREMENTS([path]).release_required, path
     for retired_path in (
         "docs/02_环境运行与部署.md",
         "docs/roadmap/02_生产上线实施路线.md",

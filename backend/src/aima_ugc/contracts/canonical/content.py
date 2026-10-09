@@ -33,6 +33,7 @@ class CanonicalContentV1(CanonicalObservationModel):
     source_updated_at: AwareDatetime | None = None
     observed_at: AwareDatetime
     media: list[CanonicalMediaV1] = Field(default_factory=list)
+    media_collection_mode: Literal["complete", "partial"] = "complete"
     topics: list[CanonicalTopicV1] = Field(default_factory=list)
     mentions: list[CanonicalMentionV1] = Field(default_factory=list)
     locations: list[CanonicalLocationV1] = Field(default_factory=list)

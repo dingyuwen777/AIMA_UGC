@@ -37,6 +37,14 @@ def requires_full_comment_capture(run: _RunSnapshot) -> bool:
 
 def validate_run_decision_policy(snapshot: Mapping[str, object]) -> None:
     validate_run_plan_type(snapshot)
+    if (
+        snapshot.get("mode") == "media_refresh"
+        or snapshot.get("schema_version") == "collection-run-config.v6"
+    ):
+        from .media_refresh import validate_media_refresh_snapshot
+
+        validate_media_refresh_snapshot(snapshot)
+        return
     if snapshot.get("mode") == "account_discovery":
         if snapshot.get("schema_version") != "collection-run-config.v5":
             raise ValueError("账号 Collection Run 必须使用 collection-run-config.v5")
@@ -51,7 +59,9 @@ def validate_run_decision_policy(snapshot: Mapping[str, object]) -> None:
 def validate_new_run_snapshot(snapshot: Mapping[str, object]) -> None:
     """所有新Run必须写当前显式格式；历史兼容仅服务已持久化快照的恢复。"""
     expected_version = (
-        "collection-run-config.v5"
+        "collection-run-config.v6"
+        if snapshot.get("mode") == "media_refresh"
+        else "collection-run-config.v5"
         if snapshot.get("mode") == "account_discovery"
         else "collection-run-config.v4"
     )

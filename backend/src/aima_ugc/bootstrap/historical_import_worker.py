@@ -19,6 +19,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_reuse import PostgresAnalysisReuseRepository
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
     PostgresArtifactMetadataRepository,
@@ -602,6 +603,16 @@ class PostgresHistoricalImportJobExecutor:
                                 processing_import_batch_items_table.c.content_id.is_not(None),
                             )
                             .distinct()
+                        )
+                    )
+                    PostgresAnalysisReuseRepository(session).converge_reuses(
+                        tuple(
+                            (cast(UUID, row[0]), cast(int, row[1]))
+                            for row in session.execute(
+                                select(contents_table.c.id, contents_table.c.current_version).where(
+                                    contents_table.c.id.in_(projection_content_ids)
+                                )
+                            )
                         )
                     )
                     projection_content_count = flush_deferred_voice_plaza_projection(

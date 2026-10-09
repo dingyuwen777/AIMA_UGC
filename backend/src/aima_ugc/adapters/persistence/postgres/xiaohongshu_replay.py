@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_reuse import PostgresAnalysisReuseRepository
 from aima_ugc.adapters.persistence.postgres.candidates import PostgresCandidateRepository
 from aima_ugc.adapters.persistence.postgres.content import PostgresIngestionResult
 from aima_ugc.adapters.persistence.postgres.content_complete import (
@@ -136,6 +137,7 @@ class PostgresXiaohongshuReplayIngestionWriter:
                         context=context,
                         candidates=candidates,
                         content=content,
+                        reuse=PostgresAnalysisReuseRepository(session),
                     )
                     return XiaohongshuReplaySummary(content_count=count)
                 if source.operation in {"get_image_note_detail", "get_video_note_detail"}:
@@ -150,6 +152,9 @@ class PostgresXiaohongshuReplayIngestionWriter:
                     )
                     canonical = map_content(raw_item, context, item_locator=candidate.item_locator)
                     result = content.ingest_content(canonical)
+                    PostgresAnalysisReuseRepository(session).converge_reuses(
+                        ((result.target_id, result.version_no),)
+                    )
                     candidates.record_ingestion(
                         candidate_id=candidate.id,
                         canonical=canonical,
@@ -182,6 +187,7 @@ def _ingest_search_items(
     context: XiaohongshuMappingContext,
     candidates: CandidateIngestionService,
     content: ContentIngestionService[PostgresIngestionResult],
+    reuse: PostgresAnalysisReuseRepository,
 ) -> int:
     count = 0
     for raw_item in extract_search_items(body):
@@ -196,6 +202,7 @@ def _ingest_search_items(
         )
         canonical = map_content(raw_item, context, item_locator=locator)
         result = content.ingest_content(canonical)
+        reuse.converge_reuses(((result.target_id, result.version_no),))
         candidates.record_ingestion(
             candidate_id=candidate.id,
             canonical=canonical,

@@ -12,7 +12,8 @@ def main() -> int:
     if len(sys.argv) not in {2, 3}:
         raise SystemExit(
             "用法: python tests/fullstack/create_stage8f_excel_fixture.py "
-            "<output.xlsx> [success|worker-failure|manual-review|admin-product|comment-supplement]"
+            "<output.xlsx> [success|worker-failure|manual-review|admin-product|comment-supplement|"
+            "supplement-consistency]"
         )
 
     output = Path(sys.argv[1])
@@ -23,6 +24,7 @@ def main() -> int:
         "manual-review",
         "admin-product",
         "comment-supplement",
+        "supplement-consistency",
     }:
         raise SystemExit("scenario 不在允许的 Full-stack Fixture 列表中")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -30,7 +32,13 @@ def main() -> int:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "文章"
-    if scenario in {"success", "manual-review", "admin-product", "comment-supplement"}:
+    if scenario in {
+        "success",
+        "manual-review",
+        "admin-product",
+        "comment-supplement",
+        "supplement-consistency",
+    }:
         sheet.append(
             [
                 "媒体名称（中文）",
@@ -71,6 +79,17 @@ def main() -> int:
                     "Stage8F 双向复核账号",
                     "2026-08-23 13:00:00",
                     "https://www.xiaohongshu.com/explore/stage8f-manual-review-content-2",
+                ]
+            )
+        elif scenario == "supplement-consistency":
+            sheet.append(
+                [
+                    "小红书",
+                    "爱玛一致性Q7 雅迪一致性G5 补采等价验收",
+                    "补采等价验收正文",
+                    "全栈测试账号",
+                    "2026-10-08 12:00:00",
+                    "https://www.xiaohongshu.com/explore/6a85c701000000001d0040e9",
                 ]
             )
         elif scenario == "comment-supplement":

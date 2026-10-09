@@ -1,6 +1,11 @@
+import ast
 import json
+import os
 import re
 import runpy
+import shutil
+import subprocess
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -14,6 +19,48 @@ FULLSTACK = ROOT / ".github" / "workflows" / "fullstack.yml"
 LEGACY_COMPLETION = ROOT / ".github" / "workflows" / "change-completion-gate.yml"
 
 
+def test_review_tooling_metadata_skips_cannot_replace_formal_check_identities() -> None:
+    text = TOOLING.read_text(encoding="utf-8")
+    for name, identity in (
+        ("linux-tooling", "Linux Local Development Tooling"),
+        ("windows-tooling", "Windows Development and Compose Tooling"),
+    ):
+        declaration = text.split(f"  {name}:\n", 1)[1].split("    needs:", 1)[0]
+        assert "github.event.action == 'edited' && !github.event.changes.base" in declaration
+        assert f"'Metadata: {identity}'" in declaration
+        assert f"|| '{identity}'" in declaration
+
+
+def test_current_head_events_and_preflight_are_required_before_heavy_work() -> None:
+    for workflow in (CI, RUNTIME, TOOLING, RELEASE):
+        assert "- synchronize" in workflow.read_text(encoding="utf-8").split("permissions:", 1)[0]
+    text = CI.read_text(encoding="utf-8")
+    preflight = _section(text, "  preflight:\n", "  quality-core:\n")
+    assert "Secret and docs gates" in preflight
+    assert preflight.index("Secret and docs gates") < preflight.index(
+        "Block Draft required evidence"
+    )
+    assert preflight.index("Validate template syntax before product setup") < preflight.index(
+        "Block Draft required evidence"
+    )
+    assert preflight.index("Block Draft required evidence") < preflight.index(
+        "Enforce changed PR Change readiness"
+    )
+    for name, end in (("postgres-integration", "real-fullstack"), ("real-fullstack", "ci-gate")):
+        job = _section(text, f"  {name}:\n", f"  {end}:\n")
+        assert "preflight" in job and "needs.preflight.result == 'success'" in job
+    gate = _section(text, "  ci-gate:\n", "  actions-hygiene:\n")
+    assert "PREFLIGHT_RESULT" in gate
+    assert "github.event.changes.base" in text
+    for workflow in (RUNTIME, TOOLING, RELEASE):
+        source = workflow.read_text(encoding="utf-8")
+        assert source.index(
+            "Verify PR requirement and readiness before expensive validation"
+        ) < source.index("Setup template validation Python")
+        assert "check_pr_requirement_source.py" in source
+        assert "check_change_completion.py --root . --changed-since" in source
+
+
 def _section(text: str, start: str, end: str) -> str:
     """提取唯一 Workflow 文本区段，供结构回归限定断言范围。"""
     start_index = text.index(start)
@@ -21,11 +68,11 @@ def _section(text: str, start: str, end: str) -> str:
     return text[start_index:end_index]
 
 
-def test_pr_heavy_workflows_do_not_rerun_on_every_synchronize() -> None:
-    """重 Workflow 只在 PR 生命周期边界运行，不跟随每次 push 自动重跑。"""
+def test_pr_workflows_follow_current_head_without_running_draft_heavy_evidence() -> None:
+    """每个新 HEAD 都有自动入口，Draft 成本由 job guard 控制。"""
     for workflow in (CI, RUNTIME, TOOLING, RELEASE):
         trigger = workflow.read_text(encoding="utf-8").split("permissions:", 1)[0]
-        assert "- synchronize" not in trigger
+        assert "- synchronize" in trigger
         assert "- opened" in trigger
         assert "- reopened" in trigger
         assert "- ready_for_review" in trigger
@@ -51,7 +98,7 @@ def test_completion_workflow_is_removed_after_evidence_moves_into_core() -> None
     """旧独立 Completion Workflow 不得在责任迁移后作为重复 Owner 继续存在。"""
     assert not LEGACY_COMPLETION.exists()
     text = CI.read_text(encoding="utf-8")
-    assert text.count("Requirement Traceability and Completion Audit") == 1
+    assert text.count("    name: Requirement Traceability and Completion Audit") == 1
 
 
 def test_pr_body_edit_revalidates_metadata_without_cancelling_full_evidence() -> None:
@@ -63,18 +110,192 @@ def test_pr_body_edit_revalidates_metadata_without_cancelling_full_evidence() ->
     assert "repository_required=false" in text
     assert "postgres_required=false" in text
     assert "fullstack_required=false" in text
-    assert "github.event.action == 'edited' && 'metadata' || 'full'" in text
+    assert (
+        "github.event.action == 'edited' && !github.event.changes.base && 'metadata' || 'full'"
+        in text
+    )
     assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in text
     assert "Verify metadata edit baseline evidence" in text
-    assert '"CI Gate"' in text
-    assert '"Compose Golden Path"' in text
-    assert "check-runs?per_page=100" in text
-    assert "actions/runs?head_sha=${HEAD_SHA}&event=pull_request&per_page=100" in text
-    assert "Same-SHA full CI is still running; metadata gate waits for its baseline." in text
-    assert "raise SystemExit(75)" in text
+    assert '--require "CI:CI Gate"' in text
+    assert '--require "CI:Requirement Traceability and Completion Audit"' in text
+    assert '--require "Runtime Acceptance:Compose Golden Path"' in text
+    assert "scripts/quality/verify_pr_baseline.py" in text
+    assert "base=${{ github.event.pull_request.base.sha || github.event.before }}" in text
+    assert "merge=${{ github.sha }}" in text
     assert "sleep 5" in text
-    assert "Timed out waiting for same-SHA full evidence baseline." in text
+    assert "Timed out waiting for current HEAD/base/merge full evidence baseline." in text
     assert "github.event.action != 'edited'" in text
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "base",
+        "merge",
+        "metadata",
+        "skipped",
+        "failure",
+        "missing",
+        "head",
+        "event",
+        "pr",
+        "current",
+    ],
+)
+def test_metadata_reuse_rejects_wrong_combination_and_incomplete_required_jobs(change: str) -> None:
+    """旧 base、另一个 merge、metadata 和未完成正式身份均不能冒充基线。"""
+    verify = runpy.run_path(str(ROOT / "scripts/quality/verify_pr_baseline.py"))["verify_baseline"]
+    source = {
+        "id": 1,
+        "name": "CI",
+        "workflow_id": 101,
+        "event": "pull_request",
+        "head_sha": "head",
+        "display_title": "CI evidence head=head base=base merge=merge lane=full",
+        "pull_requests": [{"head": {"sha": "head"}, "base": {"sha": "base"}}],
+        "status": "completed",
+        "conclusion": "success",
+    }
+    job = {"name": "CI Gate", "status": "completed", "conclusion": "success"}
+    if change in {"base", "merge", "metadata"}:
+        source["display_title"] = source["display_title"].replace(
+            {"base": "base=base", "merge": "merge=merge", "metadata": "lane=full"}[change],
+            "invalid",
+        )
+    elif change in {"failure", "skipped"}:
+        job["conclusion"] = change
+    elif change == "head":
+        source["head_sha"] = "other"
+    elif change == "event":
+        source["event"] = "push"
+    elif change == "pr":
+        source["pull_requests"] = []
+    elif change == "current":
+        source["id"] = 2
+    with pytest.raises(ValueError):
+        verify(
+            [source],
+            head="head",
+            base="base",
+            merge="merge",
+            current_run=2,
+            required={"CI": {"CI Gate"}},
+            workflow_ids={"CI": 101},
+            jobs=lambda _: [] if change == "missing" else [job],
+        )
+
+
+@pytest.mark.parametrize("workflow", ["CI", "Runtime Acceptance"])
+def test_metadata_reuse_waits_for_full_run_and_accepts_only_its_successful_identity(
+    workflow: str,
+) -> None:
+    verify = runpy.run_path(str(ROOT / "scripts/quality/verify_pr_baseline.py"))["verify_baseline"]
+    title = f"{workflow} evidence head=head base=base merge=merge lane=full"
+    source = {
+        "id": 1,
+        "name": title,
+        "workflow_id": 101,
+        "event": "pull_request",
+        "head_sha": "head",
+        "display_title": title,
+        "pull_requests": [{"head": {"sha": "head"}, "base": {"sha": "base"}}],
+        "status": "in_progress",
+        "conclusion": None,
+    }
+    arguments = {
+        "head": "head",
+        "base": "base",
+        "merge": "merge",
+        "current_run": 2,
+        "required": {workflow: {"CI Gate"}},
+        "workflow_ids": {workflow: 101},
+        "jobs": lambda _: [{"name": "CI Gate", "status": "completed", "conclusion": "success"}],
+    }
+    assert verify([source], **arguments) == 75
+    source.update(status="completed", conclusion="success")
+    assert verify([source], **arguments) == 0
+    latest = {**source, "id": 3, "conclusion": "failure"}
+    with pytest.raises(ValueError):
+        verify([source, latest], **arguments)
+    with pytest.raises(ValueError):
+        verify([{**source, "workflow_id": 102, "name": workflow}], **arguments)
+
+
+@pytest.mark.parametrize(
+    "catalog",
+    [
+        {},
+        {"total_count": 1, "workflows": []},
+        {"total_count": 0, "workflows": []},
+        {"total_count": 1, "workflows": [None]},
+        {"total_count": 2, "workflows": [{"name": "CI", "id": 101}] * 2},
+        *[
+            {"total_count": 1, "workflows": [{"name": "CI", "id": value}]}
+            for value in (None, True, 0, -1, "101")
+        ],
+    ],
+)
+def test_metadata_workflow_catalog_rejects_unknown_or_ambiguous_identity(catalog: dict) -> None:
+    resolve = runpy.run_path(str(ROOT / "scripts/quality/verify_pr_baseline.py"))[
+        "resolve_workflow_ids"
+    ]
+    with pytest.raises(ValueError):
+        resolve(catalog, {"CI"})
+
+
+def test_metadata_workflow_catalog_resolves_only_formal_unique_ids() -> None:
+    resolve = runpy.run_path(str(ROOT / "scripts/quality/verify_pr_baseline.py"))[
+        "resolve_workflow_ids"
+    ]
+    assert resolve(
+        {
+            "total_count": 3,
+            "workflows": [
+                {"name": "CI", "id": 101},
+                {"name": "Runtime Acceptance", "id": 102},
+                {"name": "Unrelated", "id": 103},
+            ],
+        },
+        {"CI", "Runtime Acceptance"},
+    ) == {"CI": 101, "Runtime Acceptance": 102}
+
+
+@pytest.mark.parametrize(
+    "preflight,postgres,expected",
+    [("failure", "skipped", 1), ("success", "skipped", 1), ("success", "success", 0)],
+)
+def test_actual_ci_gate_script_fails_closed_when_preflight_or_required_database_is_missing(
+    preflight: str,
+    postgres: str,
+    expected: int,
+) -> None:
+    """执行正式 Gate 的 shell，而非只检查 YAML 包含某个字符串。"""
+    git = shutil.which("git")
+    windows_bash = Path(git).parents[1] / "bin/bash.exe" if git else Path("missing-bash")
+    bash = (
+        str(windows_bash)
+        if windows_bash.is_file()
+        else (shutil.which("bash") if os.name != "nt" else None)
+    )
+    if not bash:
+        pytest.skip("Bash 不可用；Linux CI 必须执行此控制流回归")
+    gate = _section(CI.read_text(encoding="utf-8"), "  ci-gate:\n", "  actions-hygiene:\n")
+    script = textwrap.dedent(gate.split("        run: |\n", 1)[1])
+    result = subprocess.run(
+        [bash, "-c", script],
+        capture_output=True,
+        env={
+            **os.environ,
+            "PLAN_RESULT": "success",
+            "PREFLIGHT_RESULT": preflight,
+            "CORE_RESULT": "success",
+            "POSTGRES_REQUIRED": "true",
+            "POSTGRES_INTEGRATION_RESULT": postgres,
+            "FULLSTACK_REQUIRED": "false",
+            "FULLSTACK_RESULT": "skipped",
+        },
+    )
+    assert result.returncode == expected
 
 
 def test_draft_pr_required_checks_fail_closed_before_expensive_product_setup() -> None:
@@ -124,7 +345,10 @@ def test_runtime_required_check_fails_closed_for_draft_then_reenters_on_ready() 
     )
     assert "      - name: Block Draft required evidence\n" in job
     assert "github.event.pull_request.draft == true" in job
-    assert job.index("Block Draft required evidence") < job.index("      - name: Checkout")
+    assert job.index("Lightweight source and template preflight") < job.index(
+        "Block Draft required evidence"
+    )
+    assert job.index("Block Draft required evidence") < job.index("Prepare canonical Runtime env")
     assert "Canonical Compose startup, security, persistence, and recovery" in runtime
 
 
@@ -132,7 +356,8 @@ def test_runtime_required_check_keeps_cheap_unchanged_fast_path() -> None:
     """Ready/main 保持 Runtime fast-path；普通非 Runtime 改动不重建整套 Compose。"""
     runtime = RUNTIME.read_text(encoding="utf-8")
     assert "name: Compose Golden Path" in runtime
-    assert "Detect Runtime risk changes" in runtime
+    assert "Classify shared Runtime responsibility" in runtime
+    assert "scripts/quality/classify_ci_scope.py" in runtime
     assert "Fast-path unchanged Runtime" in runtime
     assert "No Runtime-relevant changes detected" in runtime
     assert "Canonical Compose startup, security, persistence, and recovery" in runtime
@@ -163,7 +388,7 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
     """普通 Ready 保留产品证据 Runner；Hygiene 只在 main push 后占用维护 Runner。"""
     ci = CI.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
-    assert ci.count("runs-on: ubuntu-24.04") == 5
+    assert ci.count("runs-on: ubuntu-24.04") == 6
     assert "  actions-hygiene:" in ci
     hygiene = ci.split("  actions-hygiene:", 1)[1]
     assert "github.event_name == 'push'" in hygiene
@@ -174,13 +399,14 @@ def test_daily_code_pr_runner_budget_keeps_independent_owners_but_avoids_draft_h
         "  quality-core:\n"
         "    name: Requirement Traceability and Completion Audit\n"
         "    if: always()\n"
-        "    needs: ci-plan\n" in ci
+        "    needs: [ci-plan, preflight]\n" in ci
     )
     assert "Block Draft required evidence" in ci
     assert "Block Draft required evidence" in runtime
     core = _section(ci, "  quality-core:\n", "  postgres-integration:\n")
     assert "github.event.pull_request.draft == false" not in core
-    assert "github.event.pull_request.draft == false" not in runtime
+    runtime_header = runtime.split("  compose-golden-path:\n", 1)[1].split("    steps:", 1)[0]
+    assert "github.event.pull_request.draft == false" not in runtime_header
 
 
 def test_frontend_typechecks_once_through_build() -> None:
@@ -270,7 +496,7 @@ def test_tooling_main_push_uses_lightweight_evidence_gate_before_os_jobs() -> No
     assert "name: Reuse merged PR Tooling Evidence" in tooling
     assert '--required-check "Linux Local Development Tooling"' in tooling
     assert '--required-check "Windows Development and Compose Tooling"' in tooling
-    assert "needs: main-evidence" in tooling
+    assert "needs: [main-evidence, tooling-plan]" in tooling
     assert "needs.main-evidence.outputs.linux_reusable != 'true'" in tooling
     assert "needs.main-evidence.outputs.windows_reusable != 'true'" in tooling
 
@@ -313,6 +539,14 @@ def test_ci_control_plane_compiles_before_project_python_setup() -> None:
     assert "python3 -m py_compile" in compile_step
     assert "scripts/quality/resolve_main_evidence.py" in ci
     assert "scripts/quality/classify_ci_scope.py" in ci
+    for relative in (
+        "scripts/quality/classify_ci_scope.py",
+        "scripts/quality/check_env_templates.py",
+        "scripts/quality/verify_pr_baseline.py",
+        "scripts/dev/validate_changed.py",
+    ):
+        assert relative in compile_step
+        ast.parse((ROOT / relative).read_text(encoding="utf-8"), feature_version=(3, 12))
 
 
 def test_resolver_process_failure_falls_back_to_real_validation() -> None:
@@ -336,22 +570,22 @@ def test_tooling_keeps_linux_and_windows_as_independent_jobs() -> None:
     tooling = TOOLING.read_text(encoding="utf-8")
 
     linux = _section(tooling, "  linux-tooling:\n", "  windows-tooling:\n")
-    assert "name: Linux Local Development Tooling" in linux
-    assert "needs: main-evidence" in linux
+    assert "|| 'Linux Local Development Tooling'" in linux
+    assert "needs: [main-evidence, tooling-plan]" in linux
     assert "runs-on: ubuntu-24.04" in linux
     assert "AIMA_DB_HOST: 127.0.0.1" in linux
 
     windows = tooling.split("  windows-tooling:\n", 1)[1]
-    assert "name: Windows Development and Compose Tooling" in windows
-    assert "needs: main-evidence" in windows
+    assert "|| 'Windows Development and Compose Tooling'" in windows
+    assert "needs: [main-evidence, tooling-plan]" in windows
     assert "runs-on: windows-2025" in windows
 
     gate = _section(tooling, "  main-evidence:\n", "  linux-tooling:\n")
     assert gate.count("      - name: Checkout\n") == 1
 
 
-def test_ci_plan_allows_core_postgres_and_fullstack_to_run_in_parallel() -> None:
-    """轻量 CI Plan 只提供 scope，三个重 Evidence Owner 不再彼此串行等待。"""
+def test_preflight_allows_core_postgres_and_fullstack_to_run_in_parallel_after_success() -> None:
+    """轻量失败先阻断，成功后三个独立重层并行，不等待产品 Core。"""
     text = CI.read_text(encoding="utf-8")
     plan = _section(text, "  ci-plan:\n", "  quality-core:\n")
     core = _section(text, "  quality-core:\n", "  postgres-integration:\n")
@@ -365,11 +599,13 @@ def test_ci_plan_allows_core_postgres_and_fullstack_to_run_in_parallel() -> None
     assert "Block failed CI Plan" in core
     assert "PLAN_RESULT: ${{ needs.ci-plan.result }}" in gate
     assert 'test "${PLAN_RESULT}" = "success"' in gate
-    assert "needs: ci-plan" in core
-    assert "needs: ci-plan" in postgres
+    assert "needs: [ci-plan, preflight]" in core
+    assert "needs: [ci-plan, preflight]" in postgres
+    assert "needs.preflight.result == 'success'" in postgres
     assert "needs: quality-core" not in postgres
     assert "github.event.pull_request.draft == false" in postgres
-    assert "needs: ci-plan" in fullstack
+    assert "needs: [ci-plan, preflight]" in fullstack
+    assert "needs.preflight.result == 'success'" in fullstack
     assert "needs: quality-core" not in fullstack
     assert "github.event.pull_request.draft == false" in fullstack
     assert "      - ci-plan\n" in gate

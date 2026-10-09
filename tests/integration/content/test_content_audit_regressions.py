@@ -16,9 +16,16 @@ from aima_ugc.adapters.persistence.postgres.content_complete import (
 from aima_ugc.adapters.persistence.postgres.content_contributions import (
     capture_content_contribution_snapshots_batch,
 )
+from aima_ugc.adapters.persistence.postgres.content_lifecycle import (
+    PostgresContentLifecycleRepository,
+)
 from aima_ugc.adapters.persistence.postgres.voice_plaza_projection import (
     defer_voice_plaza_projection,
     flush_deferred_voice_plaza_projection,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
+    XiaohongshuMappingContext,
+    map_content,
 )
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
@@ -62,7 +69,382 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
-from sqlalchemy import delete, event, func, insert, select, text
+from sqlalchemy import delete, event, func, insert, select, text, update
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_unrecognized_image_list_item_cannot_delete_existing_positions(
+    database_runtime: DatabaseRuntime, batch: bool
+) -> None:
+    now = datetime(2026, 10, 9, tzinfo=UTC)
+    original_source = _source(database_runtime, observed_at=now, suffix="images-original")
+    sparse_source = _source(
+        database_runtime, observed_at=now + timedelta(seconds=1), suffix="images-unknown-item"
+    )
+    original = CanonicalContentV1(
+        platform="xiaohongshu",
+        external_content_id="malformed-images",
+        content_type="image",
+        observed_at=now,
+        source=original_source,
+        observed_fields=["media"],
+        media=[
+            CanonicalMediaV1(
+                media_type="image",
+                position=position,
+                url=f"https://sns-i11.rednotecdn.com/{position}.webp",
+            )
+            for position in (0, 1)
+        ],
+    )
+    sparse = map_content(
+        {
+            "id": "malformed-images",
+            "type": "normal",
+            "images_list": [
+                {"url": "https://sns-i11.rednotecdn.com/new.webp"},
+                {"unrecognized_provider_error": "temporarily_unavailable"},
+            ],
+        },
+        XiaohongshuMappingContext(
+            provider_request_id=sparse_source.provider_request_id,
+            provider_attempt_id=sparse_source.provider_attempt_id,
+            raw_artifact_id=sparse_source.raw_artifact_id,
+            operation="get_image_note_detail",
+            source_type="content",
+            source_value="malformed-images",
+            observed_at=sparse_source.observed_at,
+        ),
+        item_locator=sparse_source.item_locator,
+    )
+    with database_runtime.new_session() as session:
+        for item in (original, sparse):
+            with session.begin():
+                repository = PostgresCompleteContentRepository(session)
+                repository.ingest_contents_batch((item,)) if batch else repository.ingest_content(
+                    item
+                )
+        with session.begin():
+            rows = (
+                session.execute(
+                    select(content_media_table).order_by(content_media_table.c.position)
+                )
+                .mappings()
+                .all()
+            )
+            assert [row["position"] for row in rows] == [0, 1]
+            assert rows[0]["url"].endswith("new.webp") and rows[1]["url"].endswith("1.webp")
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_cover_only_video_first_identity_completion_preserves_cover_and_token(
+    database_runtime: DatabaseRuntime, batch: bool
+) -> None:
+    now = datetime(2026, 10, 9, tzinfo=UTC)
+
+    def observation(step, media):
+        at = now + timedelta(seconds=step)
+        return CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id="first-video-identity",
+            content_type="video",
+            observed_fields=["content_type", "media"],
+            observed_at=at,
+            source=_source(database_runtime, observed_at=at, suffix=f"first-id-{step}"),
+            media_collection_mode="partial",
+            media=[media],
+        )
+
+    session = database_runtime.new_session()
+    try:
+
+        def write(item):
+            with session.begin():
+                repository = PostgresCompleteContentRepository(session)
+                return (
+                    repository.ingest_contents_batch((item,))[0]
+                    if batch
+                    else repository.ingest_content(item)
+                )
+
+        write(
+            observation(
+                0,
+                CanonicalMediaV1(
+                    media_type="video",
+                    preview_url="https://sns-i11.rednotecdn.com/cover.webp",
+                    observed_fields=["media_type", "preview_url"],
+                ),
+            )
+        )
+        with session.begin():
+            token = session.execute(
+                select(content_media_table.c.observation_metadata)
+            ).scalar_one()["identity_token"]
+        write(
+            observation(
+                1,
+                CanonicalMediaV1(
+                    media_type="video",
+                    external_media_id="first",
+                    url="https://sns-v11.rednotecdn.com/video.mp4",
+                    observed_fields=["media_type", "external_media_id", "url"],
+                ),
+            )
+        )
+        with session.begin():
+            media = session.execute(select(content_media_table)).mappings().one()
+            assert media["preview_url"] == "https://sns-i11.rednotecdn.com/cover.webp"
+            assert media["url"].endswith("video.mp4")
+            assert media["observation_metadata"]["identity_token"] == token
+            assert session.scalar(select(contents_table.c.current_version)) == 1
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("batch", [False, True])
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("later_field", ["preview_url", "url"])
+def test_revoke_video_source_preserves_later_cover_and_clears_revoked_url(
+    database_runtime: DatabaseRuntime,
+    batch: bool,
+    legacy: bool,
+    later_field: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """历史 v1 或替换身份的 v2 都不能因封面晚到而保留已撤销的流。"""
+    now = datetime(2026, 10, 9, tzinfo=UTC)
+
+    def observation(step, kind, media, *, partial=True):
+        at = now + timedelta(seconds=step)
+        return CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id="revoke-video-source",
+            content_type=kind,
+            observed_fields=["content_type", "media"],
+            observed_at=at,
+            source=_source(database_runtime, observed_at=at, suffix=f"revoke-video-{step}"),
+            media_collection_mode="partial" if partial else "complete",
+            media=[media],
+        )
+
+    first = observation(
+        0,
+        "image",
+        CanonicalMediaV1(media_type="image", url="https://sns-i11.rednotecdn.com/old-image.webp"),
+    )
+    source_a = observation(
+        1,
+        "video",
+        CanonicalMediaV1(
+            media_type="video",
+            external_media_id="video",
+            url="https://sns-v11.rednotecdn.com/revoked.mp4",
+            preview_url="https://sns-i11.rednotecdn.com/revoked.webp",
+            observed_fields=None
+            if legacy
+            else ["media_type", "external_media_id", "url", "preview_url"],
+        ),
+        partial=not legacy,
+    )
+    later_value = (
+        "https://sns-i11.rednotecdn.com/later.webp"
+        if later_field == "preview_url"
+        else "https://sns-v11.rednotecdn.com/later.mp4"
+    )
+    source_b = observation(
+        2,
+        "video",
+        CanonicalMediaV1.model_validate(
+            {
+                "media_type": "video",
+                later_field: later_value,
+                "observed_fields": ["media_type", later_field],
+            }
+        ),
+    )
+    session = database_runtime.new_session()
+    try:
+
+        def write(item):
+            with session.begin():
+                repository = PostgresCompleteContentRepository(session)
+                return (
+                    repository.ingest_contents_batch((item,))[0]
+                    if batch
+                    else repository.ingest_content(item)
+                )
+
+        if not legacy:
+            write(first)
+        if legacy:
+            from aima_ugc.adapters.persistence.postgres import content_contributions
+
+            build = content_contributions._build_delta
+
+            def legacy_delta(*args, **kwargs):
+                delta = build(*args, **kwargs)
+                for side in ("before", "after"):
+                    for media in delta["collections"]["media"][side]:
+                        media.pop("observation_metadata", None)
+                return delta
+
+            with monkeypatch.context() as patch:
+                patch.setattr(content_contributions, "_build_delta", legacy_delta)
+                write(source_a)
+            with session.begin():
+                row = session.execute(select(content_source_contributions_table)).mappings().one()
+                assert row["delta"]["schema_version"] == "content-source-contribution.v1"
+                session.execute(update(content_media_table).values(observation_metadata={}))
+        else:
+            write(source_a)
+        write(source_b)
+        with session.begin():
+            contributions = tuple(
+                session.execute(
+                    select(content_source_contributions_table).where(
+                        content_source_contributions_table.c.provider_attempt_id
+                        == UUID(source_a.source.provider_attempt_id)
+                    )
+                ).mappings()
+            )
+            lifecycle = PostgresContentLifecycleRepository(session)
+            if batch:
+                lifecycle.apply_contributions_batch(
+                    contributions, revoked_at=now + timedelta(seconds=10)
+                )
+            else:
+                lifecycle.apply_contributions(contributions, revoked_at=now + timedelta(seconds=10))
+            media = session.execute(select(content_media_table)).mappings().one()
+            assert media["media_type"] == "video"
+            assert media[later_field] == later_value
+            assert media["url" if later_field == "preview_url" else "preview_url"] is None
+            assert media["external_media_id"] is None
+            assert media["provider_attempt_id"] == UUID(source_b.source.provider_attempt_id)
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_media_partial_complete_late_retry_and_source_rollback(
+    database_runtime: DatabaseRuntime,
+    batch: bool,
+) -> None:
+    """scalar/batch 必须同样保留稀疏来源、拒绝旧观察并按属性撤销。"""
+    now = datetime(2026, 10, 9, tzinfo=UTC)
+
+    def observation(step: int, media: list[CanonicalMediaV1], *, complete: bool = False):
+        observed_at = now + timedelta(seconds=step)
+        return CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id="media-merge-regression",
+            content_type="video",
+            observed_fields=["content_type", "media"],
+            observed_at=observed_at,
+            media=media,
+            media_collection_mode="complete" if complete else "partial",
+            source=_source(database_runtime, observed_at=observed_at, suffix=f"media-{step}"),
+        )
+
+    first = observation(
+        0,
+        [
+            CanonicalMediaV1(
+                media_type="video",
+                external_media_id="video-1",
+                url="https://sns-v11.rednotecdn.com/old.mp4",
+                preview_url="https://sns-i11.rednotecdn.com/old.webp",
+            )
+        ],
+    )
+    changed = observation(
+        2,
+        [
+            CanonicalMediaV1(
+                media_type="video",
+                url="https://sns-v11.rednotecdn.com/new.mp4",
+                preview_url="https://sns-i11.rednotecdn.com/new.webp",
+                observed_fields=["url", "preview_url"],
+            )
+        ],
+    )
+    later = observation(
+        3,
+        [
+            CanonicalMediaV1(
+                media_type="video",
+                preview_url="https://sns-i11.rednotecdn.com/later.webp",
+                observed_fields=["preview_url"],
+            )
+        ],
+    )
+    stale = observation(
+        1,
+        [
+            CanonicalMediaV1(
+                media_type="image",
+                external_media_id="stale",
+                url="https://sns-i11.rednotecdn.com/stale.webp",
+            )
+        ],
+        complete=True,
+    )
+    deletion = observation(4, [], complete=True)
+    session = database_runtime.new_session()
+    try:
+
+        def write(item):
+            with session.begin():
+                repository = PostgresCompleteContentRepository(session)
+                return (
+                    repository.ingest_contents_batch((item,))[0]
+                    if batch
+                    else repository.ingest_content(item)
+                )
+
+        result = write(first)
+        write(changed)
+        write(later)
+        write(later)
+        write(stale)
+        with session.begin():
+            media = dict(session.execute(select(content_media_table)).mappings().one())
+            assert media["media_type"] == "video"
+            assert media["url"].endswith("new.mp4")
+            assert media["preview_url"].endswith("later.webp")
+            contributions = tuple(
+                session.execute(
+                    select(content_source_contributions_table).where(
+                        content_source_contributions_table.c.provider_attempt_id
+                        == UUID(changed.source.provider_attempt_id)
+                    )
+                ).mappings()
+            )
+            assert len(contributions) == 1
+            assert contributions[0]["delta"]["schema_version"] == "content-source-contribution.v2"
+            PostgresContentLifecycleRepository(session).apply_contributions_batch(
+                contributions,
+                revoked_at=now + timedelta(seconds=10),
+            )
+            restored = session.execute(select(content_media_table)).mappings().one()
+            assert restored["url"].endswith("old.mp4")
+            assert restored["preview_url"].endswith("later.webp")
+            assert restored["external_media_id"] == "video-1"
+        write(deletion)
+        write(stale)
+        with session.begin():
+            assert session.scalar(select(func.count()).select_from(content_media_table)) == 0
+            # 来源撤销本身创建版本；媒体单独合并和删除不会推进业务版本。
+            assert (
+                session.scalar(
+                    select(contents_table.c.current_version).where(
+                        contents_table.c.id == result.target_id,
+                    )
+                )
+                == 2
+            )
+    finally:
+        session.close()
 
 
 @pytest.fixture
@@ -80,6 +462,271 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
                 "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
+
+
+@pytest.mark.parametrize("same_content", [False, True])
+@pytest.mark.parametrize("legacy_first", [False, True])
+def test_mixed_legacy_and_partial_media_rollback_preserves_all_row_metadata(
+    database_runtime: DatabaseRuntime,
+    monkeypatch: pytest.MonkeyPatch,
+    same_content: bool,
+    legacy_first: bool,
+) -> None:
+    """历史 Before 无新列与后续 partial 行混排时，批量 INSERT 不能丢 marker 或缺 bind。"""
+    from aima_ugc.adapters.persistence.postgres import content_contributions
+
+    now = datetime(2026, 10, 9, tzinfo=UTC)
+    sources = [
+        _source(database_runtime, observed_at=now + timedelta(seconds=step), suffix=f"mixed-{step}")
+        for step in range(3)
+    ]
+
+    def canonical(index, step, media):
+        return CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id="mixed-media" if same_content else f"mixed-media-{index}",
+            content_type="video",
+            observed_at=sources[step].observed_at,
+            source=sources[step].model_copy(update={"item_locator": f"mixed:{index}"}),
+            observed_fields=["media"],
+            media_collection_mode="partial" if step == 2 else "complete",
+            media=media,
+        )
+
+    def media(index, step):
+        return CanonicalMediaV1(
+            media_type="video",
+            external_media_id=f"stable-{index}",
+            position=index if same_content else 0,
+            url=f"https://sns-v11.rednotecdn.com/{index}-{step}",
+        )
+
+    with database_runtime.new_session() as session:
+        owner = PostgresCompleteContentRepository(session)
+        with session.begin():
+            if same_content:
+                owner.ingest_content(canonical(0, 0, [media(0, 0), media(1, 0)]))
+            else:
+                for index in (0, 1):
+                    owner.ingest_content(canonical(index, 0, [media(index, 0)]))
+        build = content_contributions._build_delta
+
+        def old_delta(*args, **kwargs):
+            delta = build(*args, **kwargs)
+            for side in ("before", "after"):
+                for row in delta["collections"]["media"][side]:
+                    row.pop("observation_metadata", None)
+            return delta
+
+        with monkeypatch.context() as patch:
+            patch.setattr(content_contributions, "_build_delta", old_delta)
+            with session.begin():
+                if same_content:
+                    owner.ingest_content(canonical(0, 1, [media(0, 1), media(1, 1)]))
+                else:
+                    for index in (0, 1):
+                        owner.ingest_content(canonical(index, 1, [media(index, 1)]))
+                session.execute(update(content_media_table).values(observation_metadata={}))
+        touched = 1 if legacy_first else 0
+        with session.begin():
+            if not same_content:
+                ordered = (
+                    session.execute(
+                        select(contents_table.c.external_content_id).order_by(contents_table.c.id)
+                    )
+                    .scalars()
+                    .all()
+                )
+                touched = int(ordered[1 if legacy_first else 0].rsplit("-", 1)[1])
+            owner.ingest_content(
+                canonical(
+                    touched,
+                    2,
+                    [
+                        CanonicalMediaV1(
+                            media_type="video",
+                            position=touched if same_content else 0,
+                            preview_url="https://sns-i11.rednotecdn.com/later",
+                            observed_fields=["preview_url"],
+                        )
+                    ],
+                )
+            )
+            before = {
+                row["content_id"]: dict(row)
+                for row in session.execute(select(content_media_table)).mappings()
+                if row["preview_url"] is not None
+            }
+            contributions = tuple(
+                session.execute(
+                    select(content_source_contributions_table).where(
+                        content_source_contributions_table.c.provider_attempt_id
+                        == UUID(sources[1].provider_attempt_id)
+                    )
+                ).mappings()
+            )
+            if not same_content:
+                contributions = tuple(
+                    sorted(
+                        contributions,
+                        key=lambda row: str(row["content_id"]),
+                        reverse=not legacy_first,
+                    )
+                )
+            PostgresContentLifecycleRepository(session).apply_contributions_batch(
+                contributions, revoked_at=now + timedelta(seconds=10)
+            )
+            rows = session.execute(select(content_media_table)).mappings().all()
+            assert len(rows) == 2
+            assert all(row["url"].endswith("-0") for row in rows)
+            for row in rows:
+                if row["preview_url"] is not None:
+                    old_metadata = before[row["content_id"]]["observation_metadata"]
+                    assert (
+                        row["observation_metadata"]["identity_token"]
+                        == old_metadata["identity_token"]
+                    )
+                    assert (
+                        row["observation_metadata"]["fields"]["preview_url"]
+                        == old_metadata["fields"]["preview_url"]
+                    )
+                    assert row["observation_metadata"]["fields"]["url"][
+                        "provider_attempt_id"
+                    ] == str(sources[0].provider_attempt_id)
+                else:
+                    assert row["observation_metadata"] == {}
+
+
+def test_media_partial_batch_uses_bounded_queries_and_final_contribution_rows(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """媒体数量增长只增加集合数据量，不能退化为逐条预读或错误 After 快照。"""
+    now = datetime(2026, 10, 9, tzinfo=UTC)
+    source = _source(database_runtime, observed_at=now, suffix="media-batch")
+    later_source = _source(
+        database_runtime, observed_at=now + timedelta(seconds=1), suffix="media-batch-later"
+    )
+    original = tuple(
+        CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id=f"bounded-media-{index}",
+            content_type="video",
+            observed_at=now,
+            observed_fields=["content_type", "media"],
+            source=source.model_copy(update={"item_locator": f"media:{index}"}),
+            media=[
+                CanonicalMediaV1(
+                    media_type="video",
+                    external_media_id=f"video-{index}",
+                    url=f"https://sns-v11.rednotecdn.com/{index}.mp4",
+                )
+            ],
+        )
+        for index in range(101)
+    )
+    sparse = tuple(
+        item.model_copy(
+            update={
+                "observed_at": now + timedelta(seconds=1),
+                "media_collection_mode": "partial",
+                "source": later_source.model_copy(update={"item_locator": f"media:{index}"}),
+                "media": [
+                    CanonicalMediaV1(
+                        media_type="video",
+                        preview_url=f"https://sns-i11.rednotecdn.com/{index}.webp",
+                        observed_fields=["preview_url"],
+                    )
+                ],
+            }
+        )
+        for index, item in enumerate(original)
+    )
+    session = database_runtime.new_session()
+    count = 0
+
+    def count_statement(*_args: object) -> None:
+        nonlocal count
+        count += 1
+
+    try:
+        with session.begin():
+            PostgresCompleteContentRepository(session).ingest_contents_batch(original)
+        event.listen(database_runtime.engine, "before_cursor_execute", count_statement)
+        with session.begin():
+            results = PostgresCompleteContentRepository(session).ingest_contents_batch(sparse)
+        event.remove(database_runtime.engine, "before_cursor_execute", count_statement)
+        assert count < 80
+        assert len(results) == 101
+        for index, result in enumerate(results):
+            assert (
+                result.contribution_after.collections["media"][0]["url"]
+                == f"https://sns-v11.rednotecdn.com/{index}.mp4"
+            )
+            assert result.version_no == 1
+    finally:
+        if event.contains(database_runtime.engine, "before_cursor_execute", count_statement):
+            event.remove(database_runtime.engine, "before_cursor_execute", count_statement)
+        session.close()
+
+
+def test_concurrent_media_delete_cannot_remove_newer_video_observation(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    """两个真实事务竞争 Content 行锁后，旧全集删除仍不能覆盖较新的媒体事实。"""
+    now = datetime(2026, 10, 9, tzinfo=UTC)
+    sources = tuple(
+        _source(
+            database_runtime,
+            observed_at=now + timedelta(seconds=index),
+            suffix=f"media-concurrent-{index}",
+        )
+        for index in range(3)
+    )
+    observations = tuple(
+        CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id="media-concurrent",
+            content_type="video",
+            observed_at=now + timedelta(seconds=index),
+            observed_fields=["content_type", "media"],
+            media=[]
+            if index == 1
+            else [
+                CanonicalMediaV1(
+                    media_type="video",
+                    external_media_id="video",
+                    url=f"https://sns-v11.rednotecdn.com/{index}.mp4",
+                )
+            ],
+            source=source,
+        )
+        for index, source in enumerate(sources)
+    )
+    barrier = Barrier(2)
+
+    def write(index: int) -> UUID:
+        worker_session = database_runtime.new_session()
+        try:
+            with worker_session.begin():
+                worker_session.execute(text("SET LOCAL lock_timeout = '3s'"))
+                if index:
+                    barrier.wait(timeout=5)
+                return (
+                    PostgresCompleteContentRepository(worker_session)
+                    .ingest_content(observations[index])
+                    .target_id
+                )
+        finally:
+            worker_session.close()
+
+    content_id = write(0)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(write, index) for index in (1, 2)]
+        assert all(future.result(timeout=10) == content_id for future in futures)
+    with database_runtime.engine.connect() as connection:
+        row = connection.execute(select(content_media_table)).mappings().one()
+        assert row["url"] == "https://sns-v11.rednotecdn.com/2.mp4"
+        assert row["media_type"] == "video"
 
 
 def _source(runtime: DatabaseRuntime, *, observed_at: datetime, suffix: str) -> CanonicalSourceV1:

@@ -517,6 +517,7 @@ class PostgresCollectionHttpService:
                     "batch_supplement",
                     "content_supplement",
                     "account_discovery",
+                    "media_refresh",
                 }:
                     raise CollectionConflict
                 mode: CollectionRunMode = mode_value
@@ -589,7 +590,7 @@ class PostgresCollectionHttpService:
                 run = repository.get_run(run_id)
                 if run is None:
                     raise CollectionResourceNotFound
-                if run.config_snapshot.get("mode") != "account_discovery":
+                if run.config_snapshot.get("mode") not in {"account_discovery", "media_refresh"}:
                     raise CollectionConflict
                 if run.status != "queued":
                     if run.status not in {"failed", "partial_success"}:
@@ -621,6 +622,16 @@ class PostgresCollectionHttpService:
                 if job.status == "cancelled":
                     repository.settle_account_job_terminal(
                         job.id, status=job.status, error_code="cancel_requested"
+                    )
+                    repository.settle_media_refresh_job_terminal(
+                        job.id, status=job.status, error_code="cancel_requested"
+                    )
+                    from aima_ugc.adapters.persistence.postgres.content_playback import (
+                        PostgresContentPlaybackRepository,
+                    )
+
+                    PostgresContentPlaybackRepository(session).settle_job(
+                        job.id, code="cancelled", now=beijing_now()
                     )
         finally:
             session.close()
@@ -845,6 +856,11 @@ class PostgresCollectionHttpService:
                 None,
             )
         selected_platforms = tuple(selection.platform for selection in request.platforms)
+        # 补采分类针对完整 Current；新 Run 冻结全量目录，重试/接管不读取新目录。
+        supplement_filter = BrandVehicleFilterSnapshot(
+            search_semantics="not_applicable",
+            catalog=PostgresBrandVehicleRepository(session).snapshot(brand_ids=None),
+        ).model_dump(mode="json")
         if request.mode == "content_supplement":
             assert request.supplement_targets is not None
             target_selection = request.supplement_targets
@@ -891,7 +907,7 @@ class PostgresCollectionHttpService:
                     for item in source_items
                 ),
                 (),
-                {},
+                supplement_filter,
                 selection_snapshot,
             )
         reader = PostgresCollectionTargetReader(
@@ -939,7 +955,7 @@ class PostgresCollectionHttpService:
                 for target in source_items
             ),
             (),
-            {},
+            supplement_filter,
             None,
         )
 
@@ -1321,6 +1337,8 @@ def _runtime_item_response(
 
 
 def _runtime_display_name(record: CollectionRuntimeReadRecord) -> str:
+    if record.record_type == "tikhub_media_refresh":
+        return "小红书视频播放准备"
     if record.record_type == "canonical_replay":
         return "历史数据重筛"
     if record.record_type == "excel_import":

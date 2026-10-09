@@ -238,7 +238,7 @@ ordinal > after_ordinal
 指定 content_version 的正文/作者/URL
 + Content Current 的互动指标
 + 对应来源 Provider/Raw
-+ 指定版本下当前 Analysis Identity 匹配的 Analysis
++ 指定版本的直接成功或合法等价 Analysis 及人工效果
 + 指定版本的有效 Brand Evidence 与派生竞品范围
 + 指定版本的有效 Vehicle Evidence
 + Comments
@@ -254,29 +254,18 @@ Brand 与 Vehicle 都按 Export Item 冻结的 `content_version` 读取，不在
 
 ## 7. Analysis 怎样进入导出
 
-当前 Export Repository 会按当前配置身份筛选 Analysis：
-
-```text
-prompt_version
-prompt_sha256
-taxonomy_sha256
-model_provider
-model
-```
-
-只读取：
+Export Repository 批量读取明确冻结的目标：
 
 ```text
 content_id + 冻结 content_version
 ```
 
-下与当前 Analysis Identity 匹配的最新结果。
+先选择该版本最新直接成功 Result；没有直接结果时读取合法输入等价引用，并使用该目标版本有效的人工相关性和维度纠正。模型、Prompt、Scheme 与分析时间仍属于真实来源 Result，不冒充当前配置执行。完整选择规则由 [`backend/src/aima_ugc/modules/analysis/README.md`](../analysis/README.md#6-analysis-为什么绑定-content-version) 维护。
 
 如果：
 
-- 当前版本从未分析；
-- 只有旧 Content Version Analysis；
-- Prompt/Taxonomy/Model 已变化，旧 Analysis 不再匹配；
+- 冻结版本从未分析且没有有效引用；
+- 只有旧版本 Analysis，输入变化或历史协议无法证明等价；
 
 那么该 Content 仍可以导出，但 AI 字段为空，并计入：
 
@@ -285,6 +274,8 @@ unanalyzed_count
 ```
 
 而不是偷偷使用 stale Analysis。
+
+报告的数据与生成依据也按同一冻结目标选择来源，分别保留目标版本和真实 Result/人工来源。后续 Current 变化、目录修改或重试不会把另一个版本的标签混入已冻结报告。
 
 ---
 

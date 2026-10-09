@@ -67,6 +67,15 @@ describe('collection runtime feature', () => {
     expect(generated.listCollectionRuntimeRuns).toHaveBeenCalledWith({ record_types: ['tikhub_discovery', 'tikhub_batch_supplement'], status: 'running', limit: 20 })
   })
 
+  it('平台采集页签包含媒体刷新，并可按正式记录类型筛选', async () => {
+    const store = useImportBatchesStore()
+    await store.setTab('tikhub')
+    expect(generated.listCollectionRuntimeRuns).toHaveBeenLastCalledWith(expect.objectContaining({ record_types: expect.arrayContaining(['tikhub_media_refresh']) }))
+    store.filters.recordType = 'tikhub_media_refresh'
+    await store.refresh()
+    expect(generated.listCollectionRuntimeRuns).toHaveBeenLastCalledWith(expect.objectContaining({ record_types: ['tikhub_media_refresh'] }))
+  })
+
   it('creates a discovery Run through the generated Contract', async () => {
     generated.createCollectionRun.mockResolvedValue({ run_id: 'run-1', job_id: 'job-1', mode: 'discovery', status: 'queued' })
     await createTikHubCollectionRun({

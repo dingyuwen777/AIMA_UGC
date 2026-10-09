@@ -21,6 +21,7 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
     analysis_content_run_targets_table,
     analysis_content_runs_table,
+    analysis_content_version_reuses_table,
     analysis_llm_capacity_profiles_table,
 )
 from aima_ugc.modules.collection.candidate_tables import (
@@ -48,6 +49,10 @@ from aima_ugc.modules.content.account_tables import account_external_ids_table
 from aima_ugc.modules.content.availability_tables import (
     content_availability_observations_table,
 )
+from aima_ugc.modules.content.consistency_repair_tables import (
+    content_consistency_repair_runs_table,
+    content_consistency_repair_targets_table,
+)
 from aima_ugc.modules.content.contribution_tables import content_source_contributions_table
 from aima_ugc.modules.content.extended_tables import (
     comment_locations_table,
@@ -61,6 +66,7 @@ from aima_ugc.modules.content.extended_tables import (
     content_topics_table,
 )
 from aima_ugc.modules.content.media_cache_tables import content_media_cache_entries_table
+from aima_ugc.modules.content.media_playback_tables import content_media_playback_states_table
 from aima_ugc.modules.content.read_model_tables import (
     voice_plaza_content_projection_table,
     voice_plaza_filter_catalog_entries_table,
@@ -159,6 +165,8 @@ register_content_source_constraints()
 register_ingestion_schema()
 
 __all__ = [
+    "content_consistency_repair_runs_table",
+    "content_consistency_repair_targets_table",
     "wisersone_downloads_table",
     "analysis_content_label_pairs_table",
     "analysis_content_manual_overrides_table",
@@ -166,6 +174,7 @@ __all__ = [
     "analysis_content_request_items_table",
     "analysis_content_requests_table",
     "analysis_content_results_table",
+    "analysis_content_version_reuses_table",
     "analysis_content_run_targets_table",
     "analysis_content_runs_table",
     "analysis_llm_capacity_profiles_table",
@@ -217,6 +226,7 @@ __all__ = [
     "content_locations_table",
     "content_media_cache_entries_table",
     "content_media_table",
+    "content_media_playback_states_table",
     "content_mentions_table",
     "content_metric_observations_table",
     "content_source_contributions_table",

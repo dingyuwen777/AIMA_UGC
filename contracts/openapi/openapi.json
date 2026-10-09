@@ -3079,6 +3079,15 @@
         "title": "CollectionProviderConfigResponse",
         "type": "object"
       },
+      "CollectionRunCreateMode": {
+        "enum": [
+          "discovery",
+          "account_discovery",
+          "batch_supplement",
+          "content_supplement"
+        ],
+        "type": "string"
+      },
       "CollectionRunCreateRequest": {
         "additionalProperties": false,
         "description": "一次性发现冻结 Search Terms 与 Brand Filter；补采只处理既有内容。",
@@ -3172,7 +3181,7 @@
             "type": "array"
           },
           "mode": {
-            "$ref": "#/components/schemas/CollectionRunMode"
+            "$ref": "#/components/schemas/CollectionRunCreateMode"
           },
           "platforms": {
             "items": {
@@ -3301,13 +3310,15 @@
         "type": "object"
       },
       "CollectionRunMode": {
-        "enum": [
-          "discovery",
-          "account_discovery",
-          "batch_supplement",
-          "content_supplement"
-        ],
-        "type": "string"
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CollectionRunCreateMode"
+          },
+          {
+            "const": "media_refresh",
+            "type": "string"
+          }
+        ]
       },
       "CollectionRunPlatformRequest": {
         "additionalProperties": false,
@@ -3888,6 +3899,7 @@
           "data_import_campaign",
           "tikhub_discovery",
           "tikhub_account_discovery",
+          "tikhub_media_refresh",
           "tikhub_batch_supplement",
           "tikhub_content_supplement",
           "canonical_replay"
@@ -6340,6 +6352,121 @@
         "title": "ContentListResponse",
         "type": "object"
       },
+      "ContentMediaPlaybackPrepareRequest": {
+        "additionalProperties": false,
+        "description": "用户播放或一次恢复时准备；绑定已有 Job 的观察永不创建新任务。",
+        "properties": {
+          "failed_source_revision": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Source Revision"
+          },
+          "observed_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Job Id"
+          }
+        },
+        "title": "ContentMediaPlaybackPrepareRequest",
+        "type": "object"
+      },
+      "ContentMediaPlaybackResponse": {
+        "additionalProperties": false,
+        "description": "preparing 携带 job_id；以 observed_job_id 只读轮询取得当前状态或会话。",
+        "properties": {
+          "content_id": {
+            "format": "uuid",
+            "title": "Content Id",
+            "type": "string"
+          },
+          "cooldown_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Until"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "generation": {
+            "minimum": 0.0,
+            "title": "Generation",
+            "type": "integer"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "position": {
+            "minimum": 0.0,
+            "title": "Position",
+            "type": "integer"
+          },
+          "source_revision": {
+            "title": "Source Revision",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ContentPlaybackStatus"
+          },
+          "stream_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stream Url"
+          }
+        },
+        "required": [
+          "content_id",
+          "position",
+          "status",
+          "generation",
+          "source_revision"
+        ],
+        "title": "ContentMediaPlaybackResponse",
+        "type": "object"
+      },
       "ContentMediaResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6353,6 +6480,18 @@
               }
             ],
             "title": "Alt Text"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
           },
           "media_type": {
             "title": "Media Type",
@@ -6483,6 +6622,15 @@
         },
         "title": "ContentMetricsResponse",
         "type": "object"
+      },
+      "ContentPlaybackStatus": {
+        "enum": [
+          "ready",
+          "preparing",
+          "unavailable",
+          "cooldown"
+        ],
+        "type": "string"
       },
       "ContentRelevance": {
         "enum": [
@@ -15835,7 +15983,7 @@
               "items": {
                 "$ref": "#/components/schemas/CollectionRuntimeRecordType"
               },
-              "maxItems": 7,
+              "maxItems": 8,
               "title": "Record Types",
               "type": "array"
             }
@@ -17224,6 +17372,218 @@
           }
         },
         "summary": "List Content Comments",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/contents/{content_id}/media/{position}/playback/prepare": {
+      "post": {
+        "operationId": "prepareContentMediaPlayback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Content Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "position",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Position",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentMediaPlaybackPrepareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentMediaPlaybackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prepare Content Media Playback",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/contents/{content_id}/media/{position}/playback/stream": {
+      "get": {
+        "operationId": "streamContentMediaPlayback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Content Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "position",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Position",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session",
+            "required": true,
+            "schema": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "title": "Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "206": {
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Partial Content"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "416": {
+            "description": "Unsatisfied byte range"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Stream Content Media Playback",
         "tags": [
           "contents"
         ]

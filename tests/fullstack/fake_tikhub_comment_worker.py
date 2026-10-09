@@ -8,6 +8,7 @@ import socket
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from time import sleep
 from typing import Any
 from unittest.mock import patch
 from uuid import UUID
@@ -124,6 +125,7 @@ class _CommentFixtureTransport:
     """按生产 Operation 路径提供脱敏响应，未列出的调用立即失败。"""
 
     def __init__(self) -> None:
+        self._consistency_detail_requests = 0
         self._account_routes = {
             account_runtime.build_user_info_call(user_id="fixture").path: (
                 "xiaohongshu",
@@ -210,6 +212,17 @@ class _CommentFixtureTransport:
         lookup = str(request.params[key])
         if operation == "detail":
             body = _detail(platform, lookup)
+            if platform == "xiaohongshu" and lookup == "6a85c701000000001d0040e9":
+                self._consistency_detail_requests += 1
+                if self._consistency_detail_requests > 1:
+                    # 模拟外部详情延迟，验收必须先打开旧快照再观察终态自动刷新。
+                    sleep(1.5)
+                note = body["data"]["data"][0]["note_list"][0]
+                published = int(datetime.fromisoformat("2026-10-08T12:00:00+08:00").timestamp())
+                note.update(
+                    title="爱玛一致性Q7 雅迪一致性G5 补采等价验收",
+                    time=published + 60 * (self._consistency_detail_requests - 1),
+                )
         elif operation == "comments":
             body = _comments(platform, lookup, request.params)
         else:

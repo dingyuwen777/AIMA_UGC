@@ -40,7 +40,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.storage import ArtifactService
-from aima_ugc.platform.storage.tables import artifacts_table
+from aima_ugc.platform.storage.tables import artifacts_table, canonical_artifact_links_table
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
@@ -307,7 +307,36 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
                 session.scalar(select(func.count()).select_from(provider_request_attempts_table))
                 == 3
             )
-            assert session.scalar(select(func.count()).select_from(artifacts_table)) == 4
+            # Search 和 Detail 各自冻结 Canonical，三个 Raw 的收费请求身份仍独立且唯一。
+            assert session.scalar(select(func.count()).select_from(artifacts_table)) == 5
+            assert dict(
+                session.execute(
+                    select(artifacts_table.c.kind, func.count()).group_by(artifacts_table.c.kind)
+                ).all()
+            ) == {"provider-raw": 3, "canonical-content.v1": 2}
+            canonical_operations = session.scalars(
+                select(provider_requests_table.c.operation)
+                .select_from(canonical_artifact_links_table)
+                .join(
+                    provider_request_attempts_table,
+                    provider_request_attempts_table.c.id
+                    == canonical_artifact_links_table.c.provider_attempt_id,
+                )
+                .join(
+                    provider_requests_table,
+                    provider_requests_table.c.id
+                    == provider_request_attempts_table.c.provider_request_id,
+                )
+            ).all()
+            assert sorted(canonical_operations) == ["get_image_note_detail", "search_notes"]
+            assert (
+                session.scalar(
+                    select(
+                        func.count(func.distinct(provider_request_attempts_table.c.raw_artifact_id))
+                    )
+                )
+                == 3
+            )
             comment = session.execute(select(comments_table)).mappings().one()
             run_comment_count = session.scalar(
                 select(collection_runs_table.c.comment_count).where(

@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import cast as sql_cast
 from sqlalchemy import column, delete, insert, select, tuple_, update
 from sqlalchemy import values as sql_values
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
@@ -29,6 +30,9 @@ from aima_ugc.modules.content.extended_tables import (
     content_media_table,
     content_mentions_table,
     content_topics_table,
+)
+from aima_ugc.modules.content.media_observations import (
+    rollback_media_rows,
 )
 from aima_ugc.modules.content.tables import accounts_table, content_versions_table, contents_table
 from aima_ugc.modules.ingestion.historical_tables import (
@@ -221,10 +225,10 @@ class PostgresContentLifecycleRepository:
             )
             for contribution in ordered:
                 delta = contribution["delta"]
-                if (
-                    not isinstance(delta, dict)
-                    or delta.get("schema_version") != "content-source-contribution.v1"
-                ):
+                if not isinstance(delta, dict) or delta.get("schema_version") not in {
+                    "content-source-contribution.v1",
+                    "content-source-contribution.v2",
+                }:
                     raise ValueError("Content 来源贡献 Delta 版本不受支持")
                 author_snapshot = self._apply_delta(
                     content_id=content_id,
@@ -290,7 +294,8 @@ class PostgresContentLifecycleRepository:
             delta = contribution["delta"]
             if (
                 not isinstance(delta, dict)
-                or delta.get("schema_version") != "content-source-contribution.v1"
+                or delta.get("schema_version")
+                not in {"content-source-contribution.v1", "content-source-contribution.v2"}
                 or not isinstance(delta.get("collections") or {}, dict)
                 or set(delta.get("collections") or {}) - set(_COLLECTION_TABLES)
             ):
@@ -454,6 +459,11 @@ class PostgresContentLifecycleRepository:
                 )
                 versions[content_id] = version_no
             for field_name in sorted(changed_collections):
+                if field_name == "media":
+                    self._restore_media_rows(
+                        changed_collections[field_name], restored_collections[field_name]
+                    )
+                    continue
                 table = _COLLECTION_TABLES[field_name]
                 self._session.execute(
                     delete(table).where(table.c.content_id.in_(changed_collections[field_name]))
@@ -529,6 +539,29 @@ class PostgresContentLifecycleRepository:
 
         return self.apply_contributions_batch(contributions, revoked_at=revoked_at)
 
+    def _restore_media_rows(self, content_ids: list[UUID], rows: list[dict[str, object]]) -> None:
+        """存活位置原位更新，保留其播放代次和冷却；只有真实移除才级联删除状态。"""
+        table = content_media_table
+        missing = delete(table).where(table.c.content_id.in_(content_ids))
+        if rows:
+            missing = missing.where(
+                tuple_(table.c.content_id, table.c.position).not_in(
+                    [(row["content_id"], row["position"]) for row in rows]
+                )
+            )
+        self._session.execute(missing)
+        if rows:
+            statement = pg_insert(table)
+            statement = statement.on_conflict_do_update(
+                index_elements=[table.c.content_id, table.c.position],
+                set_={
+                    column.name: statement.excluded[column.name]
+                    for column in table.c
+                    if not column.primary_key
+                },
+            )
+            self._session.execute(statement, rows)
+
     def _apply_delta(
         self,
         *,
@@ -577,7 +610,9 @@ class PostgresContentLifecycleRepository:
             if field_name not in _COLLECTION_TABLES or not isinstance(change, dict):
                 raise ValueError("Contribution Collection 字段不受支持")
             expected_freshness = change.get("after_freshness")
-            if freshness.get(field_name) != expected_freshness:
+            # 旧 v1 整行来源也能在后续 partial 的属性 marker 中证明归属；不改历史账本。
+            property_media = field_name == "media"
+            if not property_media and freshness.get(field_name) != expected_freshness:
                 continue
             after_rows = decode_contribution_value(change.get("after"))
             before_rows = decode_contribution_value(change.get("before"))
@@ -588,25 +623,38 @@ class PostgresContentLifecycleRepository:
                 if collection_cache is None
                 else collection_cache.get(field_name, ())
             )
-            if current_rows != tuple(after_rows):
+            if property_media:
+                restored = rollback_media_rows(
+                    current_rows,
+                    before=before_rows,
+                    after=after_rows,
+                    allow_restore_deleted=freshness.get(field_name) == expected_freshness,
+                    content_id=content_id,
+                )
+                if restored == current_rows:
+                    continue
+                before_rows = list(restored)
+            elif current_rows != tuple(after_rows):
                 continue
             if collection_cache is None:
                 table = _COLLECTION_TABLES[field_name]
-                self._session.execute(delete(table).where(table.c.content_id == content_id))
-                if before_rows:
-                    self._session.execute(
-                        insert(table),
-                        [
-                            {"content_id": content_id, **cast(dict[str, object], row)}
-                            for row in before_rows
-                        ],
-                    )
+                rows = [
+                    {"content_id": content_id, **cast(dict[str, object], row)}
+                    for row in before_rows
+                ]
+                if property_media:
+                    self._restore_media_rows([content_id], rows)
+                else:
+                    self._session.execute(delete(table).where(table.c.content_id == content_id))
+                if rows and not property_media:
+                    self._session.execute(insert(table), rows)
             else:
                 if collection_updates is None:
                     raise ValueError("集合预读必须同时提供写入缓冲")
                 collection_cache[field_name] = tuple(before_rows)
                 collection_updates[field_name] = before_rows
-            _restore_freshness(freshness, field_name, change.get("before_freshness"))
+            if freshness.get(field_name) == expected_freshness:
+                _restore_freshness(freshness, field_name, change.get("before_freshness"))
 
         account_change = delta.get("account")
         if isinstance(account_change, dict):

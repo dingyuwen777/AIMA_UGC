@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import type {
   AnalysisManualLabelRequest,
@@ -15,6 +15,7 @@ import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
 import type { CommentReplyState } from '../../../store'
 import ContentCommentSection from './ContentCommentSection.vue'
+import ContentMediaGallery from './ContentMediaGallery.vue'
 import {
   contentSummary,
   contentTypeLabel,
@@ -65,20 +66,12 @@ const emit = defineEmits<{
   'load-more-comments': []
   'load-comment-replies': [rootCommentId: string, reset: boolean]
   review: [contentId: string, decision: RelevanceReviewDecision]
+  'media-terminal': []
 }>()
 
 const editingVehicles = ref(false)
 const editingAnalysis = ref(false)
-const mediaGrid = ref<HTMLElement | null>(null)
-const activeMediaIndex = ref(0)
-const mediaNavigationTarget = ref<number | null>(null)
 const relevanceDecision = computed(() => props.item ? relevanceReviewDecision(props.item) : null)
-const mediaItems = computed(() => props.item?.media ?? [])
-const hasMediaNavigation = computed(() =>
-  props.item?.platform === 'xiaohongshu'
-  && mediaItems.value.length > 1
-  && mediaItems.value.some((media) => media.preview_url?.startsWith('/api/v1/contents/')),
-)
 
 type DetailSection = 'content' | 'analysis' | 'manual' | 'comments'
 const contentSection = ref<HTMLElement | null>(null)
@@ -104,13 +97,9 @@ function scrollToDetailSection(section: DetailSection): void {
   targets[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-watch(() => props.item?.id, async () => {
+watch(() => props.item?.id, () => {
   editingVehicles.value = false
   editingAnalysis.value = false
-  activeMediaIndex.value = 0
-  mediaNavigationTarget.value = null
-  await nextTick()
-  if (mediaGrid.value) mediaGrid.value.scrollLeft = 0
 })
 
 const vehicleModelIds = ref<string[]>([])
@@ -202,56 +191,6 @@ function confirmUnlockReview(): void {
   unlockTarget.value = null
 }
 
-/** 将画廊移动到指定图片，并立即更新按钮与序号状态。 */
-function showMedia(index: number): void {
-  const grid = mediaGrid.value
-  if (!grid || !hasMediaNavigation.value) return
-  const targetIndex = Math.min(Math.max(index, 0), mediaItems.value.length - 1)
-  const target = grid.children.item(targetIndex)
-  if (!(target instanceof HTMLElement)) return
-  const gridRect = grid.getBoundingClientRect()
-  const targetRect = target.getBoundingClientRect()
-  const targetLeft = grid.scrollLeft + targetRect.left - gridRect.left
-  mediaNavigationTarget.value = targetIndex
-  activeMediaIndex.value = targetIndex
-  grid.scrollTo({ left: targetLeft, behavior: 'auto' })
-  window.requestAnimationFrame(() => {
-    if (mediaGrid.value !== grid || mediaNavigationTarget.value !== targetIndex) return
-    mediaNavigationTarget.value = null
-    syncMediaIndex()
-  })
-}
-
-/** 根据原生触控或触控板滚动位置同步当前图片序号。 */
-function syncMediaIndex(): void {
-  const grid = mediaGrid.value
-  if (!grid || !hasMediaNavigation.value) return
-  const gridRect = grid.getBoundingClientRect()
-
-  if (mediaNavigationTarget.value !== null) {
-    const target = grid.children.item(mediaNavigationTarget.value)
-    if (target instanceof HTMLElement) {
-      const targetLeft = grid.scrollLeft + target.getBoundingClientRect().left - gridRect.left
-      activeMediaIndex.value = mediaNavigationTarget.value
-      if (Math.abs(grid.scrollLeft - targetLeft) <= 2) mediaNavigationTarget.value = null
-      return
-    }
-    mediaNavigationTarget.value = null
-  }
-
-  let nearestIndex = 0
-  let nearestDistance = Number.POSITIVE_INFINITY
-  Array.from(grid.children).forEach((child, index) => {
-    if (!(child instanceof HTMLElement)) return
-    const distance = Math.abs(child.getBoundingClientRect().left - gridRect.left)
-    if (distance < nearestDistance) {
-      nearestDistance = distance
-      nearestIndex = index
-    }
-  })
-  activeMediaIndex.value = nearestIndex
-}
-
 /** 将内容补充状态映射为用户可理解的区块标题。 */
 function supplementTitle(status: string): string {
   if (status === 'failed') return '内容补充失败'
@@ -263,7 +202,7 @@ function supplementTitle(status: string): string {
 /** 解释内容补充的真实状态，并保留进入采集中心继续处理的语义。 */
 function supplementMessage(status: string): string {
   if (status === 'failed') {
-    return '暂时无法获取完整详情与评论。已保留原始导入内容，可在采集中心查看失败原因并重新发起补充。'
+    return '暂时无法获取完整详情与评论。已保留已入库内容，可在采集中心查看失败原因并重新发起补充。'
   }
   if (status === 'partial_success') {
     return '已获取部分详情或评论，仍有部分数据未成功补充。可在采集中心查看结果并按需重试。'
@@ -394,6 +333,10 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       >
         <div class="badges">
           <span class="platform">{{ platformLabel(item.platform) }}</span>
+          <span
+            v-if="item.content_type === 'video'"
+            class="content-kind"
+          >视频</span>
           <span class="analysis">{{ item.analysis.status === 'completed' ? item.analysis.sentiment || '已分析' : item.analysis.status === 'stale' ? '需重新分析' : '未分析' }}</span>
         </div>
         <h3>{{ contentSummary(item.title, item.text) }}</h3>
@@ -409,64 +352,16 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         <p>{{ supplementMessage(item.supplement_status.status) }}</p>
       </section>
 
-      <section v-if="(item.media ?? []).length > 0">
-        <div class="media-carousel">
-          <div
-            ref="mediaGrid"
-            class="media-grid"
-            :class="{ 'media-grid--carousel': hasMediaNavigation }"
-            @scroll.passive="syncMediaIndex"
-          >
-            <a
-              v-for="media in item.media ?? []"
-              :key="`${media.position}:${media.url}`"
-              :href="item.platform === 'xiaohongshu'
-                ? (media.preview_url || media.url || undefined)
-                : (media.url || media.preview_url || undefined)"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <img
-                v-if="media.preview_url"
-                :src="media.preview_url"
-                :alt="media.alt_text || '原始内容媒体预览'"
-              >
-              <span v-else>{{ media.media_type }} · 查看原始媒体</span>
-            </a>
-          </div>
-          <template v-if="hasMediaNavigation">
-            <button
-              class="media-navigation media-navigation--previous"
-              type="button"
-              aria-label="上一张图片"
-              :disabled="activeMediaIndex === 0"
-              @click="showMedia(activeMediaIndex - 1)"
-            >
-              <AimaIcon
-                name="chevron-left"
-                :size="20"
-              />
-            </button>
-            <span
-              class="media-position"
-              aria-live="polite"
-              aria-atomic="true"
-            >{{ activeMediaIndex + 1 }} / {{ mediaItems.length }}</span>
-            <button
-              class="media-navigation media-navigation--next"
-              type="button"
-              aria-label="下一张图片"
-              :disabled="activeMediaIndex === mediaItems.length - 1"
-              @click="showMedia(activeMediaIndex + 1)"
-            >
-              <AimaIcon
-                name="chevron-right"
-                :size="20"
-              />
-            </button>
-          </template>
-        </div>
-      </section>
+      <ContentMediaGallery
+        v-if="(item.media ?? []).length > 0"
+        :content-id="item.id"
+        :platform="item.platform"
+        :media="item.media ?? []"
+        :content-type="item.content_type"
+        :original-url="item.content_url"
+        :open="modelValue"
+        @terminal="emit('media-terminal')"
+      />
       <section
         ref="analysisSection"
         class="content-info detail-anchor"
@@ -814,6 +709,7 @@ header small { color: var(--aima-text-disabled); font-size: 10px; }
 .badges { display: flex; gap: 8px; }
 .badges span { padding: 3px 8px; border-radius: 4px; font-size: 11px; }
 .platform { color: #2765a3; background: #e8f3ff; }
+.content-kind { color: var(--aima-text-muted); background: var(--aima-surface-subtle); }
 .analysis { color: #cc2f58; background: var(--aima-primary-soft); }
 .hero h3 { margin: 0; color: var(--aima-text); font-size: 18px; line-height: 27px; }
 .hero p,
@@ -861,9 +757,6 @@ dd { overflow-wrap: anywhere; margin: 0; color: var(--aima-text); font-size: 10p
 .metric-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .metric-grid span { display: grid; min-height: 62px; place-items: center; align-content: center; gap: 3px; border-radius: 6px; color: var(--aima-text-disabled); background: #f2f4f7; font-size: 9px; text-align: center; }
 .metric-grid b { color: var(--aima-text); font-size: 13px; }
-.media-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.media-grid a { display: grid; min-height: 78px; place-items: center; overflow: hidden; border-radius: 7px; color: var(--aima-text-muted); background: #f2f4f7; font-size: 11px; text-decoration: none; }
-.media-grid img { width: 100%; height: 120px; object-fit: cover; }
 .coverage { margin-bottom: 8px !important; }
 .comments article { padding: 9px 0; border-top: 1px solid #eef0f4; }
 .comments strong { font-size: 11px; }
@@ -913,49 +806,6 @@ header small { font-size: 12px; }
 .info-grid dd { font-size: 13px; line-height: 20px; text-align: left; }
 .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .metric-grid span { min-height: 64px; padding: 10px 12px; place-items: start; align-content: center; background: #f7f9fb; font-size: 12px; }
-.media-carousel { position: relative; overflow: hidden; border-radius: 8px; }
-.media-grid { grid-template-columns: 1fr; }
-.media-grid img { height: 100px; }
-.media-grid--carousel {
-  grid-auto-flow: column;
-  grid-auto-columns: 100%;
-  grid-template-columns: none;
-  overflow-x: auto;
-  scroll-behavior: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-}
-.media-grid--carousel::-webkit-scrollbar { display: none; }
-.media-grid--carousel a { scroll-snap-align: start; }
-.media-grid--carousel img { height: 180px; }
-.media-navigation {
-  position: absolute;
-  top: 50%;
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  transform: translateY(-50%);
-  border: 1px solid rgb(255 255 255 / 70%);
-  border-radius: 50%;
-  color: var(--aima-text);
-  background: rgb(255 255 255 / 88%);
-  box-shadow: 0 2px 8px rgb(23 35 61 / 14%);
-  cursor: pointer;
-}
-.media-navigation--previous { left: 8px; }
-.media-navigation--next { right: 8px; }
-.media-navigation:disabled { cursor: default; opacity: .38; }
-.media-position {
-  position: absolute;
-  right: 10px;
-  bottom: 8px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  color: white;
-  background: rgb(17 22 37 / 65%);
-  font-size: 10px;
-}
 .drawer-body > .manual-summary { display: grid; gap: 6px; padding: 12px; border-radius: 6px; background: #f7f9fb; }
 .manual-summary h4 { margin: 0; font-size: 16px; }
 .manual-summary > div { display: flex; min-height: 32px; align-items: center; gap: 12px; border-radius: 4px; background: white; }
@@ -981,6 +831,6 @@ header small { font-size: 12px; }
 .drawer-save-error { padding: 12px 24px; color: var(--aima-danger); font-size: 12px; }
 </style>
 <style>
-.content-detail-dialog { height: 100dvh; max-height: 100dvh; max-width: 100vw; margin: 0 0 0 auto; border-radius: 12px 0 0 12px; }
+.content-detail-dialog { box-sizing: border-box; height: 100dvh; max-height: 100dvh; max-width: 100vw; margin: 0 0 0 auto; border-radius: 12px 0 0 12px; }
 .content-detail-dialog > .aima-dialog-body { flex: 1; }
 </style>

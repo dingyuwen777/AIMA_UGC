@@ -5,7 +5,17 @@ from datetime import datetime, timedelta
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from aima_ugc.contracts.canonical import CanonicalContentV1
+from aima_ugc.contracts.canonical import CanonicalAuthorV1
+
+
+class AccountContentFacts(Protocol):
+    """账号准入可读取真实观察或派生视图，不把派生字段冒充一个 Raw。"""
+
+    @property
+    def author(self) -> CanonicalAuthorV1 | None: ...
+
+    @property
+    def published_at(self) -> datetime | None: ...
 
 
 class AccountAuthorIdentity(Protocol):
@@ -15,7 +25,7 @@ class AccountAuthorIdentity(Protocol):
 
 
 def account_content_admission(
-    content: CanonicalContentV1,
+    content: AccountContentFacts,
     *,
     identity: AccountAuthorIdentity,
     published_from: datetime,

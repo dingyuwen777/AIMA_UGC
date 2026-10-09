@@ -324,3 +324,152 @@ test('五平台日期补采与声音广场勾选、重复补采串联保留完�
   expect(after.total_count).toBe(before.total_count)
   expect(after.items.map((item: { id: string }) => item.id)).toEqual(before.items.map((item: { id: string }) => item.id))
 })
+
+// 补采非模型字段更新必须通过真实页面自动刷新保留已有分析与证据。
+test('补采形成等价新版本后自动刷新保留多品牌车型和人工 AI 修正', async ({ page, request }) => {
+  test.setTimeout(180_000)
+  await page.route('https://**', route => route.abort())
+  const repo = resolve(process.cwd(), '..')
+  const python = resolve(repo, process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python')
+  const fixturePath = test.info().outputPath('supplement-consistency.xlsx')
+  execFileSync(python, ['tests/fullstack/create_stage8f_excel_fixture.py', fixturePath, 'supplement-consistency'], { cwd: repo })
+  const owned = await ensureStage3FilterBrand(request)
+  const listed = await request.get('/api/v1/vehicle-brands', { params: { status: 'active', limit: 200 } })
+  expect(listed.status()).toBe(200)
+  const brands = (await listed.json()).items as Array<{ id: string; display_name: string; role: string; aliases: Array<{ text: string }> }>
+  let competitor = brands.find(brand => brand.display_name === '雅迪' || brand.aliases.some(alias => alias.text === '雅迪'))
+  if (!competitor) {
+    const created = await request.post('/api/v1/vehicle-brands', {
+      data: { display_name: '雅迪', role: 'competitor', aliases: ['雅迪'] },
+    })
+    expect(created.status()).toBe(201)
+    competitor = await created.json()
+  }
+  expect(competitor!.role).toBe('competitor')
+  const modelsResponse = await request.get('/api/v1/vehicle-models', { params: { status: 'active', limit: 200 } })
+  expect(modelsResponse.status()).toBe(200)
+  const models = (await modelsResponse.json()).items as Array<{ brand_id: string; display_name: string }>
+  for (const target of [{ brandId: owned.id, name: '一致性Q7' }, { brandId: competitor!.id, name: '一致性G5' }]) {
+    if (models.some(model => model.brand_id === target.brandId && model.display_name === target.name)) continue
+    const created = await request.post('/api/v1/vehicle-models', {
+      data: { brand_id: target.brandId, display_name: target.name, aliases: [target.name] },
+    })
+    expect(created.status()).toBe(201)
+  }
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: '导入数据' }).click()
+  const importing = page.getByRole('dialog', { name: '导入数据' })
+  await importing.locator('input[type="file"]').first().setInputFiles(fixturePath!)
+  await importing.getByRole('button', { name: '创建并预检' }).click()
+  await expect(importing.locator('.campaign-status')).toHaveText('预检完成', { timeout: 60_000 })
+  await importing.getByRole('button', { name: '开始导入' }).click()
+  await expect(importing.locator('.campaign-status')).toHaveText('导入完成', { timeout: 60_000 })
+  const title = '爱玛一致性Q7 雅迪一致性G5 补采等价验收'
+  await page.goto('/voice-plaza')
+  await page.getByRole('textbox', { name: '搜索内容', exact: true }).fill(title)
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  const row = page.locator('.content-row').filter({ hasText: title })
+  await expect(row).toBeVisible()
+  const supplement = async () => {
+    await row.locator('input[type="checkbox"]').check()
+    await page.getByRole('button', { name: '评论补采', exact: true }).click()
+    const form = page.getByRole('dialog', { name: '评论补采', exact: true })
+    const created = page.waitForResponse(response =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/collection-runs')
+    await form.getByRole('button', { name: '创建补采任务', exact: true }).click()
+    const response = await created
+    expect(response.status()).toBe(202)
+    expect(response.request().postDataJSON()).toMatchObject({
+      mode: 'content_supplement',
+      supplement_targets: { kind: 'selected' },
+      expected_target_count: 1,
+    })
+    return (await response.json()).run_id as string
+  }
+  const firstRun = await supplement()
+  await expect.poll(async () => (await (await request.get('/api/v1/collection-runs/' + firstRun)).json()).status,
+    { timeout: 60_000 }).toBe('succeeded')
+  const initial = (await (await request.get('/api/v1/contents', { params: { source_identifier: firstRun } })).json()).items[0]
+  await expect(row).toBeVisible()
+  await row.locator('input[type="checkbox"]').check()
+  await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
+  const analysisForm = page.getByRole('dialog', { name: '开始 AI 分析' })
+  const analysisCreated = page.waitForResponse(response =>
+    response.request().method() === 'POST' &&
+    new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
+  await analysisForm.getByRole('button', { name: '确认开始分析', exact: true }).click()
+  const analyzedRun = (await (await analysisCreated).json()).run_id
+  await expect.poll(async () => (await (await request.get('/api/v1/analysis/content-runs/' + analyzedRun)).json()).stats,
+    { timeout: 60_000 }).toEqual({ pending: 0, succeeded: 1, failed: 0, stale: 0, cancelled: 0 })
+  const analyzed = await (await request.get('/api/v1/contents/' + initial.id)).json()
+  const taxonomyResponse = await request.get('/api/v1/content-analysis-taxonomy')
+  expect(taxonomyResponse.status()).toBe(200)
+  const taxonomy = await taxonomyResponse.json() as {
+    sentiments: string[]; voice_types: string[];
+    labels: Array<{ primary_label: string; secondary_labels: string[] }>;
+  }
+  const manualSentiment = taxonomy.sentiments.find(value => value !== analyzed.analysis.sentiment)
+  const manualVoice = taxonomy.voice_types.find(value => value !== analyzed.analysis.voice_type)
+  const manualLabel = taxonomy.labels.flatMap(group => group.secondary_labels.map(secondary_label => ({
+    primary_label: group.primary_label, secondary_label,
+  }))).find(label => !analyzed.analysis.labels.some((old: { primary_label: string; secondary_label: string }) =>
+    old.primary_label === label.primary_label && old.secondary_label === label.secondary_label))
+  expect(manualSentiment).toBeTruthy()
+  expect(manualVoice).toBeTruthy()
+  expect(manualLabel).toBeTruthy()
+  const corrected = await request.put('/api/v1/contents/' + initial.id + '/analysis-review', {
+    data: { content_version: analyzed.content_version, sentiment: manualSentiment,
+      voice_type: manualVoice, labels: [manualLabel],
+      unlock_dimensions: analyzed.analysis.manual_locked_dimensions },
+  })
+  expect(corrected.status()).toBe(200)
+  const beforeRuns = (await (await request.get('/api/v1/analysis/content-runs')).json()).items.map((run: { id: string }) => run.id)
+  const beforeLlm = await (await request.get('http://127.0.0.1:8091/health')).json()
+  expect(beforeLlm.request_count).toBeGreaterThan(0)
+  const secondRun = await supplement()
+  await row.getByRole('button', { name: '查看详情', exact: true }).click()
+  const detail = page.getByRole('dialog', { name: '内容详情' })
+  const beforePublishedText = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  }).format(new Date(analyzed.published_at))
+  await expect(detail.locator('.info-grid > div').filter({ hasText: '发布时间' }).locator('dd')).toHaveText(beforePublishedText)
+  await expect.poll(async () => (await (await request.get('/api/v1/collection-runs/' + secondRun)).json()).status,
+    { timeout: 60_000 }).toBe('succeeded')
+  const after = await (await request.get('/api/v1/contents/' + initial.id)).json()
+  expect(after.content_version).toBe(analyzed.content_version + 1)
+  expect(after.analysis).toMatchObject({
+    status: 'completed',
+    analyzed_at: analyzed.analysis.analyzed_at,
+    model: analyzed.analysis.model,
+    sentiment: manualSentiment,
+    voice_type: manualVoice,
+    labels: [manualLabel],
+    manual_locked_dimensions: expect.arrayContaining(['voice_type', 'sentiment', 'labels']),
+  })
+  expect(after.brands.map((brand: { id: string }) => brand.id).sort()).toEqual([owned.id, competitor!.id].sort())
+  expect(after.vehicles).toHaveLength(2)
+  expect(after.competition_scope).toBe('mixed')
+  expect((await (await request.get('/api/v1/analysis/content-runs')).json()).items.map((run: { id: string }) => run.id)).toEqual(beforeRuns)
+  expect((await (await request.get('http://127.0.0.1:8091/health')).json()).request_count).toBe(beforeLlm.request_count)
+  // 不重新导航或手动刷新；详情由补采终态跟进自动读取服务端新版本。
+  const publishedText = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  }).format(new Date(after.published_at))
+  expect(after.published_at).not.toBe(analyzed.published_at)
+  await expect(detail.locator('.info-grid > div').filter({ hasText: '发布时间' }).locator('dd')).toHaveText(publishedText)
+  await expect(detail).not.toContainText('需重新分析')
+  await expect(detail.locator('.classification-evidence')).toContainText('一致性Q7')
+  await expect(detail.locator('.classification-evidence')).toContainText('一致性G5')
+  await detail.getByRole('button', { name: '人工纠正', exact: true }).click()
+  await expect(detail.getByText('已人工确认：voice_type、sentiment、labels')).toBeVisible()
+  await test.info().attach('补采等价复用与人工锁', {
+    body: await page.screenshot({ path: test.info().outputPath('equivalent-supplement.png') }),
+    contentType: 'image/png',
+  })
+  await detail.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(row).not.toContainText('需重新分析')
+  await expect(row.getByTestId('content-labels')).toContainText(after.analysis.labels[0].primary_label)
+})

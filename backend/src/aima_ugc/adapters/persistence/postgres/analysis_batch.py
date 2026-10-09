@@ -255,9 +255,10 @@ class PostgresAnalysisBatchRepository:
         return {
             cast(UUID, content_id): cast(int, current_version)
             for content_id, current_version in self._session.execute(
-                select(contents_table.c.id, contents_table.c.current_version).where(
-                    contents_table.c.id.in_(unique_ids)
-                )
+                select(contents_table.c.id, contents_table.c.current_version)
+                .where(contents_table.c.id.in_(unique_ids))
+                .order_by(contents_table.c.id)
+                .with_for_update()
             )
         }
 

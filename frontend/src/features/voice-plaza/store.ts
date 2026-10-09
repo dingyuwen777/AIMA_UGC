@@ -380,6 +380,12 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     lastSupplementPollAt = 0
   }
 
+  /** 媒体准备终态复用补采窗口刷新，保留同帖正文、评论和编辑组件身份。 */
+  async function refreshMediaResult(contentId: string): Promise<void> {
+    if (detailId.value !== contentId || loading.value || loadingNext.value) return
+    await refreshLoadedWindow()
+  }
+
   /** 终态重新读取服务器窗口；详情与评论失败时保留跟进以便重试。 */
   async function pollSupplements(): Promise<void> {
     if (supplementPolling || !supplementRunIds.size || pageIsHidden()
@@ -1304,6 +1310,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     startPolling,
     stopPolling,
     trackSupplement,
+    refreshMediaResult,
     pollSupplements,
   }
 })

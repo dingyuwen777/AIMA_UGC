@@ -31,6 +31,18 @@ tests/fixtures/providers/tikhub/
 
 ## 1. 当前生产主链一览
 
+2026-10-09 小红书媒体复核使用正式 Operation/Mapper：3 次官方 endpoint-info 查询，
+视频搜索一次（20 条），选定视频详情一次及同 ID 图文详情一次，共 6 次物理请求。
+官方单次价格快照均为 0.01 USD，3 次业务请求预计 0.03 USD；实际账单未知。
+视频结构与同 ID cover-only 图文响应已脱敏为永久 Fixture，字段语义见
+[`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](02_TikHub五平台真实响应与字段映射.md)。
+
+API 返回的两个视频源为 `sns-v11.rednotecdn.com` / `sns-v27.rednotecdn.com` HTTP URL。
+本机出口分别验证相同路径 HTTPS、完整 TLS hostname 校验、全部 DNS 为公网且连接固定
+解析 IP、无 Cookie/Referer/Provider Key，均返回 206/video/mp4；主源另验证无效 Range
+返回 416。视频字节未落盘。代理仅对这两个已验证来源允许 HTTPS 规范化，不能推广到
+任意 HTTP URL。此证据只覆盖本机出口，部署环境仍须独立验证网络与 TLS。
+
 | 平台 | Search | Detail | Comments | Replies/Sub-comments |
 | --- | --- | --- | --- | --- |
 | 小红书 | App V2 `search_notes` | App V2 image/video detail | App V2 `get_note_comments` | App V2 `get_note_sub_comments` |

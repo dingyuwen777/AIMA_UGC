@@ -32,28 +32,16 @@ on:
     types:
       - opened
       - reopened
+      - synchronize
       - ready_for_review
-    paths:
-      - .github/workflows/release.yml
-      - Dockerfile
-      - compose.yaml
-      - compose.windows.yaml
-      - env.production.example
-      - scripts/release/release_bundle.py
-      - scripts/deploy/start_compose.py
-      - scripts/deploy/stop_compose.py
-      - scripts/deploy/reset_keep_vehicle_catalog.sh
-      - scripts/release/build_local_release.ps1
-      - tests/unit/test_docker_build_sources.py
-      - tests/unit/test_release_workflow.py
-      - tests/unit/test_release_bundle.py
-      - tests/unit/test_compose_auto_scripts.py
+      - edited
 
 permissions:
   contents: read
+  issues: read
 
 concurrency:
-  group: aima-ugc-release-${{ github.event_name }}-${{ github.ref }}
+  group: aima-ugc-release-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'metadata' || 'full' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -65,9 +53,69 @@ env:
   FRONTEND_PACKAGE: aima-ugc-frontend
 
 jobs:
+  release-plan:
+    name: Release Preflight
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.action != 'edited' || github.event.changes.base))
+    runs-on: ubuntu-24.04
+    outputs:
+      linux_required: ${{ steps.scope.outputs.tooling_linux_required }}
+      windows_required: ${{ steps.scope.outputs.tooling_windows_required }}
+      release_required: ${{ steps.scope.outputs.release_required }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Classify shared Release responsibility
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            python3 scripts/quality/classify_ci_scope.py --full --github-output "${GITHUB_OUTPUT}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            python3 scripts/quality/classify_ci_scope.py --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --github-output "${GITHUB_OUTPUT}"
+          else
+            python3 scripts/quality/classify_ci_scope.py --comparison direct --base "${{ github.event.before }}" --head "${GITHUB_SHA}" --github-output "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Lightweight source and template preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
+          python3 scripts/quality/scan_secrets.py
+          python3 scripts/quality/check_env_templates.py --static
+
+      - name: Verify PR requirement and readiness before expensive validation
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/check_pr_requirement_source.py --event "${GITHUB_EVENT_PATH}" --root .
+          python3 scripts/quality/check_change_completion.py --root . --changed-since "${{ github.event.pull_request.base.sha }}"
+
+      - name: Setup template validation Python
+        if: steps.scope.outputs.configuration_required == 'true'
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Validate template configuration packaging and Compose
+        if: steps.scope.outputs.configuration_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "uv==$(tr -d '\r\n' < .uv-version)"
+          uv sync --locked
+          uv run python scripts/quality/check_env_templates.py --compose
+
   build-verify:
     name: Build and replay offline candidate
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: release-plan
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.release-plan.outputs.release_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
