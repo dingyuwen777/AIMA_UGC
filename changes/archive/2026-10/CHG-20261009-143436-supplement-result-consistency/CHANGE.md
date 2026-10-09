@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20261009-143436-supplement-result-consistency
 title: 补采一致性、小红书媒体与开发交付效率整改
 level: L3
-status: ready_for_review
+status: done
 owner: maintainer
 branch: fix/supplement-result-consistency
 created: 2026-10-09T14:34:36+08:00
-updated: 2026-10-09T22:51:29+08:00
+updated: 2026-10-09
 completion_gate: required
 depends_on: []
 affected_areas:
