@@ -119,9 +119,12 @@ def _minimal_repository(root: Path) -> None:
     )
     _write(
         root / ".github/PULL_REQUEST_TEMPLATE.md",
-        "Requirement-Source: #123\n"
-        "仓库内真实存在的正式文件也可以作为 Requirement Source。\n"
-        "不要用关闭关键字替代 Requirement-Source。\n",
+        "Requirement-Source: #<Issue>\n"
+        "示例：`Requirement-Source: #123`；`Requirement-Source: docs/spec.md`。\n"
+        "仓库正式文件可使用当前仓库真实路径。\n"
+        "不要用关闭关键字替代 Requirement-Source。\n"
+        "需要 post-merge evidence 时不得使用 `Closes` / `Fixes` / `Resolves`；"
+        "最终通过 Closure Audit。\n",
     )
 
 
@@ -323,6 +326,43 @@ def test_checker_requires_issue_and_pr_requirement_traceability(tmp_path: Path) 
     assert len([error for error in errors if error.startswith("GOV012")]) >= 2
     assert any(error.startswith("GOV013") for error in errors)
     assert any(error.startswith("GOV014") for error in errors)
+
+
+def test_gov014_accepts_rephrased_repository_path_guidance(tmp_path: Path) -> None:
+    """仓库路径说明可以调整措辞，但 Issue/路径示例仍必须有效。"""
+    _minimal_repository(tmp_path)
+    template = (tmp_path / ".github/PULL_REQUEST_TEMPLATE.md").read_text(
+        encoding="utf-8"
+    )
+    assert "仓库内真实存在" not in template
+    errors = CHECK_REPOSITORY(tmp_path)
+    assert not any(error.startswith("GOV014") for error in errors)
+
+
+def test_gov014_rejects_invalid_source_examples(tmp_path: Path) -> None:
+    """删除或篡改 Issue/路径示例必须阻止 PR 治理误放行。"""
+    _minimal_repository(tmp_path)
+    template_path = tmp_path / ".github/PULL_REQUEST_TEMPLATE.md"
+    original = template_path.read_text(encoding="utf-8")
+    invalid_examples = (
+        ("`Requirement-Source: #123`", "`Requirement-Source: #<Issue>`"),
+        ("`Requirement-Source: #123`", "`Requirement-Source: #0`"),
+        ("`Requirement-Source: docs/spec.md`", "`Requirement-Source: <path>`"),
+        ("`Requirement-Source: docs/spec.md`", "`Requirement-Source: ../x.md`"),
+        ("`Requirement-Source: docs/spec.md`", "`Requirement-Source: /tmp/x.md`"),
+        (
+            "`Requirement-Source: docs/spec.md`",
+            "`Requirement-Source: https://example.com/x.md`",
+        ),
+        ("`Requirement-Source: docs/spec.md`", "`Requirement-Source: docs\\x.md`"),
+    )
+    for before, after in invalid_examples:
+        assert before in original
+        template_path.write_text(original.replace(before, after), encoding="utf-8")
+        errors = CHECK_REPOSITORY(tmp_path)
+        assert any(
+            error.startswith("GOV014") and "机器可验证" in error for error in errors
+        ), (before, after, errors)
 
 
 def test_checker_requires_installed_canonical_governance_contract(tmp_path: Path) -> None:
