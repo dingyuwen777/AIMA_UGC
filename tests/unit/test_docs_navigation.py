@@ -24,6 +24,53 @@ def _minimal_repository(root: Path) -> None:
     _write(root / "scripts/check.py", "print('ok')\n")
 
 
+def test_checker_skips_generated_root_agents_navigation(tmp_path: Path) -> None:
+    """只豁免根 AGENTS 的受管区块，不要求改写外部生成的说明。"""
+    _minimal_repository(tmp_path)
+    _write(
+        tmp_path / "AGENTS.md",
+        "# 项目规则\n"
+        "<!-- agent-skills:managed:start -->\n"
+        "由安装器管理的入口是 `scripts/check.py`。\n"
+        "<!-- agent-skills:managed:end -->\n"
+        "项目自有导航见 [`scripts/check.py`](scripts/check.py)。\n",
+    )
+
+    errors = CHECK_REPOSITORY(tmp_path)
+    assert not any(error.startswith("DOC007 AGENTS.md:") for error in errors)
+
+
+def test_checker_enforces_root_agents_navigation_outside_managed(tmp_path: Path) -> None:
+    """生成区块后的项目自有导航仍必须可点击，错误行号不漂移。"""
+    _minimal_repository(tmp_path)
+    _write(
+        tmp_path / "AGENTS.md",
+        "# 项目规则\n"
+        "<!-- agent-skills:managed:start -->\n"
+        "受管入口：`scripts/check.py`。\n"
+        "<!-- agent-skills:managed:end -->\n"
+        "项目入口：`scripts/check.py`。\n",
+    )
+
+    errors = CHECK_REPOSITORY(tmp_path)
+    assert len([error for error in errors if error.startswith("DOC007 AGENTS.md:")]) == 1
+    assert any(error.startswith("DOC007 AGENTS.md:5") for error in errors)
+
+
+def test_checker_still_validates_links_inside_root_agents_managed(tmp_path: Path) -> None:
+    """受管区块仅免除导航格式检查，失效的真实 Markdown 链接仍被识别。"""
+    _minimal_repository(tmp_path)
+    _write(
+        tmp_path / "AGENTS.md",
+        "<!-- agent-skills:managed:start -->\n"
+        "受管入口：[缺失文件](missing_file.md)。\n"
+        "<!-- agent-skills:managed:end -->\n",
+    )
+
+    errors = CHECK_REPOSITORY(tmp_path)
+    assert any(error.startswith("DOC003 AGENTS.md:") for error in errors)
+
+
 def test_checker_rejects_unlinked_inline_repository_file(tmp_path: Path) -> None:
     """承担导航职责的真实仓库文件 inline-code 必须可点击。"""
     _minimal_repository(tmp_path)
