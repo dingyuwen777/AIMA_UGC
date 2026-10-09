@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20261009-143436-supplement-result-consistency
 title: 补采后品牌车型与分析结果一致性修复
 level: L3
-status: in_progress
+status: ready_for_review
 owner: maintainer
 branch: fix/supplement-result-consistency
 created: 2026-10-09T14:34:36+08:00
-updated: 2026-10-09T16:40:45+08:00
+updated: 2026-10-09T17:07:00+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -70,7 +70,7 @@ data_changes:
 
 ## 推断与待确认
 
-定向数据库回归、投影/消费者、历史修复 Runtime 和真实浏览器均已有执行证据；广域 PostgreSQL 回归及最终独立 Review 正在闭合，不把已完成的静态阅读替代未结束的执行结果。
+定向及广域数据库回归、投影/消费者、历史修复Runtime、真实浏览器和两轮独立Review已闭合。当前状态仅为本地技术完成并等待用户本地验收，不表示用户已验收或PR Ready。
 
 # 目标、成功标准与非目标
 
@@ -80,9 +80,9 @@ data_changes:
 
 ## 成功标准
 
-- [ ] AC01–AC22 均有直接证据或正式不适用依据。
-- [ ] Schema、Migration、Owner、Contract、文档及必要真实浏览器链验证闭环。
-- [ ] 独立 Review 无 blocking Finding，完成到本地待用户验收。
+- [x] AC01–AC22 均有直接证据，逐项定位于EVIDENCE。
+- [x] Schema、Migration、Owner、Contract、文档及必要真实浏览器链验证闭环。
+- [x] 两个独立Reviewer在最终返修checkpoint无unresolved blocking Finding，完成到本地待用户验收。
 
 ## 范围
 
@@ -154,7 +154,7 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 | R17 | 事务中途异常完整回滚 | user:supplement-consistency#AC17 | satisfied | V6/V14/V25；EVIDENCE AC17 |
 | R18 | Retry/Fence/接管幂等 | user:supplement-consistency#AC18 | satisfied | V6/V14/V25，正式Job故障重试/接管/取消；EVIDENCE AC18 |
 | R19 | List/Count/详情/筛选一致 | user:supplement-consistency#AC19 | satisfied | V14/V20/V22；EVIDENCE AC19 |
-| R20 | 导出/工作台/报告/历史冻结一致 | user:supplement-consistency#AC20 | not_satisfied | 首轮整批Review发现F-B1人工计数与F-B2有状态降级投影，待定向Red/Green及复审闭合；既有V14/V22/V23不覆盖这两反例 |
+| R20 | 导出/工作台/报告/历史冻结一致 | user:supplement-consistency#AC20 | satisfied | V14/V22/V23及V30；F-B1/F-B2直接Red/Green、完整Analysis30及两个独立Reviewer在8a10f441限定复审resolved，见EVIDENCE整批审查记录 |
 | R21 | 历史修复有界恢复且重复运行幂等 | user:supplement-consistency#AC21 | satisfied | V25，30项repair包含真实CLI/Worker/故障/二次运行；EVIDENCE AC21 |
 | R22 | 批量投影无明显 N+1 或全表扫描 | user:supplement-consistency#AC22 | satisfied | V14/V26，有限UUID页与1/100固定SQL数；不宣称生产40M压测；EVIDENCE AC22 |
 
@@ -202,8 +202,8 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 
 - [x] upstream_re_read：重新逐节读取本会话用户完整任务书§1–§11、AC01–AC22与当前AGENTS/USAGE；非目标、旧Run兼容、本地待人工验收和生产操作授权边界均保留。
 - [x] change_coverage：独立从上游重建需求后逐项核R1–R22，EVIDENCE逐AC列出实际断言；目录冻结、稀疏作者、合法空匹配、非相邻Hash证明、两套人工继承和有界修复无遗漏。
-- [x] reverse_audit：逐一核对补采/Excel/历史导入/Replay生产者到Content→Evidence→Analysis→投影的原子链；反查正式/兼容查询、List/Count/筛选、人工写资格、主动重打标、冻结导出/报告与工作台到同一有效来源函数；CLI真实接正式Job Runtime，无新增HTTP能力需前端入口。
-- [ ] unresolved_cleared：未满足项清零后再进入 Ready。
+- [x] reverse_audit：逐一核对补采/Excel/历史导入/Replay生产者到Content→Evidence→Analysis→投影的原子链；反查正式/兼容查询、List/Count/筛选、人工写资格、主动重打标、冻结导出/报告与工作台到同一有效来源函数；额外核报告人工计数及带数据降级的持久投影。CLI真实接正式Job Runtime，无新增HTTP能力需前端入口。
+- [x] unresolved_cleared：R1–R22全部satisfied；两项首轮P2经真实Red/Green、两个独立限定复审及受影响独立运行闭合。无未决业务决定或阻塞发现；用户本地验收、远程CI/PR与生产执行留在本轮明确交付边界之后。
 
 # 完成证据与状态
 
@@ -243,14 +243,17 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 | V29 | 最终相邻测试修正 / 25439专用库 | pytest test_collection_worker_runtime.py + test_xiaohongshu_incremental_comments_runtime.py -q --tb=short --show-capture=no | 2 passed / 4.18s | 新Job注册完整集合断言同步；小红书历史种子由正式Content Owner和真实来源夹具创建Current+Version，原评论分页断言不变 |
 | V30 | 整批Review返修 / 25439专用库 | 新6报告依据+2带数据降级Red/Green；Replay两参数；完整test_analysis_version_reuse.py | Red3 failed/5 pass；定向Green10 passed/17.17s；完整Analysis30 passed/69.38s | 报告缺键/null不算人工，真实/继承/解锁对象保留基线；降级只定向收敛引用Content，直接结果和无关Content不变；Replay集合读取与总SQL/撤销全部通过 |
 | V31 | 同返修最终源 | report_runs mypy；全956文件ruff format/check；离线重建并重装独立Wheel，python -I核最终实现 | 全PASS | 两项生产修复静态/构建新鲜证据；其他稳定生产源未变化 |
+| V32 | 8a10f441 / 两个独立Reviewer | 主审baseline challenge与漏审恢复；blind限定repair re-review；直接Git/hash绑定 | F-B1/F-B2均resolved；无新增blocking Finding | 首轮整批审查→最小返修→限定复审闭环，静态通过不替代剩余独立运行结果 |
+| V33 | 8a10f441 / 独立Tester / 55437专用库 | 完整Replay42、报告9+真实browser1、正式14历史Migration checkpoint、新8项回归、upgrade/current/check | 全PASS；42/127.23s，9/28.44s，1/8.12s，8/14.53s；head0084/无metadata漂移；起止hash一致 | 两项修复的独立运行证据与全部广域回归闭合；测试DB/进程lease已释放 |
+| V34 | 最终本地Completion / 8a10f441同生产源 | check_change_completion.py --require-active-ready --json；治理/Secret/架构/表Owner/Docs/DocsFacts；容器完整ID/标签/端口核对后清理 | 全PASS；ok=true/strict163/errors空；两个自有测试容器和匿名volume已移除，全部测试端口释放 | 本地技术完成、逐需求审计与资源清理；后续提交仅Evidence/Change，不改变已审查生产源 |
 
 ## 未验证内容与剩余风险
 
-广域PostgreSQL已执行，Collection245、Content231、Platform73、Database120、Jobs22、Vehicles5均闭合；Ingestion154绿色及两旧SQL计数失败已Root定向修正通过，独立完整文件补验进行中。首轮整批Review发现的F-B1/F-B2已直接Red/Green及完整Analysis30验证，等待限定复审、新鲜报告/Migration独立证据和最终Completion；当前不声明Ready。来源撤销保持既有语义。Windows平台的Linux专属跳过项、40M生产规模性能与真实付费Probe不在通过结论内。
+全部本轮技术验证已闭合：稳定广域套件与返修后受影响完整文件/新回归均通过，两个独立Reviewer的最终结论无阻塞。用户本地验收尚未发生，远程CI未触发，不声明PR Ready。Windows完整后端16项平台skip及Jobs1项Linux专属skip保留为未验证边界；没有40M生产规模、真实付费Probe、生产Migration或生产修复结论。来源撤销保持既有语义。
 
 ## 交付状态
 
-- 提交：本地治理 checkpoint 4f84afc8；实现 checkpoint 9ddc6513，后续仅补最终验收证据。
+- 提交：本地治理 checkpoint 4f84afc8；完整实现 checkpoint 9ddc6513；返修 checkpoint 8a10f441。后续仅补最终验收证据。
 - 拉取请求：未创建；等待用户本地验收。
 - CI：远程未触发。
 - 合并：未执行。

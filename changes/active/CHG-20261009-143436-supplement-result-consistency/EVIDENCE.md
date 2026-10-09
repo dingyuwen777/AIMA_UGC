@@ -12,6 +12,8 @@ Python 命令均使用仓库根 `.venv/Scripts/python.exe`；Node 命令使用 `
 
 ## 已实际完成的验证
 
+表中保留修前失败及环境诊断，后续标有返修/最终/独立补验的记录闭合对应项；不把失败或中断计入通过总数。
+
 | 范围 | 实际命令（从仓库根执行） | 结果 |
 | --- | --- | --- |
 | Content/品牌补采定向 | `pytest tests/integration/content/test_supplement_author_snapshots.py tests/integration/collection/test_collection_content_runtime.py tests/integration/collection/test_collection_content_supplement.py tests/integration/collection/test_collection_date_supplement.py tests/integration/content/test_excel_follower_count_voice_plaza.py -q` | 第一切片 23 passed；作者解绑新增回归随后纳入 C/D 最终运行 |
@@ -38,7 +40,7 @@ Python 命令均使用仓库根 `.venv/Scripts/python.exe`；Node 命令使用 `
 | 全历史 Migration 兼容 | `tests/integration/database/verify_migration_compatibility.py` | 独立 Tester 实际执行 14 个 checkpoint（含 base），每次均恢复0084并 check PASS |
 | 报告数据库工作流 | `pytest tests/integration/reporting -q -rs --tb=short --show-capture=no` | 独立 Tester 9 passed / 28.07s；仅浏览器环境开关导致1 skip，已补跑下项 |
 | 报告真实浏览器 | 显式 `AIMA_REPORT_BROWSER_ACCEPTANCE=1`，运行 `pytest tests/integration/reporting/test_database_reports.py::test_browser_to_real_report_api_worker_and_download -q -rs --tb=short --show-capture=no` | 独立 Tester 1 passed / 11.69s；Chrome→Vue→API55439→报告Worker→DOCX下载，ZIP和document.xml通过；全部10项报告均实际通过 |
-| 仓库质量 | `check_agent_governance.py`、`scan_secrets.py`、`check_architecture.py`、`check_table_ownership.py`、`check_docs.py`、`check_docs_facts.py` | 已通过阶段检查，最终文档及 Writer 释放后重新核对受影响项 |
+| 最终仓库质量 | `check_agent_governance.py`、`scan_secrets.py`、`check_architecture.py`、`check_table_ownership.py`、`check_docs.py`、`check_docs_facts.py` | 最终全部PASS；生产源与8a10f441一致 |
 | Collection广域回归及修正 | `pytest tests/integration/collection -vv -o faulthandler_timeout=45`；随后在独立25439库运行两个失败项的完整文件 | 首次完整243 passed / 2 failed / 536.11s；新Job exact-set漏同步及缺Version的直接SQL夹具已修正，两个完整文件2 passed / 4.18s，独立复验待收齐。首轮缓冲输出运行在有界诊断前中断，不计完成或失败 |
 | 独立Platform | `pytest tests/integration/platform -q`；专用身份库按原guard要求复验身份/同步用例 | 73项实际通过、无skip；首次环境身份guard失败保留，随后18项身份/guard在同任务容器的专用库通过，未放宽guard |
 | 独立Database | `pytest tests/integration/database -q` | 120 passed / 54.98s |
@@ -50,12 +52,16 @@ Python 命令均使用仓库根 `.venv/Scripts/python.exe`；Node 命令使用 `
 | Review反例Red/Green | 25439运行新增6报告依据参数及2带数据降级参数，随后加Replay两查询计数参数 | 修复前3 failed / 5 passed / 14.61s，精确复现两null计数及一个stale反例；修复后10 passed / 17.17s，含101条总SQL上限与后续撤销分支 |
 | 返修静态/包 | `mypy report_runs.py`；全956文件ruff format/check；离线重建Wheel并在原锁定依赖独立环境强制重装，`python -I`核对最终汇总实现与修复模块 | 全PASS；Wheel包含最终JSON对象计数，非旧构建 |
 | 返修完整Analysis | `pytest tests/integration/content/test_analysis_version_reuse.py -q --tb=short --show-capture=no` | 30 passed / 69.38s；新增8项及原22项全部实际执行通过 |
+| 返修独立完整Replay | fresh 55437运行`pytest tests/integration/ingestion/test_canonical_replay_worker.py -q -rs --tb=short --show-capture=no` | 42 passed / 0skip / 127.23s；Ingestion全部156个不同测试闭合 |
+| 返修独立报告 | fresh 55437运行报告组并显式单跑真实浏览器项 | 9 passed / 28.44s + browser1 passed / 8.12s，无skip；新隐藏API/Vite进程均精确清理 |
+| 返修独立Migration与新回归 | 正式`verify_migration_compatibility.py`；新增6报告计数+2带数据降级；最终upgrade/current/check | 14个checkpoint全部PASS；新8 passed / 14.53s；0084/head及metadata无漂移；report_runs/0083起止Hash与8a10f441一致 |
+| 最终Completion | `scripts/quality/check_change_completion.py --root D:/test/AIMA_UGC --require-active-ready --json` | PASS；ok=true，gated163/strict163，errors=[]；AC01–AC22全部satisfied，四项Completion Audit已完成 |
 
 完整后端的16个跳过来自现有 Windows/POSIX、符号链接及 Linux Noto 字体条件。未修改条件、未把 skip 记为 pass。正式报告在 Windows 可用中文字体上已完成真实生成和下载。
 
 ## AC 直接断言定位
 
-以下是最终 Completion 的核对索引；最终状态由 CHANGE 的逐需求表维护，尚未完成项不会因为这里列了测试入口而自动通过。
+以下是最终Completion逐项核对索引，全部有实际直接断言和执行证据；当前Change逐需求表维护同一状态。首轮遗漏的报告计数及有数据降级已纳入AC20返修证据，不能仅凭初始入口表宣称完成。
 
 | AC | 当前直接断言入口与行为 |
 | --- | --- |
@@ -72,7 +78,7 @@ Python 命令均使用仓库根 `.venv/Scripts/python.exe`；Node 命令使用 `
 | 17 | `test_supplement_reuse_exception_rolls_back_content_evidence_and_relation`；Evidence异常、错误Content身份回滚；repair的 `test_failure_after_business_and_checkpoint_writes_rolls_back_entire_batch` |
 | 18 | `test_stale_fence_cannot_write_candidate_or_content`；`test_late_frozen_ai_work_does_not_overwrite_reused_current`；repair的 `test_checkpoint_takeover_rejects_old_fence_and_resumes_remaining_targets`、`test_cancelled_run_cannot_write_remaining_targets`、`test_registered_worker_retries_failed_batch_without_partial_success` |
 | 19 | `test_all_current_consumers_share_reuse_and_manual_values`；单行投影、Count、品牌/车型/情感/标签筛选、正式/兼容详情和真实浏览器刷新 |
-| 20 | `test_frozen_export_and_report_use_target_version_and_inherited_manual`；`test_collection_irrelevant_filter_uses_reused_raw_ai_not_manual_overlay`；active Scheme工作台保持其既有范围；真实账号补采→导出/报告工作台及报告下载 |
+| 20 | `test_frozen_export_and_report_use_target_version_and_inherited_manual`；`test_collection_irrelevant_filter_uses_reused_raw_ai_not_manual_overlay`；新增`test_report_manual_count_uses_actual_frozen_objects`六参数及`test_downgrade_reconciles_only_reuse_contents`两参数；active Scheme工作台保持既有范围；真实导出/报告及修复后浏览器下载 |
 | 21–22 | `test_content_consistency_repair.py` 的30项只读预检/有限目标/冻结目录/检查点/重试/二次幂等、人工和自动批量查询回归；`test_reuse_preflight_batches_targets_without_n_plus_one` 的100目标固定SQL数；真实性能计数记录在上表 |
 
 ## 实际文件与修改原因
@@ -116,8 +122,12 @@ Python 命令均使用仓库根 `.venv/Scripts/python.exe`；Node 命令使用 `
 
 实施前先增加真实PostgreSQL Red：报告缺键/null、直接/继承人工及解锁对象；带合法复用completed投影的结构降级，并对照直接结果和无关Content。Green后只复审原Finding、repair diff、相邻回归、AC20和回退，不重启无关全任务审查。
 
+返修生产源冻结于`8a10f441b6ef7ea05952bb9fa87aecd754551f04`（base caf06ae1，decision_epoch 1）。主审`preflight_review`与盲审`blind_completion_review`分别核对当前revision、repair diff及Hash后完成限定复审，F-B1/F-B2均resolved，无新增blocking Finding。主审明确用修复后的结论替代漏审的初始结论。Parent在两轮全部主要投影闭合后作唯一综合结论，没有按部分草稿提前返修。最终待收齐的独立执行结果不由Reviewer的静态PASS代替。
+
+最终独立执行已全部收齐并保持相同生产Hash。PostgreSQL不同测试汇总为Platform73、Database120、Jobs22、Collection245、Content239（原231加新8）、Ingestion156、Vehicles5、Reporting10，共870项实际通过；Jobs另1个既有Linux条件skip。修正后重跑的用例不重复加入这个总数，14个Migration checkpoint单列。完整后端2095、前端306、Browser Mock206、真实Full-stack20等其他层也分别计数。Parent重读上游、逐AC映射、反向核对及未决清零完成，当前终点为Local Ready for User Acceptance。
+
 ## 环境清理与实际边界
 
-Full-stack拥有的5个进程树按PID、启动时间精确清理，8090/8091/4174/5173已释放。报告浏览器由Tester拥有的API/Vite已清理，55439/55440已释放。两个PostgreSQL测试容器在全部数据库验收结束后由Parent按完整ID及任务标签统一清理。
+Full-stack拥有的5个进程树按PID、启动时间精确清理，8090/8091/4174/5173已释放。报告浏览器由Tester拥有的API/Vite已清理，55439/55440已释放。全部lease释放后，Parent逐一核对两个PostgreSQL容器的完整ID、名称、任务标签和端口，再删除容器及匿名volume：`6df07e643ee856a9498b683251e1eafdc457f6c270bd9950d5de7a561cf3eb22`和`0b3a6dfdb39ff6e96a05ebbd9f501f4810250c49f9b6e528dc8d3345dd6246bf`。25439/55437及上述所有测试端口已确认无监听；忽略目录中的日志、截图、下载报告和Wheel保留。用户开发容器、库及Secret未操作。
 
-本轮不运行生产历史修复、不发布、不部署、不push、不创建PR或合并。没有40M生产数据规模性能结论。全部AC已有上面的直接证据；广域PG、最终Completion和独立Review仍在执行，当前记录不宣称已Ready。
+历史修复在隔离测试中实际完成dry-run、apply、重试/接管/取消、原子回滚和幂等验证，不仅验证预检；真实业务历史数据没有执行修复。本轮不发布、不部署、不push、不创建PR或合并。没有40M生产规模性能结论。全部AC及两轮独立Review已闭合，用户本地人工验收尚待进行，远程CI未触发，不声明PR Ready。
