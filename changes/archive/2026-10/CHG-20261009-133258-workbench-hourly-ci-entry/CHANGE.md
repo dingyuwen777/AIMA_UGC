@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261009-133258-workbench-hourly-ci-entry
 title: 工作台每小时更新与前端检查入口修复
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/workbench-hourly-refresh
 created: 2026-10-09
