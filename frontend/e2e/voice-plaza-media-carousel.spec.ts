@@ -170,7 +170,7 @@ function playbackResponse(overrides: Partial<ContentMediaPlaybackResponse> = {})
   }
 }
 
-test('无URL视频显示标识与时长，点击才准备，原生控件不自动下载，关闭释放src', async ({ page }) => {
+test('视频列表不显示标签，详情保留标识与时长，点击才准备且关闭释放src', async ({ page }) => {
   await stubVoicePlazaRoutes(page, [{ position: 0, media_type: 'video', url: null, preview_url: null, duration_ms: 65000 }])
   let prepares = 0
   let streamRequests = 0
@@ -180,9 +180,11 @@ test('无URL视频显示标识与时长，点击才准备，原生控件不自�
   })
   page.on('request', (request) => { if (request.url().includes('/playback/stream')) streamRequests += 1 })
   await page.goto('/voice-plaza')
-  await expect(page.getByLabel('视频内容')).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看详情' })).toBeVisible()
+  await expect(page.getByLabel('视频内容')).toHaveCount(0)
   await page.getByRole('button', { name: '查看详情' }).click()
   const drawer = page.getByRole('dialog', { name: '内容详情' })
+  await expect(drawer.locator('.content-kind')).toHaveText('视频')
   await expect(drawer.getByText('视频 · 1:05', { exact: true })).toBeVisible()
   expect(prepares).toBe(0)
   await expect(drawer.locator('video')).toHaveCount(0)

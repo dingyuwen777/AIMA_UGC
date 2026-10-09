@@ -191,7 +191,7 @@ Development Preflight：保留当前分支和四个本地提交，唯一上游Is
 | R26 | 无播放URL仍保留视频类型封面。 | #711 / AC26 | satisfied | 同文件媒体基础层及真实首次cover-only入库；无URL保留video和封面 |
 | R27 | 重复补采、部分属性、完整替换、删除、迟到并发正确合并媒体。 | #711 / AC27 | satisfied | 同文件60PG与三项返修10PG/48相邻PG；partial/full/delete/late/batch/并发和来源撤销 |
 | R28 | 横竖长图及多图窄屏完整无裁切拉伸。 | #711 / AC28 | satisfied | 同文件真实Chrome横1200×600/竖600×1200/长400×2400及390px详情；contain、558×440稳定 |
-| R29 | 标题附近及详情有真实视频标识，不恢复类型筛选或列。 | #711 / AC29 | satisfied | 同文件前端FE-R4永久Red/Green及真实列表和详情视频标识截图；不增加类型筛选/列 |
+| R29 | 声音广场列表标题旁不显示“视频”标签；笔记详情保留视频标签及播放信息，不恢复内容类型筛选或列。 | #711 / AC29 | satisfied | 最新用户决定及Issue AC29 canonical更新/live同检PASS；目标Browser旧实现1 failed→新实现1 passed/6.3s，等待列表加载后断言无标签；正式Nginx/API/Chrome实际两帖列表0标签、详情标签/时长/入口保留，prepare/stream/paid均0；见MEDIA_CI_EVIDENCE最新决定段 |
 | R30 | 受支持合法源站内播放，真实CDN证据与Mock区别。 | #711 / AC30 | satisfied | 同文件正式Nginx/API/Worker/Chrome/真实CDN；720×1280/17.833s/readyState4，exit0 |
 | R31 | 真实Range/206/416与进度拖动遵循上游能力。 | #711 / AC31 | satisfied | 同文件实际206/1024bytes及416空正文；原生seek到10秒完成解码；53代理Unit |
 | R32 | 视频不落盘、不入Artifact或长期缓存，Nginx禁视频临时缓冲。 | #711 / AC32 | satisfied | 同文件14组业务/Artifact审计video MIME0，真实Nginx仅pid无proxy_temp，遥测保存视频字节0 |
@@ -217,7 +217,7 @@ Development Preflight：保留当前分支和四个本地提交，唯一上游Is
 | R52 | Workflow责任审计/Evidence保留映射后消除确认重复Setup/Install/Build，保持必要Runtime/Release验证。 | #711 / AC52 | satisfied | Blueprint06 Workflow责任与Evidence Preservation Mapping；#710配置风险避免无关Runtime/镜像/DB/Browser，真实部署风险保留 |
 | R53 | 定向验证优先、充分旧证据复用、Review整批收敛；DB热点有真实基线而不无界重构。 | #711 / AC53 | satisfied | 同文件定向Red/Green、冻结hash证据复用/整批修复限定复审；真实PG suite耗时/固定1与100查询数，无共享DB并行或timeout放宽 |
 | R54 | 用#710及本轮真实CI执行次数/时长/关键路径证明优化，不能仅宣称YAML减少。 | #711 / AC54 | explicitly_deferred | explicitly_deferred仅指已批准PRA→PRB顺序中的post-merge真实模板Runner采样；MEDIA_CI_EVIDENCE已有#710真实旧时长/4文件反例，新Workflow自身须full；Issue AC54保持未勾选，采样后回写，不免除该验收 |
-| R55 | 三项本地成果经独立Review、current-head/base required CI及受保护PR合并main，取得implementation main-fresh、原生归档及archive governance fresh；全部AC闭合后完成Closure和关单，再清理本次已合并未使用的任务分支和临时资源；不Release/Deploy/生产操作。 | #711 / AC55 与生命周期附录 | explicitly_deferred | explicitly_deferred仅指授权的post-merge main-fresh/原生归档/Closure及清理阶段；独立Review已闭合，人工Gate仍PENDING，正式current-head/base CI及保护须在merge前实际满足；Issue AC55保持未勾选，禁止据此先关单 |
+| R55 | 三项本地成果经独立Review、current-head/base required CI及受保护PR合并main，取得implementation main-fresh、同一Change原生归档及archive governance fresh；不Release/Deploy/生产操作。 | #711 / AC55 | explicitly_deferred | explicitly_deferred仅指AC55中授权的post-merge main-fresh及原生归档事实；独立Review已闭合，人工Gate仍PENDING，正式current-head/base CI及保护须在merge前实际满足；Issue AC55保持未勾选，禁止据此先关单。生命周期附录的关单及清理独立记录为必须完成的pending/incomplete，不属于延期 |
 
 # 计划改动
 
@@ -266,7 +266,7 @@ Development Preflight：保留当前分支和四个本地提交，唯一上游Is
 
 # 完成审计
 
-- [x] upstream_re_read：已live重读Issue #711，55AC及生命周期附录与canonical已澄清正文逐字一致；重新对照三份用户任务书与最新合并清理授权，逐55AC重建本地完成定义。
+- [x] upstream_re_read：已live重读Issue #711，55AC及生命周期附录与canonical正文逐字一致；最新用户仅取消列表视频标签、保留详情标签，AC29已canonical更新、写后精确重读及同检PASS；重新对照三份任务书及最新指令，仅R29展示证据重新验证。
 - [x] change_coverage：R1–R53直接证据已逐项映射，受影响旧路径经相邻PG/真实浏览器复验；R54/R55仅按上游既定交付顺序保留post-merge阶段，未提前勾选Issue，pre-merge门禁不豁免。
 - [x] reverse_audit：逐层反查正常补采/Replay到媒体Owner、prepare到正式Job/Attempt/Raw和只读观察、stream到Principal/安全CDN/取消、前端到生成Contract、selector到CI/Runtime/Tooling/Release及三个required identity；main收尾仍按授权后续阶段执行。
 - [x] unresolved_cleared：补采、媒体基础/代理/Service、CI、前端及Docs的整批material Findings均经独立限定复审closed；BR-R3与真实Chrome/CDN最后路径通过。人工Gate、远程required CI及post-merge事实仍如实单列，未冒充已取得。
@@ -325,6 +325,12 @@ Development Preflight：保留当前分支和四个本地提交，唯一上游Is
 - 用户人工验收：未发生，不冒充通过；主分支交付及任务清理已获明确授权。
 - PR/远程CI/merge/main-fresh/archive/Closure/清理：尚未执行。
 - Release/Deploy/生产数据：非目标。
+
+## 生命周期附录与整体目标状态
+
+- Closure / 关单：pending，当前Issue #711保持open；必须在全部55AC取得直接Evidence、回写并live reread之后执行，不能用Change状态或PR merge代替。
+- Global cleanup：**pending / incomplete / required**，必须在关单后安全清理本次已合并且未被使用的任务分支、进程、容器、卷和临时文件并验证结果；保留正式归档及合法Evidence，保护其他任务资源及未合并修改。
+- 清理没有延期、N/A或完成处置；清理失败或未完成时整体目标仍incomplete或受阻。Issue关闭、Change归档及本地技术Ready均不代表整体目标完成。
 
 ## 备注
 

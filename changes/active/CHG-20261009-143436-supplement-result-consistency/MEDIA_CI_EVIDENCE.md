@@ -219,3 +219,19 @@ $env:AIMA_BROWSER_REUSE_MANUAL_FACTS='1'
 独立技术Review已覆盖补采、媒体基础、来源撤销、代理/会话、正式Service/Worker、前端、CI及正式Docs；所有material Findings经整包返修与限定复审闭合。whole-package最终逐AC完成定义复核另行记录。人工本地验收仍PENDING，当前没有push/PR/merge；首次远程写入前必须取得实际PASSED或明确USER_WAIVED，不因合并授权冒充人工已验收。
 
 仍未验证及不能宣称的事项：部署服务器出口、生产负载/40M容量、TikHub实际结算账单、生产历史修复、任意旧软件安全回滚。以上不是本次Release/部署授权；本轮不执行这些生产动作。AC54真实Runner对照及AC55主分支/归档/Closure/清理按既定后续交付阶段实际完成后更新。
+
+最终完成定义限定复核发现一处记录口径冲突：R55把AC55与关单后清理一起置于阶段延期，而最新上游附录明确禁止清理延期。已仅调整施工契约：R55严格对应AC55，阶段延期仅限main-fresh/原生归档事实；Closure及Global cleanup单列pending/incomplete/required，未延期、未N/A、未声称完成。上游Source不变，工程代码/Contract/环境及已有测试证据不变，不重跑工程套件。
+
+独立限定返修复核确认F-COMP1 CLOSED，无新增material Finding。R1–R53完成定义及本地直接Evidence无工程缺口，R54/AC55后续事实与全局cleanup状态边界准确。本地技术状态为Local Ready for User Acceptance；Human仍PENDING，尚未push/PR，不表示PR Ready或整体目标完成。
+
+## 最新决定：列表取消视频标签，详情保留
+
+用户随后明确取消声音广场列表的“视频”标签，并澄清笔记详情可以保留。该决定覆盖原AC29的列表标识要求，详情与播放器标签、时长及准备逻辑保持现有行为。Issue #711只改AC29，其余54项与生命周期附录不变；canonical candidate/create与live pre-write PASS后结构化更新，写后CLI live reread正文精确匹配、55项数量不变、同一live validator PASS。连接器只读重读等待过久后结束等待，使用正式CLI恢复事实，没有重复写入Issue。
+
+实现只删除VoicePlazaTable的标签节点和无用样式，修改现有媒体Browser回归并同步frontend README与R29。目标回归先等待真实列表行显示，防止负向断言在加载前误通过；旧实现真实1 failed，新实现1 passed/6.3s、exit0，同时断言详情标签、时长、显式准备、原生控件配置及关闭释放。精确两文件eslint和生产build（含typecheck）exit0，仅既有chunk提示。
+
+正式本地Nginx/API/已安装Chrome另验证实际两条笔记：列表视频标签0、详情顶部视频标签保留、媒体角标及0:18时长保留、准备按钮可见；未自动挂载播放器，prepare/stream/付费Provider请求均0。已保存新列表与详情截图，Root查看当前画面确认。此前真实CDN解码/Range/关闭、PG事务、费用/安全及CI证据的生产路径未改变，限定复用，不为这次展示调整重跑无关套件。
+
+自动审批曾拒绝提交仍把原列表标签作为当前验收要求的记录；本次先完成上述Source、实现、测试及证据修正后再提交，没有绕过该拒绝。原先已提交的2b1529f8是当时已批准要求的历史checkpoint，当前决定由后续正常提交覆盖，不改写历史Evidence。
+
+本次五路径限域独立Review PASS，无新增material Finding；精确diff SHA-256为 `c524d0eb736a821fe188ed59211b22fe554987978c74f6791fdab434ae79e77f`，manifest为 `714627691ecf3b3e2f5eba42bf11a77e651d8db1ab7a3a8f6e4ae873fff69b01`，起止源码/日志与实际浏览器facts无漂移。新决定所影响的R29已重新闭合，其他充分工程证据继续按其原revision/边界复用；整体Human仍PENDING。

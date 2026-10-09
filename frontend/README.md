@@ -300,7 +300,7 @@ src/features/voice-plaza/
 
 Analysis Run 的历史、终态和跨页面任务摘要由全局任务中心读取现有 read API 展示；这不改变声音广场对 Analysis Run 创建/取消的业务 Owner，也不改变后端 Analysis Run 的保留策略。
 
-小红书媒体由 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentMediaGallery.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/ContentMediaGallery.vue) 统一展示。图片和视频封面使用同源图片缓存；横图、竖图、长图在稳定且受视口限制的画廊中完整显示，多图保留左右切换、计数和完整图片入口。列表标题附近和详情使用后端真实视频类型显示标识，不恢复内容类型筛选或表格列。
+小红书媒体由 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentMediaGallery.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/ContentMediaGallery.vue) 统一展示。图片和视频封面使用同源图片缓存；横图、竖图、长图在稳定且受视口限制的画廊中完整显示，多图保留左右切换、计数和完整图片入口。列表标题旁不显示视频标签；笔记详情按后端真实视频类型保留标签、封面、时长和播放器，不恢复内容类型筛选或表格列。
 
 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentVideoPlayer.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/ContentVideoPlayer.vue) 在用户点击准备后，通过生成 Client 取得同源短期播放会话，再显示原生播放器；不在打开详情时准备或自动播放。仅有封面的视频也保留准备和原帖入口。浏览器观察状态由 [`frontend/src/features/voice-plaza/mediaPlayback.ts`](src/features/voice-plaza/mediaPlayback.ts) 管理，每次显式播放最多一次受控恢复；原生错误不能证明来源失效，是否允许收费刷新仍由后端可信失败事实判断。关闭、切帖或切换媒体释放原生 src、停止本地请求和轮询，不取消其他用户共享的准备任务。失败保留正文、评论和封面，并提供原帖入口。
 
