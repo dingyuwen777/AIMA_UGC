@@ -819,3 +819,190 @@ def test_legacy_non_model_url_format_does_not_add_an_equivalence_condition(reuse
         )
     _observe(runtime)
     assert service.get_content(content_id).analysis.status == "completed"
+
+
+@pytest.mark.parametrize(
+    ("reused", "manual_mode", "expected_count"),
+    (
+        (False, "missing", 0),
+        (False, "null", 0),
+        (True, "null", 0),
+        (False, "locked", 1),
+        (True, "locked", 1),
+        (False, "unlocked", 1),
+    ),
+)
+def test_report_manual_count_uses_actual_frozen_objects(
+    reuse_runtime, reused, manual_mode, expected_count
+):  # type: ignore[no-untyped-def]
+    """缺键或JSON null不冒充人工；继承和全解锁对象保留原审计计数。"""
+    from datetime import date
+    from uuid import UUID, uuid4
+
+    from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+    from aima_ugc.adapters.persistence.postgres.report_runs import PostgresReportRepository
+    from aima_ugc.modules.reporting.report_tables import report_items_table
+    from aima_ugc.platform.time import beijing_now
+    from sqlalchemy import Integer, Uuid, literal, update
+
+    runtime, service, content_id = reuse_runtime
+    if manual_mode in ("locked", "unlocked"):
+        _review(service, content_id, 1, sentiment="负面")
+        if manual_mode == "unlocked":
+            _review(service, content_id, 1, unlock_dimensions=("sentiment",))
+    if reused:
+        _observe(runtime)
+    version = 2 if reused else 1
+    report_id = uuid4()
+    brand_id = UUID(stage3_filter_brand_id(runtime, alias="爱玛"))
+    with runtime.database.new_session() as session, session.begin():
+        job = PostgresJobRepository(session).enqueue(
+            job_type="reporting.report-generation.v1",
+            payload_version="reporting.report-generation.v1",
+            payload={
+                "schema_version": "reporting.report-generation.v1",
+                "report_run_id": str(report_id),
+            },
+            internal_idempotency_key=f"report-manual-count:{report_id}",
+            request_id=None,
+            priority=10,
+            max_attempts=2,
+            timeout_seconds=300,
+        )
+        owner = PostgresReportRepository(session)
+        owner.create(
+            {
+                "id": report_id,
+                "name": "人工依据回归",
+                "brand_id": brand_id,
+                "vehicle_model_ids": [],
+                "start_date": date(2026, 8, 20),
+                "end_date": date(2026, 8, 20),
+                "generation_job_id": job.id,
+                "snapshot": {},
+                "generation_checkpoint": {},
+                "publication_checkpoint": {},
+                "created_by": "test:report-basis",
+                "created_at": beijing_now(),
+            }
+        )
+        owner.freeze(
+            report_id,
+            "current",
+            select(
+                literal(content_id, Uuid()).label("content_id"),
+                literal(version, Integer()).label("content_version"),
+                literal(0, Integer()).label("target_ordinal"),
+            ),
+        )
+        basis = session.scalar(
+            select(report_items_table.c.analysis_basis).where(
+                report_items_table.c.report_run_id == report_id
+            )
+        )
+        assert basis["target_content_version"] == version
+        assert basis["content_version"] == 1
+        if manual_mode == "missing":
+            basis.pop("manual_override", None)
+            session.execute(
+                update(report_items_table)
+                .where(report_items_table.c.report_run_id == report_id)
+                .values(analysis_basis=basis)
+            )
+        elif manual_mode == "null":
+            assert basis["manual_override"] is None
+        else:
+            assert basis["manual_override"]["content_version"] == 1
+            assert basis["manual_override"]["sentiment_locked"] == (manual_mode == "locked")
+        summaries = owner.summarize_analysis_bases(report_id)
+        assert len(summaries) == 1
+        assert summaries[0]["content_count"] == 1
+        assert summaries[0]["manual_override_count"] == expected_count
+
+
+@pytest.mark.parametrize("direct_result", [False, True])
+def test_downgrade_reconciles_only_reuse_contents(reuse_runtime, direct_result):  # type: ignore[no-untyped-def]
+    """有数据降级清除失效引用投影，直接结果和无关Content保持正确。"""
+    from pathlib import Path
+
+    from aima_ugc.adapters.persistence.postgres.analysis import canonical_analysis_content_from_row
+    from aima_ugc.adapters.persistence.postgres.analysis_reuse import (
+        PostgresAnalysisReuseRepository,
+    )
+    from aima_ugc.adapters.persistence.postgres.content_complete import (
+        PostgresCompleteContentRepository,
+    )
+    from aima_ugc.modules.content.read_model_tables import voice_plaza_content_projection_table
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    runtime, service, content_id = reuse_runtime
+    _review(service, content_id, 1, sentiment="负面")
+    _observe(runtime)
+    if direct_result:
+        service.create_analysis(
+            ContentAnalysisSubmitRequest(
+                targets=ContentTargetSelection(scope="selected", content_ids=(content_id,)),
+            ),
+            request_id="downgrade-direct",
+        )
+        _analyze(runtime, sentiment="正面")
+        _review(service, content_id, 2, unlock_dimensions=("sentiment",))
+    projection = voice_plaza_content_projection_table
+    with runtime.database.new_session() as session, session.begin():
+        row = PostgresAnalysisReuseRepository(session)._version_inputs((content_id,))[
+            (content_id, 2)
+        ]
+        unrelated = canonical_analysis_content_from_row(row).model_copy(
+            update={
+                "external_content_id": "downgrade-unrelated",
+            }
+        )
+        other_id = PostgresCompleteContentRepository(session).ingest_content(unrelated).target_id
+        before_other = dict(
+            session.execute(select(projection).where(projection.c.content_id == other_id))
+            .mappings()
+            .one()
+        )
+        assert (
+            session.scalar(
+                select(projection.c.analysis_status).where(projection.c.content_id == content_id)
+            )
+            == "completed"
+        )
+    config = Config(str(Path("alembic.ini").resolve()))
+    try:
+        command.downgrade(config, "20261003_0082")
+        with runtime.database.new_session() as session:
+            after = (
+                session.execute(select(projection).where(projection.c.content_id == content_id))
+                .mappings()
+                .one()
+            )
+            assert after["analysis_status"] == ("completed" if direct_result else "stale")
+            assert after["effective_sentiment"] == ("正面" if direct_result else None)
+            if not direct_result:
+                assert after["analysis_result_id"] is None
+                assert after["labels"] == []
+                assert (
+                    session.scalar(
+                        text(
+                            "SELECT count(*) FROM voice_plaza_filter_catalog_entries "
+                            "WHERE content_id=:id "
+                            "AND dimension IN ('sentiment','voice_type','label')"
+                        ),
+                        {"id": content_id},
+                    )
+                    == 0
+                )
+            assert (
+                dict(
+                    session.execute(select(projection).where(projection.c.content_id == other_id))
+                    .mappings()
+                    .one()
+                )
+                == before_other
+            )
+    finally:
+        command.upgrade(config, "head")

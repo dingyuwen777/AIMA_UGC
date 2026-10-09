@@ -131,17 +131,19 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 
 # 需求追溯
 
+上游AC01–AC09在机器来源绑定中规范为AC1–AC9；编号和语义对应不变，展示及Evidence继续使用用户任务书编号。
+
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 评论/回复/互动不破坏版本及分析 | user:supplement-consistency#AC01 | satisfied | V6/V7/V14/V22；EVIDENCE AC01 |
-| R2 | URL/发布时间等非输入变更复用 AI | user:supplement-consistency#AC02 | satisfied | V14/V20/V22；EVIDENCE AC02 |
-| R3 | 稀疏 Detail 保留正文并按完整 Current 分类 | user:supplement-consistency#AC03 | satisfied | V6/V14；EVIDENCE AC03 |
-| R4 | 新品牌全部命中 | user:supplement-consistency#AC04 | satisfied | V24 title/text新增时序两参数；EVIDENCE AC04 |
-| R5 | 删除旧品牌撤销自动命中 | user:supplement-consistency#AC05 | satisfied | V6/V24；EVIDENCE AC05 |
-| R6 | 多品牌车型归属正确 | user:supplement-consistency#AC06 | satisfied | V20/V22，真实爱玛+雅迪及各自车型；EVIDENCE AC06 |
-| R7 | 无品牌仍补采成功 | user:supplement-consistency#AC07 | satisfied | V6/V24/V25，Discovery过滤保留；EVIDENCE AC07 |
-| R8 | 人工品牌车型锁继承 | user:supplement-consistency#AC08 | satisfied | V6/V25，分维来源、空锁和墓碑；EVIDENCE AC08 |
-| R9 | 同输入跨版本零 LLM 复用 | user:supplement-consistency#AC09 | satisfied | V14/V20/V22；EVIDENCE AC09 |
+| R1 | 评论/回复/互动不破坏版本及分析 | user:supplement-consistency#AC1 | satisfied | V6/V7/V14/V22；EVIDENCE AC01 |
+| R2 | URL/发布时间等非输入变更复用 AI | user:supplement-consistency#AC2 | satisfied | V14/V20/V22；EVIDENCE AC02 |
+| R3 | 稀疏 Detail 保留正文并按完整 Current 分类 | user:supplement-consistency#AC3 | satisfied | V6/V14；EVIDENCE AC03 |
+| R4 | 新品牌全部命中 | user:supplement-consistency#AC4 | satisfied | V24 title/text新增时序两参数；EVIDENCE AC04 |
+| R5 | 删除旧品牌撤销自动命中 | user:supplement-consistency#AC5 | satisfied | V6/V24；EVIDENCE AC05 |
+| R6 | 多品牌车型归属正确 | user:supplement-consistency#AC6 | satisfied | V20/V22，真实爱玛+雅迪及各自车型；EVIDENCE AC06 |
+| R7 | 无品牌仍补采成功 | user:supplement-consistency#AC7 | satisfied | V6/V24/V25，Discovery过滤保留；EVIDENCE AC07 |
+| R8 | 人工品牌车型锁继承 | user:supplement-consistency#AC8 | satisfied | V6/V25，分维来源、空锁和墓碑；EVIDENCE AC08 |
+| R9 | 同输入跨版本零 LLM 复用 | user:supplement-consistency#AC9 | satisfied | V14/V20/V22；EVIDENCE AC09 |
 | R10 | 任一输入字段不同保持 stale | user:supplement-consistency#AC10 | satisfied | V14，生产Hash与变化字段参数；EVIDENCE AC10 |
 | R11 | 未知协议/失败结果不猜测继承 | user:supplement-consistency#AC11 | satisfied | V14/V25；EVIDENCE AC11 |
 | R12 | 等价输入保留情感标签发声人工修正 | user:supplement-consistency#AC12 | satisfied | V14/V20/V22；EVIDENCE AC12 |
@@ -152,7 +154,7 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 | R17 | 事务中途异常完整回滚 | user:supplement-consistency#AC17 | satisfied | V6/V14/V25；EVIDENCE AC17 |
 | R18 | Retry/Fence/接管幂等 | user:supplement-consistency#AC18 | satisfied | V6/V14/V25，正式Job故障重试/接管/取消；EVIDENCE AC18 |
 | R19 | List/Count/详情/筛选一致 | user:supplement-consistency#AC19 | satisfied | V14/V20/V22；EVIDENCE AC19 |
-| R20 | 导出/工作台/报告/历史冻结一致 | user:supplement-consistency#AC20 | satisfied | V14/V22/V23，冻结目标/人工来源及各自Scheme范围；EVIDENCE AC20 |
+| R20 | 导出/工作台/报告/历史冻结一致 | user:supplement-consistency#AC20 | not_satisfied | 首轮整批Review发现F-B1人工计数与F-B2有状态降级投影，待定向Red/Green及复审闭合；既有V14/V22/V23不覆盖这两反例 |
 | R21 | 历史修复有界恢复且重复运行幂等 | user:supplement-consistency#AC21 | satisfied | V25，30项repair包含真实CLI/Worker/故障/二次运行；EVIDENCE AC21 |
 | R22 | 批量投影无明显 N+1 或全表扫描 | user:supplement-consistency#AC22 | satisfied | V14/V26，有限UUID页与1/100固定SQL数；不宣称生产40M压测；EVIDENCE AC22 |
 
@@ -198,9 +200,9 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 
 # 完成审计
 
-- [ ] upstream_re_read：重读用户完整任务书与当前正式规则。
-- [ ] change_coverage：逐 AC01–AC22 覆盖。
-- [ ] reverse_audit：Writer/Migration/Reader/人工入口/冻结消费者双向核对。
+- [x] upstream_re_read：重新逐节读取本会话用户完整任务书§1–§11、AC01–AC22与当前AGENTS/USAGE；非目标、旧Run兼容、本地待人工验收和生产操作授权边界均保留。
+- [x] change_coverage：独立从上游重建需求后逐项核R1–R22，EVIDENCE逐AC列出实际断言；目录冻结、稀疏作者、合法空匹配、非相邻Hash证明、两套人工继承和有界修复无遗漏。
+- [x] reverse_audit：逐一核对补采/Excel/历史导入/Replay生产者到Content→Evidence→Analysis→投影的原子链；反查正式/兼容查询、List/Count/筛选、人工写资格、主动重打标、冻结导出/报告与工作台到同一有效来源函数；CLI真实接正式Job Runtime，无新增HTTP能力需前端入口。
 - [ ] unresolved_cleared：未满足项清零后再进入 Ready。
 
 # 完成证据与状态
@@ -239,14 +241,16 @@ Content 合并/版本作者快照、补采冻结目录及原子 Evidence、Analy
 | V27 | Writer释放后最终后端 | pytest tests/unit tests/contracts tests/api -q -rs --tb=short --show-capture=no，移除测试外部Secret覆盖 | 2095 passed / 16既有平台skip / 12subtests / 162.15s；全461源mypy PASS；956文件ruffformat与lint PASS | 最终Owner修改后的完整单元/Contract/API与静态质量 |
 | V28 | 最终文档/Contract/Package | 文档/事实/治理/Secret/架构/Owner全部项目检查；正式generate.py + npm generate:api + check/compat；uv离线build、按uv.lock导出依赖同步全新Wheel环境、-I安装包导入 | 全PASS；生成物语义无变化；导入来自Wheel独立site-packages，包含新模块及Prompt资源 | 正式文档与代码一致；无公共API变化；唯一根工程打包可用、无依赖升级 |
 | V29 | 最终相邻测试修正 / 25439专用库 | pytest test_collection_worker_runtime.py + test_xiaohongshu_incremental_comments_runtime.py -q --tb=short --show-capture=no | 2 passed / 4.18s | 新Job注册完整集合断言同步；小红书历史种子由正式Content Owner和真实来源夹具创建Current+Version，原评论分页断言不变 |
+| V30 | 整批Review返修 / 25439专用库 | 新6报告依据+2带数据降级Red/Green；Replay两参数；完整test_analysis_version_reuse.py | Red3 failed/5 pass；定向Green10 passed/17.17s；完整Analysis30 passed/69.38s | 报告缺键/null不算人工，真实/继承/解锁对象保留基线；降级只定向收敛引用Content，直接结果和无关Content不变；Replay集合读取与总SQL/撤销全部通过 |
+| V31 | 同返修最终源 | report_runs mypy；全956文件ruff format/check；离线重建并重装独立Wheel，python -I核最终实现 | 全PASS | 两项生产修复静态/构建新鲜证据；其他稳定生产源未变化 |
 
 ## 未验证内容与剩余风险
 
-Content/Brand、Analysis、作者快照、有界历史修复、完整Full-stack、专用报告、正式文档、静态与Wheel已验证。独立Tester继续全PostgreSQL分层回归，逐AC Completion和独立实现Review尚待最终版本绑定；当前不声明Ready。来源撤销路径保持既有语义，不新增无要求的自动复用触发；定向历史修复仍可对当前冻结版本重新证明。Windows平台的Linux专属跳过项、40M生产规模性能与真实付费Probe不在本轮通过结论内。
+广域PostgreSQL已执行，Collection245、Content231、Platform73、Database120、Jobs22、Vehicles5均闭合；Ingestion154绿色及两旧SQL计数失败已Root定向修正通过，独立完整文件补验进行中。首轮整批Review发现的F-B1/F-B2已直接Red/Green及完整Analysis30验证，等待限定复审、新鲜报告/Migration独立证据和最终Completion；当前不声明Ready。来源撤销保持既有语义。Windows平台的Linux专属跳过项、40M生产规模性能与真实付费Probe不在通过结论内。
 
 ## 交付状态
 
-- 提交：本地治理 checkpoint 4f84afc8；实现尚未提交。
+- 提交：本地治理 checkpoint 4f84afc8；实现 checkpoint 9ddc6513，后续仅补最终验收证据。
 - 拉取请求：未创建；等待用户本地验收。
 - CI：远程未触发。
 - 合并：未执行。

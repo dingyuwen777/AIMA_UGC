@@ -6,6 +6,8 @@
 
 基线 `caf06ae1be1d243545d21a71fcbfe72640d0bd5f`；本地分支 `fix/supplement-result-consistency`，decision epoch 为 1。所有运行数据在两个任务专属 PostgreSQL 18.4 容器内：`25439/aima_supplement_test`、`25439/aima_supplement_browser` 及 `55437/aima_report_test`。特殊身份用例按其既有保护要求使用同一任务容器内另建的专用库。没有迁移或修改用户开发库、生产库，没有 TikHub/付费模型 Probe。
 
+首个完整实现提交为 `9ddc6513c9c63bbd7e51814c5f4ac998267fc85c`。此前分层命令按各自记录的工作树执行；独立Tester记录关键生产文件Hash，确认稳定源文件没有变化。整批审查随后发现两项局部消费者问题，返修范围和新鲜证据单独记录在下方，不把首轮提交及修前报告/Migration证据冒充最终状态。
+
 Python 命令均使用仓库根 `.venv/Scripts/python.exe`；Node 命令使用 `D:/node/npm.ps1 --prefix frontend`。每批数据库测试先加载 `.runtime/supplement-consistency/` 中对应的显式隔离环境。日志、浏览器截图和测试文件保存在该忽略目录中；正式证据结论保留在此 Change。
 
 ## 已实际完成的验证
@@ -38,6 +40,16 @@ Python 命令均使用仓库根 `.venv/Scripts/python.exe`；Node 命令使用 `
 | 报告真实浏览器 | 显式 `AIMA_REPORT_BROWSER_ACCEPTANCE=1`，运行 `pytest tests/integration/reporting/test_database_reports.py::test_browser_to_real_report_api_worker_and_download -q -rs --tb=short --show-capture=no` | 独立 Tester 1 passed / 11.69s；Chrome→Vue→API55439→报告Worker→DOCX下载，ZIP和document.xml通过；全部10项报告均实际通过 |
 | 仓库质量 | `check_agent_governance.py`、`scan_secrets.py`、`check_architecture.py`、`check_table_ownership.py`、`check_docs.py`、`check_docs_facts.py` | 已通过阶段检查，最终文档及 Writer 释放后重新核对受影响项 |
 | Collection广域回归及修正 | `pytest tests/integration/collection -vv -o faulthandler_timeout=45`；随后在独立25439库运行两个失败项的完整文件 | 首次完整243 passed / 2 failed / 536.11s；新Job exact-set漏同步及缺Version的直接SQL夹具已修正，两个完整文件2 passed / 4.18s，独立复验待收齐。首轮缓冲输出运行在有界诊断前中断，不计完成或失败 |
+| 独立Platform | `pytest tests/integration/platform -q`；专用身份库按原guard要求复验身份/同步用例 | 73项实际通过、无skip；首次环境身份guard失败保留，随后18项身份/guard在同任务容器的专用库通过，未放宽guard |
+| 独立Database | `pytest tests/integration/database -q` | 120 passed / 54.98s |
+| 独立Jobs | `pytest tests/integration/jobs -q -rs` | 22 passed / 1 Linux专属skip / 8.90s；Windows进程恢复两项实际通过 |
+| 独立Content | `pytest tests/integration/content -q -rs --tb=short --show-capture=no` | 231 passed / 0skip / 374.25s；关键生产文件Hash与最终实现提交一致 |
+| 独立Ingestion首轮 | `pytest tests/integration/ingestion -q -rs --tb=short --show-capture=no` | 154 passed / 2 SQL计数failed / 372.61s；两项fresh复现后，Root精确批量断言修正的定向Green已通过，独立完整文件补验进行中 |
+| 独立Vehicles | `pytest tests/integration/vehicles -q -rs --tb=short --show-capture=no` | 5 passed / 0skip / 4.69s |
+| Collection独立补验 | 55437 fresh边界运行`test_collection_worker_runtime.py`与`test_xiaohongshu_incremental_comments_runtime.py`两个完整文件 | 2 passed / 0skip / 2.75s；整组245个不同用例均闭合 |
+| Review反例Red/Green | 25439运行新增6报告依据参数及2带数据降级参数，随后加Replay两查询计数参数 | 修复前3 failed / 5 passed / 14.61s，精确复现两null计数及一个stale反例；修复后10 passed / 17.17s，含101条总SQL上限与后续撤销分支 |
+| 返修静态/包 | `mypy report_runs.py`；全956文件ruff format/check；离线重建Wheel并在原锁定依赖独立环境强制重装，`python -I`核对最终汇总实现与修复模块 | 全PASS；Wheel包含最终JSON对象计数，非旧构建 |
+| 返修完整Analysis | `pytest tests/integration/content/test_analysis_version_reuse.py -q --tb=short --show-capture=no` | 30 passed / 69.38s；新增8项及原22项全部实际执行通过 |
 
 完整后端的16个跳过来自现有 Windows/POSIX、符号链接及 Linux Noto 字体条件。未修改条件、未把 skip 记为 pass。正式报告在 Windows 可用中文字体上已完成真实生成和下载。
 
@@ -85,6 +97,7 @@ Python 命令均使用仓库根 `.venv/Scripts/python.exe`；Node 命令使用 `
 | `tests/integration/content/test_excel_follower_count_voice_plaza.py` | Excel非AI字段补齐后的版本、当前声音广场投影兼容 |
 | `tests/integration/collection/test_collection_content_runtime.py`、`test_collection_content_supplement.py`（同目录） | 完整Current/多品牌/空命中/人工锁/事务/Fence与新Run目录冻结，包括title/text新增品牌时序 |
 | `tests/integration/collection/test_collection_worker_runtime.py`、`test_xiaohongshu_incremental_comments_runtime.py`（同目录） | 同步新增Job的完整注册集合；由Content Owner建立合法历史版本夹具，原评论停止边界不变 |
+| `tests/integration/ingestion/test_canonical_replay_worker.py` | 将过时的零Content查询断言同步为恰好两条限定批次的Analysis集合读取，保留账本/来源、101条总SQL<200及撤销回归 |
 | `frontend/e2e-fullstack/comment-supplement.spec.ts` | 真实页面补采→AI→人工修正→等价补采自动刷新；核版本/来源/锁/品牌车型与零额外模型请求 |
 | `tests/fullstack/create_stage8f_excel_fixture.py`、`fake_tikhub_comment_worker.py`、`fake_openai_llm.py`（同目录） | 仅新增明确测试Scenario的等价补采响应、人工值和Fake模型请求计数，不修改真实Provider行为 |
 | `backend/src/aima_ugc/modules/analysis/README.md`、`backend/src/aima_ugc/modules/content/README.md`、`backend/src/aima_ugc/modules/reporting/README.md` | 同步生产复用、人工继承、历史冻结与管理入口，不重复维护字段Schema |
@@ -92,6 +105,16 @@ Python 命令均使用仓库根 `.venv/Scripts/python.exe`；Node 命令使用 `
 | `docs/appendix/07_AI舆情打标与分析实现.md`；`docs/product/02_当前产品能力与用户流程.md` | 同步等价输入免重打标、变化时stale及人工保留的用户行为 |
 | `docs/operations/03_内容重分类与Legacy_Cleanup运行手册.md`、`docs/operations/README.md` | 有限dry-run/申请生产范围/start/status/cancel、检查点恢复、升级与代码/DDL回退边界 |
 | `changes/active/CHG-20261009-143436-supplement-result-consistency/CHANGE.md`、`EVIDENCE.md`（同目录） | 用户上游AC01–AC22追溯、决策、当前验证和本地交付审计 |
+
+## 整批独立审查与定向返修
+
+两个独立Reviewer完成全部主要投影后统一收口。首轮在9ddc6513发现两项P2，主审随后独立比较caf06ae1/9ddc6513并确认反例；没有把先前漏审的“无Finding”当最终结论。Parent接受以下同一Repair Package，R20暂回not_satisfied，其他已稳定业务规则不扩展。
+
+- F-B1：统一读取无人工时返回`manual_override: null`，冻结报告的`has_key`统计错误地计入人工。汇总应只计真实JSON对象，兼容既有冻结null，并保留全解锁人工对象的基线计数语义，不改写历史报告。
+- F-B2：本轮新增0083在删除复用表前未收敛物化投影。恢复旧函数后，按复用表的Content UUID Keyset每批1000定向刷新投影及筛选目录，再删除新增结构；保留直接结果、当前人工和无关内容，不扫描全部Content或伪造版本。
+- Ingestion执行回归：两条旧SQL计数断言要求零Content查询，新增合法Analysis批量锁与成功历史查询使其固定为2。保留原101条总SQL<200、账本/来源/Evidence和撤销断言，并验证恰好两条限定批次IN查询及其锁/EXISTS用途，避免以放宽计数掩盖N+1。
+
+实施前先增加真实PostgreSQL Red：报告缺键/null、直接/继承人工及解锁对象；带合法复用completed投影的结构降级，并对照直接结果和无关Content。Green后只复审原Finding、repair diff、相邻回归、AC20和回退，不重启无关全任务审查。
 
 ## 环境清理与实际边界
 

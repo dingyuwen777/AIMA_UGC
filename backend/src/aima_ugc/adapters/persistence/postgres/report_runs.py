@@ -171,7 +171,8 @@ class PostgresReportRepository:
                 *columns,
                 func.count().label("content_count"),
                 func.count()
-                .filter(basis.has_key("manual_override"))
+                # 缺键和冻结的 JSON null 都不代表人工操作；解锁对象仍是历史审核事实。
+                .filter(func.jsonb_typeof(basis["manual_override"]) == "object")
                 .label("manual_override_count"),
             )
             .where(report_items_table.c.report_run_id == report_id, basis != {})

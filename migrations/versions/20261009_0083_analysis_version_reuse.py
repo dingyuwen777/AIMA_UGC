@@ -512,6 +512,32 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(sa.text(PREVIOUS_PROJECTION))
+    # DROP TABLE 不触发 DELETE Trigger；先用旧规则分批收敛仍依赖引用的物化事实。
+    op.execute(
+        sa.text("""
+        DO $$
+        DECLARE
+            checkpoint uuid;
+            affected_content_ids uuid[];
+        BEGIN
+            LOOP
+                SELECT array_agg(target.content_id ORDER BY target.content_id)
+                INTO affected_content_ids
+                FROM (
+                    SELECT DISTINCT content_id
+                    FROM analysis_content_version_reuses
+                    WHERE checkpoint IS NULL OR content_id > checkpoint
+                    ORDER BY content_id
+                    LIMIT 1000
+                ) AS target;
+                EXIT WHEN array_length(affected_content_ids, 1) IS NULL;
+                PERFORM refresh_voice_plaza_content_projection_batch(affected_content_ids);
+                checkpoint := affected_content_ids[array_upper(affected_content_ids, 1)];
+            END LOOP;
+        END;
+        $$
+    """)
+    )
     op.execute(sa.text("DROP FUNCTION effective_analysis_source(uuid, integer, uuid)"))
     op.drop_table("analysis_content_version_reuses")
     op.execute(sa.text("DROP FUNCTION guard_analysis_content_version_reuse()"))
