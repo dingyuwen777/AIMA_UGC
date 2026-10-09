@@ -1045,7 +1045,7 @@ test('短声音流按 Figma 连续滚动，平台标识复用声音广场样式'
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(5)
 })
 
-test('普通刷新一小时一次，未过期恢复可见不补读且不重置声音流', async ({ page }) => {
+test('普通刷新一小时一次，隐藏时暂停且恢复仅补过期聚合，不重置声音流', async ({ page }) => {
   await page.clock.install()
   const requests: string[] = []
   page.on('request', (request) => {
@@ -1067,7 +1067,60 @@ test('普通刷新一小时一次，未过期恢复可见不补读且不重置�
     .toBeGreaterThanOrEqual(initialMind + 1)
   await expect.poll(() => requests.filter((path) => path.endsWith('/trend')).length)
     .toBeGreaterThanOrEqual(initialTrend + 1)
+  await expect(page.locator('.mind-card')).toHaveAttribute('aria-busy', 'false')
+  const refreshedMind = requests.filter((path) => path.endsWith('/mind')).length
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await page.clock.fastForward(60 * 60 * 1000 + 1000)
+  expect(requests.filter((path) => path.endsWith('/mind'))).toHaveLength(refreshedMind)
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect.poll(() => requests.filter((path) => path.endsWith('/mind')).length).toBe(refreshedMind + 1)
   expect(requests.filter((path) => path.endsWith('/stream'))).toHaveLength(initialStream)
+})
+
+test('请求耗时后连续两轮仍在完成后一小时刷新', async ({ page }) => {
+  const hour = 60 * 60 * 1000
+  await page.clock.install()
+  let mindRequests = 0
+  let streamRequests = 0
+  let releaseMind: () => void = () => {}
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.endsWith('/workbench/stream')) streamRequests += 1
+  })
+  await page.route('**/api/v1/workbench/mind**', async (route) => {
+    mindRequests += 1
+    await new Promise<void>((resolve) => { releaseMind = resolve })
+    await route.fallback()
+  })
+  await page.goto('/')
+  await expect.poll(() => mindRequests).toBe(1)
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000))
+  const mind = page.locator('.mind-card')
+  await page.clock.runFor(1000)
+  releaseMind()
+  await expect(mind).toHaveAttribute('aria-busy', 'false')
+  const initialStream = streamRequests
+
+  for (let cycle = 1; cycle <= 2; cycle += 1) {
+    // 仅跳过无小时回调的区间；边界前五秒连续推进，避免掩盖定时器错位。
+    await page.clock.fastForward(hour - 5000)
+    await page.clock.runFor(4999)
+    expect(mindRequests).toBe(cycle)
+    await page.clock.runFor(1)
+    await expect.poll(() => mindRequests).toBe(cycle + 1)
+    await expect(mind).toHaveAttribute('aria-busy', 'true')
+    // 一轮请求跨过整小时仍保持单个在途请求，下一轮从完成时间重新计时。
+    await page.clock.fastForward(cycle === 1 ? hour + 1000 : 1000)
+    expect(mindRequests).toBe(cycle + 1)
+    releaseMind()
+    await expect(mind).toHaveAttribute('aria-busy', 'false')
+  }
+  expect(streamRequests).toBe(initialStream)
 })
 
 test('显式编辑态先改草稿，取消恢复；保存一次提交完整 revision', async ({ page }) => {

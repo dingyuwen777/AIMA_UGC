@@ -386,6 +386,9 @@ def test_core_consumes_selected_backend_and_frontend_targets_from_ci_plan() -> N
     assert "FRONTEND_UNIT_TARGETS: ${{ needs.ci-plan.outputs.frontend_unit_targets }}" in core
     assert "FRONTEND_E2E_SPECS: ${{ needs.ci-plan.outputs.frontend_e2e_specs }}" in core
     assert "scripts/quality/classify_ci_scope.py" not in core
+    # npm exec 的 prefix 不改变工作目录；必须复用 script 加载前端配置。
+    assert 'npm --prefix frontend run test -- --run "${unit_targets[@]}"' in core
+    assert 'npm --prefix frontend run test:e2e -- "${e2e_specs[@]}"' in core
 
 
 def test_targeted_backend_does_not_pay_global_api_suite() -> None:

@@ -515,7 +515,7 @@ jobs:
             for index in "${!unit_targets[@]}"; do
               unit_targets[${index}]="${unit_targets[${index}]#frontend/}"
             done
-            npm --prefix frontend exec -- vitest run "${unit_targets[@]}"
+            npm --prefix frontend run test -- --run "${unit_targets[@]}"
           fi
           npm --prefix frontend run build
           npm --prefix frontend exec -- playwright --version
@@ -526,7 +526,7 @@ jobs:
             for index in "${!e2e_specs[@]}"; do
               e2e_specs[${index}]="${e2e_specs[${index}]#frontend/}"
             done
-            npm --prefix frontend exec -- playwright test "${e2e_specs[@]}"
+            npm --prefix frontend run test:e2e -- "${e2e_specs[@]}"
           fi
 
   postgres-integration:

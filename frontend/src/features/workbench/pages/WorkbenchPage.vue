@@ -19,7 +19,7 @@ const router = useRouter()
 const draggedModule = ref<WorkbenchModuleId | null>(null)
 let filterRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let analysisRefreshHandle: ReturnType<typeof setTimeout> | undefined
-let periodicRefreshHandle: ReturnType<typeof setInterval> | undefined
+let periodicRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let periodicRefreshPending = false
 const AUTO_REFRESH_INTERVAL = 60 * 60 * 1000
 let pendingRefreshHandle: ReturnType<typeof setTimeout> | undefined
@@ -79,16 +79,34 @@ function updateFilters(value: WorkbenchFilters): void {
   scheduleFilterRefresh()
 }
 
+/** 按上次请求完成时间安排下一轮，避免固定轮询与请求耗时错位而跳过整小时。 */
+function schedulePeriodicRefresh(): void {
+  if (periodicRefreshHandle) clearTimeout(periodicRefreshHandle)
+  periodicRefreshHandle = undefined
+  if (disposed || periodicRefreshPending || document.visibilityState !== 'visible') return
+  const nextRefreshAt = (store.lastAutoRefreshAt ?? Date.now()) + AUTO_REFRESH_INTERVAL
+  // 到期时其他模块仍在请求则短暂等待，不叠加请求或形成零延迟循环。
+  periodicRefreshHandle = setTimeout(() => {
+    periodicRefreshHandle = undefined
+    void refreshPeriodically()
+  }, Math.max(1000, nextRefreshAt - Date.now()))
+}
+
 /** 普通聚合刷新每一小时执行；慢请求与隐藏标签页不叠加。 */
 async function refreshPeriodically(): Promise<void> {
-  if (periodicRefreshPending || document.visibilityState !== 'visible'
-    || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend) return
-  if (store.lastAutoRefreshAt !== null && Date.now() - store.lastAutoRefreshAt < AUTO_REFRESH_INTERVAL) return
+  if (disposed || periodicRefreshPending) return
+  if (document.visibilityState !== 'visible'
+    || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend
+    || (store.lastAutoRefreshAt !== null && Date.now() - store.lastAutoRefreshAt < AUTO_REFRESH_INTERVAL)) {
+    schedulePeriodicRefresh()
+    return
+  }
   periodicRefreshPending = true
   try {
     await store.refreshAggregates()
   } finally {
     periodicRefreshPending = false
+    schedulePeriodicRefresh()
   }
 }
 
@@ -97,6 +115,8 @@ function onVisibilityChange(): void {
   if (document.visibilityState === 'visible') {
     void refreshPeriodically()
     schedulePendingRefresh()
+  } else {
+    schedulePeriodicRefresh()
   }
 }
 
@@ -230,8 +250,7 @@ watch(analysisFingerprint, (current, previous) => {
 watch([() => store.mind, () => store.trend, () => store.filters], schedulePendingRefresh)
 
 onMounted(() => {
-  void store.initialize()
-  periodicRefreshHandle = setInterval(() => { void refreshPeriodically() }, AUTO_REFRESH_INTERVAL)
+  void store.initialize().finally(schedulePeriodicRefresh)
   document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
@@ -240,7 +259,7 @@ onBeforeUnmount(() => {
   if (pendingRefreshHandle) clearTimeout(pendingRefreshHandle)
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
   if (analysisRefreshHandle) clearTimeout(analysisRefreshHandle)
-  if (periodicRefreshHandle) clearInterval(periodicRefreshHandle)
+  if (periodicRefreshHandle) clearTimeout(periodicRefreshHandle)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   resizeCleanup?.()
 })
