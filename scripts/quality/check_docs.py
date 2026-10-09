@@ -14,6 +14,8 @@ LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 PATH_LINK_RE = re.compile(r"\[`([^`\n]+)`\]\(([^)]+)\)")
 INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
+AGENT_MANAGED_START = "<!-- agent-skills:managed:start -->"
+AGENT_MANAGED_END = "<!-- agent-skills:managed:end -->"
 STANDALONE_MANIFEST_RE = re.compile(r"(?<![\w-])manifest\.json\b")
 AGENT_REFERENCE_RE = re.compile(r"\.agents/skills/[^/\s)`]+/references/")
 EXCLUDED_DOC_ROOTS = {".agents", ".git", "changes"}
@@ -267,8 +269,17 @@ def _check_repository_file_navigation(
     errors: list[str] = []
     in_fence = False
     fence_lines: list[tuple[int, str]] = []
+    in_managed = False
+    is_root_agent_rules = doc == root / "AGENTS.md"
 
     for line_number, line in enumerate(text.splitlines(), start=1):
+        # 受管片段的正文由安装器维护，项目导航规则不得要求手工改写。
+        if is_root_agent_rules and line.strip() == AGENT_MANAGED_START:
+            in_managed = True
+        if in_managed:
+            if line.strip() == AGENT_MANAGED_END:
+                in_managed = False
+            continue
         if FENCE_RE.match(line):
             if in_fence:
                 fence_errors = _check_pure_file_fence(

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import re
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
 MANAGED_START = "<!-- agent-skills:managed:start -->"
@@ -113,6 +114,23 @@ def _check_issue_form_projection(root: Path) -> list[str]:
             "AIMA 当前未声明额外 Issue Profile；根 Issue Form 必须保持 generated projection"
         )
     return errors
+
+
+def _has_pr_source_examples(template: str) -> bool:
+    """根据真实 Issue 与安全仓库路径示例校验模板，不依赖中文说明原文。"""
+    examples = tuple(
+        value.strip() for value in re.findall(r"`Requirement-Source:\s*([^`\r\n]+)`", template)
+    )
+    has_issue = any(re.fullmatch(r"#[1-9][0-9]*", value) for value in examples)
+    has_path = any(
+        bool(PurePosixPath(value).suffix)
+        and not PurePosixPath(value).is_absolute()
+        and all(part not in {"", ".", ".."} for part in value.split("/"))
+        and "\\" not in value
+        and "://" not in value
+        for value in examples
+    )
+    return has_issue and has_path
 
 
 def check_repository(root: Path = ROOT) -> list[str]:
@@ -236,7 +254,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
             errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: 缺少 Requirement-Source 追溯字段")
         if "不要用关闭关键字替代" not in pr_text:
             errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: 必须区分需求追溯与 Issue 关闭语义")
-        if "#123" not in pr_text or "仓库内真实存在" not in pr_text:
+        if not _has_pr_source_examples(pr_text):
             errors.append(
                 f"GOV014 {PR_TEMPLATE.as_posix()}: 必须公开机器可验证的 Issue / 仓库路径来源格式"
             )
