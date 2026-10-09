@@ -239,3 +239,9 @@ $env:AIMA_BROWSER_REUSE_MANUAL_FACTS='1'
 ## 用户免等待与远程交付开工
 
 用户明确：“免等待人工验收，把本地所有修改合并到远程主分支”。Human Local Acceptance记录为USER_WAIVED，不记为PASSED。当前实现HEAD为929e250e，工作树干净；重新fetch后origin/main仍为caf06ae1be1d243545d21a71fcbfe72640d0bd5f，无新增基线组合或冲突。重新live读取Issue #711为open，55项AC及最新AC29/生命周期附录保持有效。仅更新本地验收/交付元数据，不改变已独立审查的生产字节或Contract；已有充分工程证据按原冻结边界复用。远程required CI、受保护合并、main-fresh、原生归档、真实模板Runner采样、Closure与清理仍须实际完成。
+
+## PR712首轮远程验证与Artifact断言修正
+
+HEAD 071f9ba8/base caf06ae1/merge-ref c5eb131e 的CI run37945897242：CI Plan、Preflight、Requirement Traceability and Completion Audit（含完整前后端）、真实Full-stack通过；Runtime37945896150、Tooling37945896177及Release dry-run37945895996通过。PG run的collection阶段257 passed/1 failed，失败为既有评论Runtime总Artifact断言4，而当前正式行为为3Raw+Search Canonical+Detail Canonical共5。三个Provider Operation及Attempt数量均为3，没有新增视频请求或缓存文件；已批准的新Detail持久Canonical可由collection_scope.py的同Attempt父链直接恢复。
+
+本地隔离25449同测试文件真实Red为1 failed/1 passed/2.53s。仅更新该既有测试：精确总数5、kind分组3Raw/2Canonical、Canonical分别唯一关联search_notes和get_image_note_detail Attempt、3个不同Raw ID；原Transport调用3、Request/Attempt3及评论正文/父子/统计断言保留。Green为2 passed/2.39s；精确ruff lint/format及diff检查通过（首次format提示已按正式formatter修正）。生产实现、公共Contract、Provider次数和用户可见行为没有变化；USER_WAIVED继续有效。独立限定复核后提交修正，仍须新HEAD自动synchronize完整required CI，不以首轮部分绿色替代新HEAD。
