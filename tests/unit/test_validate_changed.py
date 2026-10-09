@@ -31,11 +31,10 @@ def test_validate_changed_reuses_classifier_and_builds_targeted_commands() -> No
     rendered = [" ".join(command) for command in commands]
     assert any("pytest tests/unit/analysis -q" in command for command in rendered)
     assert any(
-        "vitest" in command and "tests/voice-plaza.spec.ts" in command for command in rendered
+        "frontend run test -- --run tests/voice-plaza.spec.ts" in command for command in rendered
     )
     assert any(
-        "playwright test" in command and "e2e/voice-plaza.spec.ts" in command
-        for command in rendered
+        "frontend run test:e2e -- e2e/voice-plaza.spec.ts" in command for command in rendered
     )
 
 

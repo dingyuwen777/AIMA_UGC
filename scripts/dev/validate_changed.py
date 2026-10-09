@@ -163,10 +163,10 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
                     "npm",
                     "--prefix",
                     "frontend",
-                    "exec",
-                    "--",
-                    "vitest",
                     "run",
+                    "test",
+                    "--",
+                    "--run",
                     *_frontend_relative(unit_targets),
                 )
             )
@@ -180,10 +180,9 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
                     "npm",
                     "--prefix",
                     "frontend",
-                    "exec",
+                    "run",
+                    "test:e2e",
                     "--",
-                    "playwright",
-                    "test",
                     *_frontend_relative(e2e_specs),
                 )
             )

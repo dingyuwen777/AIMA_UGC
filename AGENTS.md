@@ -12,7 +12,7 @@
 处理本项目研发任务时：
 
 1. **无论采用哪种通用治理执行方式，都必须先读取并遵守当前目录及上级适用的项目规则**，再依据当前真实文件恢复本任务所需的技术栈、架构、Contract、Schema/Migration、CI、部署、设计和运行事实；不得用通用示例、历史聊天、缓存或猜测覆盖项目事实。
-2. 在实质性工程任务形成执行计划前，读取 `.agents/skills/ENTRY.md` 作为当前项目工程约束入口，并使用项目已配置的治理能力取得本任务真正需要的完整约束。系统、开发者或用户级更高优先级指令若明确指定其他执行方式，**只改变通用治理约束的取得和呈现方式；不得因此跳过、替代或降低目标项目自身规则、Contract、Schema/Migration、CI、正式设计、部署和验收边界**。
+2. 在实质性工程任务形成执行计划前，读取 [`.agents/skills/ENTRY.md`](.agents/skills/ENTRY.md) 作为当前项目工程约束入口，并使用项目已配置的治理能力取得本任务真正需要的完整约束。系统、开发者或用户级更高优先级指令若明确指定其他执行方式，**只改变通用治理约束的取得和呈现方式；不得因此跳过、替代或降低目标项目自身规则、Contract、Schema/Migration、CI、正式设计、部署和验收边界**。
 3. **自主决策与提问边界**：按 `RULE_RESOLVED → FACT_RESOLVABLE → CONVENTION_RESOLVED → DEFAULT_RESOLVED → SELF_DECIDE` 依次解析；规则已定、事实可恢复、项目已有稳定模式、已有安全默认，或只是局部低风险可逆实现细节时，必须自行继续，不向用户提问。只有 `OWNER_DECISION / AUTHORIZATION_REQUIRED / REQUIRED_USER_INPUT / CAPABILITY_BLOCKER` 可以请求用户/Owner 决定、授权、必要输入或解除 blocker。**不得把已经可以自行解决的问题重新包装成多个方案让用户选择**，也不得重复确认已经有效的决定。
 
 **三个研发门禁**：实质实现前做 Development Preflight（Requirement/Acceptance、治理写入、CI Cost/Evidence、交付终点）；新建 Issue/PR 必须 canonical candidate → create-mode pre-write PASS → platform write → live reread → 同检，已有实例实质更新按适用 create/live Contract，FAIL 不写。仅 Requirement/Acceptance/Scope 语义变化才更新唯一 Requirement Source，并只使受影响计划/Handoff/Evidence stale；非语义编辑不机械重跑。PR Ready/可合并/完成前做 Completion：重读最新 Requirement Source，逐 Acceptance 映射当前直接 Evidence；有 unresolved 即停。Reviewer/subagent 只做独立增强，缺失时 Parent hard gate 仍执行。代码 Review 首轮先闭合 material projections 再整批发布 Findings；返修前 Repair Package 先自审，第二轮只核原 Findings + repair diff + 相邻回归 + Acceptance。**Reviewer 自身漏审不作为终态**，须内部 self-recovery 后再给稳定结论。
