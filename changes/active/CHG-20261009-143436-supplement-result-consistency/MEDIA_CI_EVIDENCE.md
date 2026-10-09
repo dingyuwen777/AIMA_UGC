@@ -6,7 +6,7 @@
 
 - 开始基线为 `caf06ae1be1d243545d21a71fcbfe72640d0bd5f`，保留此前四个本地提交，最新已提交版本为 `90013af0a07c32a17509adb4deb7509ad97927c9`。后续未提交切片使用文件 SHA-256 冻结，不能把旧 checkpoint 的结果套用于已改变的代码。
 - 用户授权验证后把补采、小红书媒体与 CI 效率全部任务成果经保护 PR 合并远程 main，并清理本次资源。无 Release、部署、生产 Migration 或生产数据操作。
-- 用户人工本地验收为 `PENDING`；技术测试及独立 Review 不能冒充人工验收。
+- 用户人工本地验收当前为 `USER_WAIVED`（末尾记录明确指令）；此前PENDING记录是各checkpoint当时事实，技术测试及独立Review不冒充人工验收。
 - 修改仅限 AIMA_UGC，不修改 Agent_Skills canonical 源或受管安装资产，不修改 PR #710、Ruleset 或 Branch Protection。
 
 ## CI 正确性与成本责任
@@ -235,3 +235,7 @@ $env:AIMA_BROWSER_REUSE_MANUAL_FACTS='1'
 自动审批曾拒绝提交仍把原列表标签作为当前验收要求的记录；本次先完成上述Source、实现、测试及证据修正后再提交，没有绕过该拒绝。原先已提交的2b1529f8是当时已批准要求的历史checkpoint，当前决定由后续正常提交覆盖，不改写历史Evidence。
 
 本次五路径限域独立Review PASS，无新增material Finding；精确diff SHA-256为 `c524d0eb736a821fe188ed59211b22fe554987978c74f6791fdab434ae79e77f`，manifest为 `714627691ecf3b3e2f5eba42bf11a77e651d8db1ab7a3a8f6e4ae873fff69b01`，起止源码/日志与实际浏览器facts无漂移。新决定所影响的R29已重新闭合，其他充分工程证据继续按其原revision/边界复用；整体Human仍PENDING。
+
+## 用户免等待与远程交付开工
+
+用户明确：“免等待人工验收，把本地所有修改合并到远程主分支”。Human Local Acceptance记录为USER_WAIVED，不记为PASSED。当前实现HEAD为929e250e，工作树干净；重新fetch后origin/main仍为caf06ae1be1d243545d21a71fcbfe72640d0bd5f，无新增基线组合或冲突。重新live读取Issue #711为open，55项AC及最新AC29/生命周期附录保持有效。仅更新本地验收/交付元数据，不改变已独立审查的生产字节或Contract；已有充分工程证据按原冻结边界复用。远程required CI、受保护合并、main-fresh、原生归档、真实模板Runner采样、Closure与清理仍须实际完成。
