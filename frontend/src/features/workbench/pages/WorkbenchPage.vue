@@ -21,7 +21,7 @@ let filterRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let analysisRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let periodicRefreshHandle: ReturnType<typeof setInterval> | undefined
 let periodicRefreshPending = false
-const AUTO_REFRESH_INTERVAL = 6 * 60 * 60 * 1000
+const AUTO_REFRESH_INTERVAL = 60 * 60 * 1000
 let pendingRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let pendingRefreshRunning = false
 let pendingAttempts = 0
@@ -52,7 +52,7 @@ function moduleStyle(module: WorkbenchLayoutModule): Record<string, string> {
 
 /** 工作台数据更新时间按北京时间显示，值来自后端模块 as_of。 */
 function refreshLabel(): string {
-  return store.latestAsOf ? `${formatDateTime(store.latestAsOf)} · 每 6 小时检查更新` : '等待首次同步'
+  return store.latestAsOf ? `${formatDateTime(store.latestAsOf)} · 每 1 小时检查更新` : '等待首次同步'
 }
 
 /** 连续多选操作短暂合并，日期确认则在当前事件中直接刷新。 */
@@ -79,7 +79,7 @@ function updateFilters(value: WorkbenchFilters): void {
   scheduleFilterRefresh()
 }
 
-/** 普通聚合刷新每六小时执行；慢请求与隐藏标签页不叠加。 */
+/** 普通聚合刷新每一小时执行；慢请求与隐藏标签页不叠加。 */
 async function refreshPeriodically(): Promise<void> {
   if (periodicRefreshPending || document.visibilityState !== 'visible'
     || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend) return
@@ -100,7 +100,7 @@ function onVisibilityChange(): void {
   }
 }
 
-/** preparing/refreshing 是一次持久计算的完成跟进，与六小时普通刷新独立。 */
+/** preparing/refreshing 是一次持久计算的完成跟进，与一小时普通刷新独立。 */
 function schedulePendingRefresh(): void {
   if (pendingRefreshHandle) clearTimeout(pendingRefreshHandle)
   pendingRefreshHandle = undefined

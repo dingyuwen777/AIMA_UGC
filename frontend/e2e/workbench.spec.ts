@@ -93,7 +93,7 @@ for (const [columnSpan, rowUnits] of [[6, 48], [6, 80], [8, 48], [8, 80], [12, 4
   })
 }
 
-test('首次后台聚合独立跟进，不等待六小时，失败状态可以重试', async ({ page }) => {
+test('首次后台聚合独立跟进，不等待一小时，失败状态可以重试', async ({ page }) => {
   await page.clock.install()
   let requests = 0
   await page.route('**/api/v1/workbench/mind**', (route) => {
@@ -168,7 +168,7 @@ test('雷达标签点击和键盘选择联动高亮、详情、指标及刷新�
   await page.locator('.metric-toggle').getByRole('button', { name: '正向率', exact: true }).click()
   await expect(detail.locator('small').first()).toHaveText(`当前查看 · ${label} · 正向率`)
   await expect(page.locator('.radar-label[aria-pressed="true"]')).toContainText('13%')
-  await page.clock.fastForward(6 * 60 * 60 * 1000)
+  await page.clock.fastForward(60 * 60 * 1000)
   await expect.poll(() => requests).toBe(2)
   await expect(detail.locator('h3')).toHaveText(label)
   await expect(page.locator('.radar-label[aria-pressed="true"]')).toContainText(label)
@@ -237,7 +237,7 @@ test('后台聚合请求及失败保留成功图表、日期和几何', async ({
   const before = await card.boundingBox()
   const bodySelectors = ['.radar-stage', '.radar-center', '.mind-detail']
   const bodyBefore = await Promise.all(bodySelectors.map((selector) => card.locator(selector).boundingBox()))
-  await page.clock.fastForward(6 * 60 * 60 * 1000)
+  await page.clock.fastForward(60 * 60 * 1000)
   await expect.poll(() => requests).toBe(2)
   await expect(card.locator('.radar-label')).toHaveCount(9)
   expect(await card.boundingBox()).toEqual(before)
@@ -551,7 +551,7 @@ test('工作台按 active Taxonomy 展示真实模块，并使用后端 as_of', 
   await expect(page.locator('.mind-card .mind-detail')).toContainText('外观设计')
   await expect(page.locator('.trend-card .sentiment-list').getByText('混合', { exact: true })).toBeVisible()
   await expect(page.locator('.trend-card .sentiment-list').getByText('无法判断', { exact: true })).toBeVisible()
-  await expect(page.getByText(/2026.*09.*27.*08.*10.*每 6 小时检查更新/)).toBeVisible()
+  await expect(page.getByText(/2026.*09.*27.*08.*10.*每 1 小时检查更新/)).toBeVisible()
   await expect(page.getByAltText('工作台开发中')).toHaveCount(0)
 
   // Figma 默认态 1440×900：侧栏后两张主卡同排，页面留白不能叠加两层。
@@ -1045,7 +1045,7 @@ test('短声音流按 Figma 连续滚动，平台标识复用声音广场样式'
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(5)
 })
 
-test('普通刷新六小时一次，未过期恢复可见不补读且不重置声音流', async ({ page }) => {
+test('普通刷新一小时一次，未过期恢复可见不补读且不重置声音流', async ({ page }) => {
   await page.clock.install()
   const requests: string[] = []
   page.on('request', (request) => {
@@ -1062,7 +1062,7 @@ test('普通刷新六小时一次，未过期恢复可见不补读且不重置�
   expect(requests.filter((path) => path.endsWith('/trend'))).toHaveLength(initialTrend)
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
   expect(requests.filter((path) => path.endsWith('/mind'))).toHaveLength(initialMind)
-  await page.clock.fastForward(6 * 60 * 60 * 1000)
+  await page.clock.fastForward(60 * 60 * 1000)
   await expect.poll(() => requests.filter((path) => path.endsWith('/mind')).length)
     .toBeGreaterThanOrEqual(initialMind + 1)
   await expect.poll(() => requests.filter((path) => path.endsWith('/trend')).length)
