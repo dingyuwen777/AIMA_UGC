@@ -21,6 +21,7 @@ affected_paths:
   - scripts/dev/validate_changed.py
   - tests/unit/test_ci_workflow_structure.py
   - tests/unit/test_validate_changed.py
+  - tests/unit/analysis/test_content_labeling.py
   - AGENTS.md
   - docs/product/02_当前产品能力与用户流程.md
 contracts: []
@@ -36,6 +37,8 @@ data_changes: []
 ## 背景
 
 用户要求工作台每小时更新、修复 ENTRY.md 入口问题，并合并远程主分支后清理本地开发分支。2026-10-09 用户明确同意纳入 CI 与本地检查脚本的前端测试入口及必要回归。
+
+完整 CI 进一步暴露主分支 b3e2aec9 已将 Prompt 情感更新为三类，但旧 baseline 测试仍断言四类。用户再次明确批准“修正这一条测试并继续合并”，仅同步测试，不改 Prompt 或业务分类。
 
 ## 当前现状
 
@@ -57,6 +60,7 @@ PR #709 已包含一小时常量、页面文案、产品说明及 AGENTS.md 文�
 | E2 | 固定一小时定时器与完成时间错位可跳过整轮 | 独立 Review WBR-001 | 覆盖首轮及后续轮次的延迟 |
 | E3 | CI Vue 解析失败可本地重现，npm script 正常 | CI run 37888447222 / npm --prefix frontend exec -- vitest run tests/workbench.spec.ts | CI 和本地均复用 npm script |
 | E4 | CI 入口回归先失败两项 | uv run pytest tests/unit/test_validate_changed.py::test_validate_changed_reuses_classifier_and_builds_targeted_commands tests/unit/test_ci_workflow_structure.py::test_core_consumes_selected_backend_and_frontend_targets_from_ci_plan -q | 验证命令生成和工作流结构 |
+| E5 | 主分支 Prompt 为三类情感，测试期望过时 | b3e2aec9；CI run 37889759756：1850 passed、1 failed；本地同断言失败 | 仅修正获批的一行测试，不改业务规则 |
 
 ## 推断与待确认
 
@@ -78,6 +82,8 @@ PR #709 已包含一小时常量、页面文案、产品说明及 AGENTS.md 文�
 ## 范围
 
 工作台普通刷新计时、对应浏览器回归、产品描述和文档入口，以及获批的 CI/本地检查前端测试命令。
+
+另含获批的分析模块 baseline 测试单行同步，生产 Prompt 与分析实现不变。
 
 ## 非目标
 
@@ -117,13 +123,14 @@ PR #709 已包含一小时常量、页面文案、产品说明及 AGENTS.md 文�
 
 # 需求追溯
 
-三条用户指令各自只有一个明确验收单元，以下 AC1 分别定位对应原话：“每 1 小时检查更新”“修复 ENTRY.md 文档发现的问题”“纳入修复并继续合并”。保留产品异步边界及工程门禁属于已有约束，按上文“必须保持不变”和完成审计复核，不为正式文档虚构 AC 锚点。
+四条用户指令各自只有一个明确验收单元，以下 AC1 分别定位对应原话：“每 1 小时检查更新”“修复 ENTRY.md 文档发现的问题”“纳入修复并继续合并”“修正这一条测试并继续合并”。保留产品异步边界及工程门禁属于已有约束，按上文“必须保持不变”和完成审计复核，不为正式文档虚构 AC 锚点。
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 每一小时检查并更新工作台数据 | user:hourly-refresh / AC1 | satisfied | WorkbenchPage 单次定时器；浏览器连续两轮及文案回归通过 |
 | R2 | 修复 ENTRY.md 文档发现的问题 | user:entry-link-repair / AC1 | satisfied | AGENTS.md 链接修复及文档检查通过 |
 | R3 | 修复 CI 和本地脚本前端测试入口及必要回归 | user:ci-entry-repair / AC1 | satisfied | 两项正确 Red；完整两个 Python 文件 41 passed；根目录 npm script 单元和浏览器均可运行 |
+| R4 | 将过时的单条情感断言同步到现有 Prompt | user:prompt-baseline-test-repair / AC1 | satisfied | 仅将测试中的四类期望改为三类；生产编译仍为 9 个一级、39 个二级标签；整个测试文件 27 passed |
 
 # 计划改动
 
@@ -133,6 +140,7 @@ PR #709 已包含一小时常量、页面文案、产品说明及 AGENTS.md 文�
 | frontend/e2e/workbench.spec.ts | 小时边界及既有场景 | E2 | R1、E2 |
 | .github/workflows/ci.yml、scripts/dev/validate_changed.py | 定向测试调用 npm script | E3 | R3 |
 | tests/unit/test_ci_workflow_structure.py、tests/unit/test_validate_changed.py | 两个入口回归 | E4 | R3 |
+| tests/unit/analysis/test_content_labeling.py | baseline 单行期望同步 | E5 | R4 |
 | AGENTS.md、docs/product/02_当前产品能力与用户流程.md | 文档入口及频率同步 | 用户要求 | R1、R2 |
 
 # 验证矩阵
@@ -168,8 +176,8 @@ PR #709 已包含一小时常量、页面文案、产品说明及 AGENTS.md 文�
 
 # 完成审计
 
-- [x] upstream_re_read：2026-10-09 重新读用户要求、CI 修复授权、产品工作台能力及 AGENTS.md。
-- [x] change_coverage：独立从上游重建完成定义，R1–R3 均已映射实现、文档与本地证据；正式产品与工程约束单独核实。
+- [x] upstream_re_read：2026-10-09 重新读用户要求、两次 CI 阻塞修复授权、产品工作台能力、现有 Prompt 三分类及 AGENTS.md。
+- [x] change_coverage：独立从上游重建完成定义，R1–R4 均已映射实现、文档与本地证据；正式产品与工程约束单独核实。
 - [x] reverse_audit：普通刷新复用 refreshAggregates，只请求 mind/trend；声音流未重置；CI/本地定向入口均调用 package.json 现有 script。无 API 或数据库能力新增。
 - [x] unresolved_cleared：实现与本地回归问题均已闭合；未取得独立复核及新提交 CI 前禁止合并，平台结果记录在同一 PR。
 
@@ -187,6 +195,9 @@ PR #709 已包含一小时常量、页面文案、产品说明及 AGENTS.md 文�
 | V6 | 同一修复工作树 | 工作台六项受影响 Browser Mock；增强小时边界两项复跑 | 6 passed；增强后 2 passed | 连续两轮、跨小时慢请求、隐藏过期恢复、后台独立跟进、原声游标保护 |
 | V7 | 同一修复工作树 | 前端定向 ESLint、npm --prefix frontend run build、目标 Python Ruff、check_docs.py | 全部通过；既有 bundle 大小提示 | 静态、类型、构建、文档质量 |
 | V8 | 同一修复工作树 | scripts/dev/validate_changed.py --base origin/main --json | full；所有正式层 required | CI 修改按唯一 classifier 升级验证范围，不跳过重依赖层 |
+| V9 | 429c07e0 / 独立 Reviewer | 原 Finding + 全部 repair diff + 相邻回归 + Acceptance | WBR-001、CI-001 CLOSED；无新阻塞 | 原计时与 CI 入口修复已通过独立复核 |
+| V10 | 429c07e0 / GitHub | Runtime Acceptance、Linux/Windows Tooling、Real Full-stack | success | 已取得对应组合证据；完整 CI 因 E5 未通过，不能合并 |
+| V11 | 2026-10-09 单行测试修复工作树 | uv run pytest tests/unit/analysis/test_content_labeling.py -q | 27 passed | 现有三分类基线与同文件历史兼容回归通过 |
 
 ## 未验证内容与剩余风险
 
