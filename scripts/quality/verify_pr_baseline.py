@@ -21,6 +21,29 @@ def verify_checkout(head: str, base: str, merge: str) -> None:
         raise ValueError("PR checkout 与事件的 HEAD/base/merge 组合不一致")
 
 
+def resolve_workflow_ids(catalog: dict[str, Any], required: set[str]) -> dict[str, int]:
+    """从完整正式目录取得唯一身份；Run 标题会随 run-name 展开，不能当作身份。"""
+    workflows = catalog.get("workflows")
+    total = catalog.get("total_count")
+    if (
+        not isinstance(workflows, list)
+        or type(total) is not int
+        or total != len(workflows)
+        or any(not isinstance(workflow, dict) for workflow in workflows)
+    ):
+        raise ValueError("Workflow 目录不完整或格式无效，不能证明唯一身份")
+    resolved: dict[str, int] = {}
+    for name in required:
+        matching = [workflow for workflow in workflows if workflow.get("name") == name]
+        if len(matching) != 1:
+            raise ValueError(f"{name}: Workflow 目录身份缺失或不唯一")
+        workflow_id = matching[0].get("id")
+        if type(workflow_id) is not int or workflow_id <= 0:
+            raise ValueError(f"{name}: Workflow ID 无效")
+        resolved[name] = workflow_id
+    return resolved
+
+
 def verify_baseline(
     runs: list[dict[str, Any]],
     *,
@@ -29,6 +52,7 @@ def verify_baseline(
     merge: str,
     current_run: int,
     required: dict[str, set[str]],
+    workflow_ids: dict[str, int],
     jobs: Callable[[int], list[dict[str, Any]]],
 ) -> int:
     """仅接受正式 full run 的最新成功 jobs；未知/失败拒绝，执行中返回 75。"""
@@ -38,7 +62,8 @@ def verify_baseline(
         candidates = [
             run
             for run in runs
-            if run.get("name") == workflow
+            if type(run.get("workflow_id")) is int
+            and run["workflow_id"] == workflow_ids[workflow]
             and run.get("event") == "pull_request"
             and run.get("head_sha") == head
             and int(run.get("id", 0)) != current_run
@@ -103,6 +128,7 @@ def main() -> int:
         for value in args.require:
             workflow, identity = value.split(":", 1)
             required.setdefault(workflow, set()).add(identity)
+        workflow_ids = resolve_workflow_ids(get("actions/workflows?per_page=100"), set(required))
         runs = get(f"actions/runs?head_sha={args.head}&event=pull_request&per_page=100")[
             "workflow_runs"
         ]
@@ -113,6 +139,7 @@ def main() -> int:
             merge=args.merge,
             current_run=int(os.environ["GITHUB_RUN_ID"]),
             required=required,
+            workflow_ids=workflow_ids,
             jobs=lambda run: get(f"actions/runs/{run}/jobs?per_page=100")["jobs"],
         )
         print(

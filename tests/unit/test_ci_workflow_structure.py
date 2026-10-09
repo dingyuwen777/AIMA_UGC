@@ -127,13 +127,28 @@ def test_pr_body_edit_revalidates_metadata_without_cancelling_full_evidence() ->
     assert "github.event.action != 'edited'" in text
 
 
-@pytest.mark.parametrize("change", ["base", "merge", "metadata", "skipped", "failure", "missing"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "base",
+        "merge",
+        "metadata",
+        "skipped",
+        "failure",
+        "missing",
+        "head",
+        "event",
+        "pr",
+        "current",
+    ],
+)
 def test_metadata_reuse_rejects_wrong_combination_and_incomplete_required_jobs(change: str) -> None:
     """旧 base、另一个 merge、metadata 和未完成正式身份均不能冒充基线。"""
     verify = runpy.run_path(str(ROOT / "scripts/quality/verify_pr_baseline.py"))["verify_baseline"]
     source = {
         "id": 1,
         "name": "CI",
+        "workflow_id": 101,
         "event": "pull_request",
         "head_sha": "head",
         "display_title": "CI evidence head=head base=base merge=merge lane=full",
@@ -149,6 +164,14 @@ def test_metadata_reuse_rejects_wrong_combination_and_incomplete_required_jobs(c
         )
     elif change in {"failure", "skipped"}:
         job["conclusion"] = change
+    elif change == "head":
+        source["head_sha"] = "other"
+    elif change == "event":
+        source["event"] = "push"
+    elif change == "pr":
+        source["pull_requests"] = []
+    elif change == "current":
+        source["id"] = 2
     with pytest.raises(ValueError):
         verify(
             [source],
@@ -157,18 +180,24 @@ def test_metadata_reuse_rejects_wrong_combination_and_incomplete_required_jobs(c
             merge="merge",
             current_run=2,
             required={"CI": {"CI Gate"}},
+            workflow_ids={"CI": 101},
             jobs=lambda _: [] if change == "missing" else [job],
         )
 
 
-def test_metadata_reuse_waits_for_full_run_and_accepts_only_its_successful_identity() -> None:
+@pytest.mark.parametrize("workflow", ["CI", "Runtime Acceptance"])
+def test_metadata_reuse_waits_for_full_run_and_accepts_only_its_successful_identity(
+    workflow: str,
+) -> None:
     verify = runpy.run_path(str(ROOT / "scripts/quality/verify_pr_baseline.py"))["verify_baseline"]
+    title = f"{workflow} evidence head=head base=base merge=merge lane=full"
     source = {
         "id": 1,
-        "name": "CI",
+        "name": title,
+        "workflow_id": 101,
         "event": "pull_request",
         "head_sha": "head",
-        "display_title": "CI evidence head=head base=base merge=merge lane=full",
+        "display_title": title,
         "pull_requests": [{"head": {"sha": "head"}, "base": {"sha": "base"}}],
         "status": "in_progress",
         "conclusion": None,
@@ -178,7 +207,8 @@ def test_metadata_reuse_waits_for_full_run_and_accepts_only_its_successful_ident
         "base": "base",
         "merge": "merge",
         "current_run": 2,
-        "required": {"CI": {"CI Gate"}},
+        "required": {workflow: {"CI Gate"}},
+        "workflow_ids": {workflow: 101},
         "jobs": lambda _: [{"name": "CI Gate", "status": "completed", "conclusion": "success"}],
     }
     assert verify([source], **arguments) == 75
@@ -187,6 +217,47 @@ def test_metadata_reuse_waits_for_full_run_and_accepts_only_its_successful_ident
     latest = {**source, "id": 3, "conclusion": "failure"}
     with pytest.raises(ValueError):
         verify([source, latest], **arguments)
+    with pytest.raises(ValueError):
+        verify([{**source, "workflow_id": 102, "name": workflow}], **arguments)
+
+
+@pytest.mark.parametrize(
+    "catalog",
+    [
+        {},
+        {"total_count": 1, "workflows": []},
+        {"total_count": 0, "workflows": []},
+        {"total_count": 1, "workflows": [None]},
+        {"total_count": 2, "workflows": [{"name": "CI", "id": 101}] * 2},
+        *[
+            {"total_count": 1, "workflows": [{"name": "CI", "id": value}]}
+            for value in (None, True, 0, -1, "101")
+        ],
+    ],
+)
+def test_metadata_workflow_catalog_rejects_unknown_or_ambiguous_identity(catalog: dict) -> None:
+    resolve = runpy.run_path(str(ROOT / "scripts/quality/verify_pr_baseline.py"))[
+        "resolve_workflow_ids"
+    ]
+    with pytest.raises(ValueError):
+        resolve(catalog, {"CI"})
+
+
+def test_metadata_workflow_catalog_resolves_only_formal_unique_ids() -> None:
+    resolve = runpy.run_path(str(ROOT / "scripts/quality/verify_pr_baseline.py"))[
+        "resolve_workflow_ids"
+    ]
+    assert resolve(
+        {
+            "total_count": 3,
+            "workflows": [
+                {"name": "CI", "id": 101},
+                {"name": "Runtime Acceptance", "id": 102},
+                {"name": "Unrelated", "id": 103},
+            ],
+        },
+        {"CI", "Runtime Acceptance"},
+    ) == {"CI": 101, "Runtime Acceptance": 102}
 
 
 @pytest.mark.parametrize(

@@ -58,7 +58,7 @@ Workflow Responsibility Audit 与 Evidence Preservation Mapping 已同步到 `do
 | Tooling Linux / Windows | 37902233849 | 78s / 63s |
 | Release | 37902233779 | 197s，build/replay 187s |
 
-旧 CI 关键路径为 1021s，上述 Runner 墙钟合计 2017s（33.6min），不是计费账单。旧修复 head 没有 synchronize 通路，读取时对应 Actions 为 0。
+旧 CI 关键路径为 1021s，上述 Runner 墙钟合计 1997s（33m17s），不是计费账单。旧修复 head 没有 synchronize 通路，读取时对应 Actions 为 0。
 
 当前综合改造自身包含 CI 控制面及 Migration，必须 full。用户任务书批准先验证正确性与生命周期，再以其为基线优化重型成本。AC54 的真实快速路径采样因此只可在新 Workflow 经完整门禁成为 main 基线之后，用受控、最终关闭且不合并的模板采样 PR 取得；这是既定后续交付阶段，不能提前勾选 AC54 或关闭 Issue #711。AC55 的 merge、main fresh、原生归档、Closure 和资源清理同理。合并前独立 Review、用户验收事实、当前 head/base required CI 与保护规则仍必须满足。
 
@@ -245,3 +245,14 @@ $env:AIMA_BROWSER_REUSE_MANUAL_FACTS='1'
 HEAD 071f9ba8/base caf06ae1/merge-ref c5eb131e 的CI run37945897242：CI Plan、Preflight、Requirement Traceability and Completion Audit（含完整前后端）、真实Full-stack通过；Runtime37945896150、Tooling37945896177及Release dry-run37945895996通过。PG run的collection阶段257 passed/1 failed，失败为既有评论Runtime总Artifact断言4，而当前正式行为为3Raw+Search Canonical+Detail Canonical共5。三个Provider Operation及Attempt数量均为3，没有新增视频请求或缓存文件；已批准的新Detail持久Canonical可由collection_scope.py的同Attempt父链直接恢复。
 
 本地隔离25449同测试文件真实Red为1 failed/1 passed/2.53s。仅更新该既有测试：精确总数5、kind分组3Raw/2Canonical、Canonical分别唯一关联search_notes和get_image_note_detail Attempt、3个不同Raw ID；原Transport调用3、Request/Attempt3及评论正文/父子/统计断言保留。Green为2 passed/2.39s；精确ruff lint/format及diff检查通过（首次format提示已按正式formatter修正）。生产实现、公共Contract、Provider次数和用户可见行为没有变化；USER_WAIVED继续有效。独立限定复核后提交修正，仍须新HEAD自动synchronize完整required CI，不以首轮部分绿色替代新HEAD。
+
+
+## PR712 metadata 正式身份返修
+
+HEAD14389ac5的完整CI37947655066、Runtime37947654730、Tooling37947654775及Release dry-run37947654707实际成功，PG八个suite为951 passed/10 skipped。随后纯正文编辑触发CI37950608352和Runtime37950607113失败；CI Preflight失败后PG/Full-stack正确跳过，required Gate明确失败，未把之前绿色冒充当前检查。
+
+真实REST响应的name与display_title均为展开后的run-name，稳定workflow_id来自同仓库正式Workflow目录；旧verify_pr_baseline按静态name筛选，单元Fixture也错误模拟为静态名称。先仅把正例Fixture改成真实动态标题，旧生产实现Red为1 failed/45 deselected。最小返修只改脚本及既有测试：完整目录中required名称必须唯一对应正整数ID，缺失、重复、非法ID或分页不完整均拒绝；Run按workflow_id筛选，原HEAD/base/merge/full/event/PR关系、排除当前Run、最新正式Run及唯一成功required Job校验全部保留。--verify-checkout依旧在任何API读取之前返回。
+
+最终控制面相邻Green为182 passed/14.98s、无skip，覆盖真实CI/Runtime动态标题、错误ID伪造静态名、目录拒绝反例和原组合/未完成/失败校验。另八组相邻套件193 passed/1既有平台skip/16.96s；沙箱首次运行的三个Bash探针因系统权限失败，正常宿主权限重跑全部通过，不降低断言。两文件Ruff lint/format与Python3.12 bootstrap语法通过。旧PR710的Runner总墙钟按原始Job时间重新求和为1997s，修正早期2017s算术误差，不冒充实际账单。
+
+冻结后独立限定Review及新HEAD自动full CI、随后实际metadata lane仍是合并前门禁；USER_WAIVED及全部产品实现/Contract字节保持有效，当前尚未merge。
