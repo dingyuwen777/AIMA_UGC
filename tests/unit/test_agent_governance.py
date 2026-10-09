@@ -145,7 +145,8 @@ def test_current_managed_block_is_project_facing_without_runtime_internals() -> 
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     managed = _managed_block(agents)
     assert "只维护本区块外的项目自有 Overlay" in managed
-    assert "受管运行资产只服务当前项目的研发治理" in managed
+    assert "受管运行资产" in managed
+    assert "不作为项目自有长期规则直接手工维护" in managed
     for forbidden in (
         "Runtime Mode",
         "研发治理 MCP",
