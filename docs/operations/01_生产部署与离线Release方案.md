@@ -508,7 +508,7 @@ python3 start_compose.py --env-file /data/AIMA_UGC/env.production
 
 先应用 [migrations/versions/20261010_0087_export_ownership_defaults.py](../../migrations/versions/20261010_0087_export_ownership_defaults.py)，再联动切换 API、Worker 和前端。迁移只扩展 Export 归属、索引和个人默认字段表，并回填可靠历史创建者，不扫描 Content 或改写 Artifact。不得单独发布后端权限限制而让旧前端持续轮询管理 API。
 
-生产候选环境仍须独立验收两企业 OAuth、两角色菜单/API/文件访问、Cookie 安全、最终 HTTPS/端口的 Origin/Referer、Session 撤销与账号切换；会话期间不会逐请求复核远端组，默认最长约 8 小时后重新登录判定。正式验收不能由 Development Principal 或本轮免本地验证代替。
+生产候选环境仍须独立验收两企业 OAuth、两角色菜单/API/文件访问、Cookie 安全、最终 HTTPS/端口的 Origin/Referer、Session 撤销与账号切换；会话期间不会逐请求复核远端组，默认最长约 8 小时后重新登录判定。正式验收不能由 Development Principal 或隔离本地自动化结果代替。
 
 ## 13. 回滚
 

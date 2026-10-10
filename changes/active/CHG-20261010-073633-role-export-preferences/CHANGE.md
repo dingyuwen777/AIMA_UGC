@@ -3,17 +3,33 @@ schema: coding-change/v1
 id: CHG-20261010-073633-role-export-preferences
 title: 落实多用户角色权限与个人 Excel 导出配置
 level: L3
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: feat/714-role-export-preferences
 created: 2026-10-10T07:36:33+08:00
 updated: 2026-10-10
 completion_gate: required
 depends_on: []
-affected_areas: [identity, reporting, frontend, workbench, content]
-affected_paths: [backend/src/aima_ugc, frontend, migrations, tests, docs]
-contracts: [HTTP, ExportColumnCatalogResponse, DataExportRequest, ExportColumnDefault]
-data_changes: [reporting_data_exports, reporting_user_export_column_defaults]
+affected_areas:
+  - identity
+  - reporting
+  - frontend
+  - workbench
+  - content
+affected_paths:
+  - backend/src/aima_ugc
+  - frontend
+  - migrations
+  - tests
+  - docs
+contracts:
+  - HTTP
+  - ExportColumnCatalogResponse
+  - DataExportRequest
+  - ExportColumnDefault
+data_changes:
+  - reporting_data_exports
+  - reporting_user_export_column_defaults
 ---
 
 # 变更摘要
@@ -109,28 +125,28 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 飞书/Session 身份 | #714 / AC1 | not_satisfied | 等待实现与远程回归 |
-| R2 | 最终路由完整 policy | #714 / AC2 | not_satisfied | 等待实现与远程回归 |
-| R3 | 管理 API 拒绝无副作用 | #714 / AC3 | not_satisfied | 等待实现与远程回归 |
-| R4 | 共享只读与旁路 | #714 / AC4 | not_satisfied | 等待实现与远程回归 |
-| R5 | 配置/CSRF | #714 / AC5 | not_satisfied | 等待实现与远程回归 |
-| R6 | 导航/Route | #714 / AC6 | not_satisfied | 等待实现与远程回归 |
-| R7 | 声音广场列表 | #714 / AC7 | not_satisfied | 等待实现与远程回归 |
-| R8 | 内容详情 | #714 / AC8 | not_satisfied | 等待实现与远程回归 |
-| R9 | 任务中心 | #714 / AC9 | not_satisfied | 等待实现与远程回归 |
-| R10 | 共享数据刷新 | #714 / AC10 | not_satisfied | 等待实现与远程回归 |
-| R11 | 布局与通知 | #714 / AC11 | not_satisfied | 等待实现与远程回归 |
-| R12 | Export 创建者 Schema | #714 / AC12 | not_satisfied | 等待实现与远程回归 |
-| R13 | Export 对象授权 | #714 / AC13 | not_satisfied | 等待实现与远程回归 |
-| R14 | 列授权 | #714 / AC14 | not_satisfied | 等待实现与远程回归 |
-| R15 | 默认字段持久化 | #714 / AC15 | not_satisfied | 等待实现与远程回归 |
-| R16 | 默认 API | #714 / AC16 | not_satisfied | 等待实现与远程回归 |
-| R17 | 默认弹窗与冻结 | #714 / AC17 | not_satisfied | 等待实现与远程回归 |
-| R18 | 会话隔离 | #714 / AC18 | not_satisfied | 等待实现与远程回归 |
-| R19 | Migration/Contract/回滚 | #714 / AC19 | not_satisfied | 等待实现与远程回归 |
-| R20 | 本地分层验证 | #714 / AC20 | not_satisfied | epoch 2 本地 required；验证进行中 |
-| R21 | 独立 Review/文档/兼容 | #714 / AC21 | not_satisfied | 等待实现与远程回归 |
-| R22 | 保留分支、不合并与任务清理 | #714 / AC22 | not_satisfied | 交付阶段清理本任务临时资源；保留开发分支 |
+| R1 | 飞书/Session 身份 | #714 / AC1 | satisfied | `tests/unit/identity/`、platform 身份映射/Session/单多 Connector 本地回归；沿用稳定组 ID/管理员优先/八小时会话，真实企业 OAuth 候选验收见 R20 边界 |
+| R2 | 最终路由完整 policy | #714 / AC2 | satisfied | [最终 175 项实际 Method+Path 清单](evidence/route-authorization-inventory.md)、`tests/api/test_route_authorization.py`：未知/重复/未受保护路由启动拒绝、隐藏与扩展均覆盖、每请求 Principal 复用 |
+| R3 | 管理 API 拒绝无副作用 | #714 / AC3 | satisfied | `test_route_authorization.py` 逐最终管理路由执行前拒绝和服务探针；`test_role_exports_and_defaults.py` 真实 Session/DB/Job/Artifact 事实不变；统一 401/403/422/409 错误 |
+| R4 | 共享只读与旁路 | #714 / AC4 | satisfied | `test_role_export_columns_and_csrf.py`、Content/Workbench 集成和 Full-stack；普通用户播放仅读取既有结果，通用 Job 管理授权，媒体恢复 F3 定向回归 |
+| R5 | 配置/CSRF | #714 / AC5 | satisfied | `test_feishu_auth_http.py`、`test_role_export_columns_and_csrf.py`；显式 feishu/development、Compose 正式默认失败关闭、Cookie 同源写校验、合法 OAuth 回调/配置来源通过 |
+| R6 | 导航/Route | #714 / AC6 | satisfied | `app-shell.spec.ts`、`identity-auth-guard.spec.ts`、`identity-store.spec.ts` 和真实角色 Full-stack：两/五菜单、管理深链拒绝、无管理请求/菜单闪现/403 登录循环 |
+| R7 | 声音广场列表 | #714 / AC7 | satisfied | VoicePlazaPage/Table 显式能力、Store 写入口保护；`voice-plaza.spec.ts` Unit/Browser 与 Full-stack 保留选择/AI 结果/筛选/导出，隐藏分析/补采/复核管理动作 |
+| R8 | 内容详情 | #714 / AC8 | satisfied | Detail/Comment/Media 显式权限 props；detail/media/comment 组件回归、普通用户详情 Browser；正文、评论回复、有效人工摘要/证据保留，编辑器和恢复写入口关闭 |
+| R9 | 任务中心 | #714 / AC9 | satisfied | `task-center.spec.ts`、Full-stack 请求监测：普通用户真实请求源仅自己 Export；角色换代清旧缓存与在途结果，管理员原管理任务/取消回归 |
+| R10 | 共享数据刷新 | #714 / AC10 | satisfied | opaque 只读 content-revision、首次追赶/慢请求 Red→Green、Workbench 既有 3 秒/小时刷新与深链 Browser；真实 Full-stack 管理员复核后普通用户已打开页面自动更新且无 Analysis Run 请求 |
+| R11 | 布局与通知 | #714 / AC11 | satisfied | Workbench layout 的 principal/revision 集成及 Browser；`test_u1_u5_identity_product.py` 当前用户通知/已读、product service 普通用户管理通知过滤；Identity Store 安全深链与换号旧通知回归 |
+| R12 | Export 创建者 Schema | #714 / AC12 | satisfied | `20261010_0087_export_ownership_defaults.py`、`test_export_ownership_migration.py` 与 Reporting PG：仅可靠非空字符串回填、未知 owner 管理员可见、新建 Session owner、用户时间索引 |
+| R13 | Export 对象授权 | #714 / AC13 | satisfied | `test_role_exports_and_defaults.py` 先 owner 过滤再 LIMIT、A/B/admin 详情/下载、Job/Artifact/到期；真实双用户 Full-stack 跨用户详情与下载 404 |
+| R14 | 列授权 | #714 / AC14 | satisfied | Catalog v3 单一 EXPORT_COLUMNS、API 伪造字段拒绝、降权配置/历史 v2 文件下载拒绝；Worker XLSX 全工作表无受限字段，管理员与离线 Renderer 既有回归 |
+| R15 | 默认字段持久化 | #714 / AC15 | satisfied | Reporting 专表/Repository CAS、`test_role_exports_and_defaults.py`：每用户一条、有序有效列、NULL 恢复 revision 单调、开发 Principal 无 Identity FK |
+| R16 | 默认 API | #714 / AC16 | satisfied | `test_role_export_columns_and_csrf.py` 与 Reporting PG：当前 Session、0/null、revision/catalog 409、非法 422、读取过滤且原始记录不重写；OpenAPI/Orval 生成一致 |
+| R17 | 默认弹窗与冻结 | #714 / AC17 | satisfied | 延迟默认、409、恢复失败 Browser 和 Full-stack 跨浏览器恢复；显式保存/恢复、草稿保护、临时导出不改默认；PG 生成并重读 XLSX 验证冻结字段和顺序 |
+| R18 | 会话隔离 | #714 / AC18 | satisfied | `principal-scope.spec.ts`、`identity-store.spec.ts`、旧异步 Unit、sessionStorage/Legacy Browser、真实多标签页 Cookie 换号：同用户恢复、历史无归属清除、换号清 Pinia/默认/在途结果 |
+| R19 | Migration/Contract/回滚 | #714 / AC19 | satisfied | 新增 0087，不改旧 Migration/Content/Artifact；Migration PG/历史兼容 14 项、Generated Contract/兼容检查通过；正式部署文档说明整体联动与保留配置回滚/旧漏洞访问隔离 |
+| R20 | 本地分层验证 | #714 / AC20 | satisfied | [本地验证记录](evidence/local-validation.md)：2611 pytest、361 Vitest、218 Browser、真实 Session Full-stack 原 20+修后 1、972 唯一 PG、XLSX 重读、迁移/Contract/类型/构建；首次采集五项未复现风险保留，原模块/原序 96 PASS；企业候选/远程 CI 明确未执行 |
+| R21 | 独立 Review/文档/兼容 | #714 / AC21 | satisfied | [独立 Review 与修复](evidence/review-repair.md)：首轮三项 P2 全部由原 Reviewer CLOSED；最终直接日志 addendum 判定本地可验收/无 blocking Acceptance gap；正式产品/Reporting/Schema/部署文档与管理员原流程回归同步 |
+| R22 | 保留分支、不合并与任务清理 | #714 / AC22 | satisfied | [本地交付与清理](evidence/local-delivery.md)：两个临时分支/worktree、测试服务、两个专属 PG 容器/匿名卷、任务 Source/temp/Secret/数据及前端生成产物均已清理；根开发分支保留，无 push/PR/CI/merge/发布/部署 |
 
 # 计划改动
 
@@ -173,24 +189,24 @@ epoch 2 本地验证 required。复用 `scripts/dev/validate_changed.py --base o
 
 # 完成审计
 
-- [ ] upstream_re_read：重读 #714 与适用项目事实。
-- [ ] change_coverage：逐 AC 核对施工范围。
-- [ ] reverse_audit：API/UI、Schema/Owner、异步/文件/身份边界审计。
-- [ ] unresolved_cleared：清零未满足项，依据证据不伪造。
+- [x] upstream_re_read：2026-10-10 再次 live 读取 #714（updated_at `2026-10-10T00:19:28Z`，epoch 2 未变），核对 AGENTS、技术决策与生产路线；以用户最新本地验证/暂停合并指令为交付边界。
+- [x] change_coverage：按 #714 AC1–22 逐条核对，R1–22 均有当前实现/直接测试/独立复核/实际清理证据；未来企业候选、远程 CI 和人工验收按上游既定交付边界列未执行，未用 Change 自证需求全集。
+- [x] reverse_audit：最终 API→UI、UI→生成 Client→Owner、Schema/迁移→查询归属、Job→冻结文件→下载列权限，以及 Principal→会话/草稿/旧异步反向检查；普通用户选择/AI 结果/媒体/评论保留，管理侧原入口回归已覆盖。
+- [x] unresolved_cleared：原 Reviewer 确认 F1/F2/F3 全部 CLOSED、无 blocking 本地 Acceptance gap；所有本地验证和临时资源清理完成。首次采集异常当前原序未复现、根因未知作为已披露风险，未伪造修复或环境归因。Human PENDING/无远程交付符合用户当前边界。
 
 # 完成证据与状态
 
 ## 新鲜证据
 
-起点 fetch main 成功；Issue candidate create Contract PASS，平台创建 #714，epoch 2 candidate pre-write PASS、平台更新后 live 重读与 candidate 字节相同。本地后端、前端、PostgreSQL 与迁移验证证据正在收口。
+起点 fetch main 成功；Issue candidate create Contract PASS，平台创建 #714，epoch 2 candidate pre-write PASS、平台更新后 live 重读与 candidate 字节相同。当前代码 `513c79804f3fe14121ba0b0422865e16a2ac8d61`；完整 changed-scope preflight 退出 0（2611 pytest、361 Vitest、218 Browser、类型/构建/Contract 等）；真实 Session Full-stack 原 20 项及新增 1 项均通过。详见 [本地验证记录](evidence/local-validation.md) 与 [Review 修复记录](evidence/review-repair.md)。
 
 ## 未验证内容与剩余风险
 
-本地验证进行中。正式飞书/生产候选环境未执行，不能宣称生产可发布。
+正式飞书/多企业真实 Connector、最终 HTTPS/Origin/Cookie、Linux 专属进程回收、专用报告浏览器候选装配、Release/离线回放与远程 required CI 未执行，不能宣称生产可发布。首次采集五项失败未能恢复具体异常，原模块/原序重跑 96 项全部通过、258 唯一覆盖齐全；保留未复现风险，不伪造已修复或基础设施归因。
 
 ## 交付状态
 
-本地任务分支开发中；已提交后端、测试、前端 checkpoint，尚无 push/PR/CI/merge。Human Local Acceptance PENDING；远程 main 合并暂停。
+本地实现、自动验证、独立复核与临时资源清理已完成；`check_change_completion.py --root . --require-active-ready` 通过，Change 为本地 ready_for_review。后端、测试、前端与交付证据形成可审查的本地提交，尚无 push/PR/CI/merge。Human Local Acceptance PENDING；保留根开发分支，远程 main 合并暂停。此状态不代表 PR Ready、可合并或生产候选就绪。
 
 ## 备注
 
