@@ -35,6 +35,8 @@ const generated = vi.hoisted(() => ({
   listDataExports: vi.fn(),
   getDataExport: vi.fn(),
   downloadDataExport: vi.fn(),
+  listVehicleBrands: vi.fn(),
+  listVehicleModels: vi.fn(),
 }))
 
 vi.mock('../src/generated/api/client', () => generated)
@@ -45,6 +47,7 @@ import VoicePlazaTable from '../src/features/voice-plaza/pages/VoicePlazaPage/co
 import { VoicePlazaApiError, fetchContents, fetchDataExportFile } from '../src/features/voice-plaza/api'
 import { useVoicePlazaStore } from '../src/features/voice-plaza/store'
 import { useTaskCenterStore } from '../src/features/task-center/store'
+import { useVehicleCatalogStore } from '../src/shared/domain/vehicleCatalog'
 
 const item = {
   id: '01991f80-6d5d-7dc8-95cb-c67c12345678',
@@ -271,6 +274,71 @@ describe('voice plaza', () => {
     expect(generated.listContents.mock.lastCall?.[0]).not.toHaveProperty('content_types')
     expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ platforms: ['xiaohongshu'], search: '爱玛' })
     expect(JSON.parse(sessionStorage.getItem('aima.voice-plaza.applied-search.v1') ?? '{}').filters).not.toHaveProperty('contentType')
+  })
+
+  it('旧会话只有车型时继续按原查询生效，用户主动修改品牌后才退出兼容', async () => {
+    installSessionStorage()
+    sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
+      filters: { vehicleModelIds: ['vehicle-q7'] },
+      sortBy: 'published_at', sortDirection: 'desc',
+    }))
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    const store = useVoicePlazaStore()
+    expect(store.legacyVehicleCompatibility).toEqual({ brandIds: [], vehicleModelIds: ['vehicle-q7'] })
+    await store.refresh()
+    expect(generated.listContents.mock.lastCall?.[0]).toMatchObject({ vehicle_model_ids: ['vehicle-q7'] })
+    store.filters.brandIds = ['brand-aima']
+    store.applyFilters()
+    expect(store.legacyVehicleCompatibility).toBeNull()
+  })
+
+  it('品牌目录与车型目录就绪后，提交筛选只保留当前品牌下的车型', async () => {
+    const catalog = useVehicleCatalogStore()
+    generated.listVehicleBrands.mockResolvedValue({
+      items: [{ id: 'brand-aima', code: 'AIMA', display_name: '爱玛', aliases: [], role: 'owned', version: 1, catalog_version: 1 }],
+      total: 1, offset: 0, limit: 200, catalog_version: 1,
+    })
+    generated.listVehicleModels.mockResolvedValue({
+      items: [
+        { id: 'vehicle-q7', code: 'Q7', display_name: '爱玛 Q7', brand_id: 'brand-aima', aliases: [], version: 1, catalog_version: 1 },
+        { id: 'vehicle-other', code: 'OTHER', display_name: '其他车型', brand_id: 'brand-other', aliases: [], version: 1, catalog_version: 1 },
+      ],
+      total: 2, offset: 0, limit: 200, catalog_version: 1,
+    })
+    await Promise.all([catalog.loadBrands('active'), catalog.loadVehicles('active')])
+    const store = useVoicePlazaStore()
+    store.filters.brandIds = ['brand-aima']
+    store.filters.vehicleModelIds = ['vehicle-q7', 'vehicle-other']
+    store.applyFilters()
+    expect(store.appliedFilters.brandIds).toEqual(['brand-aima'])
+    expect(store.appliedFilters.vehicleModelIds).toEqual(['vehicle-q7'])
+  })
+
+  it('新交互没有品牌时，目录就绪后不保留车型条件', async () => {
+    const catalog = useVehicleCatalogStore()
+    generated.listVehicleBrands.mockResolvedValue({
+      items: [{ id: 'brand-aima', code: 'AIMA', display_name: '爱玛', aliases: [], role: 'owned', version: 1, catalog_version: 1 }],
+      total: 1, offset: 0, limit: 200, catalog_version: 1,
+    })
+    generated.listVehicleModels.mockResolvedValue({
+      items: [{ id: 'vehicle-q7', code: 'Q7', display_name: '爱玛 Q7', brand_id: 'brand-aima', aliases: [], version: 1, catalog_version: 1 }],
+      total: 1, offset: 0, limit: 200, catalog_version: 1,
+    })
+    await Promise.all([catalog.loadBrands('active'), catalog.loadVehicles('active')])
+    const store = useVoicePlazaStore()
+    store.filters.brandIds = []
+    store.filters.vehicleModelIds = ['vehicle-q7']
+    store.applyFilters()
+    expect(store.appliedFilters.vehicleModelIds).toEqual([])
+  })
+
+  it('车型目录未就绪时不把未知车型当作失效值清掉', async () => {
+    const store = useVoicePlazaStore()
+    store.filters.brandIds = ['brand-aima']
+    store.filters.vehicleModelIds = ['vehicle-unknown']
+    store.applyFilters()
+    expect(store.appliedFilters.brandIds).toEqual(['brand-aima'])
+    expect(store.appliedFilters.vehicleModelIds).toEqual(['vehicle-unknown'])
   })
 
   it('切换排序从第一页重新请求，粉丝升降序交给后端执行', async () => {
@@ -560,6 +628,8 @@ describe('voice plaza', () => {
     generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: true })
     generated.getContentAnalysisTaxonomy.mockResolvedValue(taxonomy)
     generated.getContentFilterOptions.mockResolvedValue(filterOptions)
+    generated.listVehicleBrands.mockResolvedValue({ items: [], total: 0, offset: 0, limit: 200, catalog_version: 1 })
+    generated.listVehicleModels.mockResolvedValue({ items: [], total: 0, offset: 0, limit: 200, catalog_version: 1 })
     generated.listContentComments.mockResolvedValue({
       items: [],
       has_more: false,
@@ -716,17 +786,14 @@ describe('voice plaza', () => {
       }),
     )
 
-    for (const [value, label] of [
-      ['xiaohongshu', '小红书'],
-      ['douyin', '抖音'],
-      ['weibo', '微博'],
-      ['bilibili', 'B站'],
-      ['kuaishou', '快手'],
-    ]) {
-      expect(html).toContain(`value="${value}"`)
-      expect(html).toContain(label)
+    const panelStart = html.indexOf('aria-label="选择平台"')
+    expect(panelStart).toBeGreaterThanOrEqual(0)
+    const panel = html.slice(panelStart, html.indexOf('</div>', panelStart))
+    for (const label of ['小红书', '抖音', '微博', 'B站', '快手']) {
+      expect(panel).toContain(label)
     }
-    expect(html).not.toContain('value="file"')
+    expect(panel.match(/type="checkbox"/g) ?? []).toHaveLength(5)
+    expect(panel).not.toContain('file')
   })
 
   it('renders active and historical values from the backend filter options', async () => {
@@ -863,7 +930,7 @@ describe('voice plaza', () => {
     expect(html).not.toContain('标记为不相关')
   })
 
-  it('loads filter options and sends brand, vehicle, competition, and AI query filters', async () => {
+  it('loads filter options and sends brand, vehicle, and AI query filters', async () => {
     generated.listContents.mockResolvedValue({ items: [item], has_more: false })
     const store = useVoicePlazaStore()
 
@@ -874,7 +941,6 @@ describe('voice plaza', () => {
     store.filters.secondaryLabels = ['续航表现', '门店服务']
     store.filters.brandIds = ['brand-aima']
     store.filters.vehicleModelIds = ['vehicle-q7']
-    store.filters.competitionScopes = ['owned_only', 'mixed']
     store.applyFilters()
     await store.refresh()
 
@@ -886,7 +952,6 @@ describe('voice plaza', () => {
       secondary_labels: ['续航表现', '门店服务'],
       brand_ids: ['brand-aima'],
       vehicle_model_ids: ['vehicle-q7'],
-      competition_scopes: ['owned_only', 'mixed'],
     }))
   })
 

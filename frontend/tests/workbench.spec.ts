@@ -175,8 +175,9 @@ it('preserves saved vehicle filters when only the vehicle catalog fails to load'
   await store.initialize()
   expect(store.filters.vehicleModelIds).toEqual(['vehicle'])
   expect(JSON.parse(savedFilters.get(savedFiltersKey)!).vehicleModelIds).toEqual(['vehicle'])
-  for (const call of [api.fetchWorkbenchStream, api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
-    expect(call).toHaveBeenCalledWith(expect.objectContaining({ brand_ids: ['aima'], vehicle_model_ids: ['vehicle'] }))
+  expect(api.fetchWorkbenchStream).toHaveBeenCalledWith(expect.objectContaining({ brand_ids: ['aima'], vehicle_model_ids: ['vehicle'] }))
+  for (const call of [api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
+    expect(call).toHaveBeenCalledWith(expect.objectContaining({ brand_ids: ['aima'] }))
   }
   // 目录成功恢复后，归属不符及真实删除的车型仍按现有规则清理。
   api.fetchActiveVehicleModels.mockResolvedValue([{ id: 'vehicle', brand_id: 'other' }])
@@ -202,11 +203,15 @@ it('restores the complete applied snapshot before the first queries and persists
   const restored = useWorkbenchStore()
   await restored.initialize()
   expect(restored.filters).toEqual(expected)
-  for (const request of [api.fetchWorkbenchStream, api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
+  expect(api.fetchWorkbenchStream).toHaveBeenCalledTimes(1)
+  expect(api.fetchWorkbenchStream).toHaveBeenCalledWith(expect.objectContaining({ date_from: '2026-08-01', date_to: '2026-08-31',
+    platforms: ['douyin'], brand_ids: ['aima'], vehicle_model_ids: ['vehicle'], voice_types: ['真实用户发声'],
+    sentiments: ['负面'], primary_labels: ['外观设计'], secondary_labels: ['颜色与配色'] }))
+  const defaultFrom = restored.aggregateFilters.dateFrom
+  const defaultTo = restored.aggregateFilters.dateTo
+  for (const request of [api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
     expect(request).toHaveBeenCalledTimes(1)
-    expect(request).toHaveBeenCalledWith(expect.objectContaining({ date_from: '2026-08-01', date_to: '2026-08-31',
-      platforms: ['douyin'], brand_ids: ['aima'], vehicle_model_ids: ['vehicle'], voice_types: ['真实用户发声'],
-      sentiments: ['负面'], primary_labels: ['外观设计'], secondary_labels: ['颜色与配色'] }))
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ date_from: defaultFrom, date_to: defaultTo, brand_ids: ['aima'] }))
   }
   restored.resetFilters()
   const reset = { ...restored.filters }
@@ -504,16 +509,16 @@ describe('工作台状态与 Figma 基线', () => {
     expect(store.moduleErrors.stream).toBeNull()
   })
 
-  it('筛选改变后清除上一筛选结果，避免把旧数据冒充当前筛选快照', async () => {
+  it('筛选改变后只清除声音流结果，聚合模块沿用默认口径', async () => {
     const store = useWorkbenchStore()
     await store.initialize()
 
     store.setFilters({ ...store.filters, sentiments: ['负面'] })
 
     expect(store.stream).toBeNull()
-    expect(store.mind).toBeNull()
-    expect(store.trend).toBeNull()
-    expect(store.selectedMind).toBeNull()
+    expect(store.mind).not.toBeNull()
+    expect(store.trend).not.toBeNull()
+    expect(store.selectedMind).not.toBeNull()
   })
 
   it('编辑态只改草稿，取消恢复；保存时一次提交 revision CAS', async () => {
@@ -582,18 +587,29 @@ describe('工作台状态与 Figma 基线', () => {
     expect(store.filters.secondaryLabels).toEqual(['颜色与配色'])
   })
 
-  it('反向日期在进入三个模块请求前统一规范为有序区间', async () => {
+  it('反向日期在声音流请求前统一规范，聚合模块沿用默认日期口径', async () => {
     const store = useWorkbenchStore()
+    await store.initialize()
+    const defaultFrom = store.aggregateFilters.dateFrom
+    const defaultTo = store.aggregateFilters.dateTo
+
     store.setFilters({ ...store.filters, dateFrom: '2026-08-29', dateTo: '2026-08-28' })
     expect(store.filters.dateFrom).toBe('2026-08-28')
     expect(store.filters.dateTo).toBe('2026-08-29')
+
     await store.refreshData()
-    for (const call of [api.fetchWorkbenchStream, api.fetchWorkbenchMind, api.fetchWorkbenchTrend]) {
-      expect(call).toHaveBeenCalledWith(expect.objectContaining({
-        date_from: '2026-08-28',
-        date_to: '2026-08-29',
-      }))
-    }
+    expect(api.fetchWorkbenchStream).toHaveBeenLastCalledWith(expect.objectContaining({
+      date_from: '2026-08-28',
+      date_to: '2026-08-29',
+    }))
+    expect(api.fetchWorkbenchMind).toHaveBeenLastCalledWith(expect.objectContaining({
+      date_from: defaultFrom,
+      date_to: defaultTo,
+    }))
+    expect(api.fetchWorkbenchTrend).toHaveBeenLastCalledWith(expect.objectContaining({
+      date_from: defaultFrom,
+      date_to: defaultTo,
+    }))
   })
 
   it('声音流和趋势先返回时无需等待较慢的品牌心智请求', async () => {

@@ -187,7 +187,7 @@ test('雷达标签点击和键盘选择联动高亮、详情、指标及刷新�
 test('已应用日期及其它筛选在刷新后的首个模块请求中恢复，重置也持久化', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.radar-label')).toHaveCount(2)
-  await page.getByRole('button', { name: '工作台时间范围' }).click()
+  await page.getByRole('button', { name: '声音流时间范围' }).click()
   const dates = await page.locator('.calendar-days [data-date]').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('data-date')!))
   const from = dates[4]!, to = dates[12]!
   await page.getByRole('button', { name: from, exact: true }).click()
@@ -205,22 +205,30 @@ test('已应用日期及其它筛选在刷新后的首个模块请求中恢复�
   })
   await page.reload()
   await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3)
-  for (const module of ['stream', 'mind', 'trend']) {
+  const streamParams = requests.find((url) => url.pathname.endsWith('/workbench/stream'))!.searchParams
+  expect(streamParams.get('date_from')).toBe(from)
+  expect(streamParams.get('date_to')).toBe(to)
+  expect(streamParams.getAll('platforms')).toEqual(['douyin'])
+  expect(streamParams.getAll('brand_ids')).toEqual([brandId])
+  expect(streamParams.getAll('vehicle_model_ids')).toEqual([vehicleId])
+  expect(streamParams.getAll('sentiments')).toEqual(['正面'])
+  expect(streamParams.getAll('voice_types')).toEqual(['真实用户发声'])
+  expect(streamParams.getAll('primary_labels')).toEqual(['外观设计'])
+  expect(streamParams.getAll('secondary_labels')).toEqual(['颜色与配色'])
+  for (const module of ['mind', 'trend']) {
     const params = requests.find((url) => url.pathname.endsWith(`/workbench/${module}`))!.searchParams
-    expect(params.get('date_from')).toBe(from)
-    expect(params.get('date_to')).toBe(to)
-    expect(params.getAll('platforms')).toEqual(['douyin'])
     expect(params.getAll('brand_ids')).toEqual([brandId])
-    expect(params.getAll('vehicle_model_ids')).toEqual([vehicleId])
-    expect(params.getAll('sentiments')).toEqual(['正面'])
-    expect(params.getAll('voice_types')).toEqual(['真实用户发声'])
-    expect(params.getAll('primary_labels')).toEqual(['外观设计'])
-    expect(params.getAll('secondary_labels')).toEqual(['颜色与配色'])
+    expect(params.getAll('platforms')).toEqual([])
+    expect(params.getAll('vehicle_model_ids')).toEqual([])
+    expect(params.getAll('sentiments')).toEqual([])
+    expect(params.getAll('voice_types')).toEqual([])
+    expect(params.getAll('primary_labels')).toEqual([])
+    expect(params.getAll('secondary_labels')).toEqual([])
   }
   await page.getByRole('button', { name: '重置', exact: true }).click()
-  const reset = await page.getByRole('button', { name: '工作台时间范围' }).textContent()
+  const reset = await page.getByRole('button', { name: '声音流时间范围' }).textContent()
   await page.reload()
-  await expect(page.getByRole('button', { name: '工作台时间范围' })).toHaveText(reset!)
+  await expect(page.getByRole('button', { name: '声音流时间范围' })).toHaveText(reset!)
   const saved = await page.evaluate(() => JSON.parse(sessionStorage.getItem('aima.workbench.applied-filters')!))
   expect(saved.platforms).toEqual([])
   expect(saved.primaryLabels).toEqual([])
@@ -257,7 +265,7 @@ test('后台聚合请求及失败保留成功图表、日期和几何', async ({
   expect(await Promise.all(bodySelectors.map((selector) => card.locator(selector).boundingBox()))).toEqual(bodyBefore)
 })
 
-test('筛选与卡片统一细滚动条，三卡日期位于右上且取同一范围', async ({ page }, testInfo) => {
+test('筛选与卡片统一细滚动条，三卡粉条内日期筛选器可见', async ({ page }, testInfo) => {
   await page.goto('/')
   const filter = page.locator('.workbench-filters')
   await expect(filter).toBeVisible()
@@ -279,16 +287,8 @@ test('筛选与卡片统一细滚动条，三卡日期位于右上且取同一�
   expect(style.hover).not.toEqual(style.active)
   for (const selector of ['.stream-card', '.mind-card', '.trend-card']) {
     const card = page.locator(selector)
-    const date = card.locator('.workbench-date-label')
-    const header = card.locator('.card-header')
-    await expect(date).toBeVisible()
-    const dateBox = await date.boundingBox()
-    const headerBox = await header.boundingBox()
-    expect(dateBox!.x).toBeGreaterThan(headerBox!.x + headerBox!.width / 2)
-    expect(dateBox!.y + dateBox!.height).toBeLessThanOrEqual(headerBox!.y + headerBox!.height + 1)
+    await expect(card.locator('.workbench-date')).toBeVisible()
   }
-  const dates = await page.locator('.workbench-date-label').allTextContents()
-  expect(new Set(dates).size).toBe(1)
   await page.screenshot({ path: testInfo.outputPath('scrollbars-workbench.png'), fullPage: true })
   const bounds = await filter.boundingBox()
   await page.mouse.move(bounds!.x + 12, bounds!.y + bounds!.height - 1)
@@ -729,7 +729,7 @@ test('声音流自动滚动时筛选面板保持打开，筛选条滚动时关�
   await expect(trigger).toHaveAttribute('aria-expanded', 'false')
 })
 
-test('声音流筛选下拉可操作，选择后同口径刷新三个真实模块请求', async ({ page }) => {
+test('声音流筛选下拉可操作，选择后只刷新声音流请求', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   const sentiment = page.locator('.aima-multi-select').filter({ has: page.getByRole('button', { name: '情感', exact: true }) })
@@ -745,18 +745,30 @@ test('声音流筛选下拉可操作，选择后同口径刷新三个真实模�
   await expect(sentiment.getByRole('dialog', { name: '选择情感' })).toBeVisible()
   await sentiment.getByRole('checkbox', { name: '正面' }).check({ timeout: 3000 })
 
-  const paths = ['/api/v1/workbench/stream', '/api/v1/workbench/mind', '/api/v1/workbench/trend']
-  for (const path of paths) {
-    await expect.poll(() => page.evaluate((target) =>
+  await expect.poll(() => page.evaluate(() =>
+    performance.getEntriesByType('resource').some((entry) => {
+      const url = new URL(entry.name)
+      return url.pathname === '/api/v1/workbench/stream' && url.searchParams.get('sentiments') === '正面'
+    }))).toBe(true)
+  for (const path of ['/api/v1/workbench/mind', '/api/v1/workbench/trend']) {
+    expect(await page.evaluate((target) =>
       performance.getEntriesByType('resource').some((entry) => {
         const url = new URL(entry.name)
         return url.pathname === target && url.searchParams.get('sentiments') === '正面'
-      }), path)).toBe(true)
+      }), path)).toBe(false)
   }
 })
 
-test('确认日期后起止日期同时进入声音流、心智与趋势查询', async ({ page }) => {
+test('确认日期后起止日期只进入声音流查询，聚合模块不再重复请求', async ({ page }) => {
+  // 先等待首屏 stream/mind/trend 请求发出，再开始记录请求，
+  // 避免把初始化阶段的聚合模块请求误判为“日期确认后触发的请求”。
+  const initialRequests = Promise.all([
+    page.waitForRequest((request) => request.url().includes('/api/v1/workbench/stream')),
+    page.waitForRequest((request) => request.url().includes('/api/v1/workbench/mind')),
+    page.waitForRequest((request) => request.url().includes('/api/v1/workbench/trend')),
+  ])
   await page.goto('/')
+  await initialRequests
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date())
@@ -771,26 +783,26 @@ test('确认日期后起止日期同时进入声音流、心智与趋势查询',
     }
   })
 
-  await page.getByRole('button', { name: '工作台时间范围' }).click()
+  await page.getByRole('button', { name: '声音流时间范围' }).click()
   await page.getByRole('button', { name: '近7天' }).click()
   await page.getByRole('button', { name: '确定' }).click()
-  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3)
+  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(1)
 
-  for (const path of ['/api/v1/workbench/stream', '/api/v1/workbench/mind', '/api/v1/workbench/trend']) {
-    const request = requests.findLast((item) => item.pathname === path)
-    expect(request?.searchParams.get('date_from')).toBe(expectedFrom)
-    expect(request?.searchParams.get('date_to')).toBe(today)
-  }
+  const streamRequest = requests.findLast((item) => item.pathname === '/api/v1/workbench/stream')
+  expect(streamRequest?.searchParams.get('date_from')).toBe(expectedFrom)
+  expect(streamRequest?.searchParams.get('date_to')).toBe(today)
+  expect(requests.some((item) => item.pathname === '/api/v1/workbench/mind')).toBe(false)
+  expect(requests.some((item) => item.pathname === '/api/v1/workbench/trend')).toBe(false)
 })
 
-test('反向点击日期也形成合法范围并立即请求三个模块', async ({ page }) => {
+test('反向点击日期也形成合法范围并只请求声音流', async ({ page }) => {
   await page.goto('/')
   const requests: URL[] = []
   page.on('request', (request) => {
     const url = new URL(request.url())
     if (['stream', 'mind', 'trend'].some((module) => url.pathname.endsWith(`/workbench/${module}`))) requests.push(url)
   })
-  await page.getByRole('button', { name: '工作台时间范围' }).click()
+  await page.getByRole('button', { name: '声音流时间范围' }).click()
   const dates = await page.locator('.calendar-days [data-date]').evaluateAll((buttons) =>
     buttons.map((button) => button.getAttribute('data-date')).filter((value): value is string => !!value))
   const earlier = dates[4]!
@@ -798,18 +810,16 @@ test('反向点击日期也形成合法范围并立即请求三个模块', async
   await page.getByRole('button', { name: later, exact: true }).click()
   await page.getByRole('button', { name: earlier, exact: true }).click()
   await page.getByRole('button', { name: '确定' }).click()
-  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3)
-  for (const module of ['stream', 'mind', 'trend']) {
-    const url = requests.findLast((item) => item.pathname.endsWith(`/workbench/${module}`))
-    expect(url?.searchParams.get('date_from')).toBe(earlier)
-    expect(url?.searchParams.get('date_to')).toBe(later)
-  }
-  await expect(page.getByRole('button', { name: '工作台时间范围' })).toContainText(`${earlier}—${later}`)
+  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(1)
+  const url = requests.findLast((item) => item.pathname.endsWith('/workbench/stream'))
+  expect(url?.searchParams.get('date_from')).toBe(earlier)
+  expect(url?.searchParams.get('date_to')).toBe(later)
+  await expect(page.getByRole('button', { name: '声音流时间范围' })).toContainText(`${earlier}—${later}`)
 })
 
 test('日期取消、单日确认、清空后的默认范围始终一致', async ({ page }) => {
   await page.goto('/')
-  const trigger = page.getByRole('button', { name: '工作台时间范围' })
+  const trigger = page.getByRole('button', { name: '声音流时间范围' })
   const original = await trigger.textContent()
   await trigger.click()
   await page.getByRole('button', { name: '近7天' }).click()
@@ -865,7 +875,7 @@ test('一级标签多选只开放对应二级候选，并在父级取消后清�
   await expect(secondaryTrigger).toContainText('全部二级标签')
 })
 
-test('筛选后的后端结果同步替换三个模块，重置后恢复', async ({ page }) => {
+test('筛选只替换声音流结果，聚合模块沿用默认口径且重置后恢复声音流', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.stream-list article')).toHaveCount(1)
   await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(2)
@@ -874,9 +884,8 @@ test('筛选后的后端结果同步替换三个模块，重置后恢复', async
   await page.getByRole('button', { name: '情感', exact: true }).click()
   await page.getByRole('checkbox', { name: '负面' }).check()
   await expect(page.locator('.stream-card')).toContainText('当前筛选范围暂无声音记录')
-  await expect(page.locator('.mind-card')).toContainText('当前筛选范围暂无可统计的用户心智')
-  await expect(page.locator('.trend-card .kpis > div').first()).toContainText('0')
-  await expect(page.locator('.trend-card')).toContainText('当前时间范围暂无可展示的 UGC 声量')
+  await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(2)
+  await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(page.locator('.stream-list article')).toHaveCount(1)
@@ -884,7 +893,7 @@ test('筛选后的后端结果同步替换三个模块，重置后恢复', async
   await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
 })
 
-test('新筛选请求失败时不把上一筛选结果冒充当前数据', async ({ page }) => {
+test('新筛选请求失败时不把上一声音流结果冒充当前数据，聚合模块不受影响', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.stream-cycle:first-child article')).toHaveCount(1)
   await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(2)
@@ -894,12 +903,12 @@ test('新筛选请求失败时不把上一筛选结果冒充当前数据', async
   await page.getByRole('checkbox', { name: '混合' }).check()
 
   await expect(page.getByText('声音流暂时无法更新')).toBeVisible()
-  await expect(page.getByText('品牌用户心智暂时无法更新')).toBeVisible()
-  await expect(page.getByText('趋势数据暂时无法更新')).toBeVisible()
   await expect(page.locator('.module-state--inline')).toHaveCount(0)
   await expect(page.locator('.stream-cycle:first-child article')).toHaveCount(0)
-  await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(0)
-  await expect(page.locator('.trend-card .kpis > div')).toHaveCount(0)
+  await expect(page.locator('.mind-card .radar-labels > button')).toHaveCount(2)
+  await expect(page.locator('.trend-card .kpis > div').first()).toContainText('120')
+  await expect(page.getByText('品牌用户心智暂时无法更新')).toHaveCount(0)
+  await expect(page.getByText('趋势数据暂时无法更新')).toHaveCount(0)
 })
 
 test('品牌心智失败只重试自身，不耦合刷新声音流和趋势', async ({ page }) => {

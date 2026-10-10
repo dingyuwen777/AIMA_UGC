@@ -22,7 +22,14 @@ const contentRevision = useContentRevisionStore()
 let contentRevisionHandle: ReturnType<typeof setInterval> | undefined
 const router = useRouter()
 const draggedModule = ref<WorkbenchModuleId | null>(null)
+interface ResizePreview {
+  moduleId: WorkbenchModuleId
+  widthPx: number
+  heightPx: number
+}
+const resizePreview = ref<ResizePreview | null>(null)
 let filterRefreshHandle: ReturnType<typeof setTimeout> | undefined
+let trendFilterRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let analysisRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let analysisRefreshRunning = false
 let periodicRefreshHandle: ReturnType<typeof setTimeout> | undefined
@@ -51,10 +58,18 @@ const analysisFingerprint = computed(() =>
 
 /** 布局 Contract 的 row_units 决定卡片实际高度，固定视窗让内部列表独立滚动。 */
 function moduleStyle(module: WorkbenchLayoutModule): Record<string, string> {
-  return {
+  const style: Record<string, string> = {
     gridColumn: `span ${module.column_span}`,
     height: `${Math.max(382, module.row_units * 8)}px`,
   }
+  const preview = resizePreview.value
+  if (preview && preview.moduleId === module.module_id) {
+    style.width = `${preview.widthPx}px`
+    style.height = `${preview.heightPx}px`
+    style.justifySelf = 'start'
+    style.zIndex = '40'
+  }
+  return style
 }
 
 /** 工作台数据更新时间按北京时间显示，值来自后端模块 as_of。 */
@@ -67,7 +82,16 @@ function scheduleFilterRefresh(): void {
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
   filterRefreshHandle = setTimeout(() => {
     filterRefreshHandle = undefined
-    void store.refreshData()
+    void store.refreshModule('stream')
+  }, 100)
+}
+
+/** UGC 趋势发声类型多选合并 100ms 后只刷新趋势模块。 */
+function scheduleTrendFilterRefresh(): void {
+  if (trendFilterRefreshHandle) clearTimeout(trendFilterRefreshHandle)
+  trendFilterRefreshHandle = setTimeout(() => {
+    trendFilterRefreshHandle = undefined
+    void store.refreshModule('trend')
   }, 100)
 }
 
@@ -168,14 +192,32 @@ function updateDateFilters(value: WorkbenchFilters): void {
   store.setFilters(value)
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
   filterRefreshHandle = undefined
-  void store.refreshData()
+  void store.refreshModule('stream')
+}
+
+/** 品牌用户心智日期确认后只刷新该模块。 */
+function updateMindDateRange(value: { from: string; to: string }): void {
+  store.setMindDateRange(value)
+  void store.refreshModule('mind')
+}
+
+/** UGC 趋势日期确认后只刷新该模块。 */
+function updateTrendDateRange(value: { from: string; to: string }): void {
+  store.setTrendDateRange(value)
+  void store.refreshModule('trend')
+}
+
+/** UGC 趋势发声类型筛选写入草稿，合并连续选择后刷新趋势模块。 */
+function updateTrendVoiceTypes(value: string[]): void {
+  store.setTrendVoiceTypes(value)
+  scheduleTrendFilterRefresh()
 }
 
 /** 重置为爱玛与截至昨日的完整七天，立即刷新。 */
 function resetFilters(): void {
   store.resetFilters()
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
-  void store.refreshData()
+  void store.refreshModule('stream')
 }
 
 /** 开始原生 Drag 时只记录模块身份，持久化仍等用户点击保存。 */
@@ -195,9 +237,10 @@ function voicePlazaQuery(
   extra: { primaryLabel?: string; day?: string; contentId?: string } = {},
 ): LocationQueryRaw {
   const filters = store.filters
+  const mindDrill = Boolean(extra.primaryLabel)
   const query: LocationQueryRaw = {
-    published_from: extra.day ?? filters.dateFrom,
-    published_to: extra.day ?? filters.dateTo,
+    published_from: extra.day ?? (mindDrill ? store.mindDateRange.dateFrom : filters.dateFrom),
+    published_to: extra.day ?? (mindDrill ? store.mindDateRange.dateTo : filters.dateTo),
   }
   if (filters.platforms.length) query.platforms = [...filters.platforms]
   if (filters.sentiments.length) query.sentiments = [...filters.sentiments]
@@ -208,8 +251,9 @@ function voicePlazaQuery(
     if (filters.primaryLabels.length) query.primary_labels = [...filters.primaryLabels]
   }
   if (filters.secondaryLabels.length) query.secondary_labels = [...filters.secondaryLabels]
-  if (filters.brandIds.length) query.brand_ids = [...filters.brandIds]
-  if (filters.vehicleModelIds.length) query.vehicle_model_ids = [...filters.vehicleModelIds]
+  const brandIds = mindDrill ? store.aggregateFilters.brandIds : filters.brandIds
+  if (brandIds.length) query.brand_ids = [...brandIds]
+  if (!mindDrill && filters.vehicleModelIds.length) query.vehicle_model_ids = [...filters.vehicleModelIds]
   if (extra.contentId) query.content_id = extra.contentId
   return query
 }
@@ -219,39 +263,98 @@ async function openVoicePlaza(extra: { primaryLabel?: string; day?: string; cont
   await router.push({ path: '/voice-plaza', query: voicePlazaQuery(extra) })
 }
 
-/** Pointer Resize 只改当前模块草稿；宽高分别按 Contract 的单列/单行量化。 */
+/** Pointer Resize 拖动中只做本地连续预览，松手时才按单列/单行量化写回草稿。 */
 function startResize(event: PointerEvent, module: WorkbenchLayoutModule): void {
   if (!store.editing) return
   event.preventDefault()
   event.stopPropagation()
+
+  // 上一次未完成的拖动只清预览，不把未确认的尺寸写进草稿。
   resizeCleanup?.()
+
+  const handle = event.currentTarget as HTMLElement | null
+  try {
+    handle?.setPointerCapture?.(event.pointerId)
+  } catch {
+    // 指针捕获失败时仍依赖 window 级监听兜底，不影响预览。
+  }
+
   const startX = event.clientX
   const startY = event.clientY
   const initialSpan = module.column_span
   const initialRows = module.row_units
-  const grid = (event.currentTarget as HTMLElement | null)?.closest<HTMLElement>('.workbench-grid')
+
+  const grid = handle?.closest<HTMLElement>('.workbench-grid') ?? null
   const columnGap = grid ? Number.parseFloat(getComputedStyle(grid).columnGap) || 0 : 0
   const columnStep = grid
     ? (grid.clientWidth - columnGap * 11) / 12 + columnGap
     : 80
 
-  /** Pointer 移动期间实时更新草稿几何，后端不会收到中间状态。 */
+  // 窄屏时工作台退化为单列，宽度预览直接取 grid 宽度，只允许调整高度。
+  const singleColumn = grid
+    ? getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length === 1
+    : false
+
+  let lastSpan = initialSpan
+  let lastRows = initialRows
+  let done = false
+
+  /** 拖动中只更新本地预览，不写 store，后端不会收到中间状态。 */
   const move = (moveEvent: PointerEvent): void => {
-    const span = initialSpan + (moveEvent.clientX - startX) / columnStep
     const rows = initialRows + (moveEvent.clientY - startY) / 8
-    store.resizeModule(module.module_id, span, rows)
+    const clampedRows = Math.max(48, Math.min(160, rows))
+    lastRows = rows
+
+    if (singleColumn) {
+      resizePreview.value = {
+        moduleId: module.module_id,
+        widthPx: grid?.clientWidth ?? 0,
+        heightPx: clampedRows * 8,
+      }
+      return
+    }
+
+    const span = initialSpan + (moveEvent.clientX - startX) / columnStep
+    const clampedSpan = Math.max(6, Math.min(12, span))
+    lastSpan = span
+
+    resizePreview.value = {
+      moduleId: module.module_id,
+      widthPx: clampedSpan * columnStep - columnGap,
+      heightPx: clampedRows * 8,
+    }
   }
 
-  /** Pointer 结束后移除全局监听，防止离开编辑态后仍修改草稿。 */
-  const stop = (): void => {
+  function stop(): void {
+    finish(true)
+  }
+
+  function cancel(): void {
+    finish(false)
+  }
+
+  /** 松手提交，取消/捕获丢失只回滚预览；所有退出路径幂等并保证清掉预览。 */
+  function finish(commit: boolean): void {
+    if (done) return
+    done = true
+
     window.removeEventListener('pointermove', move)
     window.removeEventListener('pointerup', stop)
+    window.removeEventListener('pointercancel', cancel)
+    window.removeEventListener('lostpointercapture', cancel)
+
     resizeCleanup = null
+    resizePreview.value = null
+
+    // 关键：只在松手时写一次 store，吸附（取整 + clamp）在 store.resizeModule 里完成。
+    if (commit) store.resizeModule(module.module_id, lastSpan, lastRows)
   }
 
   window.addEventListener('pointermove', move)
   window.addEventListener('pointerup', stop)
-  resizeCleanup = stop
+  window.addEventListener('pointercancel', cancel)
+  window.addEventListener('lostpointercapture', cancel)
+  resizeCleanup = cancel
 }
 
 /** 模块 id 转为编辑态中用户可理解的标题。 */
@@ -287,6 +390,7 @@ onBeforeUnmount(() => {
   disposed = true
   if (pendingRefreshHandle) clearTimeout(pendingRefreshHandle)
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
+  if (trendFilterRefreshHandle) clearTimeout(trendFilterRefreshHandle)
   if (analysisRefreshHandle) clearTimeout(analysisRefreshHandle)
   if (periodicRefreshHandle) clearTimeout(periodicRefreshHandle)
   if (contentRevisionHandle) clearInterval(contentRevisionHandle)
@@ -445,8 +549,8 @@ onBeforeUnmount(() => {
           <BrandMindCard
             v-else-if="module.module_id === 'brand-mind'"
             :mind="store.mind"
-            :date-from="store.filters.dateFrom"
-            :date-to="store.filters.dateTo"
+            :date-from="store.mindDateRange.dateFrom"
+            :date-to="store.mindDateRange.dateTo"
             :brand-label="store.brandLabel"
             :selected-label="store.selectedMind"
             :metric="store.mindMetric"
@@ -454,17 +558,22 @@ onBeforeUnmount(() => {
             :error="store.moduleErrors.mind"
             @select="store.selectMind"
             @metric="store.setMindMetric"
+            @update:date-range="updateMindDateRange"
             @retry="store.refreshModule('mind')"
             @open-voice="openVoicePlaza({ primaryLabel: $event })"
           />
           <UgcTrendCard
             v-else
             :trend="store.trend"
-            :date-from="store.filters.dateFrom"
-            :date-to="store.filters.dateTo"
+            :date-from="store.trendDateRange.dateFrom"
+            :date-to="store.trendDateRange.dateTo"
+            :voice-types="store.trendVoiceTypes"
+            :taxonomy="store.taxonomy"
             :loading="store.moduleLoading.trend"
             :error="store.moduleErrors.trend"
             @retry="store.refreshModule('trend')"
+            @update:date-range="updateTrendDateRange"
+            @update:voice-types="updateTrendVoiceTypes"
             @open-day="openVoicePlaza({ day: $event })"
           />
 

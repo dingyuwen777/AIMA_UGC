@@ -107,7 +107,7 @@ describe('声音广场正式 Figma 基线', () => {
     expect(html).not.toContain('>⇩ 导出记录<')
   })
 
-  it('Figma 三行筛选全部直达，包含品牌、车型和竞争范围', async () => {
+  it('Figma 三行筛选全部直达，包含品牌和车型', async () => {
     const html = await renderComponent(VoicePlazaPage, {}, (pinia) => {
       useVoicePlazaStore(pinia).filterOptions = filterOptions
     })
@@ -119,7 +119,6 @@ describe('声音广场正式 Figma 基线', () => {
       '发声类型',
       '品牌',
       '车型',
-      '竞争范围',
       '情感',
       '状态',
       '一级标签',

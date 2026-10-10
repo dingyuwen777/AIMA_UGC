@@ -89,7 +89,7 @@ function updateDateRange(value: { from: string; to: string }): void {
   <div class="workbench-filters aima-scroll-x">
     <AimaDateRange
       class="workbench-date"
-      label="工作台时间范围"
+      label="声音流时间范围"
       :from="modelValue.dateFrom"
       :to="modelValue.dateTo"
       @update:range="updateDateRange"

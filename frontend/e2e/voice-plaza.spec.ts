@@ -127,34 +127,6 @@ const runningExport = {
   completed_at: null,
 }
 
-test('含竞品查询同时包含仅竞品和混合，仍可切换为仅竞品', async ({ page }) => {
-  await page.goto('/voice-plaza')
-  await page.locator('.field--competition summary').click()
-  await page.getByLabel('含竞品', { exact: true }).check()
-  const combined = page.waitForRequest((request) => {
-    const url = new URL(request.url())
-    return url.pathname === '/api/v1/contents'
-      && url.searchParams.get('competition_scopes') !== null
-  })
-  await page.getByRole('button', { name: '查询', exact: true }).click()
-  const scopes = new URL((await combined).url()).searchParams
-    .getAll('competition_scopes').flatMap((value) => value.split(',')).sort()
-  expect(scopes).toEqual(['competitor_only', 'mixed'])
-  await expect(page.locator('.field--competition summary')).toHaveText('含竞品')
-  if (!await page.getByLabel('自有与竞品混合', { exact: true }).isVisible()) {
-    await page.locator('.field--competition summary').click()
-  }
-  await page.getByLabel('自有与竞品混合', { exact: true }).uncheck()
-  const only = page.waitForRequest((request) => {
-    const url = new URL(request.url())
-    return url.pathname === '/api/v1/contents'
-      && url.searchParams.get('competition_scopes') === 'competitor_only'
-  })
-  await page.getByRole('button', { name: '查询', exact: true }).click()
-  await only
-  await expect(page.locator('.field--competition summary')).toHaveText('仅竞品品牌')
-})
-
 test.beforeEach(async ({ page }) => {
   await stubVoicePlazaTaxonomy(page)
 
@@ -675,8 +647,10 @@ test('loads backend filter options and submits voice type with dependent labels'
   await page.goto('/voice-plaza')
 
   await expect(page.getByLabel('发声类型', { exact: true })).toBeVisible()
-  await page.locator('label.field--voice-type select').selectOption('真实用户发声')
-  await page.locator('label.field--sentiment select').selectOption('负面')
+  await page.getByLabel('发声类型', { exact: true }).click()
+  await page.getByRole('checkbox', { name: '真实用户发声' }).check()
+  await page.getByLabel('情感', { exact: true }).click()
+  await page.getByRole('checkbox', { name: '负面' }).check()
 
   const filters = page.locator('section.filters')
   const primaryField = filters.locator('.filter-row--tertiary .field').nth(0)
@@ -690,24 +664,21 @@ test('loads backend filter options and submits voice type with dependent labels'
   const brandDialog = page.getByRole('dialog', { name: '选择品牌', exact: true })
   await brandDialog.getByLabel(/爱玛/).check()
   await brandDialog.getByRole('button', { name: '确定', exact: true }).click()
-  await page.locator('.field--competition summary').click()
-  await page.getByLabel('仅自有品牌', { exact: true }).check()
   const requestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
-    return url.pathname === '/api/v1/contents' && url.searchParams.has('voice_type')
+    return url.pathname === '/api/v1/contents' && url.searchParams.has('voice_types')
   })
   await page.getByRole('button', { name: '查询' }).click()
   const request = await requestPromise
   const params = new URL(request.url()).searchParams
 
-  expect(params.get('voice_type')).toBe('真实用户发声')
-  expect(params.get('sentiment')).toBe('负面')
+  expect(params.getAll('voice_types')).toEqual(['真实用户发声'])
+  expect(params.getAll('sentiments')).toEqual(['负面'])
   expect(params.getAll('primary_labels')).toEqual(['电池、续航与充电'])
   expect(params.getAll('secondary_labels')).toEqual(['实际续航表现'])
   expect(params.get('primary_label')).toBeNull()
   expect(params.get('secondary_label')).toBeNull()
   expect(params.get('brand_ids')).toBe(brandId)
-  expect(params.get('competition_scopes')).toBe('owned_only')
 })
 
 test('renders the newest first page before slow filter options are ready', async ({ page }) => {
@@ -737,7 +708,7 @@ test('renders the newest first page before slow filter options are ready', async
   })
   await expect(page.locator('section.filters').getByLabel('平台', { exact: true })).toBeEnabled()
   releaseFilterOptions()
-  await expect(page.locator('label.field--voice-type select')).toBeEnabled()
+  await expect(page.getByLabel('发声类型', { exact: true })).toBeEnabled()
 })
 
 test('keeps filters and content usable when manual-edit taxonomy is unavailable', async ({ page }) => {
@@ -763,7 +734,7 @@ test('keeps filters and content usable when manual-edit taxonomy is unavailable'
   const taxonomyWarning = page.locator('.taxonomy-warning')
   await expect(taxonomyWarning.getByText('技术详情', { exact: true })).toHaveCount(0)
   await expect(taxonomyWarning.getByText(/request-taxonomy/)).toHaveCount(0)
-  await expect(page.locator('label.field--voice-type select')).toBeEnabled()
+  await expect(page.getByLabel('发声类型', { exact: true })).toBeEnabled()
   await expect(page.getByText(item.title)).toBeVisible()
   await expect(page.getByRole('button', { name: /导出记录/ })).toBeEnabled()
 })
@@ -1048,7 +1019,9 @@ test('一级标签多选约束二级候选，父级取消后失效二级不会�
 test('restores the applied platform filter after leaving and reloading the page', async ({ page }) => {
   await page.goto('/voice-plaza')
   const voicePlaza = page.getByRole('main', { name: '声音广场' })
-  await voicePlaza.getByLabel('平台', { exact: true }).selectOption('xiaohongshu')
+  await voicePlaza.getByLabel('平台', { exact: true }).click()
+  await voicePlaza.getByRole('checkbox', { name: '小红书' }).check()
+
   await page.getByRole('button', { name: '查询' }).click()
 
   const restoredRequest = page.waitForRequest((request) => {
@@ -1074,7 +1047,7 @@ test('restores the applied platform filter after leaving and reloading the page'
   await page.goto('/voice-plaza')
   await restoredRequest
 
-  await expect(voicePlaza.getByLabel('平台', { exact: true })).toHaveValue('xiaohongshu')
+  await expect(voicePlaza.getByLabel('平台', { exact: true })).toContainText('小红书')
   await expect(page.getByText(item.title)).toBeVisible()
 })
 
@@ -1291,7 +1264,9 @@ test('旧内容类型会话及链接不会进入列表、计数、AI 和导出�
   const voicePlaza = page.getByRole('main', { name: '声音广场' })
   await expect(voicePlaza.getByLabel('内容类型', { exact: true })).toHaveCount(0)
   await expect.poll(() => new URL(page.url()).search).toBe('')
-  await voicePlaza.getByLabel('平台', { exact: true }).selectOption('xiaohongshu')
+  await voicePlaza.getByLabel('平台', { exact: true }).click()
+  await voicePlaza.getByRole('checkbox', { name: '小红书' }).check()
+
   await page.getByRole('button', { name: '查询' }).click()
   await page.getByRole('button', { name: 'AI 分析', exact: true }).click()
 

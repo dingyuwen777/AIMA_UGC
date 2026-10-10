@@ -159,13 +159,13 @@ function hydrateRouteFilters(): void {
   if (voiceTypes.length) { store.filters.voiceType = ''; store.filters.voiceTypes = voiceTypes; changed = true }
 
   const brandIds = routeValues(route.query.brand_ids)
-  if (brandIds.length) {
-    store.filters.brandIds = brandIds
-    changed = true
-  }
   const vehicleModelIds = routeValues(route.query.vehicle_model_ids)
-  if (vehicleModelIds.length) {
-    store.filters.vehicleModelIds = vehicleModelIds
+  if (brandIds.length || vehicleModelIds.length) {
+    store.restoreVehicleFilters(
+      brandIds,
+      vehicleModelIds,
+      vehicleModelIds.length > 0 && brandIds.length === 0,
+    )
     changed = true
   }
 
@@ -391,10 +391,10 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:source-identifier="store.filters.sourceIdentifier"
         v-model:brand-ids="store.filters.brandIds"
         v-model:vehicle-model-ids="store.filters.vehicleModelIds"
-        v-model:competition-scopes="store.filters.competitionScopes"
         :filter-options="store.filterOptions"
         :filter-options-loading="store.filterOptionsLoading"
         :legacy-label-compatibility="store.legacyLabelCompatibility"
+        :legacy-vehicle-compatibility="store.legacyVehicleCompatibility"
         @search="search"
         @reset="reset"
       />

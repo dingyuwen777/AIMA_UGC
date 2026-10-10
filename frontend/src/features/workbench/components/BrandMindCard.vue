@@ -7,7 +7,7 @@ import type {
   WorkbenchMindResponse,
 } from '../../../generated/api/client'
 import type { WorkbenchMindMetric } from '../store'
-import WorkbenchDateLabel from './WorkbenchDateLabel.vue'
+import WorkbenchFilterSlot from './WorkbenchFilterSlot.vue'
 import { radarGeometry, type RadarGeometry } from './radarGeometry'
 
 const props = defineProps<{
@@ -26,6 +26,7 @@ const emit = defineEmits<{
   metric: [value: WorkbenchMindMetric]
   retry: []
   openVoice: [primaryLabel: string]
+  'update:date-range': [value: { from: string; to: string }]
 }>()
 
 const dimensions = computed(() => props.mind?.dimensions ?? [])
@@ -57,11 +58,6 @@ function changeText(value: number | null | undefined): string {
   if (value == null) return '较上期 —'
   const sign = value > 0 ? '+' : ''
   return `较上期 ${sign}${value.toFixed(2)}pp`
-}
-
-/** 切换帖子占比/正向率只改变当前卡片表现层，不改变查询口径。 */
-function setMetric(value: WorkbenchMindMetric): void {
-  emit('metric', value)
 }
 
 /** active Taxonomy 的每个业务一级标签对应一条雷达轴，数量变化时自然形成 N 边图。 */
@@ -159,28 +155,6 @@ onBeforeUnmount(() => {
           <p>基于当前 active Taxonomy，动态查看一级用户心智</p>
         </div>
       </div>
-      <div class="header-actions">
-        <WorkbenchDateLabel
-          :from="dateFrom"
-          :to="dateTo"
-        />
-        <div class="metric-toggle">
-          <button
-            type="button"
-            :class="{ active: metric === 'share' }"
-            @click="setMetric('share')"
-          >
-            心智占比
-          </button>
-          <button
-            type="button"
-            :class="{ active: metric === 'positive' }"
-            @click="setMetric('positive')"
-          >
-            正向率
-          </button>
-        </div>
-      </div>
       <div
         class="card-refresh-state"
         role="status"
@@ -197,6 +171,14 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <WorkbenchFilterSlot
+      :from="dateFrom"
+      :to="dateTo"
+      label="品牌用户心智时间范围"
+      :metric="metric"
+      @update:range="emit('update:date-range', $event)"
+      @metric="emit('metric', $event)"
+    />
     <div
       v-if="error && !mind"
       class="module-state module-state--error"
@@ -285,6 +267,7 @@ onBeforeUnmount(() => {
       <div
         v-if="selected"
         class="mind-detail aima-scroll-card"
+        :class="{ 'mind-detail--dense': (selected?.secondary_labels.length ?? 0) >= 3 }"
       >
         <small>当前查看 · {{ selected.primary_label }} · {{ metric === 'share' ? '帖子占比' : '正向率' }}</small>
         <div class="detail-title">
@@ -336,10 +319,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .card-header { position: relative; flex: none; }
-.card-refresh-state { position: absolute; bottom: 1px; right: 12px; display: flex; gap: 5px; color: var(--aima-text-muted); font-size: 9px; line-height: 11px; }
+.card-refresh-state { position: absolute; bottom: 1px; right: 0; display: flex; gap: 5px; color: var(--aima-text-muted); font-size: 9px; line-height: 11px; }
 .card-refresh-state button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font: inherit; }
 .mind-card { display: flex; height: 100%; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: var(--aima-surface); box-shadow: 0 4px 12px -2px rgb(23 35 61 / 4%), 0 1px 6px rgb(23 35 61 / 8%); }
-header { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--aima-border); }
+header { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 12px; margin: 0 12px; padding: 10px 0; border-bottom: 1px solid var(--aima-border); }
 .title { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .title > span { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border-radius: 50%; color: var(--aima-primary); background: var(--aima-primary-soft); }
 .title h2, .title p { margin: 0; }
@@ -347,9 +330,6 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
 .title p { margin-top: 2px; color: var(--aima-text-secondary); font-size: 11px; }
 .header-actions { display: flex; flex: none; align-items: center; gap: 8px; }
 .header-actions small { color: var(--aima-text-disabled); font-size: 10px; }
-.metric-toggle { display: flex; padding: 2px; border-radius: 6px; background: var(--aima-surface-disabled); }
-.metric-toggle button { padding: 4px 7px; border: 0; border-radius: 4px; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 10px; }
-.metric-toggle .active { color: var(--aima-primary); background: var(--aima-primary-soft); font-weight: 700; }
 .mind-body { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 .mind-radar { display: flex; min-width: 0; min-height: 0; flex-direction: column; padding: clamp(6px, 1.1cqw, 12px); border-right: 1px solid var(--aima-border); }
 .radar-title { display: flex; min-height: 18px; flex: none; align-items: center; justify-content: space-between; gap: 5px; }
@@ -390,6 +370,22 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
   .metric-cards div { min-height: 36px; padding: 4px 6px; }
   .metric-cards strong { font-size: 18px; }
   .change-card { padding: 4px 6px; }
+
+  .mind-detail--dense { gap: 2px; padding: 4px 7px; }
+  .mind-detail--dense > small { font-size: 9px; line-height: 12px; }
+  .mind-detail--dense .detail-title { gap: 1px; }
+  .mind-detail--dense .detail-title h3 { font-size: 13px; line-height: 1.25; }
+  .mind-detail--dense .detail-title span { font-size: 10px; }
+  .mind-detail--dense .metric-cards { gap: 4px; }
+  .mind-detail--dense .metric-cards div { min-height: 28px; padding: 3px 5px; gap: 1px; }
+  .mind-detail--dense .metric-cards span { font-size: 10px; }
+  .mind-detail--dense .metric-cards strong { font-size: 16px; }
+  .mind-detail--dense .secondary { grid-template-columns: 1fr 1fr; column-gap: 6px; row-gap: 1px; }
+  .mind-detail--dense .secondary strong { font-size: 10px; }
+  .mind-detail--dense .secondary span { font-size: 10px; line-height: 1.2; }
+  .mind-detail--dense .change-card { padding: 3px 5px; }
+  .mind-detail--dense .change-card strong { font-size: 10px; }
+  .mind-detail--dense .change-card p { margin: 1px 0 0; font-size: 10px; line-height: 1.25; }
 }
 footer { display: flex; min-height: 26px; align-items: center; justify-content: space-between; padding: 5px 12px; border-top: 1px solid var(--aima-border); color: var(--aima-text-disabled); font-size: 9px; }
 </style>

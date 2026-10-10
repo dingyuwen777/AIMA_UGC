@@ -2,8 +2,8 @@
 import * as echarts from 'echarts'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
-import type { WorkbenchTrendResponse } from '../../../generated/api/client'
-import WorkbenchDateLabel from './WorkbenchDateLabel.vue'
+import type { ContentAnalysisTaxonomyResponse, WorkbenchTrendResponse } from '../../../generated/api/client'
+import UgcTrendFilters from './UgcTrendFilters.vue'
 
 const props = defineProps<{
   trend: WorkbenchTrendResponse | null
@@ -11,11 +11,15 @@ const props = defineProps<{
   error: string | null
   dateFrom: string
   dateTo: string
+  voiceTypes: string[]
+  taxonomy: ContentAnalysisTaxonomyResponse | null
 }>()
 
 const emit = defineEmits<{
   retry: []
   openDay: [day: string]
+  'update:date-range': [value: { from: string; to: string }]
+  'update:voice-types': [value: string[]]
 }>()
 
 const chartElement = ref<HTMLDivElement | null>(null)
@@ -155,10 +159,6 @@ onBeforeUnmount(() => {
           <p>关注每日声量起伏与当前生效分析规则下的情感变化</p>
         </div>
       </div>
-      <WorkbenchDateLabel
-        :from="dateFrom"
-        :to="dateTo"
-      />
       <div
         class="card-refresh-state"
         role="status"
@@ -175,6 +175,14 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <UgcTrendFilters
+      :from="dateFrom"
+      :to="dateTo"
+      :voice-types="voiceTypes"
+      :taxonomy="taxonomy"
+      @update:range="emit('update:date-range', $event)"
+      @update:voice-types="emit('update:voice-types', $event)"
+    />
     <div
       v-if="error && !trend"
       class="module-state module-state--error"
@@ -281,10 +289,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .card-header { position: relative; flex: none; }
-.card-refresh-state { position: absolute; bottom: 1px; right: 12px; display: flex; gap: 5px; color: var(--aima-text-muted); font-size: 9px; line-height: 11px; }
+.card-refresh-state { position: absolute; bottom: 1px; right: 0; display: flex; gap: 5px; color: var(--aima-text-muted); font-size: 9px; line-height: 11px; }
 .card-refresh-state button { padding: 0; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; font: inherit; }
 .trend-card { display: flex; height: 100%; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: var(--aima-surface); box-shadow: 0 4px 12px -2px rgb(23 35 61 / 4%), 0 1px 6px rgb(23 35 61 / 8%); }
-header { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--aima-border); }
+header { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 12px; margin: 0 12px; padding: 10px 0; border-bottom: 1px solid var(--aima-border); }
 .title { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .title > span { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border-radius: 50%; color: var(--aima-primary); background: var(--aima-primary-soft); }
 .title h2, .title p { margin: 0; }
@@ -316,7 +324,9 @@ aside { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap:
 .positive-ring strong { color: var(--aima-success); font-size: clamp(16px, 2.4cqw, 24px); }
 .sentiment-list { display: grid; min-height: 0; gap: 3px; overflow: auto; }
 @container (max-height: 400px) {
-  .positive-ring { width: clamp(76px, 13cqw, 100px); }
+  .positive-ring { width: 64px; }
+  aside { gap: 2px; padding: 4px; }
+  .sentiment-list { flex: 1; min-height: 0; }
 }
 .sentiment-list > div { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 5px; color: var(--aima-text); font-size: 11px; }
 .sentiment-list i { width: 5px; height: 5px; border-radius: 50%; }

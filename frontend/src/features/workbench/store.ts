@@ -42,6 +42,17 @@ export interface WorkbenchFilters {
   secondaryLabels: string[]
 }
 
+export interface WorkbenchAggregateFilters {
+  dateFrom: string
+  dateTo: string
+  brandIds: string[]
+}
+
+type WorkbenchDateRange = {
+  dateFrom: string
+  dateTo: string
+}
+
 type WorkbenchModuleKey = 'stream' | 'mind' | 'trend'
 export type WorkbenchMindMetric = 'share' | 'positive'
 
@@ -81,8 +92,8 @@ function defaultFilters(): WorkbenchFilters {
   }
 }
 
-/** 把 UI 多选状态投影成 generated Workbench Query 参数，不复制公共 Contract 类型。 */
-function queryParams(filters: WorkbenchFilters): GetWorkbenchStreamParams {
+/** 把声音流多选状态投影成 generated Workbench Query 参数，不复制公共 Contract 类型。 */
+function streamQueryParams(filters: WorkbenchFilters): GetWorkbenchStreamParams {
   return {
     date_from: filters.dateFrom || undefined,
     date_to: filters.dateTo || undefined,
@@ -93,6 +104,30 @@ function queryParams(filters: WorkbenchFilters): GetWorkbenchStreamParams {
     sentiments: filters.sentiments.length ? [...filters.sentiments] : undefined,
     primary_labels: filters.primaryLabels.length ? [...filters.primaryLabels] : undefined,
     secondary_labels: filters.secondaryLabels.length ? [...filters.secondaryLabels] : undefined,
+  }
+}
+
+/** 品牌心智 / UGC 趋势固定使用默认口径，只携带日期与品牌。 */
+function aggregateQueryParams(
+  dateRange: WorkbenchDateRange,
+  brandIds: string[],
+  voiceTypes: string[] = [],
+) {
+  return {
+    date_from: dateRange.dateFrom || undefined,
+    date_to: dateRange.dateTo || undefined,
+    brand_ids: brandIds.length ? [...brandIds] : undefined,
+    voice_types: voiceTypes.length ? [...voiceTypes] : undefined,
+  }
+}
+
+/** 规范化日期区间，反向输入仍进入有序请求参数。 */
+function normalizeDateRange(value: { from: string; to: string }): WorkbenchDateRange {
+  const dates = [value.from, value.to].filter(Boolean).sort()
+  const fallback = defaultFilters()
+  return {
+    dateFrom: dates[0] ?? fallback.dateFrom,
+    dateTo: dates[1] ?? dates[0] ?? fallback.dateTo,
   }
 }
 
@@ -120,6 +155,15 @@ function sanitizeTaxonomyFilters(
   }
 }
 
+/** 从 active Taxonomy 中保留仍然有效的发声类型选项，旧 Scheme 的选项不能继续传回后端。 */
+function sanitizeVoiceTypes(
+  voiceTypes: string[],
+  taxonomy: ContentAnalysisTaxonomyResponse,
+): string[] {
+  const valid = new Set(taxonomy.voice_types)
+  return [...new Set(voiceTypes)].filter((value) => valid.has(value))
+}
+
 /** 复制布局模块，编辑草稿不得与服务端已保存快照共享对象引用。 */
 function cloneModules(modules: readonly WorkbenchLayoutModule[]): WorkbenchLayoutModule[] {
   return modules.map((item) => ({ ...item }))
@@ -133,6 +177,10 @@ function sortedModules(modules: readonly WorkbenchLayoutModule[]): WorkbenchLayo
 export const useWorkbenchStore = defineStore('workbench', () => {
   const identity = useIdentityStore()
   const filters = ref<WorkbenchFilters>(defaultFilters())
+  const aggregateFilters = ref<WorkbenchAggregateFilters>({ dateFrom: '', dateTo: '', brandIds: [] })
+  const mindDateRange = ref<WorkbenchDateRange>({ dateFrom: '', dateTo: '' })
+  const trendDateRange = ref<WorkbenchDateRange>({ dateFrom: '', dateTo: '' })
+  const trendVoiceTypes = ref<string[]>([])
   const taxonomy = ref<ContentAnalysisTaxonomyResponse | null>(null)
   const catalog = useVehicleCatalogStore()
   const brands = computed(() => catalog.activeBrands)
@@ -166,9 +214,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   let initialized = false
   const lastAutoRefreshAt = ref<number | null>(null)
   const brandLabel = computed(() => {
-    if (!filters.value.brandIds.length) return '全部品牌'
-    if (filters.value.brandIds.length > 1) return '多品牌'
-    return catalog.knownBrands[filters.value.brandIds[0]!]?.display_name ?? '所选品牌'
+    if (!aggregateFilters.value.brandIds.length) return '全部品牌'
+    if (aggregateFilters.value.brandIds.length > 1) return '多品牌'
+    return catalog.knownBrands[aggregateFilters.value.brandIds[0]!]?.display_name ?? '所选品牌'
   })
   const moduleRequestRevision: Record<WorkbenchModuleKey, number> = {
     stream: 0,
@@ -235,6 +283,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     if (taxonomyResult.status === 'fulfilled') {
       taxonomy.value = taxonomyResult.value
       filters.value = sanitizeTaxonomyFilters(filters.value, taxonomyResult.value)
+      trendVoiceTypes.value = sanitizeVoiceTypes(trendVoiceTypes.value, taxonomyResult.value)
     } else errors.push(apiErrorMessage(taxonomyResult.reason))
     if (brandResult.status === 'rejected') errors.push(apiErrorMessage(brandResult.reason))
     if (vehicleResult.status === 'rejected') errors.push(apiErrorMessage(vehicleResult.reason))
@@ -257,6 +306,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       if (epoch !== identity.scopeEpoch) return
       taxonomy.value = current
       filters.value = sanitizeTaxonomyFilters(filters.value, current)
+      trendVoiceTypes.value = sanitizeVoiceTypes(trendVoiceTypes.value, current)
     } catch (error) {
       if (epoch === identity.scopeEpoch) referenceError.value = apiErrorMessage(error)
     }
@@ -313,7 +363,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     if (!silent) {
       moduleLoading.value = { stream: true, mind: true, trend: true }
     }
-    const params = queryParams(filters.value)
+    const streamParams = streamQueryParams(filters.value)
+    const mindParams = aggregateQueryParams(mindDateRange.value, aggregateFilters.value.brandIds)
+    const trendParams = aggregateQueryParams(trendDateRange.value, aggregateFilters.value.brandIds, trendVoiceTypes.value)
     const seenIdentities = new Set<string>()
     const responseIdentity = (
       response: WorkbenchStreamResponse | WorkbenchMindResponse | WorkbenchTrendResponse,
@@ -353,9 +405,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       }
     }
     await Promise.all([
-      settle('stream', fetchWorkbenchStream(params as GetWorkbenchStreamParams)),
-      settle('mind', fetchWorkbenchMind(params as GetWorkbenchMindParams)),
-      settle('trend', fetchWorkbenchTrend(params as GetWorkbenchTrendParams)),
+      settle('stream', fetchWorkbenchStream(streamParams)),
+      settle('mind', fetchWorkbenchMind(mindParams as GetWorkbenchMindParams)),
+      settle('trend', fetchWorkbenchTrend(trendParams as GetWorkbenchTrendParams)),
     ])
     if (revision !== dataRevision) return
     if (seenIdentities.size > 1 || !dataIdentityConsistent(stream.value, mind.value, trend.value)) {
@@ -385,15 +437,14 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     const requestRevision = ++moduleRequestRevision[key]
     moduleLoading.value[key] = true
     moduleErrors.value[key] = null
-    const params = queryParams(filters.value)
     try {
       let response: WorkbenchStreamResponse | WorkbenchMindResponse | WorkbenchTrendResponse
       if (key === 'stream') {
-        response = await fetchWorkbenchStream(params as GetWorkbenchStreamParams)
+        response = await fetchWorkbenchStream(streamQueryParams(filters.value))
       } else if (key === 'mind') {
-        response = await fetchWorkbenchMind(params as GetWorkbenchMindParams)
+        response = await fetchWorkbenchMind(aggregateQueryParams(mindDateRange.value, aggregateFilters.value.brandIds) as GetWorkbenchMindParams)
       } else {
-        response = await fetchWorkbenchTrend(params as GetWorkbenchTrendParams)
+        response = await fetchWorkbenchTrend(aggregateQueryParams(trendDateRange.value, aggregateFilters.value.brandIds, trendVoiceTypes.value) as GetWorkbenchTrendParams)
       }
       if (dataGeneration !== dataRevision || requestRevision !== moduleRequestRevision[key]) return
       const identity = `${response.analysis_scheme_version_id}:${response.taxonomy_sha256}`
@@ -448,7 +499,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     try {
       const cursor = stream.value.has_more ? stream.value.next_cursor : undefined
       const fetchPage = (pageCursor?: string | null) => fetchWorkbenchStream({
-        ...queryParams(filters.value),
+        ...streamQueryParams(filters.value),
         limit: 100,
         cursor: pageCursor || undefined,
       })
@@ -494,11 +545,21 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   }
 
   /** 默认品牌由当前目录解析，不能固定 UUID，也不能先发全品牌查询。 */
-  function initialFilters(): WorkbenchFilters {
+  function defaultBrandIds(): string[] {
     const brand = brands.value.find((item) => item.code.toUpperCase() === 'AIMA')
       ?? brands.value.find((item) => item.display_name === '爱玛')
       ?? brands.value.find((item) => item.aliases?.some((alias) => alias.text === '爱玛'))
-    return { ...defaultFilters(), brandIds: brand ? [brand.id] : [] }
+    return brand ? [brand.id] : []
+  }
+
+  /** 聚合模块固定口径：最近 7 天 + 默认品牌，不随声音流筛选变化。 */
+  function initialAggregateFilters(): WorkbenchAggregateFilters {
+    const base = defaultFilters()
+    return { dateFrom: base.dateFrom, dateTo: base.dateTo, brandIds: defaultBrandIds() }
+  }
+
+  function initialFilters(): WorkbenchFilters {
+    return { ...defaultFilters(), brandIds: defaultBrandIds() }
   }
 
   /** 先恢复参考身份，再按同一最终查询并行加载三个模块；再次进入保留用户筛选。 */
@@ -517,6 +578,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
         filters.value = normalizeFilters({ ...saved, brandIds, vehicleModelIds })
         saveWorkbenchFilters(filters.value)
       } else filters.value = initialFilters()
+      const aggregateDefaults = initialAggregateFilters()
+      aggregateFilters.value = aggregateDefaults
+      mindDateRange.value = { dateFrom: aggregateDefaults.dateFrom, dateTo: aggregateDefaults.dateTo }
+      trendDateRange.value = { dateFrom: aggregateDefaults.dateFrom, dateTo: aggregateDefaults.dateTo }
       initialized = true
     }
     await refreshData()
@@ -553,19 +618,44 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       : nextFilters
   }
 
-  /** 替换并保存已应用筛选；页面用 debounce 合并连续勾选后再触发查询。 */
+  /** 品牌用户心智日期筛选只更新该模块。 */
+  function setMindDateRange(value: { from: string; to: string }): void {
+    mindDateRange.value = normalizeDateRange(value)
+    moduleRequestRevision.mind += 1
+    mind.value = null
+    moduleLoading.value = { ...moduleLoading.value, mind: true }
+    moduleErrors.value = { ...moduleErrors.value, mind: null }
+  }
+
+  /** UGC 趋势日期筛选只更新该模块。 */
+  function setTrendDateRange(value: { from: string; to: string }): void {
+    trendDateRange.value = normalizeDateRange(value)
+    moduleRequestRevision.trend += 1
+    trend.value = null
+    moduleLoading.value = { ...moduleLoading.value, trend: true }
+    moduleErrors.value = { ...moduleErrors.value, trend: null }
+  }
+
+  /** UGC 趋势发声类型筛选只更新该模块。 */
+  function setTrendVoiceTypes(value: string[]): void {
+    trendVoiceTypes.value = taxonomy.value
+      ? sanitizeVoiceTypes(value, taxonomy.value)
+      : [...new Set(value)]
+    moduleRequestRevision.trend += 1
+    trend.value = null
+    moduleLoading.value = { ...moduleLoading.value, trend: true }
+    moduleErrors.value = { ...moduleErrors.value, trend: null }
+  }
+
+  /** 替换并保存已应用的声音流筛选；页面用 debounce 合并连续勾选后再触发查询。 */
   function setFilters(value: WorkbenchFilters): void {
     filters.value = normalizeFilters(value)
     saveWorkbenchFilters(filters.value)
-    dataRevision += 1
-    // 旧响应属于另一组筛选，不能在新筛选下冒充“最近成功结果”。服务端若已有
-    // 相同筛选快照会立即返回；冷筛选则返回明确 preparing 状态。
+    // 只失效声音流在途请求；品牌心智 / UGC 趋势沿用固定默认口径，不受影响。
+    moduleRequestRevision.stream += 1
     stream.value = null
-    mind.value = null
-    trend.value = null
-    selectedMind.value = null
-    moduleLoading.value = { stream: true, mind: true, trend: true }
-    moduleErrors.value = { stream: null, mind: null, trend: null }
+    moduleLoading.value = { ...moduleLoading.value, stream: true }
+    moduleErrors.value = { ...moduleErrors.value, stream: null }
   }
 
   /** 进入显式布局编辑态，只创建本地草稿，不触发持久化。 */
@@ -685,6 +775,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
 
   return {
     filters,
+    aggregateFilters,
+    mindDateRange,
+    trendDateRange,
+    trendVoiceTypes,
     taxonomy,
     brands,
     vehicleModels,
@@ -722,6 +816,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     refreshAggregates,
     resetFilters,
     setFilters,
+    setMindDateRange,
+    setTrendDateRange,
+    setTrendVoiceTypes,
     startEditing,
     cancelEditing,
     reorderModule,

@@ -240,7 +240,7 @@ test('五平台日期补采与声音广场勾选、重复补采串联保留完�
   await expect(page).toHaveURL((url) =>
     url.pathname === '/voice-plaza' && url.searchParams.get('source_identifier') === runId,
   )
-  await expect(page.getByRole('region', { name: '声音广场筛选条件' }).getByLabel('平台')).toBeEnabled()
+  await expect(page.getByRole('region', { name: '声音广场筛选条件' }).getByRole('button', { name: '平台', exact: true })).toBeEnabled()
   await expect(page.getByText('爱玛日期范围外测试', { exact: true })).toHaveCount(0)
 
   for (const label of labels) {

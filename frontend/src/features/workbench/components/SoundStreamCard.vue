@@ -11,7 +11,6 @@ import { platformLabel } from '../../../shared/domain/platform'
 import AimaPlatformMark from '../../../shared/ui/AimaPlatformMark.vue'
 import type { WorkbenchFilters } from '../store'
 import WorkbenchFiltersBar from './WorkbenchFilters.vue'
-import WorkbenchDateLabel from './WorkbenchDateLabel.vue'
 
 const props = defineProps<{
   stream: WorkbenchStreamResponse | null
@@ -136,10 +135,6 @@ function contentText(item: WorkbenchStreamResponse['items'][number]): string {
           <p>聚合全渠道舆情、UGC 反馈和采集得到的真实用户原声流</p>
         </div>
       </div>
-      <WorkbenchDateLabel
-        :from="filters.dateFrom"
-        :to="filters.dateTo"
-      />
       <div
         class="card-refresh-state"
         role="status"
