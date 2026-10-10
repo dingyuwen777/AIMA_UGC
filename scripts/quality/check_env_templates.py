@@ -23,15 +23,9 @@ def parse_template(
 ) -> dict[str, str]:
     """解析声明并拒绝歧义；风险比较保留引号/转义/插值，错误不输出敏感值。"""
     values: dict[str, str] = {}
-    for number, raw in enumerate(text.splitlines(), 1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[7:].lstrip()
-        key, separator, value = line.partition("=")
-        key, value = key.strip(), value.strip()
-        if not separator or not KEY.fullmatch(key):
+    assignments = runpy.run_path(str(ROOT / "scripts/dev/local_runtime.py"))["env_assignments"]
+    for number, key, value in assignments(text, source):
+        if not KEY.fullmatch(key):
             raise ValueError(f"{source}:{number}: 必须使用合法 KEY=value 声明")
         if key in values and not legacy_duplicates:
             raise ValueError(f"{source}:{number}: 重复配置键 {key}")
@@ -41,7 +35,10 @@ def parse_template(
             if len(value) < 2 or value[-1] != value[0]:
                 raise ValueError(f"{source}:{number}: {key} 引号未闭合")
             if not preserve_syntax:
+                quote = value[0]
                 value = value[1:-1]
+                if quote == "'":
+                    value = value.replace("\\'", "'")
         values[key] = value
     return values
 
@@ -59,6 +56,7 @@ def check_templates(root: Path, *, static_only: bool = False, compose: bool = Fa
             raise ValueError(f"{name}: 缺少 Compose 插值键 {sorted(missing)}")
     if static_only:
         return
+    from aima_ugc.bootstrap.feishu_config_input import parse_feishu_config_input
     from aima_ugc.platform.config import load_settings
 
     runtime = runpy.run_path(str(root / "scripts/dev/local_runtime.py"))
@@ -68,7 +66,11 @@ def check_templates(root: Path, *, static_only: bool = False, compose: bool = Fa
         if unknown:
             raise ValueError(f"{name}: 未知模板配置键 {sorted(unknown)}")
         try:
-            load_settings(values, base_dir=root)
+            # 模板与真实启动一样先拆出凭据；此检查只解析，不落盘。
+            clean = dict(values)
+            config = parse_feishu_config_input(clean.get("AIMA_FEISHU_CONNECTORS"))
+            clean["AIMA_FEISHU_CONNECTORS"] = config.connectors_json or ""
+            load_settings(clean, base_dir=root)
         except ValueError:
             # Pydantic 的默认错误可能包含输入，模板门禁不回显配置值。
             raise ValueError(

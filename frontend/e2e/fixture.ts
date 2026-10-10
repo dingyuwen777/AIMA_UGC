@@ -68,6 +68,20 @@ export const test = base.extend<{ apiGuard: void }>({
           })
           return
         }
+        if (request.method() === 'GET' && url.pathname === '/api/v1/content-data-revision') {
+          await route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({ revision: 'fixture-revision' }),
+          })
+          return
+        }
+        if (request.method() === 'GET' && url.pathname === '/api/v1/me/export-column-default') {
+          await route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({ revision: 0, columns: null, saved_catalog_version: null, updated_at: null }),
+          })
+          return
+        }
         if (request.method() === 'GET' && url.pathname === '/api/v1/analysis/content-runs') {
           await route.fulfill({
             contentType: 'application/json',

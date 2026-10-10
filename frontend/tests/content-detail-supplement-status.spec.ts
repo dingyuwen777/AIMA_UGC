@@ -23,9 +23,9 @@ const baseItem = {
   source_records: [],
 } as unknown as ContentDetailResponse
 
-async function render(item: ContentDetailResponse): Promise<string> {
+async function render(item: ContentDetailResponse, isAdministrator = true): Promise<string> {
   const app = createSSRApp({
-    render: () => h(ContentDetailDrawer, { modelValue: true, item, loading: false }),
+    render: () => h(ContentDetailDrawer, { isAdministrator, modelValue: true, item, loading: false }),
   })
   const context: { teleports?: Record<string, string> } = {}
   const html = await renderToString(app, context)
@@ -33,6 +33,27 @@ async function render(item: ContentDetailResponse): Promise<string> {
 }
 
 describe('content supplement status', () => {
+  it('普通用户保留正文媒体与人工证据摘要，隐藏修改和补采提示', async () => {
+    const html = await render({
+      ...baseItem,
+      effective_relevance: 'relevant', relevance_source: 'manual_review',
+      brands: [{ id: 'aima', display_name: '爱玛', role: 'self', evidences: [{ source: 'text_match', matched_text: '爱玛原文' }] }],
+      supplement_status: { status: 'failed' },
+      media: [{ position: 0, media_type: 'image', url: 'https://example.com/image', preview_url: '/image-preview' }],
+    } as unknown as ContentDetailResponse, false)
+    expect(html).toContain(baseItem.text)
+    expect(html).toContain('/image-preview')
+    expect(html).toContain('人工确认')
+    expect(html).toContain('已人工确认')
+    expect(html).toContain('爱玛原文')
+    expect(html).toContain('评论')
+    expect(html).not.toContain('修改车型')
+    expect(html).not.toContain('人工纠正')
+    expect(html).not.toContain('撤销人工判断')
+    expect(html).not.toContain('supplement-status')
+    expect(html).not.toContain('保存纠正')
+  })
+
   it.each([{ media: [] }, { media: [{ position: 0, media_type: 'video', url: null, preview_url: null }] }])('详情顶部依据真实视频类型显示标识，媒体为空仍可识别', async ({ media }) => {
     const html = await render({ ...baseItem, content_type: 'video', media })
     const hero = html.match(/<section[^>]*hero[^>]*>([\s\S]*?)<\/section>/)?.[1]

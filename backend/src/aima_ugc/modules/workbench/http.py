@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from aima_ugc.contracts.product import ContentDataRevisionResponse
 from aima_ugc.contracts.workbench import (
     WorkbenchLayoutResponse,
     WorkbenchLayoutUpdateRequest,
@@ -24,6 +25,8 @@ class WorkbenchLayoutConflict(RuntimeError):
 
 
 class WorkbenchHttpService(Protocol):
+    def get_data_revision(self) -> ContentDataRevisionResponse: ...
+
     def get_stream(self, query: WorkbenchStreamQuery) -> WorkbenchStreamResponse: ...
 
     def get_trend(self, query: WorkbenchQuery) -> WorkbenchTrendResponse: ...

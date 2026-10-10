@@ -1,0 +1,81 @@
+F.....F.F                                                                [100%]
+================================== FAILURES ===================================
+__ test_real_sessions_isolate_export_history_detail_download_and_frozen_xlsx __
+tests\integration\reporting\test_role_exports_and_defaults.py:205: in test_real_sessions_isolate_export_history_detail_download_and_frozen_xlsx
+    content_ids = _seed_contents(runtime)
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\reporting\test_role_exports_and_defaults.py:164: in _seed_contents
+    assert result.status_code == 200
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+---------------------------- Captured stdout setup ----------------------------
+[2026-10-10 13:55:37.084 runtime.py L174] [INFO] event=service.started timezone="Asia/Shanghai" message="Platform 运行基础已装配"
+---------------------------- Captured stdout call -----------------------------
+[2026-10-10 13:55:37.411 worker.py L514] [INFO] event=job.started attempt=1 job_id="f4de86b7-6ed9-442b-921a-6ebbb0e88e51" job_type="ingestion.import-excel.v2" max_attempts=10 timeout_seconds=1800 worker_id="role-export-import" message="Job 已开始执行。"
+[2026-10-10 13:55:37.622 import_worker.py L272] [INFO] event=excel_import.pipeline_completed batch_id="b21aab42-aef9-4891-ae64-e2ad1b0491ff" canonical_reused=false canonical_write_ms=21 duplicates_removed=0 duration_ms=207 foreground_wait_ms=5 ingestion_ms=98 job_id="f4de86b7-6ed9-442b-921a-6ebbb0e88e51" mapping_ms=6 preparation_ms=8 rows_ingested=2 rows_matched=2 rows_seen=2 rows_written=2 source_read_ms=8 temporary_bytes=3236 temporary_peak_bytes=8178 message="Excel 导入流水线完成"
+[2026-10-10 13:55:37.632 worker.py L542] [INFO] event=job.completed attempt=1 duration_ms=221 error_code=null job_id="f4de86b7-6ed9-442b-921a-6ebbb0e88e51" job_type="ingestion.import-excel.v2" max_attempts=10 status="succeeded" worker_id="role-export-import" message="Job 状态已持久化。"
+[2026-10-10 13:55:37.646 api.py L335] [WARNING] event=api.response_failed duration_ms=5 method="GET" path="/api/v1/contents" request_id="dcec490a-9160-43a7-b6c3-7c11b85de129" status_code=503 message="API 返回服务端错误响应。"
+------------------------------ Captured log call ------------------------------
+INFO     aima_ugc.platform.jobs.worker:worker.py:514 Job 已开始执行。
+INFO     aima_ugc:import_worker.py:272 Excel 导入流水线完成
+INFO     aima_ugc.platform.jobs.worker:worker.py:542 Job 状态已持久化。
+WARNING  aima_ugc:api.py:335 API 返回服务端错误响应。
+_ test_role_downgrade_filters_defaults_without_rewriting_and_blocks_old_file __
+tests\integration\reporting\test_role_exports_and_defaults.py:454: in test_role_downgrade_filters_defaults_without_rewriting_and_blocks_old_file
+    content_ids = _seed_contents(runtime)
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\reporting\test_role_exports_and_defaults.py:164: in _seed_contents
+    assert result.status_code == 200
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+---------------------------- Captured stdout setup ----------------------------
+[2026-10-10 13:55:39.094 runtime.py L174] [INFO] event=service.started timezone="Asia/Shanghai" message="Platform 运行基础已装配"
+----------------------------- Captured log setup ------------------------------
+INFO     aima_ugc:runtime.py:174 Platform 运行基础已装配
+---------------------------- Captured stdout call -----------------------------
+[2026-10-10 13:55:39.384 worker.py L514] [INFO] event=job.started attempt=1 job_id="b9d068c9-3f65-4280-858c-22c3863680ff" job_type="ingestion.import-excel.v2" max_attempts=10 timeout_seconds=1800 worker_id="role-export-import" message="Job 已开始执行。"
+[2026-10-10 13:55:39.602 import_worker.py L272] [INFO] event=excel_import.pipeline_completed batch_id="5fc37428-df20-4078-95dd-a18f1cb2636f" canonical_reused=false canonical_write_ms=32 duplicates_removed=0 duration_ms=211 foreground_wait_ms=4 ingestion_ms=97 job_id="b9d068c9-3f65-4280-858c-22c3863680ff" mapping_ms=4 preparation_ms=8 rows_ingested=2 rows_matched=2 rows_seen=2 rows_written=2 source_read_ms=8 temporary_bytes=3236 temporary_peak_bytes=8178 message="Excel 导入流水线完成"
+[2026-10-10 13:55:39.613 worker.py L542] [INFO] event=job.completed attempt=1 duration_ms=229 error_code=null job_id="b9d068c9-3f65-4280-858c-22c3863680ff" job_type="ingestion.import-excel.v2" max_attempts=10 status="succeeded" worker_id="role-export-import" message="Job 状态已持久化。"
+[2026-10-10 13:55:39.625 api.py L335] [WARNING] event=api.response_failed duration_ms=2 method="GET" path="/api/v1/contents" request_id="323a9ee9-11c3-4208-81a7-875066d4acb3" status_code=503 message="API 返回服务端错误响应。"
+------------------------------ Captured log call ------------------------------
+INFO     aima_ugc.platform.jobs.worker:worker.py:514 Job 已开始执行。
+INFO     aima_ugc:import_worker.py:272 Excel 导入流水线完成
+INFO     aima_ugc.platform.jobs.worker:worker.py:542 Job 状态已持久化。
+WARNING  aima_ugc:api.py:335 API 返回服务端错误响应。
+_ test_read_only_content_revision_changes_with_data_and_active_scheme_without_jobs _
+tests\integration\reporting\test_role_exports_and_defaults.py:545: in test_read_only_content_revision_changes_with_data_and_active_scheme_without_jobs
+    _seed_contents(runtime)
+tests\integration\reporting\test_role_exports_and_defaults.py:164: in _seed_contents
+    assert result.status_code == 200
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+---------------------------- Captured stdout setup ----------------------------
+[2026-10-10 13:55:39.976 runtime.py L174] [INFO] event=service.started timezone="Asia/Shanghai" message="Platform 运行基础已装配"
+----------------------------- Captured log setup ------------------------------
+INFO     aima_ugc:runtime.py:174 Platform 运行基础已装配
+---------------------------- Captured stdout call -----------------------------
+[2026-10-10 13:55:40.266 worker.py L514] [INFO] event=job.started attempt=1 job_id="c475f3a3-0dc1-425e-b08a-1ff206f3b259" job_type="ingestion.import-excel.v2" max_attempts=10 timeout_seconds=1800 worker_id="role-export-import" message="Job 已开始执行。"
+[2026-10-10 13:55:40.458 import_worker.py L272] [INFO] event=excel_import.pipeline_completed batch_id="34c6930d-8850-4a9e-883f-2cc5c5281e6b" canonical_reused=false canonical_write_ms=22 duplicates_removed=0 duration_ms=187 foreground_wait_ms=5 ingestion_ms=93 job_id="c475f3a3-0dc1-425e-b08a-1ff206f3b259" mapping_ms=4 preparation_ms=7 rows_ingested=2 rows_matched=2 rows_seen=2 rows_written=2 source_read_ms=7 temporary_bytes=3236 temporary_peak_bytes=8177 message="Excel 导入流水线完成"
+[2026-10-10 13:55:40.470 worker.py L542] [INFO] event=job.completed attempt=1 duration_ms=203 error_code=null job_id="c475f3a3-0dc1-425e-b08a-1ff206f3b259" job_type="ingestion.import-excel.v2" max_attempts=10 status="succeeded" worker_id="role-export-import" message="Job 状态已持久化。"
+[2026-10-10 13:55:40.481 api.py L335] [WARNING] event=api.response_failed duration_ms=1 method="GET" path="/api/v1/contents" request_id="ff883e94-1f1e-41df-8328-08ebaed6cb3d" status_code=503 message="API 返回服务端错误响应。"
+------------------------------ Captured log call ------------------------------
+INFO     aima_ugc.platform.jobs.worker:worker.py:514 Job 已开始执行。
+INFO     aima_ugc:import_worker.py:272 Excel 导入流水线完成
+INFO     aima_ugc.platform.jobs.worker:worker.py:542 Job 状态已持久化。
+WARNING  aima_ugc:api.py:335 API 返回服务端错误响应。
+============================== warnings summary ===============================
+.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: 110 warnings
+tests/integration/reporting/test_role_exports_and_defaults.py: 2 warnings
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: PydanticDeprecatedSince20: `json_encoders` is deprecated. See https://docs.pydantic.dev/2.13/concepts/serialization/#custom-serializers for alternatives. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    warnings.warn(
+
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/integration/reporting/test_role_exports_and_defaults.py::test_real_sessions_isolate_export_history_detail_download_and_frozen_xlsx
+FAILED tests/integration/reporting/test_role_exports_and_defaults.py::test_role_downgrade_filters_defaults_without_rewriting_and_blocks_old_file
+FAILED tests/integration/reporting/test_role_exports_and_defaults.py::test_read_only_content_revision_changes_with_data_and_active_scheme_without_jobs
+3 failed, 6 passed, 113 warnings in 4.77s

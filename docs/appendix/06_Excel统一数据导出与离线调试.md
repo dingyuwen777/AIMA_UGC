@@ -296,11 +296,13 @@ taxonomy_version
 
 原因：
 
-- 正式查询型导出默认排除当前 Analysis 明确 irrelevant 的内容；
+- 正式查询型导出默认排除当前有效相关性为 irrelevant 的内容；
 - 离线最终业务 JSONL 也可根据离线处理语义排除 irrelevant；
 - 重复展示一个几乎恒为 relevant 的列价值低。
 
 `voice_type` 不再经过 Excel 展示别名映射。当前 Prompt Taxonomy 直接使用中文业务名称作为机器值，数据库、Contract 与 Excel 都保存/输出同一个字符串；Excel 对传入值原样输出，不翻译旧英文值，也不维护历史兼容映射。合法值仍只由当前 Prompt 的机器 Taxonomy 决定。
+
+已完成的分析可以没有标签，例如 AI 判定不相关，之后被人工纳入业务列表。普通明细导出保留已有分析信息和内容、评论，不为这种结果生成空标签对或标签明细行。要求完整打标的离线导出仍拒绝缺失的打标字段；标签对 Contract 与已有非空标签导出规则保持不变。
 
 AI 完整业务语义见：
 
@@ -459,7 +461,7 @@ Brand/Vehicle 则读取该冻结 Content Version 的有效 Evidence：Brand 名�
 + 来源 Provider/Raw
 ```
 
-Column Catalog v2 提供“品牌、品牌角色、竞品范围、车型”四个可选列；它们未进入默认选择，因此未显式选列的既有导出仍保持原表头。品牌角色和竞品范围在 Excel 中使用中文展示标签，底层 Contract 继续保留稳定英文枚举。
+当前 Column Catalog 提供“品牌、品牌角色、竞品范围、车型”四个可选列；它们未进入默认选择，因此未显式选列的既有导出仍保持原表头。品牌角色和竞品范围在 Excel 中使用中文展示标签，底层 Contract 继续保留稳定英文枚举。
 
 精确投影：
 
@@ -792,3 +794,5 @@ content_columns / label_detail_columns / comment_columns
 - 正式 Export / imports_test 复用同一实现。
 
 目标测试以当前 `tests/unit/` 中 Excel/Reporting/Imports 相关文件为准；最终以 PR 最新 HEAD CI 为准。
+
+正式在线导出的用户归属、管理员追溯列、个人默认字段及历史下载校验由 Reporting Owner 负责，见 [backend/src/aima_ugc/modules/reporting/README.md](../../backend/src/aima_ugc/modules/reporting/README.md#用户归属字段权限与个人默认)。离线统一数据 Contract 和 Renderer 继续保持完整技术字段能力，在线权限不在离线文件协议中复制。

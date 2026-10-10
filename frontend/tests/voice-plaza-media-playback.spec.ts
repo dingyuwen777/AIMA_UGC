@@ -33,9 +33,20 @@ beforeEach(() => { vi.useFakeTimers(); vi.resetAllMocks() })
 afterEach(() => { vi.useRealTimers() })
 
 describe('小红书显式视频准备生命周期', () => {
+  it('普通用户可读取现有视频，原生失败不发送管理员恢复请求', async () => {
+    vi.mocked(prepareMediaPlayback).mockResolvedValue(ready())
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn(), () => false)
+    await playback.start()
+    await playback.mediaError(2)
+    expect(prepareMediaPlayback).toHaveBeenCalledTimes(1)
+    expect(playback.status.value).toBe('unavailable')
+    expect(playback.message.value).toContain('原帖')
+    expect(playback.message.value).not.toContain('恢复')
+    playback.reset()
+  })
   it('初始不请求，重复点击只准备一次，ready 不读取二进制流', async () => {
     vi.mocked(prepareMediaPlayback).mockResolvedValue(ready())
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn())
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn(), () => true)
     expect(prepareMediaPlayback).not.toHaveBeenCalled()
     await Promise.all([playback.start(), playback.start()])
     expect(prepareMediaPlayback).toHaveBeenCalledTimes(1)
@@ -46,7 +57,7 @@ describe('小红书显式视频准备生命周期', () => {
 
   it('失效只携带上次 ready 代次恢复一次，再失败保留原帖退路', async () => {
     vi.mocked(prepareMediaPlayback).mockResolvedValueOnce(ready()).mockResolvedValueOnce(ready({ source_revision: secondRevision, generation: 2 }))
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn())
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn(), () => true)
     await playback.start()
     await playback.mediaError(2)
     expect(prepareMediaPlayback).toHaveBeenNthCalledWith(2, contentId, 0, { failed_source_revision: firstRevision }, expect.any(AbortSignal))
@@ -60,7 +71,7 @@ describe('小红书显式视频准备生命周期', () => {
 
   it('原生code4由服务器可信失败分类，同代次返回停止且不循环付费刷新', async () => {
     vi.mocked(prepareMediaPlayback).mockResolvedValueOnce(ready()).mockResolvedValueOnce(ready({ failure_code: 'unsupported_format' }))
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn())
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn(), () => true)
     await playback.start()
     await playback.mediaError(4)
     expect(prepareMediaPlayback).toHaveBeenCalledTimes(2)
@@ -73,7 +84,7 @@ describe('小红书显式视频准备生命周期', () => {
 
   it('HTTP403也可能表现为code4，新代次可继续播放而不误报格式', async () => {
     vi.mocked(prepareMediaPlayback).mockResolvedValueOnce(ready()).mockResolvedValueOnce(ready({ source_revision: secondRevision, generation: 2 }))
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn())
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn(), () => true)
     await playback.start()
     await playback.mediaError(4)
     expect(playback.status.value).toBe('ready')
@@ -83,7 +94,7 @@ describe('小红书显式视频准备生命周期', () => {
 
   it('没有可信失败的同代次无法播放只提示可能原因，不断言已删除或格式', async () => {
     vi.mocked(prepareMediaPlayback).mockResolvedValue(ready())
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn())
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn(), () => true)
     await playback.start()
     await playback.mediaError(4)
     expect(playback.status.value).toBe('unavailable')
@@ -97,7 +108,7 @@ describe('小红书显式视频准备生命周期', () => {
       .mockResolvedValueOnce(ready({ status: 'preparing', stream_url: null, job_id: jobId }))
       .mockResolvedValueOnce(ready({ source_revision: secondRevision }))
     const terminal = vi.fn()
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal)
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal, () => true)
     await playback.start()
     await vi.advanceTimersByTimeAsync(1000)
     expect(playback.status.value).toBe('preparing')
@@ -117,7 +128,7 @@ describe('小红书显式视频准备生命周期', () => {
       .mockResolvedValueOnce(ready({ status: 'preparing', stream_url: null, job_id: jobId }))
       .mockResolvedValueOnce(ready({ status, stream_url: null, failure_code: 'provider_failed', cooldown_until: '2026-10-09T20:00:00+08:00' }))
     const terminal = vi.fn()
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal)
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal, () => true)
     await playback.start()
     await vi.advanceTimersByTimeAsync(120_000)
     expect(playback.status.value).toBe(status)
@@ -131,7 +142,7 @@ describe('小红书显式视频准备生命周期', () => {
   it('关闭终止本地 prepare 请求，迟到 ready 不恢复 src', async () => {
     let resolve: (response: ContentMediaPlaybackResponse) => void = () => {}
     vi.mocked(prepareMediaPlayback).mockImplementation(() => new Promise((done) => { resolve = done }))
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn())
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn(), () => true)
     const pending = playback.start()
     const signal = vi.mocked(prepareMediaPlayback).mock.calls[0]![3]
     playback.reset()
@@ -148,7 +159,7 @@ describe('小红书显式视频准备生命周期', () => {
       .mockResolvedValueOnce(ready({ status: 'preparing', stream_url: null, job_id: jobId }))
       .mockImplementationOnce(() => new Promise((done) => { resolve = done }))
     const terminal = vi.fn()
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal)
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal, () => true)
     await playback.start()
     await vi.advanceTimersByTimeAsync(1000)
     expect(prepareMediaPlayback).toHaveBeenLastCalledWith(contentId, 0, { observed_job_id: jobId }, expect.any(AbortSignal))
@@ -169,7 +180,7 @@ describe('小红书显式视频准备生命周期', () => {
       .mockResolvedValueOnce(ready({ status: 'preparing', stream_url: null, job_id: jobId }))
       .mockResolvedValueOnce(ready({ status: 'preparing', stream_url: null, job_id: nextJobId }))
     const terminal = vi.fn()
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal)
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal, () => true)
     await playback.start()
     await vi.advanceTimersByTimeAsync(120_000)
     expect(playback.status.value).toBe('unavailable')
@@ -183,7 +194,7 @@ describe('小红书显式视频准备生命周期', () => {
   it('只读观察90秒到期停止本地等待，不无限轮询或自动付费重开', async () => {
     vi.mocked(prepareMediaPlayback).mockResolvedValue(ready({ status: 'preparing', stream_url: null, job_id: jobId }))
     const terminal = vi.fn()
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal)
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal, () => true)
     await playback.start()
     const signal = vi.mocked(prepareMediaPlayback).mock.calls[0]![3]
     await vi.advanceTimersByTimeAsync(89_999)
@@ -208,7 +219,7 @@ describe('小红书显式视频准备生命周期', () => {
       .mockImplementationOnce(() => new Promise((done) => { resolve = done }))
       .mockResolvedValueOnce(ready({ source_revision: secondRevision }))
     const terminal = vi.fn()
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal)
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), terminal, () => true)
     await playback.start()
     await vi.advanceTimersByTimeAsync(1000)
     const signal = vi.mocked(prepareMediaPlayback).mock.calls[1]![3]
@@ -228,7 +239,7 @@ describe('小红书显式视频准备生命周期', () => {
 
   it('拒绝远端流地址与错帖会话，签名CDN不会进入播放器', async () => {
     vi.mocked(prepareMediaPlayback).mockResolvedValueOnce(ready({ stream_url: 'https://cdn.example/video?signature=private' }))
-    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn())
+    const playback = createMediaPlayback(() => ({ contentId, position: 0 }), vi.fn(), () => true)
     await playback.start()
     expect(playback.status.value).toBe('unavailable')
     expect(playback.streamUrl.value).toBeNull()

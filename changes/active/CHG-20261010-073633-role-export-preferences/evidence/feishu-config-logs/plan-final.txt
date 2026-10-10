@@ -1,0 +1,44 @@
+Preflight profile=full; changed_count=19
+- backend/src/aima_ugc/platform/config/settings.py
+- changes/active/CHG-20261010-073633-role-export-preferences/CHANGE.md
+- compose.windows.yaml
+- compose.yaml
+- docs/02_环境运行与部署.md
+- docs/blueprint/05_日志安全部署与运维.md
+- docs/operations/06_飞书身份接入配置手册.md
+- env.local.example
+- env.production.example
+- frontend/e2e/workbench.spec.ts
+- scripts/deploy/prepare_host.py
+- scripts/dev/local_runtime.py
+- scripts/quality/check_env_templates.py
+- tests/unit/platform/test_local_dev_runtime.py
+- tests/unit/test_ci_scope.py
+- tests/unit/test_env_compose_config_contract.py
+- tests/unit/test_release_bundle.py
+- backend/src/aima_ugc/bootstrap/feishu_config_input.py
+- tests/unit/platform/test_feishu_config_input.py
+Optional fix before validation:
+  uv run ruff format backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+  uv run python scripts/contracts/generate.py
+  npm --prefix frontend run generate:api
+Local validation:
+  uv run python scripts/quality/check_docs.py
+  uv run python scripts/quality/scan_secrets.py
+  uv run python scripts/quality/check_docs_facts.py
+  uv run python scripts/quality/check_agent_governance.py
+  uv run python scripts/quality/check_env_templates.py
+  uv run pytest tests/unit/test_env_compose_config_contract.py tests/unit/identity/test_settings_multi_connector.py tests/unit/test_release_bundle.py -q
+  uv run ruff format --check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+  uv run ruff check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+  uv run mypy backend/src
+  uv run pytest tests/unit tests/contracts tests/api -q
+  uv run python scripts/contracts/generate.py --check
+  uv run python scripts/contracts/check_compatibility.py
+  npm --prefix frontend run lint
+  npm --prefix frontend run test -- --run
+  npm --prefix frontend run build
+  npm --prefix frontend run test:e2e
+Deferred to formal CI:
+  - PostgreSQL Integration
+  - Real Full-stack Golden Path

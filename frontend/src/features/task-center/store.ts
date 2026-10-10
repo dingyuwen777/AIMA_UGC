@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
 import type {
@@ -7,6 +7,8 @@ import type {
   DataExportResponse,
 } from '../../generated/api/client'
 import { platformLabel } from '../../shared/domain/platform'
+import { useIdentityStore } from '../identity/store'
+import { AimaApiError } from '../../shared/api/http'
 import {
   cancelTaskCenterAnalysisRun,
   fetchTaskCenterAnalysisRuns,
@@ -221,6 +223,7 @@ function taskTime(item: TaskCenterItem): number {
 }
 
 export const useTaskCenterStore = defineStore('task-center', () => {
+  const identity = useIdentityStore()
   const open = ref(false)
   const loading = ref(false)
   const analysisRuns = ref<AnalysisContentRunResponse[]>([])
@@ -231,16 +234,17 @@ export const useTaskCenterStore = defineStore('task-center', () => {
   const cancellingAnalysisRunId = ref<string | null>(null)
   const refreshInFlight = new Set<string>()
   const refreshErrors = new Map<string, string>()
+  const deniedSources = new Set<string>()
   let analysisRevision = 0
   let analysisRefreshInFlight = 0
   let lastAnalysisPollAt = Number.NEGATIVE_INFINITY
   let pollHandle: ReturnType<typeof setInterval> | undefined
   const hasActiveAnalysisRuns = computed(() =>
-    analysisRuns.value.some(analysisNeedsPolling))
+    identity.isAdministrator && analysisRuns.value.some(analysisNeedsPolling))
 
   const items = computed(() => [
-    ...analysisRuns.value.map(analysisTask),
-    ...collectionRuns.value.map(collectionTask),
+    ...(identity.isAdministrator ? analysisRuns.value.map(analysisTask) : []),
+    ...(identity.isAdministrator ? collectionRuns.value.map(collectionTask) : []),
     ...dataExports.value.map(exportTask),
   ])
   const activeItems = computed(() => items.value
@@ -260,6 +264,7 @@ export const useTaskCenterStore = defineStore('task-center', () => {
 
   /** 两个页面共用唯一快照；创建后的读取可替换旧请求，普通轮询不叠加。 */
   async function refreshAnalysisRuns(afterMutation = false): Promise<void> {
+    if (!identity.isAdministrator || deniedSources.has('AI 分析')) return
     if (analysisRefreshInFlight && !afterMutation) return
     const revision = ++analysisRevision
     analysisRefreshInFlight = revision
@@ -272,6 +277,12 @@ export const useTaskCenterStore = defineStore('task-center', () => {
       refreshErrors.delete('AI 分析')
     } catch (error) {
       if (revision !== analysisRevision) return
+      if (error instanceof AimaApiError && error.status === 403) {
+        deniedSources.add('AI 分析')
+        analysisRuns.value = []
+        void identity.revalidatePrincipal()
+        return
+      }
       analysisError.value = errorMessage(error)
       refreshErrors.set('AI 分析', analysisError.value)
     } finally {
@@ -289,30 +300,45 @@ export const useTaskCenterStore = defineStore('task-center', () => {
   async function updateSource<T>(
     key: string, fetch: () => Promise<T>, apply: (result: T) => void,
   ): Promise<void> {
-    if (refreshInFlight.has(key)) return
+    if (refreshInFlight.has(key) || deniedSources.has(key)) return
+    const epoch = identity.scopeEpoch
     refreshInFlight.add(key)
     try {
-      apply(await fetch())
+      const result = await fetch()
+      if (epoch !== identity.scopeEpoch) return
+      apply(result)
       refreshErrors.delete(key)
     } catch (error) {
+      if (epoch !== identity.scopeEpoch) return
+      if (error instanceof AimaApiError && error.status === 403) {
+        deniedSources.add(key)
+        void identity.revalidatePrincipal()
+        return
+      }
       refreshErrors.set(key, errorMessage(error))
     } finally {
-      refreshInFlight.delete(key)
-      updateWarning()
+      if (epoch === identity.scopeEpoch) {
+        refreshInFlight.delete(key)
+        updateWarning()
+      }
     }
   }
 
   /** 独立刷新三个既有 read model；单一来源失败时保留上次成功快照并明确提示。 */
   async function refresh(silent = false): Promise<void> {
+    if (!identity.principal) return
+    const epoch = identity.scopeEpoch
     if (!silent) loading.value = true
     try {
       await Promise.all([
-        refreshAnalysisRuns(),
-        updateSource('采集运行', fetchTaskCenterCollectionRuns, (runs) => { collectionRuns.value = runs }),
+        ...(identity.isAdministrator ? [
+          refreshAnalysisRuns(),
+          updateSource('采集运行', fetchTaskCenterCollectionRuns, (runs) => { collectionRuns.value = runs }),
+        ] : []),
         updateSource('数据导出', fetchTaskCenterDataExports, (runs) => { dataExports.value = runs }),
       ])
     } finally {
-      if (!silent) loading.value = false
+      if (!silent && epoch === identity.scopeEpoch) loading.value = false
     }
   }
 
@@ -329,19 +355,21 @@ export const useTaskCenterStore = defineStore('task-center', () => {
 
   /** 取消活动 AI 分析任务，并同步全局任务列表。 */
   async function cancelAnalysisRun(runId: string): Promise<boolean> {
-    if (cancellingAnalysisRunId.value) return false
+    if (!identity.isAdministrator || cancellingAnalysisRunId.value) return false
+    const epoch = identity.scopeEpoch
     cancellingAnalysisRunId.value = runId
     try {
       const cancelled = await cancelTaskCenterAnalysisRun(runId)
+      if (epoch !== identity.scopeEpoch) return false
       analysisRevision += 1
       analysisRefreshInFlight = 0
       analysisRuns.value = analysisRuns.value.map((run) => run.id === runId ? cancelled : run)
       return true
     } catch {
-      warning.value = 'AI 分析取消失败，请稍后重试。'
+      if (epoch === identity.scopeEpoch) warning.value = 'AI 分析取消失败，请稍后重试。'
       return false
     } finally {
-      cancellingAnalysisRunId.value = null
+      if (epoch === identity.scopeEpoch) cancellingAnalysisRunId.value = null
     }
   }
 
@@ -367,6 +395,25 @@ export const useTaskCenterStore = defineStore('task-center', () => {
     clearInterval(pollHandle)
     pollHandle = undefined
   }
+
+  /** 账号或角色改变时同步失效所有缓存和在途来源；新 Shell 重新开启轮询。 */
+  watch(() => identity.scopeEpoch, () => {
+    stopPolling()
+    analysisRevision += 1
+    analysisRefreshInFlight = 0
+    refreshInFlight.clear()
+    lastAnalysisPollAt = Number.NEGATIVE_INFINITY
+    refreshErrors.clear()
+    deniedSources.clear()
+    analysisRuns.value = []
+    collectionRuns.value = []
+    dataExports.value = []
+    open.value = false
+    loading.value = false
+    warning.value = null
+    analysisError.value = null
+    cancellingAnalysisRunId.value = null
+  }, { flush: 'sync' })
 
   return {
     open,

@@ -1,3 +1,4 @@
+import { setTestPrincipal } from './rolePrincipal'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { createPinia, setActivePinia } from 'pinia'
@@ -14,6 +15,7 @@ const generated = vi.hoisted(() => ({
     kuaishou: 'kuaishou',
   },
   countContents: vi.fn(),
+  getContentDataRevision: vi.fn(),
   listContents: vi.fn(),
   listContentComments: vi.fn(),
   getContent: vi.fn(),
@@ -117,10 +119,79 @@ function installSessionStorage(): Storage {
     get length() { return storage.size },
   } satisfies Storage
   vi.stubGlobal('sessionStorage', value)
+  setTestPrincipal()
   return value
 }
 
 describe('voice plaza', () => {
+  it('普通用户保留查询和选择，管理写入口与能力读取均被 store 拒绝', async () => {
+    setTestPrincipal('user', 'ordinary-user')
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    const store = useVoicePlazaStore()
+    await store.refresh()
+    store.toggleSelection(item.id)
+    expect(store.selectedIds).toEqual([item.id])
+    expect(store.items[0]?.analysis.labels).toEqual(item.analysis.labels)
+    await store.refreshAnalysisCapabilities()
+    await store.refreshAnalysisRuns()
+    expect(await store.reviewRelevance([item.id], 'irrelevant')).toBeNull()
+    expect(await store.previewAnalysis('selected')).toBeNull()
+    expect(await store.confirmAnalysis()).toBeNull()
+    expect(await store.cancelRun('analysis-1')).toBe(false)
+    expect(generated.getContentAnalysisCapabilities).not.toHaveBeenCalled()
+    expect(generated.listContentAnalysisRuns).not.toHaveBeenCalled()
+    expect(generated.listCollectionRuntimeRuns).not.toHaveBeenCalled()
+    expect(generated.createContentRelevanceReview).not.toHaveBeenCalled()
+    expect(generated.previewContentAnalysisRun).not.toHaveBeenCalled()
+    expect(generated.createContentAnalysisRun).not.toHaveBeenCalled()
+    expect(generated.cancelContentAnalysisRun).not.toHaveBeenCalled()
+  })
+
+  it('普通用户按原每秒检查修订号更新列表，隐藏标签页暂停且不读取管理 Run', async () => {
+    vi.useFakeTimers()
+    const documentState = { visibilityState: 'visible' }
+    vi.stubGlobal('document', documentState)
+    setTestPrincipal('user', 'ordinary-user')
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    generated.countContents.mockResolvedValue({ count: 1 })
+    const store = useVoicePlazaStore()
+    await store.refresh()
+    store.startPolling()
+    try {
+      // 初次列表后发生更新，首次修订号随后保持稳定，也必须追赶一次。
+      generated.listContents.mockResolvedValue({ items: [{ ...item, title: '首次修订前更新' }], has_more: false })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(generated.getContentDataRevision).toHaveBeenCalledTimes(1)
+      expect(store.items[0]?.title).toBe('首次修订前更新')
+      expect(generated.listContents).toHaveBeenCalledTimes(2)
+      generated.getContentDataRevision.mockResolvedValue({ revision: 'new-data' })
+      generated.listContents.mockResolvedValue({ items: [{ ...item, title: '更新后正文' }], has_more: false })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(store.items[0]?.title).toBe('更新后正文')
+      expect(generated.listContents).toHaveBeenCalledTimes(3)
+      expect(generated.listContentAnalysisRuns).not.toHaveBeenCalled()
+      expect(generated.listCollectionRuntimeRuns).not.toHaveBeenCalled()
+      documentState.visibilityState = 'hidden'
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(generated.getContentDataRevision).toHaveBeenCalledTimes(2)
+    } finally { store.stopPolling() }
+  })
+
+  it('切换账号清除列表与选择，迟到旧列表不得覆盖新账号', async () => {
+    let finish!: (response: unknown) => void
+    generated.listContents.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const store = useVoicePlazaStore()
+    const oldRefresh = store.refresh()
+    setTestPrincipal('user', 'new-B')
+    expect(store.items).toEqual([])
+    expect(store.selectedIds).toEqual([])
+    generated.listContents.mockResolvedValue({ items: [{ ...item, id: 'B-content' }], has_more: false })
+    await store.refresh()
+    finish({ items: [item], has_more: false })
+    await oldRefresh
+    expect(store.items.map((content) => content.id)).toEqual(['B-content'])
+  })
+
   it('新查询立即隔离旧结果，同查询刷新保留原行直到成功提交', async () => {
     generated.listContents.mockResolvedValue({ items: [item], has_more: false })
     const store = useVoicePlazaStore()
@@ -308,8 +379,10 @@ describe('voice plaza', () => {
     vi.stubGlobal('sessionStorage', {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
       clear: () => values.clear(),
     })
+    setTestPrincipal()
     const first = useVoicePlazaStore()
     first.filters.platform = 'douyin'
     first.applyFilters()
@@ -318,6 +391,7 @@ describe('voice plaza', () => {
     first.applyFilters()
 
     setActivePinia(createPinia())
+    setTestPrincipal()
     const restored = useVoicePlazaStore()
 
     expect(restored.filters.platform).toBe('douyin')
@@ -481,6 +555,8 @@ describe('voice plaza', () => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
     if (typeof sessionStorage !== 'undefined') sessionStorage.clear()
+    setTestPrincipal()
+    generated.getContentDataRevision.mockResolvedValue({ revision: 'stable-data' })
     generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: true })
     generated.getContentAnalysisTaxonomy.mockResolvedValue(taxonomy)
     generated.getContentFilterOptions.mockResolvedValue(filterOptions)
@@ -754,6 +830,7 @@ describe('voice plaza', () => {
     const labels = await renderToString(
       createSSRApp({
         render: () => h(VoicePlazaTable, {
+          isAdministrator: true,
           items: [item],
           loading: false,
           selectedIds: [],
@@ -768,6 +845,22 @@ describe('voice plaza', () => {
     expect(labels).toContain('购买体验')
     expect(labels).toContain('价格感知')
     expect(labels).toContain('真实用户发声')
+  })
+
+  it('普通用户列表保留 checkbox、AI 标签、排序和详情，隐藏人工复核按钮', async () => {
+    const html = await renderToString(createSSRApp({
+      render: () => h(VoicePlazaTable, {
+        isAdministrator: false, items: [item], loading: false,
+        selectedIds: [item.id], reviewing: false,
+      }),
+    }))
+    expect(html).toContain('type="checkbox"')
+    expect(html).toContain('选择当前已加载内容')
+    expect(html).toContain('按发布时间排序')
+    expect(html).toContain('续航表现')
+    expect(html).toContain('详情')
+    expect(html).not.toContain('review-button')
+    expect(html).not.toContain('标记为不相关')
   })
 
   it('loads filter options and sends brand, vehicle, competition, and AI query filters', async () => {
@@ -1161,6 +1254,7 @@ describe('voice plaza', () => {
     const html = await renderToString(
       createSSRApp({
         render: () => h(VoicePlazaTable, {
+          isAdministrator: true,
           items: [staleManualItem],
           loading: false,
           selectedIds: [],

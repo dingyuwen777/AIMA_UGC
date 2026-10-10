@@ -9,6 +9,7 @@ from aima_ugc.modules.analysis.tables import (
 from aima_ugc.modules.reporting.tables import (
     reporting_data_export_items_table,
     reporting_data_exports_table,
+    reporting_user_export_column_defaults_table,
 )
 from sqlalchemy import CheckConstraint, UniqueConstraint
 
@@ -89,3 +90,24 @@ def test_analysis_and_export_requests_freeze_content_version_targets() -> None:
         and "error_code is null" in expression
         for expression in item_checks
     )
+
+
+def test_export_owner_index_and_personal_defaults_have_reporting_owner() -> None:
+    """未知历史归属可为空；开发身份的配置不依赖正式外部身份表。"""
+    assert reporting_data_exports_table.c.created_by.nullable is True
+    index = next(
+        item
+        for item in reporting_data_exports_table.indexes
+        if item.name == "ix_reporting_data_exports_owner_recent"
+    )
+    assert [str(expression) for expression in index.expressions] == [
+        "reporting_data_exports.created_by",
+        "reporting_data_exports.created_at DESC",
+        "reporting_data_exports.id DESC",
+    ]
+    defaults = reporting_user_export_column_defaults_table
+    assert defaults.info["owner"] == "reporting"
+    assert list(defaults.primary_key.columns.keys()) == ["principal_id"]
+    assert not defaults.foreign_keys
+    assert defaults.c.selected_columns.nullable is True
+    assert defaults.c.revision.nullable is False

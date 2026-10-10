@@ -7,6 +7,7 @@ import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
 type AnalysisScope = 'selected' | 'query' | 'all'
 
 const props = defineProps<{
+  isAdministrator?: boolean
   modelValue: boolean
   selectedCount: number
   preview: AnalysisContentRunPreviewResponse | null
@@ -24,13 +25,14 @@ const scope = ref<AnalysisScope>('all')
 
 /** 打开弹窗时优先使用有效显式选择，否则默认选择当前筛选结果并立即预检。 */
 watch(() => props.modelValue, (open) => {
-  if (!open) return
+  if (!open || !props.isAdministrator) return
   scope.value = props.selectedCount > 0 && props.selectedCount <= 1000 ? 'selected' : 'query'
   emit('preview', scope.value)
 })
 
 /** 切换目标范围后重新预检，避免沿用另一范围的数量与配置确认。 */
 function selectScope(next: AnalysisScope): void {
+  if (!props.isAdministrator) return
   if (scope.value === next) return
   scope.value = next
   emit('preview', next)
@@ -39,6 +41,7 @@ function selectScope(next: AnalysisScope): void {
 
 <template>
   <AimaDialog
+    v-if="isAdministrator"
     :model-value="modelValue"
     label="开始 AI 分析"
     width="620px"
@@ -160,7 +163,7 @@ function selectScope(next: AnalysisScope): void {
         <AimaButton
           variant="primary"
           :disabled="previewing || !preview || submitting"
-          @click="emit('submit')"
+          @click="isAdministrator && emit('submit')"
         >
           {{ submitting ? '正在提交…' : '确认开始分析' }}
         </AimaButton>

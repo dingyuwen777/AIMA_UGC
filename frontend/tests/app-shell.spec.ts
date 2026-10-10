@@ -7,7 +7,7 @@ import AppShell from '../src/app/layouts/AppShell.vue'
 import { useIdentityStore } from '../src/features/identity/store'
 
 /** 渲染带真实 Pinia 身份状态的 AppShell，验证所有业务页共享的全局壳。 */
-async function renderShell(role: 'administrator' | 'user' = 'user'): Promise<string> {
+async function renderShell(role: 'administrator' | 'user' | null = 'user'): Promise<string> {
   const routerLink = defineComponent({
     props: {
       to: { type: String, required: true },
@@ -19,7 +19,7 @@ async function renderShell(role: 'administrator' | 'user' = 'user'): Promise<str
   const app = createSSRApp({ render: () => h(AppShell) })
   const pinia = createPinia()
   app.use(pinia)
-  useIdentityStore(pinia).principal = {
+  if (role) useIdentityStore(pinia).principal = {
     principal_id: role === 'administrator' ? 'local-administrator' : 'ordinary-user',
     display_name: role === 'administrator' ? '本地管理员' : '普通用户',
     role,
@@ -31,8 +31,16 @@ async function renderShell(role: 'administrator' | 'user' = 'user'): Promise<str
 }
 
 describe('AppShell 内网 V1 导航', () => {
+  it('身份未确认时管理菜单和管理任务入口不会闪现', async () => {
+    const html = await renderShell(null)
+    expect(html).not.toContain('href="/collection-runtime"')
+    expect(html).not.toContain('href="/collection-strategy"')
+    expect(html).not.toContain('href="/admin/configuration"')
+    expect(html).not.toContain('aria-label="任务中心"')
+    expect(html).toContain('身份加载中')
+  })
   it('工作台和三个首版业务页面都是可导航入口', async () => {
-    const html = await renderShell()
+    const html = await renderShell('administrator')
 
     expect(html).toContain('href="/"')
     expect(html).toContain('工作台')
@@ -58,6 +66,8 @@ describe('AppShell 内网 V1 导航', () => {
     const administrator = await renderShell('administrator')
 
     expect(ordinary).not.toContain('href="/admin/configuration"')
+    expect(ordinary).not.toContain('href="/collection-runtime"')
+    expect(ordinary).not.toContain('href="/collection-strategy"')
     expect(administrator).toContain('href="/admin/configuration"')
     expect(administrator).toContain('管理员配置')
   })
@@ -79,7 +89,7 @@ describe('AppShell 内网 V1 导航', () => {
     const html = await renderShell()
 
     expect(html).toContain('data-aima-icon="home"')
-    expect(html).toContain('data-aima-icon="strategy"')
+    expect(html).toContain('data-aima-icon="voice"')
     expect(html).not.toMatch(/[⌂◌▣◎♧⚙]/u)
     expect(html).toContain('智能监测与洞察平台')
   })

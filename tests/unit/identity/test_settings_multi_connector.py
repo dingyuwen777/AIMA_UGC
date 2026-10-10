@@ -1,16 +1,4 @@
-"""多企业配置层的测试：三种配置形态与校验行为。
-
-════════ 三种形态（本文件的核心）════════
-
-| 形态 | 配置 | 期望行为 |
-|---|---|---|
-| **未配置** | 什么都不给 | 沿用开发身份（与接入前**逐字一致**）|
-| **单企业**（老形态）| `AIMA_FEISHU_APP_ID` 等 | 与改造前**行为相同**（**向后兼容的关键**）|
-| **多企业**（新形态）| `AIMA_FEISHU_CONNECTORS` | 解析成注册表；非法配置**启动即报错** |
-
-**⚠️ 第二个形态是"不许破坏"的红线**：线上部署用的就是它，
-改造后老 `.env` 不改也必须照常工作。
-"""
+"""飞书登录统一数组配置、单应用与多应用及独立报告配置回归。"""
 
 from __future__ import annotations
 
@@ -33,15 +21,12 @@ def _base_env() -> dict[str, str]:
 
 
 def _single_enterprise_env() -> dict[str, str]:
-    """**改造前的形态**（单企业）—— 必须继续可用。"""
-
+    """单应用就是仅含一个 Connector 的数组。"""
     return {
         **_base_env(),
-        "AIMA_FEISHU_APP_ID": "cli_aa2092574af9dbc2",
-        "AIMA_FEISHU_APP_SECRET_REF": "feishu_app_secret",
-        "AIMA_FEISHU_ADMIN_GROUP_ID": "65aad3687f68ba7b",
-        "AIMA_FEISHU_USER_GROUP_ID": "b9fc8b542d694d2e",
-        "AIMA_FEISHU_REDIRECT_URI": "http://x/api/v1/auth/feishu/callback",
+        "AIMA_FEISHU_CONNECTORS": json.dumps(
+            [_connector_dict("single", "cli_single", "secret_single")]
+        ),
     }
 
 
@@ -79,35 +64,28 @@ def test_no_feishu_config_keeps_development_identity() -> None:
     assert settings.feishu_connectors is None
 
 
-# ═══════════════════ 形态二：单企业（**向后兼容红线**）═══════════════════
 def test_single_enterprise_still_works() -> None:
-    """老 `.env` 不改也必须能加载 —— 这是本次改造的兼容性底线。"""
+    """单项数组直接启用正式 Connector 注册表。"""
+    settings = load_settings(_single_enterprise_env())
+    assert settings.has_feishu_connectors is True
+    registry = settings.feishu_connectors
+    assert registry is not None and len(registry) == 1
+    assert settings.connector_for("single").app_id == "cli_single"
 
-    settings = load_settings(_single_enterprise_env(), base_dir=None)
-    assert settings.feishu_app_id == "cli_aa2092574af9dbc2"
-    assert settings.feishu_admin_group_id == "65aad3687f68ba7b"
-    # 单企业形态下**不启用**多企业注册表
+
+def test_report_secret_file_path_unchanged() -> None:
+    """报告应用独立配置，不依赖登录数组。"""
+    settings = load_settings({**_base_env(), "AIMA_FEISHU_APP_ID": "cli_report"})
+    assert settings.feishu_app_secret_file.name == "feishu_app_secret"
     assert settings.has_feishu_connectors is False
 
 
-def test_single_enterprise_secret_file_path_unchanged() -> None:
-    """单企业的 Secret 文件路径必须与改造前一致。"""
-
-    settings = load_settings(_single_enterprise_env(), base_dir=None)
-    assert settings.feishu_app_secret_file.name == "feishu_app_secret"
-
-
 def test_single_enterprise_half_config_still_rejected() -> None:
-    """半配（有 App ID 没组 ID）仍要报错 —— 这条既有校验不能因为改造而失效。"""
-
-    env = {
-        **_base_env(),
-        "AIMA_FEISHU_APP_ID": "cli_x",
-        # 故意不配 ADMIN_GROUP_ID / USER_GROUP_ID / REDIRECT_URI
-    }
-    with pytest.raises(Exception) as exc:
-        load_settings(env, base_dir=None)
-    assert "ADMIN_GROUP_ID" in str(exc.value)
+    """单项数组与多项数组遵循相同完整性校验。"""
+    item = _connector_dict("single", "cli_single", "secret_single")
+    del item["admin_group_id"]
+    with pytest.raises(ValueError, match="admin_group_id"):
+        load_settings({**_base_env(), "AIMA_FEISHU_CONNECTORS": json.dumps([item])})
 
 
 # ═══════════════════ 形态三：多企业（新能力）═══════════════════
@@ -151,10 +129,10 @@ def test_multi_enterprise_chinese_display_name() -> None:
     assert aima.display_name == "aima 企业"  # 构造时用的就是 ASCII 模板
 
 
-def test_multi_enterprise_overrides_single_fields() -> None:
-    """同时给了单企业字段和多企业字段时，**以多企业为准**（便于渐进迁移）。"""
+def test_login_array_and_report_app_are_independent() -> None:
+    """报告应用与登录数组分别生效，不相互覆盖。"""
 
-    env = {**_single_enterprise_env(), **_multi_enterprise_env()}
+    env = {**_multi_enterprise_env(), "AIMA_FEISHU_APP_ID": "cli_report"}
     settings = load_settings(env, base_dir=None)
     assert settings.has_feishu_connectors is True
     assert settings.connector_for("nnit") is not None
@@ -164,7 +142,7 @@ def test_multi_enterprise_overrides_single_fields() -> None:
 def test_blank_connectors_treated_as_unset() -> None:
     """`AIMA_FEISHU_CONNECTORS=`（留空）等价于没配 —— 与既有空值归一口径一致。"""
 
-    env = {**_single_enterprise_env(), "AIMA_FEISHU_CONNECTORS": ""}
+    env = {**_base_env(), "AIMA_FEISHU_CONNECTORS": ""}
     settings = load_settings(env, base_dir=None)
     assert settings.has_feishu_connectors is False
 

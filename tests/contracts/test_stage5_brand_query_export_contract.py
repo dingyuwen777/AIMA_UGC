@@ -152,7 +152,7 @@ def test_export_catalog_exposes_distinct_brand_role_competition_and_vehicle_colu
         columns=("matched_keywords", "brands", "brand_roles", "competition_scope", "vehicles"),
     )
 
-    assert EXPORT_COLUMN_CATALOG_VERSION == 2
+    assert EXPORT_COLUMN_CATALOG_VERSION == 3
     assert {"brands", "brand_roles", "competition_scope", "vehicles"}.issubset(keys)
     assert request.columns == (
         "matched_keywords",

@@ -121,7 +121,7 @@ async function mockStrategyApi(page: Page): Promise<void> {
       return
     }
 
-    await route.fulfill({ status: 404, body: 'not mocked' })
+    await route.fallback()
   })
 }
 

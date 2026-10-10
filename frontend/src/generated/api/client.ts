@@ -4,6 +4,7 @@
  * AIMA_UGC API
  * OpenAPI spec version: 0.1.0
  */
+import { aimaRequest } from '../../shared/api/request';
 /**
  * 系统自动学习的只读状态；P95 为有界延迟桶上界估计。
  */
@@ -2063,6 +2064,14 @@ export interface ContentCountResponse {
   truncated?: boolean;
 }
 
+/**
+ * 共享业务数据的匿名化修订标记，不暴露管理任务或配置。
+ */
+export interface ContentDataRevisionResponse {
+  /** @minLength 1 */
+  revision: string;
+}
+
 export type ContentDetailResponseCompetitionScope = typeof ContentDetailResponseCompetitionScope[keyof typeof ContentDetailResponseCompetitionScope];
 
 
@@ -2613,6 +2622,28 @@ export interface ExportColumnCatalogResponse {
   columns: ExportColumnResponse[];
   /** @exclusiveMinimum 0 */
   version: number;
+}
+
+/**
+ * 当前账号保存的有效默认列；读取不会改写旧配置。
+ */
+export interface ExportColumnDefaultResponse {
+  columns: string[] | null;
+  /** @minimum 0 */
+  revision: number;
+  saved_catalog_version: number | null;
+  updated_at: string | null;
+}
+
+/**
+ * 以修订号比较并保存个人列；NULL 恢复系统默认。
+ */
+export interface ExportColumnDefaultUpdateRequest {
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  columns: string[] | null;
+  /** @minimum 0 */
+  revision: number;
 }
 
 export type FeishuPublicationCreatedResponseKind = typeof FeishuPublicationCreatedResponseKind[keyof typeof FeishuPublicationCreatedResponseKind];
@@ -4473,23 +4504,16 @@ export const getGetFeishuPublicationJobUrl = (jobId: string,) => {
 /**
  * @summary Get Feishu Publication Job
  */
-export const getFeishuPublicationJob = async (jobId: string, options?: RequestInit): Promise<FeishuPublicationJobResponse> => {
+export const getFeishuPublicationJob = async (jobId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<FeishuPublicationJobResponse> => {
 
-  const res = await fetch(getGetFeishuPublicationJobUrl(jobId),
+  return aimaRequest<FeishuPublicationJobResponse>(getGetFeishuPublicationJobUrl(jobId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: FeishuPublicationJobResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4505,28 +4529,21 @@ export const getCreateFeishuReportPublicationUrl = () => {
  * 上传本期/上期 Excel 和必填日期范围，异步发布报告到飞书。
  * @summary Create Feishu Report Publication
  */
-export const createFeishuReportPublication = async (bodyCreateFeishuReportPublication: BodyCreateFeishuReportPublication, options?: RequestInit): Promise<FeishuPublicationCreatedResponse> => {
+export const createFeishuReportPublication = async (bodyCreateFeishuReportPublication: BodyCreateFeishuReportPublication, options?: Parameters<typeof aimaRequest>[1]): Promise<FeishuPublicationCreatedResponse> => {
     const formData = new FormData();
 formData.append(`current_file`, bodyCreateFeishuReportPublication.current_file);
 formData.append(`end_date`, bodyCreateFeishuReportPublication.end_date);
 formData.append(`previous_file`, bodyCreateFeishuReportPublication.previous_file);
 formData.append(`start_date`, bodyCreateFeishuReportPublication.start_date);
 
-  const res = await fetch(getCreateFeishuReportPublicationUrl(),
+  return aimaRequest<FeishuPublicationCreatedResponse>(getCreateFeishuReportPublicationUrl(),
   {
     ...options,
     method: 'POST'
     ,
     body: formData
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: FeishuPublicationCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4542,25 +4559,18 @@ export const getCreateFeishuRepresentativeSelectionUrl = () => {
  * 上传已打标 Excel，异步筛选并发布到飞书多维表。
  * @summary Create Feishu Representative Selection
  */
-export const createFeishuRepresentativeSelection = async (bodyCreateFeishuRepresentativeSelection: BodyCreateFeishuRepresentativeSelection, options?: RequestInit): Promise<FeishuPublicationCreatedResponse> => {
+export const createFeishuRepresentativeSelection = async (bodyCreateFeishuRepresentativeSelection: BodyCreateFeishuRepresentativeSelection, options?: Parameters<typeof aimaRequest>[1]): Promise<FeishuPublicationCreatedResponse> => {
     const formData = new FormData();
 formData.append(`file`, bodyCreateFeishuRepresentativeSelection.file);
 
-  const res = await fetch(getCreateFeishuRepresentativeSelectionUrl(),
+  return aimaRequest<FeishuPublicationCreatedResponse>(getCreateFeishuRepresentativeSelectionUrl(),
   {
     ...options,
     method: 'POST'
     ,
     body: formData
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: FeishuPublicationCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4577,23 +4587,16 @@ export const getUpdateAnalysisSchemeDraftUrl = (versionId: string,) => {
  * @summary Update Analysis Scheme Draft
  */
 export const updateAnalysisSchemeDraft = async (versionId: string,
-    analysisSchemeUpdateDraftRequest: AnalysisSchemeUpdateDraftRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+    analysisSchemeUpdateDraftRequest: AnalysisSchemeUpdateDraftRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisSchemeResponse> => {
 
-  const res = await fetch(getUpdateAnalysisSchemeDraftUrl(versionId),
+  return aimaRequest<AnalysisSchemeResponse>(getUpdateAnalysisSchemeDraftUrl(versionId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(analysisSchemeUpdateDraftRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4610,23 +4613,16 @@ export const getPublishAnalysisSchemeUrl = (versionId: string,) => {
  * @summary Publish Analysis Scheme
  */
 export const publishAnalysisScheme = async (versionId: string,
-    analysisSchemePublishRequest: AnalysisSchemePublishRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+    analysisSchemePublishRequest: AnalysisSchemePublishRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisSchemeResponse> => {
 
-  const res = await fetch(getPublishAnalysisSchemeUrl(versionId),
+  return aimaRequest<AnalysisSchemeResponse>(getPublishAnalysisSchemeUrl(versionId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(analysisSchemePublishRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4643,23 +4639,16 @@ export const getRollbackAnalysisSchemeUrl = (versionId: string,) => {
  * @summary Rollback Analysis Scheme
  */
 export const rollbackAnalysisScheme = async (versionId: string,
-    analysisSchemePublishRequest: AnalysisSchemePublishRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+    analysisSchemePublishRequest: AnalysisSchemePublishRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisSchemeResponse> => {
 
-  const res = await fetch(getRollbackAnalysisSchemeUrl(versionId),
+  return aimaRequest<AnalysisSchemeResponse>(getRollbackAnalysisSchemeUrl(versionId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(analysisSchemePublishRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4675,23 +4664,16 @@ export const getListAnalysisSchemesUrl = () => {
  * 管理员读取 Scheme 与版本历史。
  * @summary List Analysis Schemes
  */
-export const listAnalysisSchemes = async ( options?: RequestInit): Promise<AnalysisSchemeListResponse> => {
+export const listAnalysisSchemes = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisSchemeListResponse> => {
 
-  const res = await fetch(getListAnalysisSchemesUrl(),
+  return aimaRequest<AnalysisSchemeListResponse>(getListAnalysisSchemesUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisSchemeListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4707,23 +4689,16 @@ export const getCreateAnalysisSchemeDraftUrl = () => {
  * 管理员创建结构化 Analysis Scheme 草稿。
  * @summary Create Analysis Scheme Draft
  */
-export const createAnalysisSchemeDraft = async (analysisSchemeCreateDraftRequest: AnalysisSchemeCreateDraftRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+export const createAnalysisSchemeDraft = async (analysisSchemeCreateDraftRequest: AnalysisSchemeCreateDraftRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisSchemeResponse> => {
 
-  const res = await fetch(getCreateAnalysisSchemeDraftUrl(),
+  return aimaRequest<AnalysisSchemeResponse>(getCreateAnalysisSchemeDraftUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(analysisSchemeCreateDraftRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4738,23 +4713,16 @@ export const getListArchivedAnalysisSchemesUrl = () => {
 /**
  * @summary List Archived Analysis Schemes
  */
-export const listArchivedAnalysisSchemes = async ( options?: RequestInit): Promise<ResourceLifecycleListResponse> => {
+export const listArchivedAnalysisSchemes = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceLifecycleListResponse> => {
 
-  const res = await fetch(getListArchivedAnalysisSchemesUrl(),
+  return aimaRequest<ResourceLifecycleListResponse>(getListArchivedAnalysisSchemesUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceLifecycleListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4769,23 +4737,16 @@ export const getDeleteAnalysisSchemeUrl = (schemeId: string,) => {
 /**
  * @summary Delete Analysis Scheme
  */
-export const deleteAnalysisScheme = async (schemeId: string, options?: RequestInit): Promise<void> => {
+export const deleteAnalysisScheme = async (schemeId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<void> => {
 
-  const res = await fetch(getDeleteAnalysisSchemeUrl(schemeId),
+  return aimaRequest<void>(getDeleteAnalysisSchemeUrl(schemeId),
   {
     ...options,
     method: 'DELETE'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: void = body ? JSON.parse(body) : undefined
-  return data
-}
+);}
 
 
 
@@ -4800,23 +4761,16 @@ export const getArchiveAnalysisSchemeUrl = (schemeId: string,) => {
 /**
  * @summary Archive Analysis Scheme
  */
-export const archiveAnalysisScheme = async (schemeId: string, options?: RequestInit): Promise<ResourceLifecycleResponse> => {
+export const archiveAnalysisScheme = async (schemeId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceLifecycleResponse> => {
 
-  const res = await fetch(getArchiveAnalysisSchemeUrl(schemeId),
+  return aimaRequest<ResourceLifecycleResponse>(getArchiveAnalysisSchemeUrl(schemeId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceLifecycleResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4832,23 +4786,16 @@ export const getCopyAnalysisSchemeUrl = (schemeId: string,) => {
  * @summary Copy Analysis Scheme
  */
 export const copyAnalysisScheme = async (schemeId: string,
-    analysisSchemeCopyRequest: AnalysisSchemeCopyRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+    analysisSchemeCopyRequest: AnalysisSchemeCopyRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisSchemeResponse> => {
 
-  const res = await fetch(getCopyAnalysisSchemeUrl(schemeId),
+  return aimaRequest<AnalysisSchemeResponse>(getCopyAnalysisSchemeUrl(schemeId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(analysisSchemeCopyRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4863,23 +4810,16 @@ export const getGetAnalysisSchemeDeleteEligibilityUrl = (schemeId: string,) => {
 /**
  * @summary Get Analysis Scheme Delete Eligibility
  */
-export const getAnalysisSchemeDeleteEligibility = async (schemeId: string, options?: RequestInit): Promise<ResourceDeleteEligibilityResponse> => {
+export const getAnalysisSchemeDeleteEligibility = async (schemeId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceDeleteEligibilityResponse> => {
 
-  const res = await fetch(getGetAnalysisSchemeDeleteEligibilityUrl(schemeId),
+  return aimaRequest<ResourceDeleteEligibilityResponse>(getGetAnalysisSchemeDeleteEligibilityUrl(schemeId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceDeleteEligibilityResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4894,23 +4834,16 @@ export const getRestoreAnalysisSchemeUrl = (schemeId: string,) => {
 /**
  * @summary Restore Analysis Scheme
  */
-export const restoreAnalysisScheme = async (schemeId: string, options?: RequestInit): Promise<void> => {
+export const restoreAnalysisScheme = async (schemeId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<void> => {
 
-  const res = await fetch(getRestoreAnalysisSchemeUrl(schemeId),
+  return aimaRequest<void>(getRestoreAnalysisSchemeUrl(schemeId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: void = body ? JSON.parse(body) : undefined
-  return data
-}
+);}
 
 
 
@@ -4925,23 +4858,16 @@ export const getListContentAnalysisRunsUrl = () => {
 /**
  * @summary List Content Analysis Runs
  */
-export const listContentAnalysisRuns = async ( options?: RequestInit): Promise<AnalysisContentRunListResponse> => {
+export const listContentAnalysisRuns = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisContentRunListResponse> => {
 
-  const res = await fetch(getListContentAnalysisRunsUrl(),
+  return aimaRequest<AnalysisContentRunListResponse>(getListContentAnalysisRunsUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisContentRunListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4956,23 +4882,16 @@ export const getCreateContentAnalysisRunUrl = () => {
 /**
  * @summary Create Content Analysis Run
  */
-export const createContentAnalysisRun = async (analysisContentRunCreateRequest: AnalysisContentRunCreateRequest, options?: RequestInit): Promise<AnalysisContentRunCreatedResponse> => {
+export const createContentAnalysisRun = async (analysisContentRunCreateRequest: AnalysisContentRunCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisContentRunCreatedResponse> => {
 
-  const res = await fetch(getCreateContentAnalysisRunUrl(),
+  return aimaRequest<AnalysisContentRunCreatedResponse>(getCreateContentAnalysisRunUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(analysisContentRunCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisContentRunCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -4987,23 +4906,16 @@ export const getPreviewContentAnalysisRunUrl = () => {
 /**
  * @summary Preview Content Analysis Run
  */
-export const previewContentAnalysisRun = async (analysisContentRunPreviewRequest: AnalysisContentRunPreviewRequest, options?: RequestInit): Promise<AnalysisContentRunPreviewResponse> => {
+export const previewContentAnalysisRun = async (analysisContentRunPreviewRequest: AnalysisContentRunPreviewRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisContentRunPreviewResponse> => {
 
-  const res = await fetch(getPreviewContentAnalysisRunUrl(),
+  return aimaRequest<AnalysisContentRunPreviewResponse>(getPreviewContentAnalysisRunUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(analysisContentRunPreviewRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisContentRunPreviewResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5018,23 +4930,16 @@ export const getGetContentAnalysisRunUrl = (runId: string,) => {
 /**
  * @summary Get Content Analysis Run
  */
-export const getContentAnalysisRun = async (runId: string, options?: RequestInit): Promise<AnalysisContentRunResponse> => {
+export const getContentAnalysisRun = async (runId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisContentRunResponse> => {
 
-  const res = await fetch(getGetContentAnalysisRunUrl(runId),
+  return aimaRequest<AnalysisContentRunResponse>(getGetContentAnalysisRunUrl(runId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisContentRunResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5049,23 +4954,16 @@ export const getCancelContentAnalysisRunUrl = (runId: string,) => {
 /**
  * @summary Cancel Content Analysis Run
  */
-export const cancelContentAnalysisRun = async (runId: string, options?: RequestInit): Promise<AnalysisContentRunResponse> => {
+export const cancelContentAnalysisRun = async (runId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<AnalysisContentRunResponse> => {
 
-  const res = await fetch(getCancelContentAnalysisRunUrl(runId),
+  return aimaRequest<AnalysisContentRunResponse>(getCancelContentAnalysisRunUrl(runId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AnalysisContentRunResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5088,23 +4986,16 @@ export const getListAuditEventsUrl = (params?: ListAuditEventsParams,) => {
  * 管理员分页读取完整审计历史。
  * @summary List Audit Events
  */
-export const listAuditEvents = async (params?: ListAuditEventsParams, options?: RequestInit): Promise<AuditEventListResponse> => {
+export const listAuditEvents = async (params?: ListAuditEventsParams, options?: Parameters<typeof aimaRequest>[1]): Promise<AuditEventListResponse> => {
 
-  const res = await fetch(getListAuditEventsUrl(params),
+  return aimaRequest<AuditEventListResponse>(getListAuditEventsUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AuditEventListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5127,23 +5018,16 @@ export const getListAuthConnectorsUrl = () => {
  * **顺序 = 配置顺序**（前端按钮顺序依赖它，见 `ConnectorRegistry` 的说明）。
  * @summary Listauthconnectors
  */
-export const listAuthConnectors = async ( options?: RequestInit): Promise<AuthConnectorListResponse> => {
+export const listAuthConnectors = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<AuthConnectorListResponse> => {
 
-  const res = await fetch(getListAuthConnectorsUrl(),
+  return aimaRequest<AuthConnectorListResponse>(getListAuthConnectorsUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: AuthConnectorListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5166,23 +5050,16 @@ export const getCompleteFeishuLoginUrl = (params?: CompleteFeishuLoginParams,) =
  * 旧回调入口；使用默认企业并完成飞书登录。
  * @summary Completefeishulogin
  */
-export const completeFeishuLogin = async (params?: CompleteFeishuLoginParams, options?: RequestInit): Promise<unknown> => {
+export const completeFeishuLogin = async (params?: CompleteFeishuLoginParams, options?: Parameters<typeof aimaRequest>[1]): Promise<unknown> => {
 
-  const res = await fetch(getCompleteFeishuLoginUrl(params),
+  return aimaRequest<unknown>(getCompleteFeishuLoginUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: unknown = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5205,23 +5082,16 @@ export const getStartFeishuLoginUrl = (params?: StartFeishuLoginParams,) => {
  * 旧登录入口；`connector` 可显式选择企业，不传时使用默认企业。
  * @summary Startfeishulogin
  */
-export const startFeishuLogin = async (params?: StartFeishuLoginParams, options?: RequestInit): Promise<unknown> => {
+export const startFeishuLogin = async (params?: StartFeishuLoginParams, options?: Parameters<typeof aimaRequest>[1]): Promise<unknown> => {
 
-  const res = await fetch(getStartFeishuLoginUrl(params),
+  return aimaRequest<unknown>(getStartFeishuLoginUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: unknown = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5246,23 +5116,16 @@ export const getCompleteFeishuLoginForConnectorUrl = (connectorCode: string,
  * @summary Completefeishuloginforconnector
  */
 export const completeFeishuLoginForConnector = async (connectorCode: string,
-    params?: CompleteFeishuLoginForConnectorParams, options?: RequestInit): Promise<unknown> => {
+    params?: CompleteFeishuLoginForConnectorParams, options?: Parameters<typeof aimaRequest>[1]): Promise<unknown> => {
 
-  const res = await fetch(getCompleteFeishuLoginForConnectorUrl(connectorCode,params),
+  return aimaRequest<unknown>(getCompleteFeishuLoginForConnectorUrl(connectorCode,params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: unknown = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5287,23 +5150,16 @@ export const getStartFeishuLoginForConnectorUrl = (connectorCode: string,
  * @summary Startfeishuloginforconnector
  */
 export const startFeishuLoginForConnector = async (connectorCode: string,
-    params?: StartFeishuLoginForConnectorParams, options?: RequestInit): Promise<unknown> => {
+    params?: StartFeishuLoginForConnectorParams, options?: Parameters<typeof aimaRequest>[1]): Promise<unknown> => {
 
-  const res = await fetch(getStartFeishuLoginForConnectorUrl(connectorCode,params),
+  return aimaRequest<unknown>(getStartFeishuLoginForConnectorUrl(connectorCode,params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: unknown = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5319,23 +5175,16 @@ export const getLogoutCurrentSessionUrl = () => {
  * 登出：**服务端撤销会话** + 清 Cookie（幂等，重复登出不报错）。
  * @summary Logoutcurrentsession
  */
-export const logoutCurrentSession = async ( options?: RequestInit): Promise<unknown> => {
+export const logoutCurrentSession = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<unknown> => {
 
-  const res = await fetch(getLogoutCurrentSessionUrl(),
+  return aimaRequest<unknown>(getLogoutCurrentSessionUrl(),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: unknown = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5350,23 +5199,16 @@ export const getCreateCanonicalReplayUrl = () => {
 /**
  * @summary Create Canonical Replay
  */
-export const createCanonicalReplay = async (canonicalReplayCreateRequest: CanonicalReplayCreateRequest, options?: RequestInit): Promise<CanonicalReplayCreatedResponse> => {
+export const createCanonicalReplay = async (canonicalReplayCreateRequest: CanonicalReplayCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<CanonicalReplayCreatedResponse> => {
 
-  const res = await fetch(getCreateCanonicalReplayUrl(),
+  return aimaRequest<CanonicalReplayCreatedResponse>(getCreateCanonicalReplayUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(canonicalReplayCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CanonicalReplayCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5381,23 +5223,16 @@ export const getCreateAllCanonicalReplaysUrl = () => {
 /**
  * @summary Create All Canonical Replays
  */
-export const createAllCanonicalReplays = async (canonicalReplayAllCreateRequest: CanonicalReplayAllCreateRequest, options?: RequestInit): Promise<CanonicalReplayAllCreatedResponse> => {
+export const createAllCanonicalReplays = async (canonicalReplayAllCreateRequest: CanonicalReplayAllCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<CanonicalReplayAllCreatedResponse> => {
 
-  const res = await fetch(getCreateAllCanonicalReplaysUrl(),
+  return aimaRequest<CanonicalReplayAllCreatedResponse>(getCreateAllCanonicalReplaysUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(canonicalReplayAllCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CanonicalReplayAllCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5413,23 +5248,16 @@ export const getCancelAndRevokeAllCanonicalReplaysUrl = (replayRequestId: string
  * 取消父请求的全部活跃子任务，并排队撤回已提交贡献。
  * @summary Cancel And Revoke All Canonical Replays
  */
-export const cancelAndRevokeAllCanonicalReplays = async (replayRequestId: string, options?: RequestInit): Promise<CanonicalReplayAllOperationResponse> => {
+export const cancelAndRevokeAllCanonicalReplays = async (replayRequestId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CanonicalReplayAllOperationResponse> => {
 
-  const res = await fetch(getCancelAndRevokeAllCanonicalReplaysUrl(replayRequestId),
+  return aimaRequest<CanonicalReplayAllOperationResponse>(getCancelAndRevokeAllCanonicalReplaysUrl(replayRequestId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CanonicalReplayAllOperationResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5445,23 +5273,16 @@ export const getRevokeAllCanonicalReplaysUrl = (replayRequestId: string,) => {
  * 只对已经终止子任务的父请求排队撤回。
  * @summary Revoke All Canonical Replays
  */
-export const revokeAllCanonicalReplays = async (replayRequestId: string, options?: RequestInit): Promise<CanonicalReplayAllOperationResponse> => {
+export const revokeAllCanonicalReplays = async (replayRequestId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CanonicalReplayAllOperationResponse> => {
 
-  const res = await fetch(getRevokeAllCanonicalReplaysUrl(replayRequestId),
+  return aimaRequest<CanonicalReplayAllOperationResponse>(getRevokeAllCanonicalReplaysUrl(replayRequestId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CanonicalReplayAllOperationResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5476,23 +5297,16 @@ export const getGetCanonicalReplayUrl = (runId: string,) => {
 /**
  * @summary Get Canonical Replay
  */
-export const getCanonicalReplay = async (runId: string, options?: RequestInit): Promise<CanonicalReplayRunResponse> => {
+export const getCanonicalReplay = async (runId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CanonicalReplayRunResponse> => {
 
-  const res = await fetch(getGetCanonicalReplayUrl(runId),
+  return aimaRequest<CanonicalReplayRunResponse>(getGetCanonicalReplayUrl(runId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CanonicalReplayRunResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5507,23 +5321,16 @@ export const getCancelCanonicalReplayUrl = (runId: string,) => {
 /**
  * @summary Cancel Canonical Replay
  */
-export const cancelCanonicalReplay = async (runId: string, options?: RequestInit): Promise<CanonicalReplayRunResponse> => {
+export const cancelCanonicalReplay = async (runId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CanonicalReplayRunResponse> => {
 
-  const res = await fetch(getCancelCanonicalReplayUrl(runId),
+  return aimaRequest<CanonicalReplayRunResponse>(getCancelCanonicalReplayUrl(runId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CanonicalReplayRunResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5538,23 +5345,16 @@ export const getGetCollectionCapabilitiesUrl = () => {
 /**
  * @summary Get Collection Capabilities
  */
-export const getCollectionCapabilities = async ( options?: RequestInit): Promise<CollectionCapabilitiesResponse> => {
+export const getCollectionCapabilities = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionCapabilitiesResponse> => {
 
-  const res = await fetch(getGetCollectionCapabilitiesUrl(),
+  return aimaRequest<CollectionCapabilitiesResponse>(getGetCollectionCapabilitiesUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionCapabilitiesResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5576,23 +5376,16 @@ export const getListCollectionPlansUrl = (params?: ListCollectionPlansParams,) =
 /**
  * @summary List Collection Plans
  */
-export const listCollectionPlans = async (params?: ListCollectionPlansParams, options?: RequestInit): Promise<CollectionPlanListResponse> => {
+export const listCollectionPlans = async (params?: ListCollectionPlansParams, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionPlanListResponse> => {
 
-  const res = await fetch(getListCollectionPlansUrl(params),
+  return aimaRequest<CollectionPlanListResponse>(getListCollectionPlansUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionPlanListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5607,23 +5400,16 @@ export const getCreateCollectionPlanUrl = () => {
 /**
  * @summary Create Collection Plan
  */
-export const createCollectionPlan = async (collectionPlanCreateRequest: CollectionPlanCreateRequest, options?: RequestInit): Promise<CollectionPlanResponse> => {
+export const createCollectionPlan = async (collectionPlanCreateRequest: CollectionPlanCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionPlanResponse> => {
 
-  const res = await fetch(getCreateCollectionPlanUrl(),
+  return aimaRequest<CollectionPlanResponse>(getCreateCollectionPlanUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(collectionPlanCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5638,23 +5424,16 @@ export const getDeleteCollectionPlanUrl = (planId: string,) => {
 /**
  * @summary Delete Collection Plan
  */
-export const deleteCollectionPlan = async (planId: string, options?: RequestInit): Promise<void> => {
+export const deleteCollectionPlan = async (planId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<void> => {
 
-  const res = await fetch(getDeleteCollectionPlanUrl(planId),
+  return aimaRequest<void>(getDeleteCollectionPlanUrl(planId),
   {
     ...options,
     method: 'DELETE'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: void = body ? JSON.parse(body) : undefined
-  return data
-}
+);}
 
 
 
@@ -5669,23 +5448,16 @@ export const getGetCollectionPlanUrl = (planId: string,) => {
 /**
  * @summary Get Collection Plan
  */
-export const getCollectionPlan = async (planId: string, options?: RequestInit): Promise<CollectionPlanResponse> => {
+export const getCollectionPlan = async (planId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionPlanResponse> => {
 
-  const res = await fetch(getGetCollectionPlanUrl(planId),
+  return aimaRequest<CollectionPlanResponse>(getGetCollectionPlanUrl(planId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5701,23 +5473,16 @@ export const getUpdateCollectionPlanUrl = (planId: string,) => {
  * @summary Update Collection Plan
  */
 export const updateCollectionPlan = async (planId: string,
-    collectionPlanUpdateRequest: CollectionPlanUpdateRequest, options?: RequestInit): Promise<CollectionPlanResponse> => {
+    collectionPlanUpdateRequest: CollectionPlanUpdateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionPlanResponse> => {
 
-  const res = await fetch(getUpdateCollectionPlanUrl(planId),
+  return aimaRequest<CollectionPlanResponse>(getUpdateCollectionPlanUrl(planId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(collectionPlanUpdateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5732,23 +5497,16 @@ export const getArchiveCollectionPlanUrl = (planId: string,) => {
 /**
  * @summary Archive Collection Plan
  */
-export const archiveCollectionPlan = async (planId: string, options?: RequestInit): Promise<ResourceLifecycleResponse> => {
+export const archiveCollectionPlan = async (planId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceLifecycleResponse> => {
 
-  const res = await fetch(getArchiveCollectionPlanUrl(planId),
+  return aimaRequest<ResourceLifecycleResponse>(getArchiveCollectionPlanUrl(planId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceLifecycleResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5764,23 +5522,16 @@ export const getCopyCollectionPlanUrl = (planId: string,) => {
  * @summary Copy Collection Plan
  */
 export const copyCollectionPlan = async (planId: string,
-    collectionPlanCopyRequest: CollectionPlanCopyRequest, options?: RequestInit): Promise<CollectionPlanResponse> => {
+    collectionPlanCopyRequest: CollectionPlanCopyRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionPlanResponse> => {
 
-  const res = await fetch(getCopyCollectionPlanUrl(planId),
+  return aimaRequest<CollectionPlanResponse>(getCopyCollectionPlanUrl(planId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(collectionPlanCopyRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5795,23 +5546,16 @@ export const getGetCollectionPlanDeleteEligibilityUrl = (planId: string,) => {
 /**
  * @summary Get Collection Plan Delete Eligibility
  */
-export const getCollectionPlanDeleteEligibility = async (planId: string, options?: RequestInit): Promise<ResourceDeleteEligibilityResponse> => {
+export const getCollectionPlanDeleteEligibility = async (planId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceDeleteEligibilityResponse> => {
 
-  const res = await fetch(getGetCollectionPlanDeleteEligibilityUrl(planId),
+  return aimaRequest<ResourceDeleteEligibilityResponse>(getGetCollectionPlanDeleteEligibilityUrl(planId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceDeleteEligibilityResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5827,23 +5571,16 @@ export const getUpdateCollectionPlanEnabledUrl = (planId: string,) => {
  * @summary Update Collection Plan Enabled
  */
 export const updateCollectionPlanEnabled = async (planId: string,
-    resourceEnabledRequest: ResourceEnabledRequest, options?: RequestInit): Promise<CollectionPlanResponse> => {
+    resourceEnabledRequest: ResourceEnabledRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionPlanResponse> => {
 
-  const res = await fetch(getUpdateCollectionPlanEnabledUrl(planId),
+  return aimaRequest<CollectionPlanResponse>(getUpdateCollectionPlanEnabledUrl(planId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(resourceEnabledRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5858,23 +5595,16 @@ export const getRestoreCollectionPlanUrl = (planId: string,) => {
 /**
  * @summary Restore Collection Plan
  */
-export const restoreCollectionPlan = async (planId: string, options?: RequestInit): Promise<CollectionPlanResponse> => {
+export const restoreCollectionPlan = async (planId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionPlanResponse> => {
 
-  const res = await fetch(getRestoreCollectionPlanUrl(planId),
+  return aimaRequest<CollectionPlanResponse>(getRestoreCollectionPlanUrl(planId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5889,23 +5619,16 @@ export const getCreateCollectionRunUrl = () => {
 /**
  * @summary Create Collection Run
  */
-export const createCollectionRun = async (collectionRunCreateRequest: CollectionRunCreateRequest, options?: RequestInit): Promise<CollectionRunCreatedResponse> => {
+export const createCollectionRun = async (collectionRunCreateRequest: CollectionRunCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionRunCreatedResponse> => {
 
-  const res = await fetch(getCreateCollectionRunUrl(),
+  return aimaRequest<CollectionRunCreatedResponse>(getCreateCollectionRunUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(collectionRunCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionRunCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5920,23 +5643,16 @@ export const getGetCollectionRunUrl = (runId: string,) => {
 /**
  * @summary Get Collection Run
  */
-export const getCollectionRun = async (runId: string, options?: RequestInit): Promise<CollectionRunResponse> => {
+export const getCollectionRun = async (runId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionRunResponse> => {
 
-  const res = await fetch(getGetCollectionRunUrl(runId),
+  return aimaRequest<CollectionRunResponse>(getGetCollectionRunUrl(runId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionRunResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5951,23 +5667,16 @@ export const getCancelCollectionRunUrl = (runId: string,) => {
 /**
  * @summary Cancel Collection Run
  */
-export const cancelCollectionRun = async (runId: string, options?: RequestInit): Promise<CollectionRunResponse> => {
+export const cancelCollectionRun = async (runId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionRunResponse> => {
 
-  const res = await fetch(getCancelCollectionRunUrl(runId),
+  return aimaRequest<CollectionRunResponse>(getCancelCollectionRunUrl(runId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionRunResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -5982,23 +5691,16 @@ export const getRetryCollectionRunFailedAccountsUrl = (runId: string,) => {
 /**
  * @summary Retry Collection Run Failed Accounts
  */
-export const retryCollectionRunFailedAccounts = async (runId: string, options?: RequestInit): Promise<CollectionRunResponse> => {
+export const retryCollectionRunFailedAccounts = async (runId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionRunResponse> => {
 
-  const res = await fetch(getRetryCollectionRunFailedAccountsUrl(runId),
+  return aimaRequest<CollectionRunResponse>(getRetryCollectionRunFailedAccountsUrl(runId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionRunResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6028,23 +5730,16 @@ export const getListCollectionRuntimeRunsUrl = (params?: ListCollectionRuntimeRu
 /**
  * @summary List Collection Runtime Runs
  */
-export const listCollectionRuntimeRuns = async (params?: ListCollectionRuntimeRunsParams, options?: RequestInit): Promise<CollectionRuntimeListResponse> => {
+export const listCollectionRuntimeRuns = async (params?: ListCollectionRuntimeRunsParams, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionRuntimeListResponse> => {
 
-  const res = await fetch(getListCollectionRuntimeRunsUrl(params),
+  return aimaRequest<CollectionRuntimeListResponse>(getListCollectionRuntimeRunsUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionRuntimeListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6059,23 +5754,16 @@ export const getGetCollectionRuntimeSummaryUrl = () => {
 /**
  * @summary Get Collection Runtime Summary
  */
-export const getCollectionRuntimeSummary = async ( options?: RequestInit): Promise<CollectionRuntimeSummaryResponse> => {
+export const getCollectionRuntimeSummary = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionRuntimeSummaryResponse> => {
 
-  const res = await fetch(getGetCollectionRuntimeSummaryUrl(),
+  return aimaRequest<CollectionRuntimeSummaryResponse>(getGetCollectionRuntimeSummaryUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionRuntimeSummaryResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6091,23 +5779,16 @@ export const getPreviewCollectionSupplementUrl = () => {
  * 统一预览不访问 TikHub，也不创建任务。
  * @summary Preview Collection Supplement
  */
-export const previewCollectionSupplement = async (collectionSupplementPreviewRequest: CollectionSupplementPreviewRequest, options?: RequestInit): Promise<CollectionSupplementPreviewResponse> => {
+export const previewCollectionSupplement = async (collectionSupplementPreviewRequest: CollectionSupplementPreviewRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionSupplementPreviewResponse> => {
 
-  const res = await fetch(getPreviewCollectionSupplementUrl(),
+  return aimaRequest<CollectionSupplementPreviewResponse>(getPreviewCollectionSupplementUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(collectionSupplementPreviewRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionSupplementPreviewResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6122,23 +5803,16 @@ export const getGetContentAnalysisCapabilitiesUrl = () => {
 /**
  * @summary Get Content Analysis Capabilities
  */
-export const getContentAnalysisCapabilities = async ( options?: RequestInit): Promise<ContentAnalysisCapabilitiesResponse> => {
+export const getContentAnalysisCapabilities = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ContentAnalysisCapabilitiesResponse> => {
 
-  const res = await fetch(getGetContentAnalysisCapabilitiesUrl(),
+  return aimaRequest<ContentAnalysisCapabilitiesResponse>(getGetContentAnalysisCapabilitiesUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentAnalysisCapabilitiesResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6153,23 +5827,16 @@ export const getGetContentAnalysisJobUrl = (jobId: string,) => {
 /**
  * @summary Get Content Analysis Job
  */
-export const getContentAnalysisJob = async (jobId: string, options?: RequestInit): Promise<JobStatusResponse> => {
+export const getContentAnalysisJob = async (jobId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<JobStatusResponse> => {
 
-  const res = await fetch(getGetContentAnalysisJobUrl(jobId),
+  return aimaRequest<JobStatusResponse>(getGetContentAnalysisJobUrl(jobId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: JobStatusResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6184,23 +5851,16 @@ export const getCreateContentAnalysisUrl = () => {
 /**
  * @summary Create Content Analysis
  */
-export const createContentAnalysis = async (contentAnalysisSubmitRequest: ContentAnalysisSubmitRequest, options?: RequestInit): Promise<ContentAnalysisCreatedResponse> => {
+export const createContentAnalysis = async (contentAnalysisSubmitRequest: ContentAnalysisSubmitRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentAnalysisCreatedResponse> => {
 
-  const res = await fetch(getCreateContentAnalysisUrl(),
+  return aimaRequest<ContentAnalysisCreatedResponse>(getCreateContentAnalysisUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(contentAnalysisSubmitRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentAnalysisCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6216,23 +5876,16 @@ export const getGetContentAnalysisTaxonomyUrl = () => {
  * 读取数据库 active Analysis Scheme 的分类安全投影。
  * @summary Get Content Analysis Taxonomy
  */
-export const getContentAnalysisTaxonomy = async ( options?: RequestInit): Promise<ContentAnalysisTaxonomyResponse> => {
+export const getContentAnalysisTaxonomy = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ContentAnalysisTaxonomyResponse> => {
 
-  const res = await fetch(getGetContentAnalysisTaxonomyUrl(),
+  return aimaRequest<ContentAnalysisTaxonomyResponse>(getGetContentAnalysisTaxonomyUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentAnalysisTaxonomyResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6247,23 +5900,41 @@ export const getCreateContentAvailabilityObservationUrl = () => {
 /**
  * @summary Create Content Availability Observation
  */
-export const createContentAvailabilityObservation = async (contentAvailabilityObservationRequest: ContentAvailabilityObservationRequest, options?: RequestInit): Promise<ContentAvailabilityResponse> => {
+export const createContentAvailabilityObservation = async (contentAvailabilityObservationRequest: ContentAvailabilityObservationRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentAvailabilityResponse> => {
 
-  const res = await fetch(getCreateContentAvailabilityObservationUrl(),
+  return aimaRequest<ContentAvailabilityResponse>(getCreateContentAvailabilityObservationUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(contentAvailabilityObservationRequest)
   }
-)
+);}
 
 
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const data: ContentAvailabilityResponse = body ? JSON.parse(body) : {}
-  return data
+export const getGetContentDataRevisionUrl = () => {
+
+
+
+
+  return `/api/v1/content-data-revision`
 }
+
+/**
+ * 普通用户刷新只观察共享业务修订，不读取管理员任务列表。
+ * @summary Get Content Data Revision
+ */
+export const getContentDataRevision = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ContentDataRevisionResponse> => {
+
+  return aimaRequest<ContentDataRevisionResponse>(getGetContentDataRevisionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
 
 
 
@@ -6279,23 +5950,16 @@ export const getGetContentFilterOptionsUrl = () => {
  * 读取 active Taxonomy 与当前可见历史值合并后的筛选目录。
  * @summary Get Content Filter Options
  */
-export const getContentFilterOptions = async ( options?: RequestInit): Promise<ContentFilterOptionsResponse> => {
+export const getContentFilterOptions = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ContentFilterOptionsResponse> => {
 
-  const res = await fetch(getGetContentFilterOptionsUrl(),
+  return aimaRequest<ContentFilterOptionsResponse>(getGetContentFilterOptionsUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentFilterOptionsResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6310,23 +5974,16 @@ export const getCreateContentRelevanceReviewUrl = () => {
 /**
  * @summary Create Content Relevance Review
  */
-export const createContentRelevanceReview = async (contentRelevanceReviewRequest: ContentRelevanceReviewRequest, options?: RequestInit): Promise<ContentRelevanceReviewResponse> => {
+export const createContentRelevanceReview = async (contentRelevanceReviewRequest: ContentRelevanceReviewRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentRelevanceReviewResponse> => {
 
-  const res = await fetch(getCreateContentRelevanceReviewUrl(),
+  return aimaRequest<ContentRelevanceReviewResponse>(getCreateContentRelevanceReviewUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(contentRelevanceReviewRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentRelevanceReviewResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6356,23 +6013,16 @@ export const getListContentsUrl = (params?: ListContentsParams,) => {
 /**
  * @summary List Contents
  */
-export const listContents = async (params?: ListContentsParams, options?: RequestInit): Promise<ContentListResponse> => {
+export const listContents = async (params?: ListContentsParams, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentListResponse> => {
 
-  const res = await fetch(getListContentsUrl(params),
+  return aimaRequest<ContentListResponse>(getListContentsUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6387,23 +6037,16 @@ export const getCountContentsUrl = () => {
 /**
  * @summary Count Contents
  */
-export const countContents = async (contentCountRequest: ContentCountRequest, options?: RequestInit): Promise<ContentCountResponse> => {
+export const countContents = async (contentCountRequest: ContentCountRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentCountResponse> => {
 
-  const res = await fetch(getCountContentsUrl(),
+  return aimaRequest<ContentCountResponse>(getCountContentsUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(contentCountRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentCountResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6427,23 +6070,16 @@ export const getGetContentUrl = (contentId: string,
  * @summary Get Content
  */
 export const getContent = async (contentId: string,
-    params?: GetContentParams, options?: RequestInit): Promise<ContentDetailResponse> => {
+    params?: GetContentParams, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentDetailResponse> => {
 
-  const res = await fetch(getGetContentUrl(contentId,params),
+  return aimaRequest<ContentDetailResponse>(getGetContentUrl(contentId,params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentDetailResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6460,23 +6096,16 @@ export const getReviewContentAnalysisUrl = (contentId: string,) => {
  * @summary Review Content Analysis
  */
 export const reviewContentAnalysis = async (contentId: string,
-    contentAnalysisManualReviewRequest: ContentAnalysisManualReviewRequest, options?: RequestInit): Promise<ContentAnalysisManualReviewResponse> => {
+    contentAnalysisManualReviewRequest: ContentAnalysisManualReviewRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentAnalysisManualReviewResponse> => {
 
-  const res = await fetch(getReviewContentAnalysisUrl(contentId),
+  return aimaRequest<ContentAnalysisManualReviewResponse>(getReviewContentAnalysisUrl(contentId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(contentAnalysisManualReviewRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentAnalysisManualReviewResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6500,23 +6129,16 @@ export const getListContentCommentsUrl = (contentId: string,
  * @summary List Content Comments
  */
 export const listContentComments = async (contentId: string,
-    params?: ListContentCommentsParams, options?: RequestInit): Promise<ContentCommentListResponse> => {
+    params?: ListContentCommentsParams, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentCommentListResponse> => {
 
-  const res = await fetch(getListContentCommentsUrl(contentId,params),
+  return aimaRequest<ContentCommentListResponse>(getListContentCommentsUrl(contentId,params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentCommentListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6534,23 +6156,16 @@ export const getPrepareContentMediaPlaybackUrl = (contentId: string,
  */
 export const prepareContentMediaPlayback = async (contentId: string,
     position: number,
-    contentMediaPlaybackPrepareRequest: ContentMediaPlaybackPrepareRequest, options?: RequestInit): Promise<ContentMediaPlaybackResponse> => {
+    contentMediaPlaybackPrepareRequest: ContentMediaPlaybackPrepareRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentMediaPlaybackResponse> => {
 
-  const res = await fetch(getPrepareContentMediaPlaybackUrl(contentId,position),
+  return aimaRequest<ContentMediaPlaybackResponse>(getPrepareContentMediaPlaybackUrl(contentId,position),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(contentMediaPlaybackPrepareRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentMediaPlaybackResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6576,22 +6191,16 @@ export const getStreamContentMediaPlaybackUrl = (contentId: string,
  */
 export const streamContentMediaPlayback = async (contentId: string,
     position: number,
-    params: StreamContentMediaPlaybackParams, options?: RequestInit): Promise<Blob> => {
+    params: StreamContentMediaPlaybackParams, options?: Parameters<typeof aimaRequest>[1]): Promise<Blob> => {
 
-  const res = await fetch(getStreamContentMediaPlaybackUrl(contentId,position,params),
+  return aimaRequest<Blob>(getStreamContentMediaPlaybackUrl(contentId,position,params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.blob();
-  const data: Blob = body as Blob
-  return data
-}
+);}
 
 
 
@@ -6607,23 +6216,16 @@ export const getReviewContentVehiclesUrl = (contentId: string,) => {
  * @summary Review Content Vehicles
  */
 export const reviewContentVehicles = async (contentId: string,
-    contentVehicleReviewRequest: ContentVehicleReviewRequest, options?: RequestInit): Promise<ContentVehicleReviewResponse> => {
+    contentVehicleReviewRequest: ContentVehicleReviewRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ContentVehicleReviewResponse> => {
 
-  const res = await fetch(getReviewContentVehiclesUrl(contentId),
+  return aimaRequest<ContentVehicleReviewResponse>(getReviewContentVehiclesUrl(contentId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(contentVehicleReviewRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ContentVehicleReviewResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6638,23 +6240,16 @@ export const getListDataExportsUrl = () => {
 /**
  * @summary List Data Exports
  */
-export const listDataExports = async ( options?: RequestInit): Promise<DataExportListResponse> => {
+export const listDataExports = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<DataExportListResponse> => {
 
-  const res = await fetch(getListDataExportsUrl(),
+  return aimaRequest<DataExportListResponse>(getListDataExportsUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: DataExportListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6669,23 +6264,16 @@ export const getCreateDataExportUrl = () => {
 /**
  * @summary Create Data Export
  */
-export const createDataExport = async (dataExportSubmitRequest: DataExportSubmitRequest, options?: RequestInit): Promise<DataExportCreatedResponse> => {
+export const createDataExport = async (dataExportSubmitRequest: DataExportSubmitRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<DataExportCreatedResponse> => {
 
-  const res = await fetch(getCreateDataExportUrl(),
+  return aimaRequest<DataExportCreatedResponse>(getCreateDataExportUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(dataExportSubmitRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: DataExportCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6700,23 +6288,16 @@ export const getGetDataExportUrl = (exportId: string,) => {
 /**
  * @summary Get Data Export
  */
-export const getDataExport = async (exportId: string, options?: RequestInit): Promise<DataExportResponse> => {
+export const getDataExport = async (exportId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<DataExportResponse> => {
 
-  const res = await fetch(getGetDataExportUrl(exportId),
+  return aimaRequest<DataExportResponse>(getGetDataExportUrl(exportId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: DataExportResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6731,22 +6312,16 @@ export const getDownloadDataExportUrl = (exportId: string,) => {
 /**
  * @summary Download Data Export
  */
-export const downloadDataExport = async (exportId: string, options?: RequestInit): Promise<Blob> => {
+export const downloadDataExport = async (exportId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<Blob> => {
 
-  const res = await fetch(getDownloadDataExportUrl(exportId),
+  return aimaRequest<Blob>(getDownloadDataExportUrl(exportId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.blob();
-  const data: Blob = body as Blob
-  return data
-}
+);}
 
 
 
@@ -6761,23 +6336,16 @@ export const getListDataImportCampaignsUrl = () => {
 /**
  * @summary List Historical Import Campaigns
  */
-export const listDataImportCampaigns = async ( options?: RequestInit): Promise<HistoricalCampaignListResponse> => {
+export const listDataImportCampaigns = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignListResponse> => {
 
-  const res = await fetch(getListDataImportCampaignsUrl(),
+  return aimaRequest<HistoricalCampaignListResponse>(getListDataImportCampaignsUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6793,23 +6361,16 @@ export const getCreateLocalDataImportCampaignUrl = () => {
  * 创建本地上传 Campaign；不接受 Keyword Pack/Vehicle Model 过滤字段。
  * @summary Create Local Data Import Campaign
  */
-export const createLocalDataImportCampaign = async (localDataImportCampaignCreateRequest: LocalDataImportCampaignCreateRequest, options?: RequestInit): Promise<LocalDataImportCampaignCreatedResponse> => {
+export const createLocalDataImportCampaign = async (localDataImportCampaignCreateRequest: LocalDataImportCampaignCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<LocalDataImportCampaignCreatedResponse> => {
 
-  const res = await fetch(getCreateLocalDataImportCampaignUrl(),
+  return aimaRequest<LocalDataImportCampaignCreatedResponse>(getCreateLocalDataImportCampaignUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(localDataImportCampaignCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: LocalDataImportCampaignCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6825,23 +6386,16 @@ export const getCreateServerDataImportCampaignUrl = () => {
  * 创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。
  * @summary Create Historical Import Campaign
  */
-export const createServerDataImportCampaign = async (historicalCampaignCreateRequest: HistoricalCampaignCreateRequest, options?: RequestInit): Promise<HistoricalCampaignCreatedResponse> => {
+export const createServerDataImportCampaign = async (historicalCampaignCreateRequest: HistoricalCampaignCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignCreatedResponse> => {
 
-  const res = await fetch(getCreateServerDataImportCampaignUrl(),
+  return aimaRequest<HistoricalCampaignCreatedResponse>(getCreateServerDataImportCampaignUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(historicalCampaignCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6856,23 +6410,16 @@ export const getGetDataImportCampaignUrl = (campaignId: string,) => {
 /**
  * @summary Get Historical Import Campaign
  */
-export const getDataImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+export const getDataImportCampaign = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignResponse> => {
 
-  const res = await fetch(getGetDataImportCampaignUrl(campaignId),
+  return aimaRequest<HistoricalCampaignResponse>(getGetDataImportCampaignUrl(campaignId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6887,23 +6434,16 @@ export const getCancelDataImportCampaignUrl = (campaignId: string,) => {
 /**
  * @summary Cancel Historical Import Campaign
  */
-export const cancelDataImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+export const cancelDataImportCampaign = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignResponse> => {
 
-  const res = await fetch(getCancelDataImportCampaignUrl(campaignId),
+  return aimaRequest<HistoricalCampaignResponse>(getCancelDataImportCampaignUrl(campaignId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6918,23 +6458,16 @@ export const getListDataImportCampaignConflictsUrl = (campaignId: string,) => {
 /**
  * @summary List Historical Import Campaign Conflicts
  */
-export const listDataImportCampaignConflicts = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignConflictListResponse> => {
+export const listDataImportCampaignConflicts = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignConflictListResponse> => {
 
-  const res = await fetch(getListDataImportCampaignConflictsUrl(campaignId),
+  return aimaRequest<HistoricalCampaignConflictListResponse>(getListDataImportCampaignConflictsUrl(campaignId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignConflictListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6949,23 +6482,16 @@ export const getFinalizeLocalDataImportCampaignUrl = (campaignId: string,) => {
 /**
  * @summary Finalize Local Data Import Campaign
  */
-export const finalizeLocalDataImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+export const finalizeLocalDataImportCampaign = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignResponse> => {
 
-  const res = await fetch(getFinalizeLocalDataImportCampaignUrl(campaignId),
+  return aimaRequest<HistoricalCampaignResponse>(getFinalizeLocalDataImportCampaignUrl(campaignId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -6980,23 +6506,16 @@ export const getListDataImportCampaignItemsUrl = (campaignId: string,) => {
 /**
  * @summary List Historical Import Campaign Items
  */
-export const listDataImportCampaignItems = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignItemListResponse> => {
+export const listDataImportCampaignItems = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignItemListResponse> => {
 
-  const res = await fetch(getListDataImportCampaignItemsUrl(campaignId),
+  return aimaRequest<HistoricalCampaignItemListResponse>(getListDataImportCampaignItemsUrl(campaignId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignItemListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7014,25 +6533,18 @@ export const getUploadLocalDataImportFileUrl = (campaignId: string,
  */
 export const uploadLocalDataImportFile = async (campaignId: string,
     itemId: string,
-    bodyUploadLocalDataImportFile: BodyUploadLocalDataImportFile, options?: RequestInit): Promise<LocalDataImportFileUploadedResponse> => {
+    bodyUploadLocalDataImportFile: BodyUploadLocalDataImportFile, options?: Parameters<typeof aimaRequest>[1]): Promise<LocalDataImportFileUploadedResponse> => {
     const formData = new FormData();
 formData.append(`file`, bodyUploadLocalDataImportFile.file);
 
-  const res = await fetch(getUploadLocalDataImportFileUrl(campaignId,itemId),
+  return aimaRequest<LocalDataImportFileUploadedResponse>(getUploadLocalDataImportFileUrl(campaignId,itemId),
   {
     ...options,
     method: 'PUT'
     ,
     body: formData
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: LocalDataImportFileUploadedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7047,23 +6559,16 @@ export const getRetryDataImportCampaignFailedItemsUrl = (campaignId: string,) =>
 /**
  * @summary Retry Historical Import Campaign Failed Items
  */
-export const retryDataImportCampaignFailedItems = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+export const retryDataImportCampaignFailedItems = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignResponse> => {
 
-  const res = await fetch(getRetryDataImportCampaignFailedItemsUrl(campaignId),
+  return aimaRequest<HistoricalCampaignResponse>(getRetryDataImportCampaignFailedItemsUrl(campaignId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7079,23 +6584,16 @@ export const getPreviewDataImportCampaignRevocationUrl = (campaignId: string,) =
  * 在用户确认前返回撤销影响；不会修改 Campaign 或 Content。
  * @summary Preview Data Import Campaign Revocation
  */
-export const previewDataImportCampaignRevocation = async (campaignId: string, options?: RequestInit): Promise<DataImportRevocationPreviewResponse> => {
+export const previewDataImportCampaignRevocation = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<DataImportRevocationPreviewResponse> => {
 
-  const res = await fetch(getPreviewDataImportCampaignRevocationUrl(campaignId),
+  return aimaRequest<DataImportRevocationPreviewResponse>(getPreviewDataImportCampaignRevocationUrl(campaignId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: DataImportRevocationPreviewResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7112,23 +6610,16 @@ export const getRevokeDataImportCampaignUrl = (campaignId: string,) => {
  * @summary Revoke Data Import Campaign
  */
 export const revokeDataImportCampaign = async (campaignId: string,
-    dataImportRevokeRequest: DataImportRevokeRequest, options?: RequestInit): Promise<DataImportRevocationResponse> => {
+    dataImportRevokeRequest: DataImportRevokeRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<DataImportRevocationResponse> => {
 
-  const res = await fetch(getRevokeDataImportCampaignUrl(campaignId),
+  return aimaRequest<DataImportRevocationResponse>(getRevokeDataImportCampaignUrl(campaignId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(dataImportRevokeRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: DataImportRevocationResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7143,23 +6634,16 @@ export const getStartDataImportCampaignUrl = (campaignId: string,) => {
 /**
  * @summary Start Historical Import Campaign
  */
-export const startDataImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+export const startDataImportCampaign = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignResponse> => {
 
-  const res = await fetch(getStartDataImportCampaignUrl(campaignId),
+  return aimaRequest<HistoricalCampaignResponse>(getStartDataImportCampaignUrl(campaignId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7174,23 +6658,16 @@ export const getGetCollectionCampaignSupplementEligibilityUrl = (campaignId: str
 /**
  * @summary Get Collection Campaign Supplement Eligibility
  */
-export const getCollectionCampaignSupplementEligibility = async (campaignId: string, options?: RequestInit): Promise<CollectionCampaignSupplementEligibilityResponse> => {
+export const getCollectionCampaignSupplementEligibility = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionCampaignSupplementEligibilityResponse> => {
 
-  const res = await fetch(getGetCollectionCampaignSupplementEligibilityUrl(campaignId),
+  return aimaRequest<CollectionCampaignSupplementEligibilityResponse>(getGetCollectionCampaignSupplementEligibilityUrl(campaignId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionCampaignSupplementEligibilityResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7212,23 +6689,16 @@ export const getListDataImportServerDirectoriesUrl = (params?: ListDataImportSer
 /**
  * @summary List Historical Import Directories
  */
-export const listDataImportServerDirectories = async (params?: ListDataImportServerDirectoriesParams, options?: RequestInit): Promise<HistoricalDirectoryListResponse> => {
+export const listDataImportServerDirectories = async (params?: ListDataImportServerDirectoriesParams, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalDirectoryListResponse> => {
 
-  const res = await fetch(getListDataImportServerDirectoriesUrl(params),
+  return aimaRequest<HistoricalDirectoryListResponse>(getListDataImportServerDirectoriesUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalDirectoryListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7243,23 +6713,16 @@ export const getGetExportColumnCatalogUrl = () => {
 /**
  * @summary Get Export Column Catalog
  */
-export const getExportColumnCatalog = async ( options?: RequestInit): Promise<ExportColumnCatalogResponse> => {
+export const getExportColumnCatalog = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ExportColumnCatalogResponse> => {
 
-  const res = await fetch(getGetExportColumnCatalogUrl(),
+  return aimaRequest<ExportColumnCatalogResponse>(getGetExportColumnCatalogUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ExportColumnCatalogResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7274,23 +6737,16 @@ export const getListHistoricalImportCampaignsUrl = () => {
 /**
  * @summary List Historical Import Campaigns
  */
-export const listHistoricalImportCampaigns = async ( options?: RequestInit): Promise<HistoricalCampaignListResponse> => {
+export const listHistoricalImportCampaigns = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignListResponse> => {
 
-  const res = await fetch(getListHistoricalImportCampaignsUrl(),
+  return aimaRequest<HistoricalCampaignListResponse>(getListHistoricalImportCampaignsUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7306,23 +6762,16 @@ export const getCreateHistoricalImportCampaignUrl = () => {
  * 创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。
  * @summary Create Historical Import Campaign
  */
-export const createHistoricalImportCampaign = async (historicalCampaignCreateRequest: HistoricalCampaignCreateRequest, options?: RequestInit): Promise<HistoricalCampaignCreatedResponse> => {
+export const createHistoricalImportCampaign = async (historicalCampaignCreateRequest: HistoricalCampaignCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignCreatedResponse> => {
 
-  const res = await fetch(getCreateHistoricalImportCampaignUrl(),
+  return aimaRequest<HistoricalCampaignCreatedResponse>(getCreateHistoricalImportCampaignUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(historicalCampaignCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7337,23 +6786,16 @@ export const getGetHistoricalImportCampaignUrl = (campaignId: string,) => {
 /**
  * @summary Get Historical Import Campaign
  */
-export const getHistoricalImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+export const getHistoricalImportCampaign = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignResponse> => {
 
-  const res = await fetch(getGetHistoricalImportCampaignUrl(campaignId),
+  return aimaRequest<HistoricalCampaignResponse>(getGetHistoricalImportCampaignUrl(campaignId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7368,23 +6810,16 @@ export const getCancelHistoricalImportCampaignUrl = (campaignId: string,) => {
 /**
  * @summary Cancel Historical Import Campaign
  */
-export const cancelHistoricalImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+export const cancelHistoricalImportCampaign = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignResponse> => {
 
-  const res = await fetch(getCancelHistoricalImportCampaignUrl(campaignId),
+  return aimaRequest<HistoricalCampaignResponse>(getCancelHistoricalImportCampaignUrl(campaignId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7399,23 +6834,16 @@ export const getListHistoricalImportCampaignConflictsUrl = (campaignId: string,)
 /**
  * @summary List Historical Import Campaign Conflicts
  */
-export const listHistoricalImportCampaignConflicts = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignConflictListResponse> => {
+export const listHistoricalImportCampaignConflicts = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignConflictListResponse> => {
 
-  const res = await fetch(getListHistoricalImportCampaignConflictsUrl(campaignId),
+  return aimaRequest<HistoricalCampaignConflictListResponse>(getListHistoricalImportCampaignConflictsUrl(campaignId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignConflictListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7430,23 +6858,16 @@ export const getListHistoricalImportCampaignItemsUrl = (campaignId: string,) => 
 /**
  * @summary List Historical Import Campaign Items
  */
-export const listHistoricalImportCampaignItems = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignItemListResponse> => {
+export const listHistoricalImportCampaignItems = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignItemListResponse> => {
 
-  const res = await fetch(getListHistoricalImportCampaignItemsUrl(campaignId),
+  return aimaRequest<HistoricalCampaignItemListResponse>(getListHistoricalImportCampaignItemsUrl(campaignId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignItemListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7461,23 +6882,16 @@ export const getRetryHistoricalImportCampaignFailedItemsUrl = (campaignId: strin
 /**
  * @summary Retry Historical Import Campaign Failed Items
  */
-export const retryHistoricalImportCampaignFailedItems = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+export const retryHistoricalImportCampaignFailedItems = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignResponse> => {
 
-  const res = await fetch(getRetryHistoricalImportCampaignFailedItemsUrl(campaignId),
+  return aimaRequest<HistoricalCampaignResponse>(getRetryHistoricalImportCampaignFailedItemsUrl(campaignId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7492,23 +6906,16 @@ export const getStartHistoricalImportCampaignUrl = (campaignId: string,) => {
 /**
  * @summary Start Historical Import Campaign
  */
-export const startHistoricalImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+export const startHistoricalImportCampaign = async (campaignId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalCampaignResponse> => {
 
-  const res = await fetch(getStartHistoricalImportCampaignUrl(campaignId),
+  return aimaRequest<HistoricalCampaignResponse>(getStartHistoricalImportCampaignUrl(campaignId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7530,23 +6937,16 @@ export const getListHistoricalImportDirectoriesUrl = (params?: ListHistoricalImp
 /**
  * @summary List Historical Import Directories
  */
-export const listHistoricalImportDirectories = async (params?: ListHistoricalImportDirectoriesParams, options?: RequestInit): Promise<HistoricalDirectoryListResponse> => {
+export const listHistoricalImportDirectories = async (params?: ListHistoricalImportDirectoriesParams, options?: Parameters<typeof aimaRequest>[1]): Promise<HistoricalDirectoryListResponse> => {
 
-  const res = await fetch(getListHistoricalImportDirectoriesUrl(params),
+  return aimaRequest<HistoricalDirectoryListResponse>(getListHistoricalImportDirectoriesUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HistoricalDirectoryListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7568,23 +6968,16 @@ export const getListImportBatchesUrl = (params?: ListImportBatchesParams,) => {
 /**
  * @summary List Import Batches
  */
-export const listImportBatches = async (params?: ListImportBatchesParams, options?: RequestInit): Promise<ImportBatchListResponse> => {
+export const listImportBatches = async (params?: ListImportBatchesParams, options?: Parameters<typeof aimaRequest>[1]): Promise<ImportBatchListResponse> => {
 
-  const res = await fetch(getListImportBatchesUrl(params),
+  return aimaRequest<ImportBatchListResponse>(getListImportBatchesUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ImportBatchListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7600,28 +6993,21 @@ export const getCreateImportBatchUrl = () => {
  * Excel Search 不适用；空 Brand Scope 表示冻结全部 active Brand。
  * @summary Create Import Batch
  */
-export const createImportBatch = async (bodyCreateImportBatch: BodyCreateImportBatch, options?: RequestInit): Promise<ImportBatchCreatedResponse> => {
+export const createImportBatch = async (bodyCreateImportBatch: BodyCreateImportBatch, options?: Parameters<typeof aimaRequest>[1]): Promise<ImportBatchCreatedResponse> => {
     const formData = new FormData();
 if(bodyCreateImportBatch.brand_ids !== undefined) {
  bodyCreateImportBatch.brand_ids.forEach(value => formData.append(`brand_ids`, value));
  }
 formData.append(`file`, bodyCreateImportBatch.file);
 
-  const res = await fetch(getCreateImportBatchUrl(),
+  return aimaRequest<ImportBatchCreatedResponse>(getCreateImportBatchUrl(),
   {
     ...options,
     method: 'POST'
     ,
     body: formData
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ImportBatchCreatedResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7636,23 +7022,16 @@ export const getGetImportBatchSummaryUrl = () => {
 /**
  * @summary Get Import Batch Summary
  */
-export const getImportBatchSummary = async ( options?: RequestInit): Promise<ImportBatchSummaryResponse> => {
+export const getImportBatchSummary = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ImportBatchSummaryResponse> => {
 
-  const res = await fetch(getGetImportBatchSummaryUrl(),
+  return aimaRequest<ImportBatchSummaryResponse>(getGetImportBatchSummaryUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ImportBatchSummaryResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7667,23 +7046,16 @@ export const getGetImportBatchUrl = (batchId: string,) => {
 /**
  * @summary Get Import Batch
  */
-export const getImportBatch = async (batchId: string, options?: RequestInit): Promise<ImportBatchResponse> => {
+export const getImportBatch = async (batchId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ImportBatchResponse> => {
 
-  const res = await fetch(getGetImportBatchUrl(batchId),
+  return aimaRequest<ImportBatchResponse>(getGetImportBatchUrl(batchId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ImportBatchResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7698,23 +7070,16 @@ export const getGetCollectionBatchSupplementEligibilityUrl = (batchId: string,) 
 /**
  * @summary Get Collection Batch Supplement Eligibility
  */
-export const getCollectionBatchSupplementEligibility = async (batchId: string, options?: RequestInit): Promise<CollectionBatchSupplementEligibilityResponse> => {
+export const getCollectionBatchSupplementEligibility = async (batchId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<CollectionBatchSupplementEligibilityResponse> => {
 
-  const res = await fetch(getGetCollectionBatchSupplementEligibilityUrl(batchId),
+  return aimaRequest<CollectionBatchSupplementEligibilityResponse>(getGetCollectionBatchSupplementEligibilityUrl(batchId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CollectionBatchSupplementEligibilityResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7729,23 +7094,16 @@ export const getGetJobUrl = (jobId: string,) => {
 /**
  * @summary Get Job
  */
-export const getJob = async (jobId: string, options?: RequestInit): Promise<JobStatusResponse> => {
+export const getJob = async (jobId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<JobStatusResponse> => {
 
-  const res = await fetch(getGetJobUrl(jobId),
+  return aimaRequest<JobStatusResponse>(getGetJobUrl(jobId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: JobStatusResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7767,23 +7125,16 @@ export const getListKeywordPacksUrl = (params?: ListKeywordPacksParams,) => {
 /**
  * @summary List Keyword Packs
  */
-export const listKeywordPacks = async (params?: ListKeywordPacksParams, options?: RequestInit): Promise<KeywordPackListResponse> => {
+export const listKeywordPacks = async (params?: ListKeywordPacksParams, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackListResponse> => {
 
-  const res = await fetch(getListKeywordPacksUrl(params),
+  return aimaRequest<KeywordPackListResponse>(getListKeywordPacksUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7798,23 +7149,16 @@ export const getCreateKeywordPackUrl = () => {
 /**
  * @summary Create Keyword Pack
  */
-export const createKeywordPack = async (keywordPackCreateRequest: KeywordPackCreateRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+export const createKeywordPack = async (keywordPackCreateRequest: KeywordPackCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackResponse> => {
 
-  const res = await fetch(getCreateKeywordPackUrl(),
+  return aimaRequest<KeywordPackResponse>(getCreateKeywordPackUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(keywordPackCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7829,23 +7173,16 @@ export const getDeleteKeywordPackUrl = (packId: string,) => {
 /**
  * @summary Delete Keyword Pack
  */
-export const deleteKeywordPack = async (packId: string, options?: RequestInit): Promise<void> => {
+export const deleteKeywordPack = async (packId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<void> => {
 
-  const res = await fetch(getDeleteKeywordPackUrl(packId),
+  return aimaRequest<void>(getDeleteKeywordPackUrl(packId),
   {
     ...options,
     method: 'DELETE'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: void = body ? JSON.parse(body) : undefined
-  return data
-}
+);}
 
 
 
@@ -7860,23 +7197,16 @@ export const getGetKeywordPackUrl = (packId: string,) => {
 /**
  * @summary Get Keyword Pack
  */
-export const getKeywordPack = async (packId: string, options?: RequestInit): Promise<KeywordPackResponse> => {
+export const getKeywordPack = async (packId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackResponse> => {
 
-  const res = await fetch(getGetKeywordPackUrl(packId),
+  return aimaRequest<KeywordPackResponse>(getGetKeywordPackUrl(packId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7892,23 +7222,16 @@ export const getUpdateKeywordPackUrl = (packId: string,) => {
  * @summary Update Keyword Pack
  */
 export const updateKeywordPack = async (packId: string,
-    keywordPackUpdateRequest: KeywordPackUpdateRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+    keywordPackUpdateRequest: KeywordPackUpdateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackResponse> => {
 
-  const res = await fetch(getUpdateKeywordPackUrl(packId),
+  return aimaRequest<KeywordPackResponse>(getUpdateKeywordPackUrl(packId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(keywordPackUpdateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7923,23 +7246,16 @@ export const getArchiveKeywordPackUrl = (packId: string,) => {
 /**
  * @summary Archive Keyword Pack
  */
-export const archiveKeywordPack = async (packId: string, options?: RequestInit): Promise<ResourceLifecycleResponse> => {
+export const archiveKeywordPack = async (packId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceLifecycleResponse> => {
 
-  const res = await fetch(getArchiveKeywordPackUrl(packId),
+  return aimaRequest<ResourceLifecycleResponse>(getArchiveKeywordPackUrl(packId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceLifecycleResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7955,23 +7271,16 @@ export const getCopyKeywordPackUrl = (packId: string,) => {
  * @summary Copy Keyword Pack
  */
 export const copyKeywordPack = async (packId: string,
-    keywordPackCopyRequest: KeywordPackCopyRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+    keywordPackCopyRequest: KeywordPackCopyRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackResponse> => {
 
-  const res = await fetch(getCopyKeywordPackUrl(packId),
+  return aimaRequest<KeywordPackResponse>(getCopyKeywordPackUrl(packId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(keywordPackCopyRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -7986,23 +7295,16 @@ export const getGetKeywordPackDeleteEligibilityUrl = (packId: string,) => {
 /**
  * @summary Get Keyword Pack Delete Eligibility
  */
-export const getKeywordPackDeleteEligibility = async (packId: string, options?: RequestInit): Promise<ResourceDeleteEligibilityResponse> => {
+export const getKeywordPackDeleteEligibility = async (packId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceDeleteEligibilityResponse> => {
 
-  const res = await fetch(getGetKeywordPackDeleteEligibilityUrl(packId),
+  return aimaRequest<ResourceDeleteEligibilityResponse>(getGetKeywordPackDeleteEligibilityUrl(packId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceDeleteEligibilityResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8018,23 +7320,16 @@ export const getUpdateKeywordPackEnabledUrl = (packId: string,) => {
  * @summary Update Keyword Pack Enabled
  */
 export const updateKeywordPackEnabled = async (packId: string,
-    resourceEnabledRequest: ResourceEnabledRequest, options?: RequestInit): Promise<KeywordPackSummaryResponse> => {
+    resourceEnabledRequest: ResourceEnabledRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackSummaryResponse> => {
 
-  const res = await fetch(getUpdateKeywordPackEnabledUrl(packId),
+  return aimaRequest<KeywordPackSummaryResponse>(getUpdateKeywordPackEnabledUrl(packId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(resourceEnabledRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackSummaryResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8050,23 +7345,16 @@ export const getAddKeywordToPackUrl = (packId: string,) => {
  * @summary Add Keyword
  */
 export const addKeywordToPack = async (packId: string,
-    keywordPackKeywordCreateRequest: KeywordPackKeywordCreateRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+    keywordPackKeywordCreateRequest: KeywordPackKeywordCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackResponse> => {
 
-  const res = await fetch(getAddKeywordToPackUrl(packId),
+  return aimaRequest<KeywordPackResponse>(getAddKeywordToPackUrl(packId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(keywordPackKeywordCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8084,23 +7372,16 @@ export const getUpdateKeywordInPackUrl = (packId: string,
  */
 export const updateKeywordInPack = async (packId: string,
     keywordId: string,
-    keywordPackItemUpdateRequest: KeywordPackItemUpdateRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+    keywordPackItemUpdateRequest: KeywordPackItemUpdateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackResponse> => {
 
-  const res = await fetch(getUpdateKeywordInPackUrl(packId,keywordId),
+  return aimaRequest<KeywordPackResponse>(getUpdateKeywordInPackUrl(packId,keywordId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(keywordPackItemUpdateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8118,23 +7399,16 @@ export const getRemoveKeywordFromPackUrl = (packId: string,
  */
 export const removeKeywordFromPack = async (packId: string,
     keywordId: string,
-    keywordPackItemRemoveRequest: KeywordPackItemRemoveRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+    keywordPackItemRemoveRequest: KeywordPackItemRemoveRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackResponse> => {
 
-  const res = await fetch(getRemoveKeywordFromPackUrl(packId,keywordId),
+  return aimaRequest<KeywordPackResponse>(getRemoveKeywordFromPackUrl(packId,keywordId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(keywordPackItemRemoveRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8149,23 +7423,66 @@ export const getRestoreKeywordPackUrl = (packId: string,) => {
 /**
  * @summary Restore Keyword Pack
  */
-export const restoreKeywordPack = async (packId: string, options?: RequestInit): Promise<KeywordPackResponse> => {
+export const restoreKeywordPack = async (packId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<KeywordPackResponse> => {
 
-  const res = await fetch(getRestoreKeywordPackUrl(packId),
+  return aimaRequest<KeywordPackResponse>(getRestoreKeywordPackUrl(packId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
+);}
 
 
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
-  return data
+export const getGetMyExportColumnDefaultUrl = () => {
+
+
+
+
+  return `/api/v1/me/export-column-default`
 }
+
+/**
+ * 读取当前 Session 用户配置，不接受客户端目标用户。
+ * @summary Get My Export Column Default
+ */
+export const getMyExportColumnDefault = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ExportColumnDefaultResponse> => {
+
+  return aimaRequest<ExportColumnDefaultResponse>(getGetMyExportColumnDefaultUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getUpdateMyExportColumnDefaultUrl = () => {
+
+
+
+
+  return `/api/v1/me/export-column-default`
+}
+
+/**
+ * 以当前身份原子保存或恢复默认列。
+ * @summary Update My Export Column Default
+ */
+export const updateMyExportColumnDefault = async (exportColumnDefaultUpdateRequest: ExportColumnDefaultUpdateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ExportColumnDefaultResponse> => {
+
+  return aimaRequest<ExportColumnDefaultResponse>(getUpdateMyExportColumnDefaultUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(exportColumnDefaultUpdateRequest)
+  }
+);}
 
 
 
@@ -8187,23 +7504,16 @@ export const getListNotificationsUrl = (params?: ListNotificationsParams,) => {
 /**
  * @summary List Notifications
  */
-export const listNotifications = async (params?: ListNotificationsParams, options?: RequestInit): Promise<NotificationListResponse> => {
+export const listNotifications = async (params?: ListNotificationsParams, options?: Parameters<typeof aimaRequest>[1]): Promise<NotificationListResponse> => {
 
-  const res = await fetch(getListNotificationsUrl(params),
+  return aimaRequest<NotificationListResponse>(getListNotificationsUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: NotificationListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8218,23 +7528,16 @@ export const getMarkNotificationsReadUrl = () => {
 /**
  * @summary Mark Notifications Read
  */
-export const markNotificationsRead = async (notificationMarkReadRequest: NotificationMarkReadRequest, options?: RequestInit): Promise<NotificationMarkReadResponse> => {
+export const markNotificationsRead = async (notificationMarkReadRequest: NotificationMarkReadRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<NotificationMarkReadResponse> => {
 
-  const res = await fetch(getMarkNotificationsReadUrl(),
+  return aimaRequest<NotificationMarkReadResponse>(getMarkNotificationsReadUrl(),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(notificationMarkReadRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: NotificationMarkReadResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8250,23 +7553,16 @@ export const getGetCurrentPrincipalUrl = () => {
  * 返回当前 Provider-neutral Principal 与两角色投影。
  * @summary Get Current Principal
  */
-export const getCurrentPrincipal = async ( options?: RequestInit): Promise<CurrentPrincipalResponse> => {
+export const getCurrentPrincipal = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<CurrentPrincipalResponse> => {
 
-  const res = await fetch(getGetCurrentPrincipalUrl(),
+  return aimaRequest<CurrentPrincipalResponse>(getGetCurrentPrincipalUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: CurrentPrincipalResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8289,23 +7585,16 @@ export const getListProviderConfigsUrl = (params?: ListProviderConfigsParams,) =
  * 管理员读取 Provider 安全投影；不返回 Secret 值或 secret_ref。
  * @summary List Provider Configs
  */
-export const listProviderConfigs = async (params?: ListProviderConfigsParams, options?: RequestInit): Promise<ProviderConfigListResponse> => {
+export const listProviderConfigs = async (params?: ListProviderConfigsParams, options?: Parameters<typeof aimaRequest>[1]): Promise<ProviderConfigListResponse> => {
 
-  const res = await fetch(getListProviderConfigsUrl(params),
+  return aimaRequest<ProviderConfigListResponse>(getListProviderConfigsUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ProviderConfigListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8321,23 +7610,16 @@ export const getCreateProviderConfigUrl = () => {
  * 管理员创建 Provider；API Key 仅进入后端 Secret Store 写入边界。
  * @summary Create Provider Config
  */
-export const createProviderConfig = async (providerConfigCreateRequest: ProviderConfigCreateRequest, options?: RequestInit): Promise<ProviderConfigResponse> => {
+export const createProviderConfig = async (providerConfigCreateRequest: ProviderConfigCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ProviderConfigResponse> => {
 
-  const res = await fetch(getCreateProviderConfigUrl(),
+  return aimaRequest<ProviderConfigResponse>(getCreateProviderConfigUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(providerConfigCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ProviderConfigResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8352,23 +7634,16 @@ export const getListArchivedProviderConfigsUrl = () => {
 /**
  * @summary List Archived Provider Configs
  */
-export const listArchivedProviderConfigs = async ( options?: RequestInit): Promise<ResourceLifecycleListResponse> => {
+export const listArchivedProviderConfigs = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceLifecycleListResponse> => {
 
-  const res = await fetch(getListArchivedProviderConfigsUrl(),
+  return aimaRequest<ResourceLifecycleListResponse>(getListArchivedProviderConfigsUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceLifecycleListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8383,23 +7658,16 @@ export const getDeleteProviderConfigUrl = (providerConfigId: string,) => {
 /**
  * @summary Delete Provider Config
  */
-export const deleteProviderConfig = async (providerConfigId: string, options?: RequestInit): Promise<void> => {
+export const deleteProviderConfig = async (providerConfigId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<void> => {
 
-  const res = await fetch(getDeleteProviderConfigUrl(providerConfigId),
+  return aimaRequest<void>(getDeleteProviderConfigUrl(providerConfigId),
   {
     ...options,
     method: 'DELETE'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: void = body ? JSON.parse(body) : undefined
-  return data
-}
+);}
 
 
 
@@ -8416,23 +7684,16 @@ export const getUpdateProviderConfigUrl = (providerConfigId: string,) => {
  * @summary Update Provider Config
  */
 export const updateProviderConfig = async (providerConfigId: string,
-    providerConfigUpdateRequest: ProviderConfigUpdateRequest, options?: RequestInit): Promise<ProviderConfigResponse> => {
+    providerConfigUpdateRequest: ProviderConfigUpdateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ProviderConfigResponse> => {
 
-  const res = await fetch(getUpdateProviderConfigUrl(providerConfigId),
+  return aimaRequest<ProviderConfigResponse>(getUpdateProviderConfigUrl(providerConfigId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(providerConfigUpdateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ProviderConfigResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8447,23 +7708,16 @@ export const getArchiveProviderConfigUrl = (providerConfigId: string,) => {
 /**
  * @summary Archive Provider Config
  */
-export const archiveProviderConfig = async (providerConfigId: string, options?: RequestInit): Promise<ResourceLifecycleResponse> => {
+export const archiveProviderConfig = async (providerConfigId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceLifecycleResponse> => {
 
-  const res = await fetch(getArchiveProviderConfigUrl(providerConfigId),
+  return aimaRequest<ResourceLifecycleResponse>(getArchiveProviderConfigUrl(providerConfigId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceLifecycleResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8478,23 +7732,16 @@ export const getGetProviderConfigDeleteEligibilityUrl = (providerConfigId: strin
 /**
  * @summary Get Provider Config Delete Eligibility
  */
-export const getProviderConfigDeleteEligibility = async (providerConfigId: string, options?: RequestInit): Promise<ResourceDeleteEligibilityResponse> => {
+export const getProviderConfigDeleteEligibility = async (providerConfigId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceDeleteEligibilityResponse> => {
 
-  const res = await fetch(getGetProviderConfigDeleteEligibilityUrl(providerConfigId),
+  return aimaRequest<ResourceDeleteEligibilityResponse>(getGetProviderConfigDeleteEligibilityUrl(providerConfigId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceDeleteEligibilityResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8509,23 +7756,16 @@ export const getRestoreProviderConfigUrl = (providerConfigId: string,) => {
 /**
  * @summary Restore Provider Config
  */
-export const restoreProviderConfig = async (providerConfigId: string, options?: RequestInit): Promise<void> => {
+export const restoreProviderConfig = async (providerConfigId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<void> => {
 
-  const res = await fetch(getRestoreProviderConfigUrl(providerConfigId),
+  return aimaRequest<void>(getRestoreProviderConfigUrl(providerConfigId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: void = body ? JSON.parse(body) : undefined
-  return data
-}
+);}
 
 
 
@@ -8540,23 +7780,16 @@ export const getTestProviderConfigConnectionUrl = (providerConfigId: string,) =>
 /**
  * @summary Test Provider Config Connection
  */
-export const testProviderConfigConnection = async (providerConfigId: string, options?: RequestInit): Promise<ProviderConnectionTestResponse> => {
+export const testProviderConfigConnection = async (providerConfigId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ProviderConnectionTestResponse> => {
 
-  const res = await fetch(getTestProviderConfigConnectionUrl(providerConfigId),
+  return aimaRequest<ProviderConnectionTestResponse>(getTestProviderConfigConnectionUrl(providerConfigId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ProviderConnectionTestResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8572,23 +7805,16 @@ export const getListReportsUrl = () => {
  * 历史列表。
  * @summary List Reports
  */
-export const listReports = async ( options?: RequestInit): Promise<ReportListResponse> => {
+export const listReports = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ReportListResponse> => {
 
-  const res = await fetch(getListReportsUrl(),
+  return aimaRequest<ReportListResponse>(getListReportsUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ReportListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8604,23 +7830,16 @@ export const getCreateReportUrl = () => {
  * 冻结并排队，外部调用由 Worker 完成。
  * @summary Create
  */
-export const createReport = async (reportSubmitRequest: ReportSubmitRequest, options?: RequestInit): Promise<ReportResponse> => {
+export const createReport = async (reportSubmitRequest: ReportSubmitRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ReportResponse> => {
 
-  const res = await fetch(getCreateReportUrl(),
+  return aimaRequest<ReportResponse>(getCreateReportUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(reportSubmitRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ReportResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8636,23 +7855,16 @@ export const getPreflightReportUrl = () => {
  * 实时预检。
  * @summary Preflight
  */
-export const preflightReport = async (reportSubmitRequest: ReportSubmitRequest, options?: RequestInit): Promise<ReportPreflightResponse> => {
+export const preflightReport = async (reportSubmitRequest: ReportSubmitRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<ReportPreflightResponse> => {
 
-  const res = await fetch(getPreflightReportUrl(),
+  return aimaRequest<ReportPreflightResponse>(getPreflightReportUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(reportSubmitRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ReportPreflightResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8668,23 +7880,16 @@ export const getGetReportUrl = (reportId: string,) => {
  * 报告详情。
  * @summary Get
  */
-export const getReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+export const getReport = async (reportId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ReportResponse> => {
 
-  const res = await fetch(getGetReportUrl(reportId),
+  return aimaRequest<ReportResponse>(getGetReportUrl(reportId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ReportResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8702,23 +7907,16 @@ export const getDownloadReportArtifactUrl = (reportId: string,
  * @summary Download
  */
 export const downloadReportArtifact = async (reportId: string,
-    artifactId: string, options?: RequestInit): Promise<void> => {
+    artifactId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<void> => {
 
-  const res = await fetch(getDownloadReportArtifactUrl(reportId,artifactId),
+  return aimaRequest<void>(getDownloadReportArtifactUrl(reportId,artifactId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: void = body ? JSON.parse(body) : undefined
-  return data
-}
+);}
 
 
 
@@ -8734,23 +7932,16 @@ export const getCancelReportUrl = (reportId: string,) => {
  * 提交生成或发布任务的取消意图。
  * @summary Cancel
  */
-export const cancelReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+export const cancelReport = async (reportId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ReportResponse> => {
 
-  const res = await fetch(getCancelReportUrl(reportId),
+  return aimaRequest<ReportResponse>(getCancelReportUrl(reportId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ReportResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8766,23 +7957,16 @@ export const getPublishReportUrl = (reportId: string,) => {
  * 独立发布或恢复失败发布。
  * @summary Publish
  */
-export const publishReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+export const publishReport = async (reportId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ReportResponse> => {
 
-  const res = await fetch(getPublishReportUrl(reportId),
+  return aimaRequest<ReportResponse>(getPublishReportUrl(reportId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ReportResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8798,23 +7982,16 @@ export const getRetryReportUrl = (reportId: string,) => {
  * 恢复失败生成。
  * @summary Retry
  */
-export const retryReport = async (reportId: string, options?: RequestInit): Promise<ReportResponse> => {
+export const retryReport = async (reportId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<ReportResponse> => {
 
-  const res = await fetch(getRetryReportUrl(reportId),
+  return aimaRequest<ReportResponse>(getRetryReportUrl(reportId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ReportResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8829,23 +8006,16 @@ export const getListArchivedCollectionPlansUrl = () => {
 /**
  * @summary List Archived Collection Plans
  */
-export const listArchivedCollectionPlans = async ( options?: RequestInit): Promise<ResourceLifecycleListResponse> => {
+export const listArchivedCollectionPlans = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceLifecycleListResponse> => {
 
-  const res = await fetch(getListArchivedCollectionPlansUrl(),
+  return aimaRequest<ResourceLifecycleListResponse>(getListArchivedCollectionPlansUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceLifecycleListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8860,23 +8030,16 @@ export const getListArchivedKeywordPacksUrl = () => {
 /**
  * @summary List Archived Keyword Packs
  */
-export const listArchivedKeywordPacks = async ( options?: RequestInit): Promise<ResourceLifecycleListResponse> => {
+export const listArchivedKeywordPacks = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ResourceLifecycleListResponse> => {
 
-  const res = await fetch(getListArchivedKeywordPacksUrl(),
+  return aimaRequest<ResourceLifecycleListResponse>(getListArchivedKeywordPacksUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ResourceLifecycleListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8898,23 +8061,16 @@ export const getListVehicleBrandsUrl = (params?: ListVehicleBrandsParams,) => {
 /**
  * @summary List Brands
  */
-export const listVehicleBrands = async (params?: ListVehicleBrandsParams, options?: RequestInit): Promise<BrandListResponse> => {
+export const listVehicleBrands = async (params?: ListVehicleBrandsParams, options?: Parameters<typeof aimaRequest>[1]): Promise<BrandListResponse> => {
 
-  const res = await fetch(getListVehicleBrandsUrl(params),
+  return aimaRequest<BrandListResponse>(getListVehicleBrandsUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: BrandListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8929,23 +8085,16 @@ export const getCreateVehicleBrandUrl = () => {
 /**
  * @summary Create Brand
  */
-export const createVehicleBrand = async (brandCreateRequest: BrandCreateRequest, options?: RequestInit): Promise<BrandResponse> => {
+export const createVehicleBrand = async (brandCreateRequest: BrandCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<BrandResponse> => {
 
-  const res = await fetch(getCreateVehicleBrandUrl(),
+  return aimaRequest<BrandResponse>(getCreateVehicleBrandUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(brandCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: BrandResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -8960,23 +8109,16 @@ export const getDeleteVehicleBrandUrl = (brandId: string,) => {
 /**
  * @summary Delete Brand
  */
-export const deleteVehicleBrand = async (brandId: string, options?: RequestInit): Promise<void> => {
+export const deleteVehicleBrand = async (brandId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<void> => {
 
-  const res = await fetch(getDeleteVehicleBrandUrl(brandId),
+  return aimaRequest<void>(getDeleteVehicleBrandUrl(brandId),
   {
     ...options,
     method: 'DELETE'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: void = body ? JSON.parse(body) : undefined
-  return data
-}
+);}
 
 
 
@@ -8991,23 +8133,16 @@ export const getGetVehicleBrandUrl = (brandId: string,) => {
 /**
  * @summary Get Brand
  */
-export const getVehicleBrand = async (brandId: string, options?: RequestInit): Promise<BrandResponse> => {
+export const getVehicleBrand = async (brandId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<BrandResponse> => {
 
-  const res = await fetch(getGetVehicleBrandUrl(brandId),
+  return aimaRequest<BrandResponse>(getGetVehicleBrandUrl(brandId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: BrandResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9023,23 +8158,16 @@ export const getUpdateVehicleBrandUrl = (brandId: string,) => {
  * @summary Update Brand
  */
 export const updateVehicleBrand = async (brandId: string,
-    brandUpdateRequest: BrandUpdateRequest, options?: RequestInit): Promise<BrandResponse> => {
+    brandUpdateRequest: BrandUpdateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<BrandResponse> => {
 
-  const res = await fetch(getUpdateVehicleBrandUrl(brandId),
+  return aimaRequest<BrandResponse>(getUpdateVehicleBrandUrl(brandId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(brandUpdateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: BrandResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9055,23 +8183,16 @@ export const getAddVehicleBrandAliasUrl = (brandId: string,) => {
  * @summary Add Alias
  */
 export const addVehicleBrandAlias = async (brandId: string,
-    brandAliasCreateRequest: BrandAliasCreateRequest, options?: RequestInit): Promise<BrandResponse> => {
+    brandAliasCreateRequest: BrandAliasCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<BrandResponse> => {
 
-  const res = await fetch(getAddVehicleBrandAliasUrl(brandId),
+  return aimaRequest<BrandResponse>(getAddVehicleBrandAliasUrl(brandId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(brandAliasCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: BrandResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9088,23 +8209,16 @@ export const getDeleteVehicleBrandAliasUrl = (brandId: string,
  * @summary Delete Alias
  */
 export const deleteVehicleBrandAlias = async (brandId: string,
-    aliasId: string, options?: RequestInit): Promise<BrandResponse> => {
+    aliasId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<BrandResponse> => {
 
-  const res = await fetch(getDeleteVehicleBrandAliasUrl(brandId,aliasId),
+  return aimaRequest<BrandResponse>(getDeleteVehicleBrandAliasUrl(brandId,aliasId),
   {
     ...options,
     method: 'DELETE'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: BrandResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9119,23 +8233,16 @@ export const getGetVehicleCatalogReadinessUrl = () => {
 /**
  * @summary Readiness
  */
-export const getVehicleCatalogReadiness = async ( options?: RequestInit): Promise<BrandVehicleCatalogReadinessResponse> => {
+export const getVehicleCatalogReadiness = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<BrandVehicleCatalogReadinessResponse> => {
 
-  const res = await fetch(getGetVehicleCatalogReadinessUrl(),
+  return aimaRequest<BrandVehicleCatalogReadinessResponse>(getGetVehicleCatalogReadinessUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: BrandVehicleCatalogReadinessResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9165,23 +8272,16 @@ export const getGetBrandVehicleCatalogSnapshotUrl = (params?: GetBrandVehicleCat
 /**
  * @summary Snapshot
  */
-export const getBrandVehicleCatalogSnapshot = async (params?: GetBrandVehicleCatalogSnapshotParams, options?: RequestInit): Promise<BrandVehicleCatalogSnapshotResponse> => {
+export const getBrandVehicleCatalogSnapshot = async (params?: GetBrandVehicleCatalogSnapshotParams, options?: Parameters<typeof aimaRequest>[1]): Promise<BrandVehicleCatalogSnapshotResponse> => {
 
-  const res = await fetch(getGetBrandVehicleCatalogSnapshotUrl(params),
+  return aimaRequest<BrandVehicleCatalogSnapshotResponse>(getGetBrandVehicleCatalogSnapshotUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: BrandVehicleCatalogSnapshotResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9204,23 +8304,16 @@ export const getListVehicleModelsUrl = (params?: ListVehicleModelsParams,) => {
  * 读取车型目录供选择器和管理员页面复用。
  * @summary List Vehicle Models
  */
-export const listVehicleModels = async (params?: ListVehicleModelsParams, options?: RequestInit): Promise<VehicleModelListResponse> => {
+export const listVehicleModels = async (params?: ListVehicleModelsParams, options?: Parameters<typeof aimaRequest>[1]): Promise<VehicleModelListResponse> => {
 
-  const res = await fetch(getListVehicleModelsUrl(params),
+  return aimaRequest<VehicleModelListResponse>(getListVehicleModelsUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: VehicleModelListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9236,23 +8329,16 @@ export const getCreateVehicleModelUrl = () => {
  * 管理员创建车型和初始别名。
  * @summary Create Vehicle Model
  */
-export const createVehicleModel = async (vehicleModelCreateRequest: VehicleModelCreateRequest, options?: RequestInit): Promise<VehicleModelResponse> => {
+export const createVehicleModel = async (vehicleModelCreateRequest: VehicleModelCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<VehicleModelResponse> => {
 
-  const res = await fetch(getCreateVehicleModelUrl(),
+  return aimaRequest<VehicleModelResponse>(getCreateVehicleModelUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(vehicleModelCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: VehicleModelResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9268,23 +8354,16 @@ export const getDeleteVehicleModelUrl = (vehicleModelId: string,) => {
  * 管理员物理删除未引用车型。
  * @summary Delete Vehicle Model
  */
-export const deleteVehicleModel = async (vehicleModelId: string, options?: RequestInit): Promise<void> => {
+export const deleteVehicleModel = async (vehicleModelId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<void> => {
 
-  const res = await fetch(getDeleteVehicleModelUrl(vehicleModelId),
+  return aimaRequest<void>(getDeleteVehicleModelUrl(vehicleModelId),
   {
     ...options,
     method: 'DELETE'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: void = body ? JSON.parse(body) : undefined
-  return data
-}
+);}
 
 
 
@@ -9300,23 +8379,16 @@ export const getGetVehicleModelUrl = (vehicleModelId: string,) => {
  * 读取单个车型目录详情。
  * @summary Get Vehicle Model
  */
-export const getVehicleModel = async (vehicleModelId: string, options?: RequestInit): Promise<VehicleModelResponse> => {
+export const getVehicleModel = async (vehicleModelId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<VehicleModelResponse> => {
 
-  const res = await fetch(getGetVehicleModelUrl(vehicleModelId),
+  return aimaRequest<VehicleModelResponse>(getGetVehicleModelUrl(vehicleModelId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: VehicleModelResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9333,23 +8405,16 @@ export const getUpdateVehicleModelUrl = (vehicleModelId: string,) => {
  * @summary Update Vehicle Model
  */
 export const updateVehicleModel = async (vehicleModelId: string,
-    vehicleModelUpdateRequest: VehicleModelUpdateRequest, options?: RequestInit): Promise<VehicleModelResponse> => {
+    vehicleModelUpdateRequest: VehicleModelUpdateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<VehicleModelResponse> => {
 
-  const res = await fetch(getUpdateVehicleModelUrl(vehicleModelId),
+  return aimaRequest<VehicleModelResponse>(getUpdateVehicleModelUrl(vehicleModelId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(vehicleModelUpdateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: VehicleModelResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9365,23 +8430,16 @@ export const getAssignVehicleModelBrandUrl = (vehicleModelId: string,) => {
  * @summary Assign Vehicle Brand
  */
 export const assignVehicleModelBrand = async (vehicleModelId: string,
-    vehicleBrandAssignmentRequest: VehicleBrandAssignmentRequest, options?: RequestInit): Promise<VehicleBrandAssignmentResponse> => {
+    vehicleBrandAssignmentRequest: VehicleBrandAssignmentRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<VehicleBrandAssignmentResponse> => {
 
-  const res = await fetch(getAssignVehicleModelBrandUrl(vehicleModelId),
+  return aimaRequest<VehicleBrandAssignmentResponse>(getAssignVehicleModelBrandUrl(vehicleModelId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(vehicleBrandAssignmentRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: VehicleBrandAssignmentResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9398,23 +8456,16 @@ export const getMergeVehicleModelUrl = (vehicleModelId: string,) => {
  * @summary Merge Vehicle Model
  */
 export const mergeVehicleModel = async (vehicleModelId: string,
-    vehicleModelMergeRequest: VehicleModelMergeRequest, options?: RequestInit): Promise<VehicleModelResponse> => {
+    vehicleModelMergeRequest: VehicleModelMergeRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<VehicleModelResponse> => {
 
-  const res = await fetch(getMergeVehicleModelUrl(vehicleModelId),
+  return aimaRequest<VehicleModelResponse>(getMergeVehicleModelUrl(vehicleModelId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(vehicleModelMergeRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: VehicleModelResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9429,23 +8480,16 @@ export const getListWisersOneDownloadsUrl = () => {
 /**
  * @summary Listing
  */
-export const listWisersOneDownloads = async ( options?: RequestInit): Promise<WisersOneDownloadListResponse> => {
+export const listWisersOneDownloads = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<WisersOneDownloadListResponse> => {
 
-  const res = await fetch(getListWisersOneDownloadsUrl(),
+  return aimaRequest<WisersOneDownloadListResponse>(getListWisersOneDownloadsUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WisersOneDownloadListResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9460,23 +8504,16 @@ export const getCreateWisersOneDownloadUrl = () => {
 /**
  * @summary Create
  */
-export const createWisersOneDownload = async (wisersOneDownloadCreateRequest: WisersOneDownloadCreateRequest, options?: RequestInit): Promise<WisersOneDownloadResponse> => {
+export const createWisersOneDownload = async (wisersOneDownloadCreateRequest: WisersOneDownloadCreateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<WisersOneDownloadResponse> => {
 
-  const res = await fetch(getCreateWisersOneDownloadUrl(),
+  return aimaRequest<WisersOneDownloadResponse>(getCreateWisersOneDownloadUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(wisersOneDownloadCreateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WisersOneDownloadResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9491,23 +8528,16 @@ export const getGetWisersOneDownloadUrl = (downloadId: string,) => {
 /**
  * @summary Get
  */
-export const getWisersOneDownload = async (downloadId: string, options?: RequestInit): Promise<WisersOneDownloadResponse> => {
+export const getWisersOneDownload = async (downloadId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<WisersOneDownloadResponse> => {
 
-  const res = await fetch(getGetWisersOneDownloadUrl(downloadId),
+  return aimaRequest<WisersOneDownloadResponse>(getGetWisersOneDownloadUrl(downloadId),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WisersOneDownloadResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9522,23 +8552,16 @@ export const getCancelWisersOneDownloadUrl = (downloadId: string,) => {
 /**
  * @summary Cancel
  */
-export const cancelWisersOneDownload = async (downloadId: string, options?: RequestInit): Promise<WisersOneDownloadResponse> => {
+export const cancelWisersOneDownload = async (downloadId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<WisersOneDownloadResponse> => {
 
-  const res = await fetch(getCancelWisersOneDownloadUrl(downloadId),
+  return aimaRequest<WisersOneDownloadResponse>(getCancelWisersOneDownloadUrl(downloadId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WisersOneDownloadResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9553,23 +8576,16 @@ export const getRetryWisersOneDownloadUrl = (downloadId: string,) => {
 /**
  * @summary Retry
  */
-export const retryWisersOneDownload = async (downloadId: string, options?: RequestInit): Promise<WisersOneDownloadResponse> => {
+export const retryWisersOneDownload = async (downloadId: string, options?: Parameters<typeof aimaRequest>[1]): Promise<WisersOneDownloadResponse> => {
 
-  const res = await fetch(getRetryWisersOneDownloadUrl(downloadId),
+  return aimaRequest<WisersOneDownloadResponse>(getRetryWisersOneDownloadUrl(downloadId),
   {
     ...options,
     method: 'POST'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WisersOneDownloadResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9584,23 +8600,16 @@ export const getGetWorkbenchLayoutUrl = () => {
 /**
  * @summary Get Workbench Layout
  */
-export const getWorkbenchLayout = async ( options?: RequestInit): Promise<WorkbenchLayoutResponse> => {
+export const getWorkbenchLayout = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<WorkbenchLayoutResponse> => {
 
-  const res = await fetch(getGetWorkbenchLayoutUrl(),
+  return aimaRequest<WorkbenchLayoutResponse>(getGetWorkbenchLayoutUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WorkbenchLayoutResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9615,23 +8624,16 @@ export const getUpdateWorkbenchLayoutUrl = () => {
 /**
  * @summary Update Workbench Layout
  */
-export const updateWorkbenchLayout = async (workbenchLayoutUpdateRequest: WorkbenchLayoutUpdateRequest, options?: RequestInit): Promise<WorkbenchLayoutResponse> => {
+export const updateWorkbenchLayout = async (workbenchLayoutUpdateRequest: WorkbenchLayoutUpdateRequest, options?: Parameters<typeof aimaRequest>[1]): Promise<WorkbenchLayoutResponse> => {
 
-  const res = await fetch(getUpdateWorkbenchLayoutUrl(),
+  return aimaRequest<WorkbenchLayoutResponse>(getUpdateWorkbenchLayoutUrl(),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(workbenchLayoutUpdateRequest)
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WorkbenchLayoutResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9661,23 +8663,16 @@ export const getGetWorkbenchMindUrl = (params?: GetWorkbenchMindParams,) => {
 /**
  * @summary Get Workbench Mind
  */
-export const getWorkbenchMind = async (params?: GetWorkbenchMindParams, options?: RequestInit): Promise<WorkbenchMindResponse> => {
+export const getWorkbenchMind = async (params?: GetWorkbenchMindParams, options?: Parameters<typeof aimaRequest>[1]): Promise<WorkbenchMindResponse> => {
 
-  const res = await fetch(getGetWorkbenchMindUrl(params),
+  return aimaRequest<WorkbenchMindResponse>(getGetWorkbenchMindUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WorkbenchMindResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9707,23 +8702,16 @@ export const getGetWorkbenchStreamUrl = (params?: GetWorkbenchStreamParams,) => 
 /**
  * @summary Get Workbench Stream
  */
-export const getWorkbenchStream = async (params?: GetWorkbenchStreamParams, options?: RequestInit): Promise<WorkbenchStreamResponse> => {
+export const getWorkbenchStream = async (params?: GetWorkbenchStreamParams, options?: Parameters<typeof aimaRequest>[1]): Promise<WorkbenchStreamResponse> => {
 
-  const res = await fetch(getGetWorkbenchStreamUrl(params),
+  return aimaRequest<WorkbenchStreamResponse>(getGetWorkbenchStreamUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WorkbenchStreamResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9753,23 +8741,16 @@ export const getGetWorkbenchTrendUrl = (params?: GetWorkbenchTrendParams,) => {
 /**
  * @summary Get Workbench Trend
  */
-export const getWorkbenchTrend = async (params?: GetWorkbenchTrendParams, options?: RequestInit): Promise<WorkbenchTrendResponse> => {
+export const getWorkbenchTrend = async (params?: GetWorkbenchTrendParams, options?: Parameters<typeof aimaRequest>[1]): Promise<WorkbenchTrendResponse> => {
 
-  const res = await fetch(getGetWorkbenchTrendUrl(params),
+  return aimaRequest<WorkbenchTrendResponse>(getGetWorkbenchTrendUrl(params),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: WorkbenchTrendResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9785,23 +8766,16 @@ export const getHealthLiveUrl = () => {
  * 返回进程存活状态，不检查外部依赖。
  * @summary Health Live
  */
-export const healthLive = async ( options?: RequestInit): Promise<HealthResponse> => {
+export const healthLive = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<HealthResponse> => {
 
-  const res = await fetch(getHealthLiveUrl(),
+  return aimaRequest<HealthResponse>(getHealthLiveUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: HealthResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}
 
 
 
@@ -9817,20 +8791,13 @@ export const getHealthReadyUrl = () => {
  * 检查 PostgreSQL、Artifact 目录和日志目录，不泄露失败详情。
  * @summary Health Ready
  */
-export const healthReady = async ( options?: RequestInit): Promise<ReadinessResponse> => {
+export const healthReady = async ( options?: Parameters<typeof aimaRequest>[1]): Promise<ReadinessResponse> => {
 
-  const res = await fetch(getHealthReadyUrl(),
+  return aimaRequest<ReadinessResponse>(getHealthReadyUrl(),
   {
     ...options,
     method: 'GET'
 
 
   }
-)
-
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: ReadinessResponse = body ? JSON.parse(body) : {}
-  return data
-}
+);}

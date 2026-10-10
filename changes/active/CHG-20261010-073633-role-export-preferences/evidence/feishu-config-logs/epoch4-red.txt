@@ -1,0 +1,150 @@
+Failed to find real location of C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\python.exe
+FFFFF                                                                    [100%]
+================================== FAILURES ===================================
+_ test_removed_flat_login_configuration_is_rejected[AIMA_FEISHU_ADMIN_GROUP_ID] _
+
+field = 'AIMA_FEISHU_ADMIN_GROUP_ID'
+
+    @pytest.mark.parametrize(
+        "field",
+        ["AIMA_FEISHU_ADMIN_GROUP_ID", "AIMA_FEISHU_USER_GROUP_ID", "AIMA_FEISHU_REDIRECT_URI"],
+    )
+    def test_removed_flat_login_configuration_is_rejected(field: str) -> None:
+        """旧登录输入显式失败，不能静默忽略后启用开发管理员。"""
+>       with pytest.raises(ValueError, match="AIMA_FEISHU_CONNECTORS"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'AIMA_FEISHU_CONNECTORS'
+E         Actual message: '1 validation error for PlatformSettings\n  Value error, 配置飞书登录字段时必须配置 AIMA_FEISHU_APP_ID [type=value_error]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error'
+
+tests\unit\identity\test_feishu_connector_only_config.py:17: AssertionError
+_ test_removed_flat_login_configuration_is_rejected[AIMA_FEISHU_USER_GROUP_ID] _
+
+field = 'AIMA_FEISHU_USER_GROUP_ID'
+
+    @pytest.mark.parametrize(
+        "field",
+        ["AIMA_FEISHU_ADMIN_GROUP_ID", "AIMA_FEISHU_USER_GROUP_ID", "AIMA_FEISHU_REDIRECT_URI"],
+    )
+    def test_removed_flat_login_configuration_is_rejected(field: str) -> None:
+        """旧登录输入显式失败，不能静默忽略后启用开发管理员。"""
+>       with pytest.raises(ValueError, match="AIMA_FEISHU_CONNECTORS"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'AIMA_FEISHU_CONNECTORS'
+E         Actual message: '1 validation error for PlatformSettings\n  Value error, 配置飞书登录字段时必须配置 AIMA_FEISHU_APP_ID [type=value_error]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error'
+
+tests\unit\identity\test_feishu_connector_only_config.py:17: AssertionError
+_ test_removed_flat_login_configuration_is_rejected[AIMA_FEISHU_REDIRECT_URI] _
+
+field = 'AIMA_FEISHU_REDIRECT_URI'
+
+    @pytest.mark.parametrize(
+        "field",
+        ["AIMA_FEISHU_ADMIN_GROUP_ID", "AIMA_FEISHU_USER_GROUP_ID", "AIMA_FEISHU_REDIRECT_URI"],
+    )
+    def test_removed_flat_login_configuration_is_rejected(field: str) -> None:
+        """旧登录输入显式失败，不能静默忽略后启用开发管理员。"""
+>       with pytest.raises(ValueError, match="AIMA_FEISHU_CONNECTORS"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'AIMA_FEISHU_CONNECTORS'
+E         Actual message: '1 validation error for PlatformSettings\n  Value error, 配置飞书登录字段时必须配置 AIMA_FEISHU_APP_ID [type=value_error]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error'
+
+tests\unit\identity\test_feishu_connector_only_config.py:17: AssertionError
+______________ test_one_connector_is_a_complete_single_app_login ______________
+
+    def test_one_connector_is_a_complete_single_app_login() -> None:
+        """一个数组元素完成正式登录装配，无需额外单应用字段。"""
+        connector = {
+            "code": "single", "display_name": "单应用", "app_id": "cli_single",
+            "app_secret_ref": "single_secret", "admin_group_id": "admin", "user_group_id": "user",
+            "redirect_uri": "http://127.0.0.1:5173/api/v1/auth/feishu/single/callback",
+        }
+        settings = load_settings({"AIMA_IDENTITY_MODE": "feishu", "AIMA_FEISHU_CONNECTORS": json.dumps([connector])})
+        resolver, routes = build_feishu_identity(settings)
+        assert isinstance(resolver, FeishuLoginRequiredResolver)
+        assert routes.settings_for("single").app_id == "cli_single"
+>       assert not hasattr(settings, "feishu_admin_group_id")
+E       AssertionError: assert not True
+E        +  where True = hasattr(PlatformSettings(data_dir=WindowsPath('D:/test/AIMA_UGC/.runtime/data'), identity_mode='feishu', log_dir=WindowsPath('...cope='contact:user.base:readonly', feishu_cookie_secure=None, feishu_session_ttl_hours=8, feishu_state_ttl_seconds=600), 'feishu_admin_group_id')
+
+tests\unit\identity\test_feishu_connector_only_config.py:32: AssertionError
+_________________ test_report_app_alone_does_not_enable_login _________________
+
+    def test_report_app_alone_does_not_enable_login() -> None:
+        """报告应用独立保留，只有 CONNECTORS 能启用网页登录。"""
+>       settings = load_settings({"AIMA_FEISHU_APP_ID": "cli_report"})
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\identity\test_feishu_connector_only_config.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+environ = {'AIMA_FEISHU_APP_ID': 'cli_report'}, base_dir = None
+
+    def load_settings(
+        environ: Mapping[str, str] | None = None,
+        *,
+        base_dir: Path | None = None,
+    ) -> PlatformSettings:
+        """加载当前进程配置；只读取显式列出的 AIMA_* 环境变量。"""
+        source = os.environ if environ is None else environ
+        values: dict[str, object] = dict(_DEFAULTS)
+        for env_name, field_name in _ENV_TO_FIELD.items():
+            if env_name in source:
+                values[field_name] = source[env_name]
+    
+        root = (Path.cwd() if base_dir is None else base_dir).resolve(strict=False)
+        # Compose 初始化阶段已将凭据拆出；业务进程只读不含 Secret 的运行配置。
+        connector_file = source.get("AIMA_FEISHU_CONNECTORS_FILE")
+        if connector_file:
+            from aima_ugc.platform.security.secrets import read_secret_file
+    
+            raw = read_secret_file(_resolve_path(connector_file, root)).get_secret_value()
+            values["feishu_connectors_json"] = None if raw == "null" else raw
+        connector_input = values.get("feishu_connectors_json")
+        if isinstance(connector_input, str):
+            try:
+                payload = json.loads(connector_input)
+            except ValueError:
+                payload = None  # 其余格式错误仍交由现有 Settings 校验。
+            if isinstance(payload, list) and any(
+                isinstance(item, dict) and "app_secret" in item for item in payload
+            ):
+                raise ValueError(
+                    "app_secret 只能由源码 launcher / Compose bootstrap 处理；"
+                    "业务进程应使用清理后的 Connector 配置"
+                )
+        for field_name in (
+            "data_dir",
+            "log_dir",
+            "secret_dir",
+            "external_secret_dir",
+            "historical_import_root",
+            "wisersone_auth_dir",
+            "wisersone_input_dir",
+        ):
+            value = values.get(field_name)
+            if value is not None:
+                values[field_name] = _resolve_path(value, root)
+    
+>       return PlatformSettings.model_validate(values)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for PlatformSettings
+E         Value error, 启用飞书登录必须同时配置 AIMA_FEISHU_ADMIN_GROUP_ID、AIMA_FEISHU_USER_GROUP_ID、AIMA_FEISHU_REDIRECT_URI [type=value_error]
+E           For further information visit https://errors.pydantic.dev/2.13/v/value_error
+
+backend\src\aima_ugc\platform\config\settings.py:454: ValidationError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: 89 warnings
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: PydanticDeprecatedSince20: `json_encoders` is deprecated. See https://docs.pydantic.dev/2.13/concepts/serialization/#custom-serializers for alternatives. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/unit/identity/test_feishu_connector_only_config.py::test_removed_flat_login_configuration_is_rejected[AIMA_FEISHU_ADMIN_GROUP_ID]
+FAILED tests/unit/identity/test_feishu_connector_only_config.py::test_removed_flat_login_configuration_is_rejected[AIMA_FEISHU_USER_GROUP_ID]
+FAILED tests/unit/identity/test_feishu_connector_only_config.py::test_removed_flat_login_configuration_is_rejected[AIMA_FEISHU_REDIRECT_URI]
+FAILED tests/unit/identity/test_feishu_connector_only_config.py::test_one_connector_is_a_complete_single_app_login
+FAILED tests/unit/identity/test_feishu_connector_only_config.py::test_report_app_alone_does_not_enable_login
+5 failed, 89 warnings in 2.83s

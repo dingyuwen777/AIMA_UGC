@@ -1,0 +1,209 @@
+Preflight profile=full; changed_count=144
+- .github/workflows/fullstack.yml
+- backend/src/aima_ugc/adapters/persistence/postgres/export_column_defaults.py
+- backend/src/aima_ugc/adapters/persistence/postgres/reporting.py
+- backend/src/aima_ugc/bootstrap/api.py
+- backend/src/aima_ugc/bootstrap/content_playback_service.py
+- backend/src/aima_ugc/bootstrap/export_worker.py
+- backend/src/aima_ugc/bootstrap/feishu_auth_http.py
+- backend/src/aima_ugc/bootstrap/product_http.py
+- backend/src/aima_ugc/bootstrap/reporting_http.py
+- backend/src/aima_ugc/bootstrap/route_authorization.py
+- backend/src/aima_ugc/bootstrap/route_policy.py
+- backend/src/aima_ugc/bootstrap/workbench_http.py
+- backend/src/aima_ugc/contracts/product.py
+- backend/src/aima_ugc/database_schema.py
+- backend/src/aima_ugc/entrypoints/api_main.py
+- backend/src/aima_ugc/modules/identity/request_identity.py
+- backend/src/aima_ugc/modules/product/http.py
+- backend/src/aima_ugc/modules/reporting/README.md
+- backend/src/aima_ugc/modules/reporting/column_catalog.py
+- backend/src/aima_ugc/modules/reporting/http.py
+- backend/src/aima_ugc/modules/reporting/models.py
+- backend/src/aima_ugc/modules/reporting/tables.py
+- backend/src/aima_ugc/modules/workbench/http.py
+- backend/src/aima_ugc/platform/config/settings.py
+- changes/active/CHG-20261010-073633-role-export-preferences/CHANGE.md
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/changed-files.md
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/local-delivery.md
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/local-validation.md
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/review-repair.md
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/route-authorization-inventory.md
+- compose.windows.yaml
+- compose.yaml
+- contracts/openapi/openapi.json
+- docs/02_环境运行与部署.md
+- docs/appendix/06_Excel统一数据导出与离线调试.md
+- docs/blueprint/03_数据库与文件存储.md
+- docs/blueprint/04_后端任务API与前端.md
+- docs/blueprint/05_日志安全部署与运维.md
+- docs/operations/01_生产部署与离线Release方案.md
+- docs/operations/06_飞书身份接入配置手册.md
+- docs/product/03_角色权限与产品状态.md
+- env.local.example
+- env.production.example
+- frontend/e2e-fullstack/role-export-preferences.spec.ts
+- frontend/e2e/artifact-retention.spec.ts
+- frontend/e2e/collection-runtime.spec.ts
+- frontend/e2e/collection-strategy-figma-geometry.spec.ts
+- frontend/e2e/collection-strategy-figma-projection.spec.ts
+- frontend/e2e/data-import-policy.spec.ts
+- frontend/e2e/fixture.ts
+- frontend/e2e/historical-migration.spec.ts
+- frontend/e2e/voice-plaza-design.spec.ts
+- frontend/e2e/voice-plaza.spec.ts
+- frontend/e2e/workbench.spec.ts
+- frontend/orval.config.mjs
+- frontend/src/App.vue
+- frontend/src/app/identity-guard.ts
+- frontend/src/app/layouts/AppShell.vue
+- frontend/src/app/routes.ts
+- frontend/src/features/identity/store.ts
+- frontend/src/features/task-center/api.ts
+- frontend/src/features/task-center/store.ts
+- frontend/src/features/voice-plaza/export-column-defaults.ts
+- frontend/src/features/voice-plaza/mediaPlayback.ts
+- frontend/src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue
+- frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/AnalysisSubmitDialog.vue
+- frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/CommentSupplementDialog.vue
+- frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentCommentSection.vue
+- frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentDetailDrawer.vue
+- frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentMediaGallery.vue
+- frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentVideoPlayer.vue
+- frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/DataExportDialog.vue
+- frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaTable.vue
+- frontend/src/features/voice-plaza/store.ts
+- frontend/src/features/workbench/filterPersistence.ts
+- frontend/src/features/workbench/pages/WorkbenchPage.vue
+- frontend/src/features/workbench/store.ts
+- frontend/src/generated/api/client.ts
+- frontend/src/shared/api/contentRevision.ts
+- frontend/src/shared/api/principalScope.ts
+- frontend/src/shared/api/request.ts
+- frontend/src/shared/domain/vehicleCatalog.ts
+- frontend/src/views/NoAccessView.vue
+- frontend/tests/analysis-all-scope.spec.ts
+- frontend/tests/app-shell.spec.ts
+- frontend/tests/content-comment-section.spec.ts
+- frontend/tests/content-detail-supplement-status.spec.ts
+- frontend/tests/content-revision.spec.ts
+- frontend/tests/figma-final-sync.spec.ts
+- frontend/tests/frontend-audit-regressions.spec.ts
+- frontend/tests/identity-auth-guard.spec.ts
+- frontend/tests/identity-store.spec.ts
+- frontend/tests/principal-scope.spec.ts
+- frontend/tests/rolePrincipal.ts
+- frontend/tests/task-center.spec.ts
+- frontend/tests/vehicle-catalog.spec.ts
+- frontend/tests/voice-plaza-design.spec.ts
+- frontend/tests/voice-plaza-media-components.spec.ts
+- frontend/tests/voice-plaza-media-playback.spec.ts
+- frontend/tests/voice-plaza.spec.ts
+- frontend/tests/workbench.spec.ts
+- migrations/versions/20261010_0087_export_ownership_defaults.py
+- scripts/deploy/prepare_host.py
+- scripts/dev/local_runtime.py
+- scripts/dev/validate_changed.py
+- scripts/quality/check_env_templates.py
+- scripts/quality/classify_ci_scope.py
+- scripts/release/release_bundle.py
+- tests/api/test_role_export_columns_and_csrf.py
+- tests/api/test_route_authorization.py
+- tests/api/test_stage8d_contents.py
+- tests/contracts/test_stage5_brand_query_export_contract.py
+- tests/fullstack/role_sessions_api.py
+- tests/integration/content/test_manual_relevance_review.py
+- tests/integration/content/test_stage5_brand_query_export.py
+- tests/integration/content/test_stage8d_voice_plaza_runtime.py
+- tests/integration/database/test_export_ownership_migration.py
+- tests/integration/ingestion/test_wisersone_recovery_permissions.py
+- tests/integration/platform/test_feishu_login_routes.py
+- tests/integration/platform/test_multi_connector_e2e_mock.py
+- tests/integration/reporting/test_role_exports_and_defaults.py
+- tests/unit/database/test_stage8d_schema.py
+- tests/unit/identity/test_feishu_auth_http.py
+- tests/unit/identity/test_settings_multi_connector.py
+- tests/unit/platform/test_local_dev_runtime.py
+- tests/unit/test_ci_scope.py
+- tests/unit/test_env_compose_config_contract.py
+- tests/unit/test_release_bundle.py
+- tests/unit/test_validate_changed.py
+- backend/src/aima_ugc/bootstrap/feishu_config_input.py
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/browser-final.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/browser-workbench.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/compose-probe.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/lint-final.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/linux.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/plan-final.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/pytest.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/repair-validator.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/repair-windows.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/validation-before-encoding.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config-logs/validation.txt
+- changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config.md
+- tests/unit/identity/test_feishu_connector_only_config.py
+- tests/unit/platform/test_feishu_config_input.py
+Optional fix before validation:
+  uv run ruff format backend/src/aima_ugc/adapters/persistence/postgres/export_column_defaults.py backend/src/aima_ugc/adapters/persistence/postgres/reporting.py backend/src/aima_ugc/bootstrap/api.py backend/src/aima_ugc/bootstrap/content_playback_service.py backend/src/aima_ugc/bootstrap/export_worker.py backend/src/aima_ugc/bootstrap/feishu_auth_http.py backend/src/aima_ugc/bootstrap/product_http.py backend/src/aima_ugc/bootstrap/reporting_http.py backend/src/aima_ugc/bootstrap/route_authorization.py backend/src/aima_ugc/bootstrap/route_policy.py backend/src/aima_ugc/bootstrap/workbench_http.py backend/src/aima_ugc/contracts/product.py backend/src/aima_ugc/database_schema.py backend/src/aima_ugc/entrypoints/api_main.py backend/src/aima_ugc/modules/identity/request_identity.py backend/src/aima_ugc/modules/product/http.py backend/src/aima_ugc/modules/reporting/column_catalog.py backend/src/aima_ugc/modules/reporting/http.py backend/src/aima_ugc/modules/reporting/models.py backend/src/aima_ugc/modules/reporting/tables.py backend/src/aima_ugc/modules/workbench/http.py backend/src/aima_ugc/platform/config/settings.py migrations/versions/20261010_0087_export_ownership_defaults.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/dev/validate_changed.py scripts/quality/check_env_templates.py scripts/quality/classify_ci_scope.py scripts/release/release_bundle.py tests/api/test_role_export_columns_and_csrf.py tests/api/test_route_authorization.py tests/api/test_stage8d_contents.py tests/contracts/test_stage5_brand_query_export_contract.py tests/fullstack/role_sessions_api.py tests/integration/content/test_manual_relevance_review.py tests/integration/content/test_stage5_brand_query_export.py tests/integration/content/test_stage8d_voice_plaza_runtime.py tests/integration/database/test_export_ownership_migration.py tests/integration/ingestion/test_wisersone_recovery_permissions.py tests/integration/platform/test_feishu_login_routes.py tests/integration/platform/test_multi_connector_e2e_mock.py tests/integration/reporting/test_role_exports_and_defaults.py tests/unit/database/test_stage8d_schema.py tests/unit/identity/test_feishu_auth_http.py tests/unit/identity/test_settings_multi_connector.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py tests/unit/test_validate_changed.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/identity/test_feishu_connector_only_config.py tests/unit/platform/test_feishu_config_input.py
+  uv run python scripts/contracts/generate.py
+  npm --prefix frontend run generate:api
+Local validation:
+  uv run python scripts/quality/check_docs.py
+  uv run python scripts/quality/scan_secrets.py
+  uv run python scripts/quality/check_docs_facts.py
+  uv run python scripts/quality/check_agent_governance.py
+  uv run python scripts/quality/check_env_templates.py
+  uv run pytest tests/unit/test_env_compose_config_contract.py tests/unit/identity/test_settings_multi_connector.py tests/unit/test_release_bundle.py -q
+  uv run ruff format --check backend/src/aima_ugc/adapters/persistence/postgres/export_column_defaults.py backend/src/aima_ugc/adapters/persistence/postgres/reporting.py backend/src/aima_ugc/bootstrap/api.py backend/src/aima_ugc/bootstrap/content_playback_service.py backend/src/aima_ugc/bootstrap/export_worker.py backend/src/aima_ugc/bootstrap/feishu_auth_http.py backend/src/aima_ugc/bootstrap/product_http.py backend/src/aima_ugc/bootstrap/reporting_http.py backend/src/aima_ugc/bootstrap/route_authorization.py backend/src/aima_ugc/bootstrap/route_policy.py backend/src/aima_ugc/bootstrap/workbench_http.py backend/src/aima_ugc/contracts/product.py backend/src/aima_ugc/database_schema.py backend/src/aima_ugc/entrypoints/api_main.py backend/src/aima_ugc/modules/identity/request_identity.py backend/src/aima_ugc/modules/product/http.py backend/src/aima_ugc/modules/reporting/column_catalog.py backend/src/aima_ugc/modules/reporting/http.py backend/src/aima_ugc/modules/reporting/models.py backend/src/aima_ugc/modules/reporting/tables.py backend/src/aima_ugc/modules/workbench/http.py backend/src/aima_ugc/platform/config/settings.py migrations/versions/20261010_0087_export_ownership_defaults.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/dev/validate_changed.py scripts/quality/check_env_templates.py scripts/quality/classify_ci_scope.py scripts/release/release_bundle.py tests/api/test_role_export_columns_and_csrf.py tests/api/test_route_authorization.py tests/api/test_stage8d_contents.py tests/contracts/test_stage5_brand_query_export_contract.py tests/fullstack/role_sessions_api.py tests/integration/content/test_manual_relevance_review.py tests/integration/content/test_stage5_brand_query_export.py tests/integration/content/test_stage8d_voice_plaza_runtime.py tests/integration/database/test_export_ownership_migration.py tests/integration/ingestion/test_wisersone_recovery_permissions.py tests/integration/platform/test_feishu_login_routes.py tests/integration/platform/test_multi_connector_e2e_mock.py tests/integration/reporting/test_role_exports_and_defaults.py tests/unit/database/test_stage8d_schema.py tests/unit/identity/test_feishu_auth_http.py tests/unit/identity/test_settings_multi_connector.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py tests/unit/test_validate_changed.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/identity/test_feishu_connector_only_config.py tests/unit/platform/test_feishu_config_input.py
+  uv run ruff check backend/src/aima_ugc/adapters/persistence/postgres/export_column_defaults.py backend/src/aima_ugc/adapters/persistence/postgres/reporting.py backend/src/aima_ugc/bootstrap/api.py backend/src/aima_ugc/bootstrap/content_playback_service.py backend/src/aima_ugc/bootstrap/export_worker.py backend/src/aima_ugc/bootstrap/feishu_auth_http.py backend/src/aima_ugc/bootstrap/product_http.py backend/src/aima_ugc/bootstrap/reporting_http.py backend/src/aima_ugc/bootstrap/route_authorization.py backend/src/aima_ugc/bootstrap/route_policy.py backend/src/aima_ugc/bootstrap/workbench_http.py backend/src/aima_ugc/contracts/product.py backend/src/aima_ugc/database_schema.py backend/src/aima_ugc/entrypoints/api_main.py backend/src/aima_ugc/modules/identity/request_identity.py backend/src/aima_ugc/modules/product/http.py backend/src/aima_ugc/modules/reporting/column_catalog.py backend/src/aima_ugc/modules/reporting/http.py backend/src/aima_ugc/modules/reporting/models.py backend/src/aima_ugc/modules/reporting/tables.py backend/src/aima_ugc/modules/workbench/http.py backend/src/aima_ugc/platform/config/settings.py migrations/versions/20261010_0087_export_ownership_defaults.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/dev/validate_changed.py scripts/quality/check_env_templates.py scripts/quality/classify_ci_scope.py scripts/release/release_bundle.py tests/api/test_role_export_columns_and_csrf.py tests/api/test_route_authorization.py tests/api/test_stage8d_contents.py tests/contracts/test_stage5_brand_query_export_contract.py tests/fullstack/role_sessions_api.py tests/integration/content/test_manual_relevance_review.py tests/integration/content/test_stage5_brand_query_export.py tests/integration/content/test_stage8d_voice_plaza_runtime.py tests/integration/database/test_export_ownership_migration.py tests/integration/ingestion/test_wisersone_recovery_permissions.py tests/integration/platform/test_feishu_login_routes.py tests/integration/platform/test_multi_connector_e2e_mock.py tests/integration/reporting/test_role_exports_and_defaults.py tests/unit/database/test_stage8d_schema.py tests/unit/identity/test_feishu_auth_http.py tests/unit/identity/test_settings_multi_connector.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py tests/unit/test_validate_changed.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/identity/test_feishu_connector_only_config.py tests/unit/platform/test_feishu_config_input.py
+  uv run mypy backend/src
+  uv run pytest tests/unit tests/contracts tests/api -q
+  uv run python scripts/contracts/generate.py --check
+  uv run python scripts/contracts/check_compatibility.py
+  npm --prefix frontend run lint
+  npm --prefix frontend run test -- --run
+  npm --prefix frontend run build
+  npm --prefix frontend run test:e2e
+Deferred to formal CI:
+  - PostgreSQL Integration
+  - Real Full-stack Golden Path
++ uv run python scripts/quality/check_docs.py
+当前项目文档入口、链接、治理边界与仓库文件导航检查通过。
++ uv run python scripts/quality/scan_secrets.py
+源码、Provider 证据、Agent 规则、Change 与文档 Secret 扫描通过。
++ uv run python scripts/quality/check_docs_facts.py
+当前权威文档与 OpenAPI、Schema、Job、Workflow、Route、模块、Provider、版本、Analysis、Release 和 Roadmap 生命周期机器事实一致。
++ uv run python scripts/quality/check_agent_governance.py
+AIMA 项目治理入口、generated projection 与 CI 接线检查通过。
++ uv run python scripts/quality/check_env_templates.py
+配置模板静态/运行配置与适用消费者检查通过。
++ uv run pytest tests/unit/test_env_compose_config_contract.py tests/unit/identity/test_settings_multi_connector.py tests/unit/test_release_bundle.py -q
+.................................s.............                          [100%]
+46 passed, 1 skipped in 2.81s
++ uv run ruff format --check backend/src/aima_ugc/adapters/persistence/postgres/export_column_defaults.py backend/src/aima_ugc/adapters/persistence/postgres/reporting.py backend/src/aima_ugc/bootstrap/api.py backend/src/aima_ugc/bootstrap/content_playback_service.py backend/src/aima_ugc/bootstrap/export_worker.py backend/src/aima_ugc/bootstrap/feishu_auth_http.py backend/src/aima_ugc/bootstrap/product_http.py backend/src/aima_ugc/bootstrap/reporting_http.py backend/src/aima_ugc/bootstrap/route_authorization.py backend/src/aima_ugc/bootstrap/route_policy.py backend/src/aima_ugc/bootstrap/workbench_http.py backend/src/aima_ugc/contracts/product.py backend/src/aima_ugc/database_schema.py backend/src/aima_ugc/entrypoints/api_main.py backend/src/aima_ugc/modules/identity/request_identity.py backend/src/aima_ugc/modules/product/http.py backend/src/aima_ugc/modules/reporting/column_catalog.py backend/src/aima_ugc/modules/reporting/http.py backend/src/aima_ugc/modules/reporting/models.py backend/src/aima_ugc/modules/reporting/tables.py backend/src/aima_ugc/modules/workbench/http.py backend/src/aima_ugc/platform/config/settings.py migrations/versions/20261010_0087_export_ownership_defaults.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/dev/validate_changed.py scripts/quality/check_env_templates.py scripts/quality/classify_ci_scope.py scripts/release/release_bundle.py tests/api/test_role_export_columns_and_csrf.py tests/api/test_route_authorization.py tests/api/test_stage8d_contents.py tests/contracts/test_stage5_brand_query_export_contract.py tests/fullstack/role_sessions_api.py tests/integration/content/test_manual_relevance_review.py tests/integration/content/test_stage5_brand_query_export.py tests/integration/content/test_stage8d_voice_plaza_runtime.py tests/integration/database/test_export_ownership_migration.py tests/integration/ingestion/test_wisersone_recovery_permissions.py tests/integration/platform/test_feishu_login_routes.py tests/integration/platform/test_multi_connector_e2e_mock.py tests/integration/reporting/test_role_exports_and_defaults.py tests/unit/database/test_stage8d_schema.py tests/unit/identity/test_feishu_auth_http.py tests/unit/identity/test_settings_multi_connector.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py tests/unit/test_validate_changed.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/identity/test_feishu_connector_only_config.py tests/unit/platform/test_feishu_config_input.py
+unformatted: File would be reformatted
+  --> tests\unit\platform\test_feishu_config_input.py:59:47
+   |
+58 | @pytest.mark.parametrize("value", [None, ""])
+   - def test_manual_file_and_empty_login_manifest(
+   -     tmp_path: Path, value: object
+   - ) -> None:
+59 + def test_manual_file_and_empty_login_manifest(tmp_path: Path, value: object) -> None:
+60 |     """缺省凭据保留手工文件，清空登录数组不会把报告应用当成登录应用。"""
+   |
+
+1 file would be reformatted, 52 files already formatted
+Traceback (most recent call last):
+  File "D:\test\AIMA_UGC\scripts\dev\validate_changed.py", line 287, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "D:\test\AIMA_UGC\scripts\dev\validate_changed.py", line 282, in main
+    _execute(commands)
+    ~~~~~~~~^^^^^^^^^^
+  File "D:\test\AIMA_UGC\scripts\dev\validate_changed.py", line 249, in _execute
+    subprocess.run((executable, *command[1:]), cwd=ROOT, check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '('D:\\python314\\Scripts\\uv.EXE', 'run', 'ruff', 'format', '--check', 'backend/src/aima_ugc/adapters/persistence/postgres/export_column_defaults.py', 'backend/src/aima_ugc/adapters/persistence/postgres/reporting.py', 'backend/src/aima_ugc/bootstrap/api.py', 'backend/src/aima_ugc/bootstrap/content_playback_service.py', 'backend/src/aima_ugc/bootstrap/export_worker.py', 'backend/src/aima_ugc/bootstrap/feishu_auth_http.py', 'backend/src/aima_ugc/bootstrap/product_http.py', 'backend/src/aima_ugc/bootstrap/reporting_http.py', 'backend/src/aima_ugc/bootstrap/route_authorization.py', 'backend/src/aima_ugc/bootstrap/route_policy.py', 'backend/src/aima_ugc/bootstrap/workbench_http.py', 'backend/src/aima_ugc/contracts/product.py', 'backend/src/aima_ugc/database_schema.py', 'backend/src/aima_ugc/entrypoints/api_main.py', 'backend/src/aima_ugc/modules/identity/request_identity.py', 'backend/src/aima_ugc/modules/product/http.py', 'backend/src/aima_ugc/modules/reporting/column_catalog.py', 'backend/src/aima_ugc/modules/reporting/http.py', 'backend/src/aima_ugc/modules/reporting/models.py', 'backend/src/aima_ugc/modules/reporting/tables.py', 'backend/src/aima_ugc/modules/workbench/http.py', 'backend/src/aima_ugc/platform/config/settings.py', 'migrations/versions/20261010_0087_export_ownership_defaults.py', 'scripts/deploy/prepare_host.py', 'scripts/dev/local_runtime.py', 'scripts/dev/validate_changed.py', 'scripts/quality/check_env_templates.py', 'scripts/quality/classify_ci_scope.py', 'scripts/release/release_bundle.py', 'tests/api/test_role_export_columns_and_csrf.py', 'tests/api/test_route_authorization.py', 'tests/api/test_stage8d_contents.py', 'tests/contracts/test_stage5_brand_query_export_contract.py', 'tests/fullstack/role_sessions_api.py', 'tests/integration/content/test_manual_relevance_review.py', 'tests/integration/content/test_stage5_brand_query_export.py', 'tests/integration/content/test_stage8d_voice_plaza_runtime.py', 'tests/integration/database/test_export_ownership_migration.py', 'tests/integration/ingestion/test_wisersone_recovery_permissions.py', 'tests/integration/platform/test_feishu_login_routes.py', 'tests/integration/platform/test_multi_connector_e2e_mock.py', 'tests/integration/reporting/test_role_exports_and_defaults.py', 'tests/unit/database/test_stage8d_schema.py', 'tests/unit/identity/test_feishu_auth_http.py', 'tests/unit/identity/test_settings_multi_connector.py', 'tests/unit/platform/test_local_dev_runtime.py', 'tests/unit/test_ci_scope.py', 'tests/unit/test_env_compose_config_contract.py', 'tests/unit/test_release_bundle.py', 'tests/unit/test_validate_changed.py', 'backend/src/aima_ugc/bootstrap/feishu_config_input.py', 'tests/unit/identity/test_feishu_connector_only_config.py', 'tests/unit/platform/test_feishu_config_input.py')' returned non-zero exit status 1.

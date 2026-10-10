@@ -1,3 +1,4 @@
+import { setTestPrincipal } from './rolePrincipal'
 import { readFile } from 'node:fs/promises'
 
 import { createPinia, setActivePinia } from 'pinia'
@@ -100,6 +101,7 @@ describe('frontend full-stack audit regressions', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
+    setTestPrincipal()
   })
 
   afterEach(() => {

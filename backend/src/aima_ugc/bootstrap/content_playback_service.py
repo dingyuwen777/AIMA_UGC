@@ -171,6 +171,19 @@ class PostgresContentPlaybackHttpService:
                     )
                 if source is None:
                     raise ContentResourceNotFound
+                if principal.role != "administrator":
+                    # 普通用户只观看既有媒体，不 settle 状态或创建刷新 Job。
+                    if body.failed_source_revision is not None:
+                        principal.require_administrator()
+                    if source.state == "preparing":
+                        return self._response(source, "preparing", principal=principal)
+                    if source.url:
+                        try:
+                            normalize_video_url(source.url)
+                        except VideoStreamError:
+                            return self._response(source, "unavailable", principal=principal)
+                        return self._response(source, "ready", principal=principal)
+                    return self._response(source, "unavailable", principal=principal)
                 now = beijing_now()
                 if source.state == "preparing" and source.job_id is not None:
                     # 不反向锁 Job：Worker 的固定锁序是 Job→Content→state。
@@ -219,6 +232,7 @@ class PostgresContentPlaybackHttpService:
                 snapshot = media_refresh_snapshot(source, provider)
                 # Content 锁和同事务 state 已承担并发去重；新意图 UUID 区分删除后恢复的生命周期。
                 refresh_intent_id = uuid4()
+                principal.require_administrator()
                 job = PostgresJobRepository(session).enqueue(
                     job_type=COLLECTION_RUN_JOB_TYPE,
                     payload_version=COLLECTION_RUN_PAYLOAD_VERSION,

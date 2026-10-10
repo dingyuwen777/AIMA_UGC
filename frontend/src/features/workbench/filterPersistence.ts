@@ -1,5 +1,6 @@
 import { PlatformName } from '../../generated/api/client'
 import type { WorkbenchFilters } from './store'
+import { ownsPrincipalFilters } from '../../shared/api/principalScope'
 
 const storageKey = 'aima.workbench.applied-filters'
 const listFields = ['platforms', 'brandIds', 'vehicleModelIds', 'voiceTypes', 'sentiments', 'primaryLabels', 'secondaryLabels'] as const
@@ -13,6 +14,7 @@ function validDate(value: unknown): value is string {
 
 /** 只恢复已应用条件；返回值还须用当前目录及 Taxonomy 归一化。 */
 export function readWorkbenchFilters(): WorkbenchFilters | null {
+  if (!ownsPrincipalFilters()) return null
   try {
     const raw = sessionStorage.getItem(storageKey)
     if (!raw) return null
@@ -34,6 +36,7 @@ export function readWorkbenchFilters(): WorkbenchFilters | null {
 
 /** 白名单序列化，禁止把聚合响应、分页游标或布局草稿写入浏览器存储。 */
 export function saveWorkbenchFilters(filters: WorkbenchFilters): void {
+  if (!ownsPrincipalFilters()) return
   try {
     sessionStorage.setItem(storageKey, JSON.stringify({
       schema_version: 1,

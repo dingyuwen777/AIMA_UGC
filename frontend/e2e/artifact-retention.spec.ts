@@ -150,7 +150,7 @@ test('shows Excel import source retention from terminal Job time when Batch time
     if (url.pathname === `/api/v1/import-batches/${batchId}`) {
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(importDetail) })
     }
-    await route.fulfill({ status: 404, body: 'not mocked' })
+    await route.fallback()
   })
 
   await page.goto('/collection-runtime')

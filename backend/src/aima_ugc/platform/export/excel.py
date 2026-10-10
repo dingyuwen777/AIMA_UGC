@@ -866,6 +866,9 @@ def _analysis_label_pairs(
         return ()
     if analysis.label_pairs:
         return analysis.label_pairs
+    # 不相关或人工纳入的结果可以尚无标签；保留分析列，不伪造无效标签明细。
+    if not analysis.primary_label and not analysis.secondary_label:
+        return ()
     return (
         UnifiedDataExcelLabelPairV1(
             primary_label=analysis.primary_label,

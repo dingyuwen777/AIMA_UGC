@@ -51,6 +51,8 @@ from aima_ugc.modules.analysis.relevance_review_tables import (
 from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
 from aima_ugc.modules.content.tables import contents_table
+from aima_ugc.modules.identity import Principal
+from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_TYPE
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobRegistry
 from fastapi.testclient import TestClient
@@ -178,6 +180,7 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
             runtime=runtime,
             registry=create_collection_job_registry(runtime=runtime),
             worker_id="manual-review-import",
+            supported_job_types=(IMPORT_JOB_TYPE,),
             lease_seconds=120,
             retry_delay_seconds=0,
         )
@@ -294,7 +297,9 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
                 )
             ),
             request_id="manual-review-query-export",
-            actor_ref="user:manual-review",
+            principal=Principal(
+                "user:manual-review", "人工复核管理员", "administrator", "development"
+            ),
         )
         assert export.target_count == 1
 

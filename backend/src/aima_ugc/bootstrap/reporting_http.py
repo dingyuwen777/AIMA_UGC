@@ -13,6 +13,9 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
+from aima_ugc.adapters.persistence.postgres.export_column_defaults import (
+    PostgresExportColumnDefaultRepository,
+)
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.reporting import PostgresDataExportRepository
 from aima_ugc.contracts.http import (
@@ -25,7 +28,9 @@ from aima_ugc.contracts.http import (
     DataExportSubmitRequest,
     JobStatusResponse,
 )
+from aima_ugc.contracts.product import ExportColumnDefaultResponse, ExportColumnDefaultUpdateRequest
 from aima_ugc.modules.content.http import ContentSelectionEmpty
+from aima_ugc.modules.identity import AuthorizationDenied, Principal
 from aima_ugc.modules.reporting.column_catalog import (
     EXPORT_COLUMN_CATALOG_VERSION,
     resolve_export_columns,
@@ -41,6 +46,8 @@ from aima_ugc.modules.reporting.http import (
     ArtifactDownload,
     DataExportNotReady,
     DataExportResourceNotFound,
+    ExportColumnDefaultConflict,
+    ExportColumnsInvalid,
 )
 from aima_ugc.modules.reporting.models import DataExportRecord
 from aima_ugc.platform.jobs import JobRecord
@@ -62,8 +69,12 @@ class PostgresReportingHttpService:
         request: DataExportSubmitRequest,
         *,
         request_id: str,
-        actor_ref: str,
+        principal: Principal,
     ) -> DataExportCreatedResponse:
+        """授权列先于事务/Job，创建者只来自可信 Principal。"""
+        columns = _resolve_columns(request.columns, principal)
+        if not principal.principal_id.strip():
+            raise AuthorizationDenied
         session = self._runtime.database.new_session()
         try:
             with session.begin():
@@ -105,13 +116,13 @@ class PostgresReportingHttpService:
                         if target_request.content_ids
                         else []
                     ),
-                    "requested_by": actor_ref,
+                    "requested_by": principal.principal_id,
                 }
-                columns = resolve_export_columns(cast(tuple[str, ...], request.columns))
                 target_count = PostgresDataExportRepository(session).create(
                     export_id=export_id,
                     job_id=job.id,
                     request_snapshot=snapshot,
+                    created_by=principal.principal_id,
                     target_statement=target_statement,
                     columns=columns,
                     column_catalog_version=EXPORT_COLUMN_CATALOG_VERSION,
@@ -126,11 +137,14 @@ class PostgresReportingHttpService:
         finally:
             session.close()
 
-    def get_export(self, export_id: UUID) -> DataExportResponse:
+    def get_export(self, export_id: UUID, *, principal: Principal) -> DataExportResponse:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                export = PostgresDataExportRepository(session).get(export_id)
+                export = PostgresDataExportRepository(session).get(
+                    export_id,
+                    created_by=_owner_filter(principal),
+                )
                 if export is None:
                     raise DataExportResourceNotFound
                 job = PostgresJobRepository(session).get(export.job_id)
@@ -140,12 +154,12 @@ class PostgresReportingHttpService:
         finally:
             session.close()
 
-    def list_exports(self) -> DataExportListResponse:
+    def list_exports(self, *, principal: Principal) -> DataExportListResponse:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
                 repository = PostgresDataExportRepository(session)
-                exports = repository.list_recent()
+                exports = repository.list_recent(created_by=_owner_filter(principal))
                 jobs = PostgresJobRepository(session)
                 responses: list[DataExportResponse] = []
                 for export in exports:
@@ -156,15 +170,36 @@ class PostgresReportingHttpService:
         finally:
             session.close()
 
-    def download_export(self, export_id: UUID) -> ArtifactDownload:
+    def download_export(self, export_id: UUID, *, principal: Principal) -> ArtifactDownload:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                export = PostgresDataExportRepository(session).get(export_id)
+                export = PostgresDataExportRepository(session).get(
+                    export_id,
+                    created_by=_owner_filter(principal),
+                )
                 if export is None:
                     raise DataExportResourceNotFound
                 job = PostgresJobRepository(session).get(export.job_id)
-                if job is None or job.status != "succeeded" or export.artifact_id is None:
+                # 历史文件也按当前角色核验冻结列，再获取 Artifact/大文件。
+                try:
+                    if principal.role != "administrator" and (
+                        not export.columns or export.column_catalog_version < 3
+                    ):
+                        raise ValueError("历史文件没有可验证的全部工作表字段权限")
+                    resolve_export_columns(
+                        export.columns, administrator=principal.role == "administrator"
+                    )
+                except ValueError as exc:
+                    raise AuthorizationDenied(
+                        "当前账号不能下载包含内部定位字段的文件，请重新导出"
+                    ) from exc
+                if (
+                    job is None
+                    or job.job_type != DATA_EXPORT_JOB_TYPE
+                    or job.status != "succeeded"
+                    or export.artifact_id is None
+                ):
                     raise DataExportNotReady
                 artifact = PostgresArtifactMetadataRepository(session).get(export.artifact_id)
                 if (
@@ -189,6 +224,73 @@ class PostgresReportingHttpService:
                 )
         finally:
             session.close()
+
+    def get_column_default(self, principal: Principal) -> ExportColumnDefaultResponse:
+        """投影当前有效列；降权或目录变更不写回原始保存记录。"""
+        with self._runtime.database.new_session() as session:
+            row = PostgresExportColumnDefaultRepository(session).get(principal.principal_id)
+            return _column_default_response(row, principal)
+
+    def save_column_default(
+        self,
+        request: ExportColumnDefaultUpdateRequest,
+        *,
+        principal: Principal,
+    ) -> ExportColumnDefaultResponse:
+        """目录与 revision 都必须匹配，恢复默认仍递增 revision。"""
+        if request.catalog_version != EXPORT_COLUMN_CATALOG_VERSION:
+            raise ExportColumnDefaultConflict
+        if request.columns is not None:
+            _resolve_columns(request.columns, principal)
+        with self._runtime.database.new_session() as session, session.begin():
+            row = PostgresExportColumnDefaultRepository(session).save(
+                principal.principal_id,
+                revision=request.revision,
+                columns=request.columns,
+                catalog_version=request.catalog_version,
+            )
+            return _column_default_response(row, principal)
+
+
+def _owner_filter(principal: Principal) -> str | None:
+    """管理员全局查询；普通用户在 SQL 中先按可信身份过滤。"""
+    return None if principal.role == "administrator" else principal.principal_id
+
+
+def _resolve_columns(columns: tuple[str, ...], principal: Principal) -> tuple[str, ...]:
+    """把列目录领域拒绝翻译为现有 422 错误边界。"""
+    try:
+        return resolve_export_columns(columns, administrator=principal.role == "administrator")
+    except ValueError as exc:
+        raise ExportColumnsInvalid from exc
+
+
+def _column_default_response(row: object, principal: Principal) -> ExportColumnDefaultResponse:
+    """有效自定义组合不吸收新增列；全部失效时返回空投影供 UI 提示回退。"""
+    from sqlalchemy.engine import RowMapping
+
+    from aima_ugc.modules.reporting.column_catalog import EXPORT_COLUMNS
+
+    if row is None:
+        return ExportColumnDefaultResponse(
+            revision=0,
+            columns=None,
+            saved_catalog_version=None,
+            updated_at=None,
+        )
+    saved = cast(RowMapping, row)
+    allowed = {
+        item.key
+        for item in EXPORT_COLUMNS
+        if principal.role == "administrator" or not item.administrator_only
+    }
+    selected = saved["selected_columns"]
+    return ExportColumnDefaultResponse(
+        revision=saved["revision"],
+        columns=tuple(key for key in selected if key in allowed) if selected is not None else None,
+        saved_catalog_version=saved["saved_catalog_version"],
+        updated_at=saved["updated_at"],
+    )
 
 
 def _export_expired(

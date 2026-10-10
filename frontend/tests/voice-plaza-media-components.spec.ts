@@ -98,9 +98,20 @@ beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('HTMLElement', MediaNode) }
 afterEach(() => { unmount.splice(0).forEach((close) => close()); vi.unstubAllGlobals() })
 
 describe('媒体画廊与原生播放器组合回归', () => {
+  it('画廊显式传递普通用户权限，播放器原生失败不会提交付费恢复', async () => {
+    const root = mount(ContentMediaGallery, () => ({ contentId, platform: 'xiaohongshu', contentType: 'video',
+      media: [{ position: 0, media_type: 'video' }], open: true, canRecover: false }))
+    vi.mocked(prepareMediaPlayback).mockResolvedValue(ready)
+    await fire(byClass(root, 'video-prepare'), 'onClick')
+    const video = find(root, (node) => node.tag === 'video')!
+    video.error = { code: 2 }
+    await fire(video, 'onError')
+    expect(prepareMediaPlayback).toHaveBeenCalledTimes(1)
+    expect(byClass(root, 'video-status').nodes.map((node) => node.text).join('')).not.toContain('恢复一次')
+  })
   it('同帖最后一张图片被单个视频完整替换后，视频仍处于可准备状态', async () => {
     const media = ref<ContentMediaResponse[]>([0, 1, 2].map((position) => ({ position, media_type: 'image', preview_url: '/cover' })))
-    const root = mount(ContentMediaGallery, () => ({ contentId, platform: 'xiaohongshu', contentType: 'video', media: media.value, open: true }))
+    const root = mount(ContentMediaGallery, () => ({ contentId, platform: 'xiaohongshu', contentType: 'video', media: media.value, open: true, canRecover: true }))
     const grid = byClass(root, 'media-grid')
     grid.scrollLeft = 200
     await fire(grid, 'onScrollPassive')
@@ -117,7 +128,7 @@ describe('媒体画廊与原生播放器组合回归', () => {
   it('同帖媒体重排按仍存在的 position 保留正在播放项，同代次更新不重新准备', async () => {
     const video = { position: 2, media_type: 'video', preview_url: '/cover' }
     const media = ref<ContentMediaResponse[]>([{ position: 0, media_type: 'image' }, { position: 1, media_type: 'image' }, video])
-    const root = mount(ContentMediaGallery, () => ({ contentId, platform: 'xiaohongshu', contentType: 'video', media: media.value, open: true }))
+    const root = mount(ContentMediaGallery, () => ({ contentId, platform: 'xiaohongshu', contentType: 'video', media: media.value, open: true, canRecover: true }))
     const grid = byClass(root, 'media-grid')
     grid.scrollLeft = 200
     await fire(grid, 'onScrollPassive')
@@ -137,7 +148,7 @@ describe('媒体画廊与原生播放器组合回归', () => {
 
   it('原生 code1 释放后提供显式重试，未点击前不会自动请求恢复', async () => {
     vi.mocked(prepareMediaPlayback).mockResolvedValue(ready)
-    const root = mount(ContentVideoPlayer, () => ({ contentId, media: { position: 0, media_type: 'video' }, active: true }))
+    const root = mount(ContentVideoPlayer, () => ({ contentId, media: { position: 0, media_type: 'video' }, active: true, canRecover: true }))
     await fire(byClass(root, 'video-prepare'), 'onClick')
     const native = find(root, (node) => node.tag === 'video')!
     native.error = { code: 1 }

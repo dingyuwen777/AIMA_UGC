@@ -21,6 +21,7 @@ import {
 } from '../../../relevanceReview'
 
 const props = defineProps<{
+  isAdministrator?: boolean
   items: ContentListItemResponse[]
   loading: boolean
   error?: string | null
@@ -118,6 +119,7 @@ function reviewClass(item: ContentListItemResponse): string {
 
 /** 发出单条人工复核事件，不在表格组件内执行 API 调用。 */
 function runReview(item: ContentListItemResponse): void {
+  if (!props.isAdministrator) return
   const decision = reviewDecision(item)
   if (decision) emit('review', item.id, decision)
 }
@@ -356,7 +358,7 @@ function vehicleCellTitle(item: ContentListItemResponse): string {
           查看详情
         </button>
         <button
-          v-if="reviewDecision(item)"
+          v-if="isAdministrator && reviewDecision(item)"
           :class="reviewClass(item)"
           type="button"
           :disabled="reviewing"

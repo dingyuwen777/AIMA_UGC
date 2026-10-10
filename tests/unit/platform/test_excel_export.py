@@ -149,6 +149,40 @@ def _multilabel_export_record() -> UnifiedDataExcelV1:
     )
 
 
+@pytest.mark.parametrize("relevance", ["irrelevant", "relevant"])
+def test_export_preserves_analysis_without_labels(tmp_path: Path, relevance: str) -> None:
+    """不相关及人工纳入内容可有已完成但无标签的分析，不能制造空标签对。"""
+    record = _export_record()
+    analysis = UnifiedDataExcelAnalysisV1.model_validate(
+        {"relevance": relevance, "voice_type": "媒体机构发声"}
+    )
+    record = record.model_copy(
+        update={"content": record.content.model_copy(update={"analysis": analysis})}
+    )
+    output = tmp_path / "without-labels.xlsx"
+    summary = export_unified_data_excel([record], output, include_analysis=True)
+    assert summary.content_rows == 1
+    assert summary.label_rows == 0
+    assert summary.comment_rows == 1
+    with output.open("rb") as source:
+        workbook = load_workbook(source, read_only=True)
+        try:
+            rows = list(workbook["内容"].values)
+            assert rows[1][rows[0].index("发声类型")] == "媒体机构发声"
+            assert rows[1][rows[0].index("一级标签")] is None
+            assert rows[1][rows[0].index("二级标签")] is None
+            assert len(list(workbook["标签明细"].values)) == 1
+        finally:
+            workbook.close()
+    with pytest.raises(ValueError, match="禁止导出空白打标字段"):
+        export_unified_data_excel(
+            [record],
+            tmp_path / "strict.xlsx",
+            include_analysis=True,
+            require_complete_analysis=True,
+        )
+
+
 def test_shared_exporter_writes_human_readable_brand_role_competition_and_vehicle_columns(
     tmp_path: Path,
 ) -> None:

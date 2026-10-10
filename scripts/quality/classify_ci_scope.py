@@ -18,6 +18,7 @@ ALL_FULLSTACK_SPECS = (
     "comment-supplement.spec.ts",
     "excel-import.spec.ts",
     "manual-relevance-review.spec.ts",
+    "role-export-preferences.spec.ts",
     "stage12-historical-analysis.spec.ts",
 )
 FULLSTACK_ALL = ("all",)

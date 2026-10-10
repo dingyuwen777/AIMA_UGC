@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter, type LocationQueryRaw } from 'vue-router'
 
 import AppShell from '../../../app/layouts/AppShell.vue'
+import { useContentRevisionStore } from '../../../shared/api/contentRevision'
 import type { WorkbenchLayoutModule, WorkbenchModuleId } from '../../../generated/api/client'
 import { formatDateTime } from '../../../shared/domain/beijingTime'
 import AimaButton from '../../../shared/ui/AimaButton.vue'
@@ -12,13 +13,18 @@ import BrandMindCard from '../components/BrandMindCard.vue'
 import SoundStreamCard from '../components/SoundStreamCard.vue'
 import UgcTrendCard from '../components/UgcTrendCard.vue'
 import { useWorkbenchStore, type WorkbenchFilters } from '../store'
+import { useIdentityStore } from '../../identity/store'
 
 const store = useWorkbenchStore()
+const identity = useIdentityStore()
 const taskCenter = useTaskCenterStore()
+const contentRevision = useContentRevisionStore()
+let contentRevisionHandle: ReturnType<typeof setInterval> | undefined
 const router = useRouter()
 const draggedModule = ref<WorkbenchModuleId | null>(null)
 let filterRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let analysisRefreshHandle: ReturnType<typeof setTimeout> | undefined
+let analysisRefreshRunning = false
 let periodicRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let periodicRefreshPending = false
 const AUTO_REFRESH_INTERVAL = 60 * 60 * 1000
@@ -27,10 +33,11 @@ let pendingRefreshRunning = false
 let pendingAttempts = 0
 let pendingQuery = ''
 let disposed = false
+let initialized = false
 let resizeCleanup: (() => void) | null = null
 
 const analysisFingerprint = computed(() =>
-  taskCenter.analysisRuns
+  (identity.isAdministrator ? taskCenter.analysisRuns : [])
     .map((run) => [
       run.id,
       run.status,
@@ -64,12 +71,20 @@ function scheduleFilterRefresh(): void {
   }, 100)
 }
 
-/** Analysis Run 每秒轮询可能连续变化，750ms 内合并成一次 Workbench 刷新。 */
+/** 连续修订在 750ms 内合并；等待已有读取结束，避免与聚合跟进相互覆盖。 */
 function scheduleAnalysisRefresh(): void {
   if (analysisRefreshHandle) clearTimeout(analysisRefreshHandle)
-  analysisRefreshHandle = setTimeout(() => {
+  analysisRefreshHandle = setTimeout(async () => {
     analysisRefreshHandle = undefined
-    void store.refreshData(true)
+    if (disposed) return
+    if (analysisRefreshRunning || pendingRefreshRunning || periodicRefreshPending
+      || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend) {
+      scheduleAnalysisRefresh()
+      return
+    }
+    analysisRefreshRunning = true
+    try { await store.refreshData(true) }
+    finally { analysisRefreshRunning = false }
   }, 750)
 }
 
@@ -96,7 +111,7 @@ function schedulePeriodicRefresh(): void {
 async function refreshPeriodically(): Promise<void> {
   if (disposed || periodicRefreshPending) return
   if (document.visibilityState !== 'visible'
-    || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend
+    || analysisRefreshRunning || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend
     || (store.lastAutoRefreshAt !== null && Date.now() - store.lastAutoRefreshAt < AUTO_REFRESH_INTERVAL)) {
     schedulePeriodicRefresh()
     return
@@ -113,6 +128,7 @@ async function refreshPeriodically(): Promise<void> {
 /** 标签页恢复后只补充已经过期的普通刷新，并继续跟进后台计算。 */
 function onVisibilityChange(): void {
   if (document.visibilityState === 'visible') {
+    void contentRevision.refresh()
     void refreshPeriodically()
     schedulePendingRefresh()
   } else {
@@ -132,6 +148,7 @@ function schedulePendingRefresh(): void {
   pendingRefreshHandle = setTimeout(async () => {
     pendingRefreshHandle = undefined
     if (disposed || document.visibilityState !== 'visible') { schedulePendingRefresh(); return }
+    if (analysisRefreshRunning || store.moduleLoading.mind || store.moduleLoading.trend) { schedulePendingRefresh(); return }
     pendingRefreshRunning = true
     pendingAttempts += 1
     try {
@@ -245,12 +262,24 @@ function moduleLabel(moduleId: WorkbenchModuleId): string {
 }
 
 watch(analysisFingerprint, (current, previous) => {
-  if (previous && current !== previous) scheduleAnalysisRefresh()
+  if (identity.isAdministrator && previous && current !== previous) scheduleAnalysisRefresh()
+})
+watch(() => contentRevision.revision, (current, previous) => {
+  if (initialized && current !== null && current !== previous) scheduleAnalysisRefresh()
 })
 watch([() => store.mind, () => store.trend, () => store.filters], schedulePendingRefresh)
 
 onMounted(() => {
-  void store.initialize().finally(schedulePeriodicRefresh)
+  void store.initialize().finally(() => {
+    initialized = true
+    // 初次模块与修订并行读取，取得首个修订后追赶一次以闭合初始化窗口。
+    if (!disposed && contentRevision.revision !== null) scheduleAnalysisRefresh()
+    schedulePeriodicRefresh()
+  })
+  void contentRevision.refresh()
+  contentRevisionHandle = setInterval(() => {
+    if (document.visibilityState === 'visible') void contentRevision.refresh()
+  }, 1000)
   document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
@@ -260,6 +289,7 @@ onBeforeUnmount(() => {
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
   if (analysisRefreshHandle) clearTimeout(analysisRefreshHandle)
   if (periodicRefreshHandle) clearTimeout(periodicRefreshHandle)
+  if (contentRevisionHandle) clearInterval(contentRevisionHandle)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   resizeCleanup?.()
 })

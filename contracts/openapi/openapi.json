@@ -5542,6 +5542,22 @@
         "title": "ContentCountResponse",
         "type": "object"
       },
+      "ContentDataRevisionResponse": {
+        "additionalProperties": false,
+        "description": "共享业务数据的匿名化修订标记，不暴露管理任务或配置。",
+        "properties": {
+          "revision": {
+            "minLength": 1,
+            "title": "Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "ContentDataRevisionResponse",
+        "type": "object"
+      },
       "ContentDetailResponse": {
         "additionalProperties": false,
         "properties": {
@@ -7616,6 +7632,101 @@
           "columns"
         ],
         "title": "ExportColumnCatalogResponse",
+        "type": "object"
+      },
+      "ExportColumnDefaultResponse": {
+        "additionalProperties": false,
+        "description": "当前账号保存的有效默认列；读取不会改写旧配置。",
+        "properties": {
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "saved_catalog_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved Catalog Version"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "revision",
+          "columns",
+          "saved_catalog_version",
+          "updated_at"
+        ],
+        "title": "ExportColumnDefaultResponse",
+        "type": "object"
+      },
+      "ExportColumnDefaultUpdateRequest": {
+        "additionalProperties": false,
+        "description": "以修订号比较并保存个人列；NULL 恢复系统默认。",
+        "properties": {
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "catalog_version",
+          "columns"
+        ],
+        "title": "ExportColumnDefaultUpdateRequest",
         "type": "object"
       },
       "ExportColumnKey": {
@@ -12500,7 +12611,8 @@
         "summary": "Get Feishu Publication Job",
         "tags": [
           "administration"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/admin/feishu-report-publications": {
@@ -12572,7 +12684,8 @@
         "summary": "Create Feishu Report Publication",
         "tags": [
           "administration"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/admin/feishu-representative-selections": {
@@ -12644,7 +12757,8 @@
         "summary": "Create Feishu Representative Selection",
         "tags": [
           "administration"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-scheme-versions/{version_id}": {
@@ -12728,7 +12842,8 @@
         "summary": "Update Analysis Scheme Draft",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-scheme-versions/{version_id}/publish": {
@@ -12812,7 +12927,8 @@
         "summary": "Publish Analysis Scheme",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-scheme-versions/{version_id}/rollback": {
@@ -12896,7 +13012,8 @@
         "summary": "Rollback Analysis Scheme",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-schemes": {
@@ -12938,7 +13055,8 @@
         "summary": "List Analysis Schemes",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "post": {
         "description": "管理员创建结构化 Analysis Scheme 草稿。",
@@ -13008,7 +13126,8 @@
         "summary": "Create Analysis Scheme Draft",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-schemes/lifecycle/archived": {
@@ -13039,7 +13158,8 @@
         "summary": "List Archived Analysis Schemes",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-schemes/{scheme_id}": {
@@ -13105,7 +13225,8 @@
         "summary": "Delete Analysis Scheme",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-schemes/{scheme_id}/archive": {
@@ -13178,7 +13299,8 @@
         "summary": "Archive Analysis Scheme",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-schemes/{scheme_id}/copy": {
@@ -13261,7 +13383,8 @@
         "summary": "Copy Analysis Scheme",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-schemes/{scheme_id}/delete-eligibility": {
@@ -13324,7 +13447,8 @@
         "summary": "Get Analysis Scheme Delete Eligibility",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis-schemes/{scheme_id}/restore": {
@@ -13390,7 +13514,8 @@
         "summary": "Restore Analysis Scheme",
         "tags": [
           "analysis-schemes"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis/content-runs": {
@@ -13421,7 +13546,8 @@
         "summary": "List Content Analysis Runs",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "post": {
         "operationId": "createContentAnalysisRun",
@@ -13490,7 +13616,8 @@
         "summary": "Create Content Analysis Run",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis/content-runs/preview": {
@@ -13551,7 +13678,8 @@
         "summary": "Preview Content Analysis Run",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis/content-runs/{run_id}": {
@@ -13614,7 +13742,8 @@
         "summary": "Get Content Analysis Run",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/analysis/content-runs/{run_id}/cancel": {
@@ -13687,7 +13816,8 @@
         "summary": "Cancel Content Analysis Run",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/audit-events": {
@@ -13764,7 +13894,8 @@
         "summary": "List Audit Events",
         "tags": [
           "administration"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/auth/connectors": {
@@ -13786,7 +13917,8 @@
         "summary": "Listauthconnectors",
         "tags": [
           "identity"
-        ]
+        ],
+        "x-aima-authorization": "public"
       }
     },
     "/api/v1/auth/feishu/callback": {
@@ -13920,7 +14052,8 @@
         "summary": "Completefeishulogin",
         "tags": [
           "identity"
-        ]
+        ],
+        "x-aima-authorization": "public"
       }
     },
     "/api/v1/auth/feishu/login": {
@@ -14054,7 +14187,8 @@
         "summary": "Startfeishulogin",
         "tags": [
           "identity"
-        ]
+        ],
+        "x-aima-authorization": "public"
       }
     },
     "/api/v1/auth/feishu/{connector_code}/callback": {
@@ -14197,7 +14331,8 @@
         "summary": "Completefeishuloginforconnector",
         "tags": [
           "identity"
-        ]
+        ],
+        "x-aima-authorization": "public"
       }
     },
     "/api/v1/auth/feishu/{connector_code}/login": {
@@ -14324,7 +14459,8 @@
         "summary": "Startfeishuloginforconnector",
         "tags": [
           "identity"
-        ]
+        ],
+        "x-aima-authorization": "public"
       }
     },
     "/api/v1/auth/logout": {
@@ -14414,7 +14550,8 @@
         "summary": "Logoutcurrentsession",
         "tags": [
           "identity"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/canonical-replays": {
@@ -14485,7 +14622,8 @@
         "summary": "Create Canonical Replay",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/canonical-replays/all": {
@@ -14556,7 +14694,8 @@
         "summary": "Create All Canonical Replays",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/canonical-replays/all/{replay_request_id}/cancel-and-revoke": {
@@ -14640,7 +14779,8 @@
         "summary": "Cancel And Revoke All Canonical Replays",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/canonical-replays/all/{replay_request_id}/revoke": {
@@ -14724,7 +14864,8 @@
         "summary": "Revoke All Canonical Replays",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/canonical-replays/{run_id}": {
@@ -14797,7 +14938,8 @@
         "summary": "Get Canonical Replay",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/canonical-replays/{run_id}/cancel": {
@@ -14880,7 +15022,8 @@
         "summary": "Cancel Canonical Replay",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-capabilities": {
@@ -14911,7 +15054,8 @@
         "summary": "Get Collection Capabilities",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-plans": {
@@ -15027,7 +15171,8 @@
         "summary": "List Collection Plans",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "post": {
         "operationId": "createCollectionPlan",
@@ -15106,7 +15251,8 @@
         "summary": "Create Collection Plan",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-plans/{plan_id}": {
@@ -15172,7 +15318,8 @@
         "summary": "Delete Collection Plan",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "get": {
         "operationId": "getCollectionPlan",
@@ -15233,7 +15380,8 @@
         "summary": "Get Collection Plan",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "put": {
         "operationId": "updateCollectionPlan",
@@ -15314,7 +15462,8 @@
         "summary": "Update Collection Plan",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-plans/{plan_id}/archive": {
@@ -15377,7 +15526,8 @@
         "summary": "Archive Collection Plan",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-plans/{plan_id}/copy": {
@@ -15460,7 +15610,8 @@
         "summary": "Copy Collection Plan",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-plans/{plan_id}/delete-eligibility": {
@@ -15513,7 +15664,8 @@
         "summary": "Get Collection Plan Delete Eligibility",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-plans/{plan_id}/enabled": {
@@ -15606,7 +15758,8 @@
         "summary": "Update Collection Plan Enabled",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-plans/{plan_id}/restore": {
@@ -15669,7 +15822,8 @@
         "summary": "Restore Collection Plan",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-runs": {
@@ -15740,7 +15894,8 @@
         "summary": "Create Collection Run",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-runs/{run_id}": {
@@ -15803,7 +15958,8 @@
         "summary": "Get Collection Run",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-runs/{run_id}/cancel": {
@@ -15876,7 +16032,8 @@
         "summary": "Cancel Collection Run",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-runs/{run_id}/retry-failed": {
@@ -15949,7 +16106,8 @@
         "summary": "Retry Collection Run Failed Accounts",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-runtime/runs": {
@@ -16142,7 +16300,8 @@
         "summary": "List Collection Runtime Runs",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-runtime/summary": {
@@ -16183,7 +16342,8 @@
         "summary": "Get Collection Runtime Summary",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/collection-supplements/preview": {
@@ -16245,7 +16405,8 @@
         "summary": "Preview Collection Supplement",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/content-analysis-capabilities": {
@@ -16266,7 +16427,8 @@
         "summary": "Get Content Analysis Capabilities",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/content-analysis-jobs/{job_id}": {
@@ -16329,7 +16491,8 @@
         "summary": "Get Content Analysis Job",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/content-analysis-requests": {
@@ -16380,7 +16543,8 @@
         "summary": "Create Content Analysis",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/content-analysis-taxonomy": {
@@ -16422,7 +16586,8 @@
         "summary": "Get Content Analysis Taxonomy",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/content-availability-observations": {
@@ -16493,7 +16658,41 @@
         "summary": "Create Content Availability Observation",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
+      }
+    },
+    "/api/v1/content-data-revision": {
+      "get": {
+        "description": "普通用户刷新只观察共享业务修订，不读取管理员任务列表。",
+        "operationId": "getContentDataRevision",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentDataRevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Content Data Revision",
+        "tags": [
+          "workbench"
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/content-filter-options": {
@@ -16535,7 +16734,8 @@
         "summary": "Get Content Filter Options",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/content-relevance-reviews": {
@@ -16596,7 +16796,8 @@
         "summary": "Create Content Relevance Review",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/contents": {
@@ -17035,7 +17236,8 @@
         "summary": "List Contents",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/contents/count": {
@@ -17086,7 +17288,8 @@
         "summary": "Count Contents",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/contents/{content_id}": {
@@ -17159,7 +17362,8 @@
         "summary": "Get Content",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/contents/{content_id}/analysis-review": {
@@ -17243,7 +17447,8 @@
         "summary": "Review Content Analysis",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/contents/{content_id}/comments": {
@@ -17374,7 +17579,8 @@
         "summary": "List Content Comments",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/contents/{content_id}/media/{position}/playback/prepare": {
@@ -17457,7 +17663,8 @@
         "summary": "Prepare Content Media Playback",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/contents/{content_id}/media/{position}/playback/stream": {
@@ -17586,7 +17793,8 @@
         "summary": "Stream Content Media Playback",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/contents/{content_id}/vehicles": {
@@ -17669,7 +17877,8 @@
         "summary": "Review Content Vehicles",
         "tags": [
           "contents"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-exports": {
@@ -17700,7 +17909,8 @@
         "summary": "List Data Exports",
         "tags": [
           "exports"
-        ]
+        ],
+        "x-aima-authorization": "owner_or_administrator"
       },
       "post": {
         "operationId": "createDataExport",
@@ -17749,7 +17959,8 @@
         "summary": "Create Data Export",
         "tags": [
           "exports"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/data-exports/{export_id}": {
@@ -17812,7 +18023,8 @@
         "summary": "Get Data Export",
         "tags": [
           "exports"
-        ]
+        ],
+        "x-aima-authorization": "owner_or_administrator"
       }
     },
     "/api/v1/data-exports/{export_id}/download": {
@@ -17886,7 +18098,8 @@
         "summary": "Download Data Export",
         "tags": [
           "exports"
-        ]
+        ],
+        "x-aima-authorization": "owner_or_administrator"
       }
     },
     "/api/v1/data-import-campaigns": {
@@ -17917,7 +18130,8 @@
         "summary": "List Historical Import Campaigns",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/local": {
@@ -17989,7 +18203,8 @@
         "summary": "Create Local Data Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/server": {
@@ -18061,7 +18276,8 @@
         "summary": "Create Historical Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}": {
@@ -18124,7 +18340,8 @@
         "summary": "Get Historical Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/cancel": {
@@ -18197,7 +18414,8 @@
         "summary": "Cancel Historical Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/conflicts": {
@@ -18260,7 +18478,8 @@
         "summary": "List Historical Import Campaign Conflicts",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/finalize": {
@@ -18333,7 +18552,8 @@
         "summary": "Finalize Local Data Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/items": {
@@ -18396,7 +18616,8 @@
         "summary": "List Historical Import Campaign Items",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/items/{item_id}/content": {
@@ -18499,7 +18720,8 @@
         "summary": "Upload Local Data Import File",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/retry-failed": {
@@ -18572,7 +18794,8 @@
         "summary": "Retry Historical Import Campaign Failed Items",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/revocation-preview": {
@@ -18636,7 +18859,8 @@
         "summary": "Preview Data Import Campaign Revocation",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/revoke": {
@@ -18720,7 +18944,8 @@
         "summary": "Revoke Data Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/start": {
@@ -18793,7 +19018,8 @@
         "summary": "Start Historical Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-campaigns/{campaign_id}/supplement-eligibility": {
@@ -18866,7 +19092,8 @@
         "summary": "Get Collection Campaign Supplement Eligibility",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/data-import-sources/server/directories": {
@@ -18959,7 +19186,8 @@
         "summary": "List Historical Import Directories",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/export-columns": {
@@ -18980,7 +19208,8 @@
         "summary": "Get Export Column Catalog",
         "tags": [
           "exports"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/historical-import-campaigns": {
@@ -19011,7 +19240,8 @@
         "summary": "List Historical Import Campaigns",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "post": {
         "description": "创建服务端 Historical Campaign，并由 Service 冻结 Brand/Vehicle Snapshot。",
@@ -19081,7 +19311,8 @@
         "summary": "Create Historical Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/historical-import-campaigns/{campaign_id}": {
@@ -19144,7 +19375,8 @@
         "summary": "Get Historical Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/historical-import-campaigns/{campaign_id}/cancel": {
@@ -19217,7 +19449,8 @@
         "summary": "Cancel Historical Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/historical-import-campaigns/{campaign_id}/conflicts": {
@@ -19280,7 +19513,8 @@
         "summary": "List Historical Import Campaign Conflicts",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/historical-import-campaigns/{campaign_id}/items": {
@@ -19343,7 +19577,8 @@
         "summary": "List Historical Import Campaign Items",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/historical-import-campaigns/{campaign_id}/retry-failed": {
@@ -19416,7 +19651,8 @@
         "summary": "Retry Historical Import Campaign Failed Items",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/historical-import-campaigns/{campaign_id}/start": {
@@ -19489,7 +19725,8 @@
         "summary": "Start Historical Import Campaign",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/historical-import/directories": {
@@ -19582,7 +19819,8 @@
         "summary": "List Historical Import Directories",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/import-batches": {
@@ -19758,7 +19996,8 @@
         "summary": "List Import Batches",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "post": {
         "description": "Excel Search 不适用；空 Brand Scope 表示冻结全部 active Brand。",
@@ -19828,7 +20067,8 @@
         "summary": "Create Import Batch",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/import-batches/summary": {
@@ -19869,7 +20109,8 @@
         "summary": "Get Import Batch Summary",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/import-batches/{batch_id}": {
@@ -19932,7 +20173,8 @@
         "summary": "Get Import Batch",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/import-batches/{batch_id}/supplement-eligibility": {
@@ -19995,7 +20237,8 @@
         "summary": "Get Collection Batch Supplement Eligibility",
         "tags": [
           "collection"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/jobs/{job_id}": {
@@ -20058,7 +20301,8 @@
         "summary": "Get Job",
         "tags": [
           "jobs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs": {
@@ -20158,7 +20402,8 @@
         "summary": "List Keyword Packs",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "post": {
         "operationId": "createKeywordPack",
@@ -20227,7 +20472,8 @@
         "summary": "Create Keyword Pack",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs/{pack_id}": {
@@ -20293,7 +20539,8 @@
         "summary": "Delete Keyword Pack",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "get": {
         "operationId": "getKeywordPack",
@@ -20354,7 +20601,8 @@
         "summary": "Get Keyword Pack",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "put": {
         "operationId": "updateKeywordPack",
@@ -20435,7 +20683,8 @@
         "summary": "Update Keyword Pack",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs/{pack_id}/archive": {
@@ -20508,7 +20757,8 @@
         "summary": "Archive Keyword Pack",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs/{pack_id}/copy": {
@@ -20591,7 +20841,8 @@
         "summary": "Copy Keyword Pack",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs/{pack_id}/delete-eligibility": {
@@ -20644,7 +20895,8 @@
         "summary": "Get Keyword Pack Delete Eligibility",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs/{pack_id}/enabled": {
@@ -20737,7 +20989,8 @@
         "summary": "Update Keyword Pack Enabled",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs/{pack_id}/keywords": {
@@ -20820,7 +21073,8 @@
         "summary": "Add Keyword",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}": {
@@ -20913,7 +21167,8 @@
         "summary": "Update Keyword In Pack",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs/{pack_id}/keywords/{keyword_id}/remove": {
@@ -21006,7 +21261,8 @@
         "summary": "Remove Keyword From Pack",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/keyword-packs/{pack_id}/restore": {
@@ -21079,7 +21335,82 @@
         "summary": "Restore Keyword Pack",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
+      }
+    },
+    "/api/v1/me/export-column-default": {
+      "get": {
+        "description": "读取当前 Session 用户配置，不接受客户端目标用户。",
+        "operationId": "getMyExportColumnDefault",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportColumnDefaultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get My Export Column Default",
+        "tags": [
+          "exports"
+        ],
+        "x-aima-authorization": "authenticated"
+      },
+      "put": {
+        "description": "以当前身份原子保存或恢复默认列。",
+        "operationId": "updateMyExportColumnDefault",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportColumnDefaultUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportColumnDefaultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Update My Export Column Default",
+        "tags": [
+          "exports"
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/notifications": {
@@ -21124,7 +21455,8 @@
         "summary": "List Notifications",
         "tags": [
           "notifications"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/notifications/read": {
@@ -21165,7 +21497,8 @@
         "summary": "Mark Notifications Read",
         "tags": [
           "notifications"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/principal": {
@@ -21197,7 +21530,8 @@
         "summary": "Get Current Principal",
         "tags": [
           "identity"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/provider-configs": {
@@ -21272,7 +21606,8 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "post": {
         "description": "管理员创建 Provider；API Key 仅进入后端 Secret Store 写入边界。",
@@ -21343,7 +21678,8 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/provider-configs/lifecycle/archived": {
@@ -21375,7 +21711,8 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/provider-configs/{provider_config_id}": {
@@ -21442,7 +21779,8 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "put": {
         "description": "管理员更新 Provider；省略 API Key 时保持当前 Secret 引用。",
@@ -21535,7 +21873,8 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/provider-configs/{provider_config_id}/archive": {
@@ -21609,7 +21948,8 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/provider-configs/{provider_config_id}/delete-eligibility": {
@@ -21673,7 +22013,8 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/provider-configs/{provider_config_id}/restore": {
@@ -21730,7 +22071,8 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/provider-configs/{provider_config_id}/test-connection": {
@@ -21814,7 +22156,8 @@
         "tags": [
           "administration",
           "provider-configs"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/reports": {
@@ -21896,7 +22239,8 @@
         "summary": "List Reports",
         "tags": [
           "reports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "post": {
         "description": "冻结并排队，外部调用由 Worker 完成。",
@@ -21986,7 +22330,8 @@
         "summary": "Create",
         "tags": [
           "reports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/reports/preflight": {
@@ -22078,7 +22423,8 @@
         "summary": "Preflight",
         "tags": [
           "reports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/reports/{report_id}": {
@@ -22172,7 +22518,8 @@
         "summary": "Get",
         "tags": [
           "reports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/reports/{report_id}/artifacts/{artifact_id}/download": {
@@ -22269,7 +22616,8 @@
         "summary": "Download",
         "tags": [
           "reports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/reports/{report_id}/cancel": {
@@ -22363,7 +22711,8 @@
         "summary": "Cancel",
         "tags": [
           "reports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/reports/{report_id}/publish": {
@@ -22457,7 +22806,8 @@
         "summary": "Publish",
         "tags": [
           "reports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/reports/{report_id}/retry": {
@@ -22551,7 +22901,8 @@
         "summary": "Retry",
         "tags": [
           "reports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/resource-lifecycle/collection-plans/archived": {
@@ -22582,7 +22933,8 @@
         "summary": "List Archived Collection Plans",
         "tags": [
           "collection-strategy"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/resource-lifecycle/keyword-packs/archived": {
@@ -22613,7 +22965,8 @@
         "summary": "List Archived Keyword Packs",
         "tags": [
           "keywords"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/vehicle-brands": {
@@ -22728,7 +23081,8 @@
         "summary": "List Brands",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       },
       "post": {
         "operationId": "createVehicleBrand",
@@ -22767,7 +23121,8 @@
         "summary": "Create Brand",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/vehicle-brands/{brand_id}": {
@@ -22803,7 +23158,8 @@
         "summary": "Delete Brand",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "get": {
         "operationId": "getVehicleBrand",
@@ -22844,7 +23200,8 @@
         "summary": "Get Brand",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       },
       "put": {
         "operationId": "updateVehicleBrand",
@@ -22895,7 +23252,8 @@
         "summary": "Update Brand",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/vehicle-brands/{brand_id}/aliases": {
@@ -22948,7 +23306,8 @@
         "summary": "Add Alias",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/vehicle-brands/{brand_id}/aliases/{alias_id}": {
@@ -23001,7 +23360,8 @@
         "summary": "Delete Alias",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/vehicle-catalog/readiness": {
@@ -23022,7 +23382,8 @@
         "summary": "Readiness",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/vehicle-catalog/snapshot": {
@@ -23089,7 +23450,8 @@
         "summary": "Snapshot",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/vehicle-models": {
@@ -23195,7 +23557,8 @@
         "summary": "List Vehicle Models",
         "tags": [
           "vehicles"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       },
       "post": {
         "description": "管理员创建车型和初始别名。",
@@ -23265,7 +23628,8 @@
         "summary": "Create Vehicle Model",
         "tags": [
           "vehicles"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/vehicle-models/{vehicle_model_id}": {
@@ -23342,7 +23706,8 @@
         "summary": "Delete Vehicle Model",
         "tags": [
           "vehicles"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "get": {
         "description": "读取单个车型目录详情。",
@@ -23404,7 +23769,8 @@
         "summary": "Get Vehicle Model",
         "tags": [
           "vehicles"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       },
       "put": {
         "description": "管理员修改车型显示、别名或启停状态。",
@@ -23496,7 +23862,8 @@
         "summary": "Update Vehicle Model",
         "tags": [
           "vehicles"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/vehicle-models/{vehicle_model_id}/brand": {
@@ -23549,7 +23916,8 @@
         "summary": "Assign Vehicle Brand",
         "tags": [
           "vehicle-catalog"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/vehicle-models/{vehicle_model_id}/merge": {
@@ -23643,7 +24011,8 @@
         "summary": "Merge Vehicle Model",
         "tags": [
           "vehicles"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/wisersone-downloads": {
@@ -23734,7 +24103,8 @@
         "summary": "Listing",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       },
       "post": {
         "operationId": "createWisersOneDownload",
@@ -23833,7 +24203,8 @@
         "summary": "Create",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/wisersone-downloads/{download_id}": {
@@ -23936,7 +24307,8 @@
         "summary": "Get",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/wisersone-downloads/{download_id}/cancel": {
@@ -24039,7 +24411,8 @@
         "summary": "Cancel",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/wisersone-downloads/{download_id}/retry": {
@@ -24142,7 +24515,8 @@
         "summary": "Retry",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-aima-authorization": "administrator"
       }
     },
     "/api/v1/workbench/layout": {
@@ -24173,7 +24547,8 @@
         "summary": "Get Workbench Layout",
         "tags": [
           "workbench"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       },
       "put": {
         "operationId": "updateWorkbenchLayout",
@@ -24232,7 +24607,8 @@
         "summary": "Update Workbench Layout",
         "tags": [
           "workbench"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/workbench/mind": {
@@ -24419,7 +24795,8 @@
         "summary": "Get Workbench Mind",
         "tags": [
           "workbench"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/workbench/stream": {
@@ -24636,7 +25013,8 @@
         "summary": "Get Workbench Stream",
         "tags": [
           "workbench"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/api/v1/workbench/trend": {
@@ -24823,7 +25201,8 @@
         "summary": "Get Workbench Trend",
         "tags": [
           "workbench"
-        ]
+        ],
+        "x-aima-authorization": "authenticated"
       }
     },
     "/health/live": {
@@ -24845,7 +25224,8 @@
         "summary": "Health Live",
         "tags": [
           "health"
-        ]
+        ],
+        "x-aima-authorization": "public"
       }
     },
     "/health/ready": {
@@ -24877,7 +25257,8 @@
         "summary": "Health Ready",
         "tags": [
           "health"
-        ]
+        ],
+        "x-aima-authorization": "public"
       }
     }
   }

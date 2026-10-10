@@ -23,7 +23,9 @@ from aima_ugc.bootstrap.feishu_auth_http import build_feishu_identity, install_f
 from aima_ugc.bootstrap.import_revocation_http import install_import_revocation_routes
 from aima_ugc.bootstrap.provider_lifecycle_http import install_provider_lifecycle_routes
 from aima_ugc.bootstrap.resource_lifecycle_http import install_resource_lifecycle_routes
+from aima_ugc.bootstrap.route_authorization import install_route_authorization
 from aima_ugc.modules.identity import DevelopmentIdentityResolver, IdentityResolver
+from aima_ugc.modules.identity.request_identity import RequestCachedIdentityResolver
 
 
 def _with_product_extension_routes[**P](
@@ -43,6 +45,11 @@ def _with_product_extension_routes[**P](
             raw_kwargs["identity_resolver"] = resolved_identity
         else:
             feishu_routes = None
+
+        raw_kwargs["identity_resolver"] = RequestCachedIdentityResolver(
+            cast(IdentityResolver, raw_kwargs.get("identity_resolver"))
+            or DevelopmentIdentityResolver()
+        )
 
         application = factory(*args, **cast("Any", raw_kwargs))
         install_content_analysis_capability_route(application)
@@ -78,6 +85,7 @@ def _with_product_extension_routes[**P](
             application,
             identity_resolver=resolved_identity,
         )
+        install_route_authorization(application, identity_resolver=resolved_identity)
         return application
 
     return wrapped

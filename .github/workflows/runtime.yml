@@ -179,6 +179,7 @@ jobs:
           echo "AIMA_RUNTIME_ROOT=${ROOT}" >> "${GITHUB_ENV}"
           echo "AIMA_RUNTIME_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
           cat > "${ENV_FILE}" <<EOF
+          AIMA_IDENTITY_MODE=development
           AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18080
@@ -477,11 +478,11 @@ jobs:
           compose down --remove-orphans
           sudo mv "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password" "${RUNNER_TEMP}/postgres_password.backup"
           set +e
-          compose up -d --no-build --wait --wait-timeout 15 bootstrap
+          # 一次性进程必须等到真实退出；后台 --wait 可能在进程退出前返回成功。
+          compose run --rm --no-deps bootstrap > "${RUNNER_TEMP}/bootstrap-missing-secret.log" 2>&1
           LOST_SECRET_STATUS=$?
           set -e
           test "${LOST_SECRET_STATUS}" -ne 0
-          compose logs --no-color bootstrap > "${RUNNER_TEMP}/bootstrap-missing-secret.log" || true
           grep -Fq '已有 PostgreSQL 18 数据' "${RUNNER_TEMP}/bootstrap-missing-secret.log"
           grep -Fq 'postgres_password' "${RUNNER_TEMP}/bootstrap-missing-secret.log"
           sudo test ! -e "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password"
@@ -518,6 +519,7 @@ jobs:
           LOCAL_ENV_FILE="${RUNNER_TEMP}/aima-local-compose.env"
           mkdir -p "${LOCAL_ROOT_ABS}/historical-input"
           cat > "${LOCAL_ENV_FILE}" <<EOF
+          AIMA_IDENTITY_MODE=development
           AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18081
@@ -603,6 +605,7 @@ jobs:
           echo "AIMA_WINDOWS_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
           echo "AIMA_WINDOWS_HOST_ROOT=${HOST_ROOT}" >> "${GITHUB_ENV}"
           cat > "${ENV_FILE}" <<EOF
+          AIMA_IDENTITY_MODE=development
           AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18082
@@ -659,6 +662,7 @@ jobs:
                   "/run/secrets": "volume",
               },
               "migrate": {
+                  "/run/provider-secrets": "volume",
                   "/run/wisersone-input": "bind",
                   "/app/data": "bind",
                   "/app/logs": "bind",
@@ -691,6 +695,7 @@ jobs:
                   "/run/provider-secrets": "volume",
               },
               "scheduler": {
+                  "/run/provider-secrets": "volume",
                   "/run/wisersone-input": "bind",
                   "/app/data": "bind",
                   "/app/logs": "bind",
@@ -703,6 +708,8 @@ jobs:
               assert set(mounts) == set(targets), (service, mounts)
               for target, mount_type in targets.items():
                   assert mounts[target]["type"] == mount_type, (service, target, mounts[target])
+              if service in {"migrate", "scheduler"}:
+                  assert mounts["/run/provider-secrets"]["read_only"] is True
 
           expected_bind_sources = {
               "/run/wisersone-auth": str(host_root / "runtime/wisersone-auth"),

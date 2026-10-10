@@ -5,7 +5,12 @@ import type {
   DataExportResponse,
   ExportColumnCatalogResponse,
   ExportColumnKey,
+  ExportColumnDefaultResponse,
 } from '../../../../../generated/api/client'
+import { useIdentityStore } from '../../../../identity/store'
+import { AimaApiError } from '../../../../../shared/api/http'
+import { fetchExportColumnCatalog } from '../../../api'
+import { fetchMyExportColumnDefault, saveMyExportColumnDefault } from '../../../export-column-defaults'
 import { exportArtifactRetention } from '../../../../../shared/artifactRetention'
 import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
 import AimaDialog from '../../../../../shared/ui/AimaDialog.vue'
@@ -31,31 +36,123 @@ const emit = defineEmits<{
 const scope = ref<'query' | 'selected' | 'page'>('selected')
 const selectedColumns = ref<ExportColumnKey[]>([])
 const columnsEdited = ref(false)
+const identity = useIdentityStore()
+const currentCatalog = ref(props.columnCatalog)
+const preference = ref<ExportColumnDefaultResponse | null>(null)
+const preferenceLoading = ref(false)
+const preferenceSaving = ref(false)
+const preferenceError = ref<string | null>(null)
+const preferenceNotice = ref<string | null>(null)
+const preferenceConflict = ref(false)
+const fieldsReady = ref(false)
+let preferenceRequest = 0
+
+function systemColumns(): ExportColumnKey[] {
+  return (currentCatalog.value?.columns ?? []).filter((item) => item.default_selected)
+    .map((item) => item.key as ExportColumnKey)
+}
+
+/** 目录和个人配置同时就绪才首次展示勾选；任何刷新都不覆盖已编辑草稿。 */
+function initializeColumns(): void {
+  if (!props.modelValue || !currentCatalog.value || !preference.value || columnsEdited.value) return
+  const saved = preference.value.columns
+  const allowed = new Set(currentCatalog.value.columns.map((item) => item.key))
+  const effective = saved?.filter((key) => allowed.has(key)) ?? null
+  selectedColumns.value = effective?.length ? effective as ExportColumnKey[] : systemColumns()
+  preferenceNotice.value = saved !== null && !effective?.length
+    ? '原默认字段已失效或当前账号无权使用，已采用系统默认字段。' : null
+  fieldsReady.value = true
+}
+
+async function loadPreference(): Promise<void> {
+  const request = ++preferenceRequest
+  preferenceLoading.value = true
+  preferenceError.value = null
+  preferenceConflict.value = false
+  try {
+    const principal = await identity.ensurePrincipal()
+    if (!principal || request !== preferenceRequest || !props.modelValue) return
+    const epoch = identity.scopeEpoch
+    const [result, catalog] = await Promise.all([fetchMyExportColumnDefault(), fetchExportColumnCatalog()])
+    if (request !== preferenceRequest || epoch !== identity.scopeEpoch || !props.modelValue) return
+    preference.value = result
+    currentCatalog.value = catalog
+    initializeColumns()
+  } catch (reason) {
+    if (request !== preferenceRequest) return
+    preferenceError.value = reason instanceof DOMException && reason.name === 'AbortError'
+      ? null : '个人默认字段加载失败，请重试。'
+  } finally {
+    if (request === preferenceRequest) preferenceLoading.value = false
+  }
+}
+
+function openDraft(): void {
+  preferenceRequest += 1
+  columnsEdited.value = false
+  preference.value = null
+  fieldsReady.value = false
+  selectedColumns.value = []
+  preferenceError.value = null
+  preferenceNotice.value = null
+  preferenceSaving.value = false
+  scope.value = props.selectedCount > 0 ? 'selected' : props.pageCount > 0 ? 'page' : 'query'
+  void loadPreference()
+}
 
 watch(() => props.modelValue, (open) => {
-  if (open) {
-    columnsEdited.value = false
-    scope.value = props.selectedCount > 0 ? 'selected' : props.pageCount > 0 ? 'page' : 'query'
-    selectedColumns.value = (props.columnCatalog?.columns ?? [])
-      .filter((item) => item.default_selected)
-      .map((item) => item.key as ExportColumnKey)
-  }
+  if (open) openDraft()
+  else preferenceRequest += 1
+}, { immediate: true })
+watch(() => props.columnCatalog, (catalog) => {
+  currentCatalog.value = catalog
+  initializeColumns()
+})
+watch(() => identity.scopeEpoch, () => {
+  preferenceRequest += 1
+  preference.value = null
+  selectedColumns.value = []
+  fieldsReady.value = false
+  preferenceSaving.value = false
+  if (props.modelValue) openDraft()
 })
 
-/** 异步目录首次到达时补齐默认列；刷新目录不覆盖用户已修改的选择。 */
-watch(() => props.columnCatalog, (catalog) => {
-  if (props.modelValue && !columnsEdited.value && catalog) {
-    selectedColumns.value = catalog.columns.filter((column) => column.default_selected).map((column) => column.key as ExportColumnKey)
+/** 并发失败保留草稿；显式重新读取后才能再次保存。 */
+async function savePreference(restoreSystem: boolean): Promise<void> {
+  if (!preference.value || !currentCatalog.value || !fieldsReady.value || preferenceLoading.value || preferenceSaving.value || preferenceConflict.value) return
+  const epoch = identity.scopeEpoch
+  const request = preferenceRequest
+  preferenceSaving.value = true
+  preferenceError.value = null
+  try {
+    const result = await saveMyExportColumnDefault({
+      revision: preference.value.revision,
+      catalog_version: currentCatalog.value.version,
+      columns: restoreSystem ? null : [...selectedColumns.value],
+    })
+    if (epoch !== identity.scopeEpoch || request !== preferenceRequest || !props.modelValue) return
+    preference.value = result
+    if (restoreSystem) selectedColumns.value = systemColumns()
+    preferenceNotice.value = restoreSystem ? '已恢复系统默认字段。' : '已保存为我的默认字段。'
+  } catch (reason) {
+    if (epoch !== identity.scopeEpoch || request !== preferenceRequest) return
+    preferenceConflict.value = reason instanceof AimaApiError && reason.status === 409
+    preferenceError.value = preferenceConflict.value
+      ? '默认字段已在另一设备修改或字段目录已更新。请重新读取后确认，当前草稿已保留。'
+      : '默认字段保存失败，当前草稿已保留，请重试。'
+  } finally {
+    if (epoch === identity.scopeEpoch && request === preferenceRequest) preferenceSaving.value = false
   }
-})
+}
 
 const canSubmit = computed(() => {
-  if (selectedColumns.value.length === 0) return false
+  if (!fieldsReady.value || preferenceLoading.value || selectedColumns.value.length === 0) return false
   if (scope.value === 'selected') return props.selectedCount > 0
   return props.pageCount > 0
 })
 
 function toggleColumn(key: string): void {
+  if (preferenceSaving.value) return
   columnsEdited.value = true
   const typedKey = key as ExportColumnKey
   selectedColumns.value = selectedColumns.value.includes(typedKey)
@@ -152,22 +249,67 @@ function canDownload(item: DataExportResponse): boolean {
         </label>
       </div>
       <section class="column-picker">
-        <header><strong>导出字段</strong><span>{{ columnCatalog?.columns.length ?? '—' }} 个可选字段</span></header>
-        <div>
+        <header><strong>导出字段</strong><span>{{ currentCatalog?.columns.length ?? '—' }} 个可选字段</span></header>
+        <div v-if="fieldsReady">
           <label
-            v-for="column in columnCatalog?.columns ?? []"
+            v-for="column in currentCatalog?.columns ?? []"
             :key="column.key"
           >
             <input
               type="checkbox"
+              :disabled="preferenceSaving"
               :checked="selectedColumns.includes(column.key as ExportColumnKey)"
               @change="toggleColumn(column.key)"
             >
             <span>{{ column.label }}</span>
             <small v-if="column.sensitive">敏感列</small>
           </label>
-          <em v-if="!columnCatalog">列目录加载中…</em>
         </div>
+        <em v-else>正在加载导出字段…</em>
+        <nav
+          class="column-default-actions"
+          aria-label="个人默认导出字段"
+        >
+          <AimaButton
+            size="small"
+            variant="text"
+            :disabled="!fieldsReady || !selectedColumns.length || preferenceLoading || preferenceSaving || preferenceConflict"
+            @click="savePreference(false)"
+          >
+            设为我的默认字段
+          </AimaButton>
+          <AimaButton
+            size="small"
+            variant="text"
+            :disabled="!fieldsReady || preferenceLoading || preferenceSaving || preferenceConflict"
+            @click="savePreference(true)"
+          >
+            恢复系统默认字段
+          </AimaButton>
+          <AimaButton
+            v-if="preferenceError"
+            size="small"
+            variant="text"
+            :disabled="preferenceLoading || preferenceSaving"
+            @click="loadPreference"
+          >
+            重新读取
+          </AimaButton>
+        </nav>
+        <p
+          v-if="preferenceError"
+          class="request-error"
+          role="alert"
+        >
+          {{ preferenceError }}
+        </p>
+        <p
+          v-else-if="preferenceNotice"
+          class="preference-notice"
+          role="status"
+        >
+          {{ preferenceNotice }}
+        </p>
       </section>
       <p class="analysis-note">
         未完成 AI 分析的内容不会被丢弃：仍会导出，AI 情感和标签列留空，并在结果统计中提示。
@@ -272,6 +414,8 @@ header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line
 .column-picker label { display: inline-flex; min-height: 27px; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid var(--aima-border); border-radius: 5px; color: var(--aima-text-secondary); font-size: 10px; }
 .column-picker input { margin: 0; accent-color: var(--aima-primary); }
 .column-picker small { color: var(--aima-danger); font-size: 8px; }
+.column-default-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.preference-notice { color: var(--aima-text-muted); font-size: 11px; }
 .column-picker em { color: var(--aima-text-disabled); font-size: 10px; font-style: normal; }
 .analysis-note,
 .retention-note { margin: 8px 0 0; padding: 8px 10px; border: 1px solid #bcd5f5; border-radius: 6px; color: #39678f; background: #f2f7fd; font-size: 10px; line-height: 14px; }

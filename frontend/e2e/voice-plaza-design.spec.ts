@@ -333,7 +333,7 @@ test('late export catalog initializes defaults without replacing edited columns'
   await page.goto('/voice-plaza')
   await page.getByRole('button', { name: '导出记录', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '导出声音记录' })
-  await expect(dialog.getByText('列目录加载中…')).toBeVisible()
+  await expect(dialog.getByText('正在加载导出字段…')).toBeVisible()
   release()
   await expect(dialog.getByRole('checkbox', { name: '平台' })).toBeChecked()
   await expect(dialog.getByRole('button', { name: /开始导出/ })).toBeEnabled()

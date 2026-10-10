@@ -83,6 +83,15 @@ describe('身份失败分类（401 → 登录，403 → 无权限，且不成环
     expect(store.principalError).toContain('network down')
   })
 
+  it('先 401 后 403 的复核不会保留过时未登录标记', async () => {
+    generated.getCurrentPrincipal.mockRejectedValueOnce(unauthorized()).mockRejectedValueOnce(forbidden())
+    const store = useIdentityStore()
+    await store.ensurePrincipal()
+    await store.revalidatePrincipal()
+    expect(store.forbidden).toBe(true)
+    expect(store.unauthenticated).toBe(false)
+  })
+
   it('登出会清空本地身份状态并调用服务端撤销', async () => {
     generated.getCurrentPrincipal.mockResolvedValue({
       principal_id: 'p-1',
@@ -222,7 +231,7 @@ describe('路由守卫：401 跳登录、403 跳无权限且不循环', () => {
     expect(result.name).toBe('home')
   })
 
-  it('管理员路由守卫保持既有行为（非管理员回首页并带 access 提示）', async () => {
+  it.each(['/collection-runtime', '/collection-strategy', '/admin/configuration'])('普通用户直达 %s 在加载管理组件前进入明确无权限页', async (path) => {
     generated.getCurrentPrincipal.mockResolvedValue({
       principal_id: 'p-1',
       display_name: '张三',
@@ -230,15 +239,17 @@ describe('路由守卫：401 跳登录、403 跳无权限且不循环', () => {
       source: 'feishu',
     })
 
+    const target = routes.find((route) => route.path === path)!
+    expect(target.meta?.requiresAdministrator).toBe(true)
     const result = locationOf(
       await identityGuard({
-        name: 'admin-configuration',
-        fullPath: '/admin/configuration',
-        meta: { requiresAdministrator: true },
+        name: target.name,
+        fullPath: path,
+        meta: target.meta,
       } as never),
     )
 
-    expect(result.name).toBe('home')
+    expect(result.name).toBe('no-access')
     expect(result.query?.access).toBe('administrator-required')
   })
 })

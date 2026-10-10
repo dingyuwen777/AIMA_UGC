@@ -292,7 +292,9 @@ request_id 用于把前端错误与服务端日志关联。
 → 已有身份，但角色/用户组不允许该动作
 ~~~
 
-管理员写接口必须由后端最终授权，前端隐藏按钮只是体验，不是安全边界。
+最终应用注册主路由、扩展和隐藏路由后，按 [backend/src/aima_ugc/bootstrap/route_policy.py](../../backend/src/aima_ugc/bootstrap/route_policy.py) 的显式 Method + Path 策略逐项安装认证；未知或晚注册未加守卫的入口阻止启动。策略区分 public、authenticated、administrator、owner_or_administrator，不按 GET/POST、前缀或 Tag 猜权限。认证在 Router 内层、业务调用和请求正文处理之前完成，异常沿用统一 HTTP Error Contract；同请求复用可信 Principal。
+
+管理员读取、预览和写入同样受后端角色检查。Export、工作台布局、个人默认字段和通知还由各业务 Owner 检查当前 Principal 的归属。私有 Export 的越权详情/下载返回 404，字段非法为 422，revision/目录冲突为 409。前端隐藏按钮只是体验，不能替代授权。
 
 Identity 产品状态见 [docs/product/03_角色权限与产品状态.md](../product/03_角色权限与产品状态.md)。
 

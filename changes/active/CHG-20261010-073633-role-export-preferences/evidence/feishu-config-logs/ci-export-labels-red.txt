@@ -1,0 +1,114 @@
+FF                                                                       [100%]
+================================== FAILURES ===================================
+__________ test_export_preserves_analysis_without_labels[irrelevant] __________
+
+tmp_path = WindowsPath('C:/Users/YNND/AppData/Local/Temp/pytest-of-YNND/pytest-459/test_export_preserves_analysis0')
+relevance = 'irrelevant'
+
+    @pytest.mark.parametrize("relevance", ["irrelevant", "relevant"])
+    def test_export_preserves_analysis_without_labels(tmp_path: Path, relevance: str) -> None:
+        """不相关及人工纳入内容可有已完成但无标签的分析，不能制造空标签对。"""
+        record = _export_record()
+        analysis = UnifiedDataExcelAnalysisV1.model_validate(
+            {"relevance": relevance, "voice_type": "媒体机构发声"}
+        )
+        record = record.model_copy(
+            update={"content": record.content.model_copy(update={"analysis": analysis})}
+        )
+        output = tmp_path / "without-labels.xlsx"
+>       summary = export_unified_data_excel([record], output, include_analysis=True)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\platform\test_excel_export.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+backend\src\aima_ugc\platform\export\excel.py:436: in export_unified_data_excel
+    for pair in _analysis_label_pairs(content.analysis):
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+analysis = UnifiedDataExcelAnalysisV1(relevance='irrelevant', voice_type='媒体机构发声', sentiment=None, primary_label='', secondary_label='', label_pairs=(), model=None, prompt_version=None, taxonomy_version=None)
+
+    def _analysis_label_pairs(
+        analysis: UnifiedDataExcelAnalysisV1 | None,
+    ) -> tuple[UnifiedDataExcelLabelPairV1, ...]:
+        if analysis is None:
+            return ()
+        if analysis.label_pairs:
+            return analysis.label_pairs
+        return (
+>           UnifiedDataExcelLabelPairV1(
+                primary_label=analysis.primary_label,
+                secondary_label=analysis.secondary_label,
+            ),
+        )
+E       pydantic_core._pydantic_core.ValidationError: 2 validation errors for UnifiedDataExcelLabelPairV1
+E       primary_label
+E         String should have at least 1 character [type=string_too_short, input_value='', input_type=str]
+E           For further information visit https://errors.pydantic.dev/2.13/v/string_too_short
+E       secondary_label
+E         String should have at least 1 character [type=string_too_short, input_value='', input_type=str]
+E           For further information visit https://errors.pydantic.dev/2.13/v/string_too_short
+
+backend\src\aima_ugc\platform\export\excel.py:870: ValidationError
+___________ test_export_preserves_analysis_without_labels[relevant] ___________
+
+tmp_path = WindowsPath('C:/Users/YNND/AppData/Local/Temp/pytest-of-YNND/pytest-459/test_export_preserves_analysis1')
+relevance = 'relevant'
+
+    @pytest.mark.parametrize("relevance", ["irrelevant", "relevant"])
+    def test_export_preserves_analysis_without_labels(tmp_path: Path, relevance: str) -> None:
+        """不相关及人工纳入内容可有已完成但无标签的分析，不能制造空标签对。"""
+        record = _export_record()
+        analysis = UnifiedDataExcelAnalysisV1.model_validate(
+            {"relevance": relevance, "voice_type": "媒体机构发声"}
+        )
+        record = record.model_copy(
+            update={"content": record.content.model_copy(update={"analysis": analysis})}
+        )
+        output = tmp_path / "without-labels.xlsx"
+>       summary = export_unified_data_excel([record], output, include_analysis=True)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\platform\test_excel_export.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+backend\src\aima_ugc\platform\export\excel.py:436: in export_unified_data_excel
+    for pair in _analysis_label_pairs(content.analysis):
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+analysis = UnifiedDataExcelAnalysisV1(relevance='relevant', voice_type='媒体机构发声', sentiment=None, primary_label='', secondary_label='', label_pairs=(), model=None, prompt_version=None, taxonomy_version=None)
+
+    def _analysis_label_pairs(
+        analysis: UnifiedDataExcelAnalysisV1 | None,
+    ) -> tuple[UnifiedDataExcelLabelPairV1, ...]:
+        if analysis is None:
+            return ()
+        if analysis.label_pairs:
+            return analysis.label_pairs
+        return (
+>           UnifiedDataExcelLabelPairV1(
+                primary_label=analysis.primary_label,
+                secondary_label=analysis.secondary_label,
+            ),
+        )
+E       pydantic_core._pydantic_core.ValidationError: 2 validation errors for UnifiedDataExcelLabelPairV1
+E       primary_label
+E         String should have at least 1 character [type=string_too_short, input_value='', input_type=str]
+E           For further information visit https://errors.pydantic.dev/2.13/v/string_too_short
+E       secondary_label
+E         String should have at least 1 character [type=string_too_short, input_value='', input_type=str]
+E           For further information visit https://errors.pydantic.dev/2.13/v/string_too_short
+
+backend\src\aima_ugc\platform\export\excel.py:870: ValidationError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325
+.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325
+.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: PydanticDeprecatedSince20: `json_encoders` is deprecated. See https://docs.pydantic.dev/2.13/concepts/serialization/#custom-serializers for alternatives. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/unit/platform/test_excel_export.py::test_export_preserves_analysis_without_labels[irrelevant]
+FAILED tests/unit/platform/test_excel_export.py::test_export_preserves_analysis_without_labels[relevant]
+2 failed, 21 deselected, 3 warnings in 1.75s

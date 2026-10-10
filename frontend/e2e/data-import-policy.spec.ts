@@ -58,7 +58,7 @@ test.beforeEach(async ({ page }) => {
         }),
       })
     }
-    return route.fulfill({ status: 404, body: 'not mocked' })
+    return route.fallback()
   })
 })
 

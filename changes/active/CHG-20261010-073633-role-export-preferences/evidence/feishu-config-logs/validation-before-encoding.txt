@@ -1,0 +1,381 @@
+Preflight profile=full; changed_count=17
+- backend/src/aima_ugc/platform/config/settings.py
+- changes/active/CHG-20261010-073633-role-export-preferences/CHANGE.md
+- compose.windows.yaml
+- compose.yaml
+- docs/02_环境运行与部署.md
+- docs/blueprint/05_日志安全部署与运维.md
+- docs/operations/06_飞书身份接入配置手册.md
+- env.local.example
+- env.production.example
+- scripts/deploy/prepare_host.py
+- scripts/dev/local_runtime.py
+- scripts/quality/check_env_templates.py
+- tests/unit/platform/test_local_dev_runtime.py
+- tests/unit/test_env_compose_config_contract.py
+- tests/unit/test_release_bundle.py
+- backend/src/aima_ugc/bootstrap/feishu_config_input.py
+- tests/unit/platform/test_feishu_config_input.py
+Optional fix before validation:
+  uv run ruff format backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+  uv run python scripts/contracts/generate.py
+  npm --prefix frontend run generate:api
+Local validation:
+  uv run python scripts/quality/check_docs.py
+  uv run python scripts/quality/scan_secrets.py
+  uv run python scripts/quality/check_docs_facts.py
+  uv run python scripts/quality/check_agent_governance.py
+  uv run python scripts/quality/check_env_templates.py
+  uv run pytest tests/unit/test_env_compose_config_contract.py tests/unit/identity/test_settings_multi_connector.py tests/unit/test_release_bundle.py -q
+  uv run ruff format --check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+  uv run ruff check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+  uv run mypy backend/src
+  uv run pytest tests/unit tests/contracts tests/api -q
+  uv run python scripts/contracts/generate.py --check
+  uv run python scripts/contracts/check_compatibility.py
+  npm --prefix frontend run lint
+  npm --prefix frontend run test -- --run
+  npm --prefix frontend run build
+  npm --prefix frontend run test:e2e
+Deferred to formal CI:
+  - PostgreSQL Integration
+  - Real Full-stack Golden Path
++ uv run python scripts/quality/check_docs.py
+当前项目文档入口、链接、治理边界与仓库文件导航检查通过。
++ uv run python scripts/quality/scan_secrets.py
+源码、Provider 证据、Agent 规则、Change 与文档 Secret 扫描通过。
++ uv run python scripts/quality/check_docs_facts.py
+当前权威文档与 OpenAPI、Schema、Job、Workflow、Route、模块、Provider、版本、Analysis、Release 和 Roadmap 生命周期机器事实一致。
++ uv run python scripts/quality/check_agent_governance.py
+AIMA 项目治理入口、generated projection 与 CI 接线检查通过。
++ uv run python scripts/quality/check_env_templates.py
+配置模板静态/运行配置与适用消费者检查通过。
++ uv run pytest tests/unit/test_env_compose_config_contract.py tests/unit/identity/test_settings_multi_connector.py tests/unit/test_release_bundle.py -q
+.................................s.............                          [100%]
+46 passed, 1 skipped in 2.40s
++ uv run ruff format --check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+9 files already formatted
++ uv run ruff check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+All checks passed!
++ uv run mypy backend/src
+Success: no issues found in 480 source files
++ uv run pytest tests/unit tests/contracts tests/api -q
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+........................................................................ [ 29%]
+........................................................................ [ 32%]
+........................................................................ [ 35%]
+...................................................................FFFF. [ 37%]
+........................................................................ [ 40%]
+........................................................................ [ 43%]
+........................................................................ [ 45%]
+......................s................................................. [ 48%]
+........................................................................ [ 51%]
+....................................................................ssss [ 53%]
+ss.....................................................sss.............. [ 56%]
+..s.................................................ss.................. [ 59%]
+........ssss......s................................................................................................................. [ 64%]
+...................................................................F.... [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 75%]
+......ssss.............................................................. [ 77%]
+........................................................................ [ 80%]
+........................................................................ [ 83%]
+........................................................................ [ 85%]
+........................................................................ [ 88%]
+........................................................................ [ 91%]
+........................................................................ [ 94%]
+........................................................................ [ 96%]
+........................................................................ [ 99%]
+...............                                                          [100%]
+================================== FAILURES ===================================
+_________ test_seed_script_requires_explicit_isolated_runtime_opt_in __________
+
+    def test_seed_script_requires_explicit_isolated_runtime_opt_in() -> None:
+        """未显式确认隔离环境时，种子脚本必须在连接数据库前拒绝执行。"""
+    
+        root = Path(__file__).resolve().parents[3]
+        environ = dict(os.environ)
+        environ.pop("AIMA_FULLSTACK_SEED", None)
+        environ["AIMA_DB_PORT"] = "1"
+    
+        completed = subprocess.run(
+            [sys.executable, "tests/fullstack/seed_collection_plan_provider.py"],
+            cwd=root,
+            env=environ,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    
+        assert completed.returncode != 0
+>       assert "AIMA_FULLSTACK_SEED=1" in completed.stderr
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: argument of type 'NoneType' is not a container or iterable
+
+tests\unit\fullstack\test_seed_collection_plan_provider.py:29: TypeError
+_ test_fullstack_entry_refuses_database_access_without_opt_in[assert_wisersone_plan_workflow.py-AIMA_FULLSTACK_SEED] _
+
+script = 'assert_wisersone_plan_workflow.py', opt_in = 'AIMA_FULLSTACK_SEED'
+
+    @pytest.mark.parametrize(
+        ("script", "opt_in"),
+        [
+            ("assert_wisersone_plan_workflow.py", "AIMA_FULLSTACK_SEED"),
+            ("fake_tikhub_comment_worker.py", "AIMA_FULLSTACK_FAKE_TIKHUB"),
+        ],
+    )
+    def test_fullstack_entry_refuses_database_access_without_opt_in(script: str, opt_in: str) -> None:
+        """无显式测试授权时必须先拒绝；非法数据库端口不得掩盖入口门禁。"""
+        root = Path(__file__).resolve().parents[3]
+        environ = dict(os.environ)
+        environ.pop(opt_in, None)
+        environ.pop("SSLKEYLOGFILE", None)
+        environ["AIMA_DB_PORT"] = "1"
+        completed = subprocess.run(
+            [sys.executable, "-X", "utf8", f"tests/fullstack/{script}"],
+            cwd=root,
+            env=environ,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+        assert completed.returncode != 0
+        expected = "AIMA_FULLSTACK_SEED=1" if opt_in == "AIMA_FULLSTACK_SEED" else "必须显式启用"
+>       assert expected in completed.stderr
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: argument of type 'NoneType' is not a container or iterable
+
+tests\unit\fullstack\test_wisersone_fixture_harness.py:43: TypeError
+_ test_fullstack_entry_refuses_database_access_without_opt_in[fake_tikhub_comment_worker.py-AIMA_FULLSTACK_FAKE_TIKHUB] _
+
+script = 'fake_tikhub_comment_worker.py', opt_in = 'AIMA_FULLSTACK_FAKE_TIKHUB'
+
+    @pytest.mark.parametrize(
+        ("script", "opt_in"),
+        [
+            ("assert_wisersone_plan_workflow.py", "AIMA_FULLSTACK_SEED"),
+            ("fake_tikhub_comment_worker.py", "AIMA_FULLSTACK_FAKE_TIKHUB"),
+        ],
+    )
+    def test_fullstack_entry_refuses_database_access_without_opt_in(script: str, opt_in: str) -> None:
+        """无显式测试授权时必须先拒绝；非法数据库端口不得掩盖入口门禁。"""
+        root = Path(__file__).resolve().parents[3]
+        environ = dict(os.environ)
+        environ.pop(opt_in, None)
+        environ.pop("SSLKEYLOGFILE", None)
+        environ["AIMA_DB_PORT"] = "1"
+        completed = subprocess.run(
+            [sys.executable, "-X", "utf8", f"tests/fullstack/{script}"],
+            cwd=root,
+            env=environ,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+        assert completed.returncode != 0
+        expected = "AIMA_FULLSTACK_SEED=1" if opt_in == "AIMA_FULLSTACK_SEED" else "必须显式启用"
+>       assert expected in completed.stderr
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: argument of type 'NoneType' is not a container or iterable
+
+tests\unit\fullstack\test_wisersone_fixture_harness.py:43: TypeError
+_ test_wisersone_helper_refuses_default_host_directory_before_database_access _
+
+    def test_wisersone_helper_refuses_default_host_directory_before_database_access() -> None:
+        """单独的测试授权不能允许下载文件落入宿主默认输入目录。"""
+        root = Path(__file__).resolve().parents[3]
+        environ = dict(os.environ)
+        environ["AIMA_FULLSTACK_SEED"] = "1"
+        environ["AIMA_DB_PORT"] = "1"
+        environ.pop("AIMA_WISERSONE_INPUT_DIR", None)
+        environ.pop("SSLKEYLOGFILE", None)
+        completed = subprocess.run(
+            [sys.executable, "-X", "utf8", "tests/fullstack/assert_wisersone_plan_workflow.py"],
+            cwd=root,
+            env=environ,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+>       assert completed.returncode != 0 and "AIMA_WISERSONE_INPUT_DIR" in completed.stderr
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: argument of type 'NoneType' is not a container or iterable
+
+tests\unit\fullstack\test_wisersone_fixture_harness.py:71: TypeError
+_ test_template_validator_uses_production_identity_validation_without_secret_echo _
+
+tmp_path = WindowsPath('C:/Users/YNND/AppData/Local/Temp/pytest-of-YNND/pytest-449/test_template_validator_uses_p0')
+
+    def test_template_validator_uses_production_identity_validation_without_secret_echo(
+        tmp_path: Path,
+    ) -> None:
+        """非法 Connector JSON 必须由生产 Settings 拒绝，错误不得回显其值。"""
+        validator = runpy.run_path(str(ROOT / "scripts/quality/check_env_templates.py"))
+        for name in (
+            "env.local.example",
+            "env.production.example",
+            "compose.yaml",
+            "scripts/dev/local_runtime.py",
+        ):
+            target = tmp_path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / name, target)
+        template = tmp_path / "env.local.example"
+        text = template.read_text(encoding="utf-8").replace(
+            "AIMA_FEISHU_CONNECTORS=\n", "AIMA_FEISHU_CONNECTORS=invalid-private-marker\n"
+        )
+        template.write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError, match="PlatformSettings") as failure:
+>           validator["check_templates"](tmp_path)
+
+tests\unit\test_ci_scope.py:295: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+scripts\quality\check_env_templates.py:79: in check_templates
+    release = runpy.run_path(str(root / "scripts/release/release_bundle.py"))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen runpy>:293: in run_path
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+fname = 'C:\\Users\\YNND\\AppData\\Local\\Temp\\pytest-of-YNND\\pytest-449\\test_template_validator_uses_p0\\scripts\\release\\release_bundle.py'
+
+>   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\YNND\\AppData\\Local\\Temp\\pytest-of-YNND\\pytest-449\\test_template_validator_uses_p0\\scripts\\release\\release_bundle.py'
+
+<frozen runpy>:261: FileNotFoundError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: 110 warnings
+tests/unit/content/test_content_playback_http.py: 2 warnings
+tests/unit/contracts/test_product_resource_lifecycle_openapi.py: 198 warnings
+tests/unit/identity/test_feishu_auth_http.py: 192 warnings
+tests/contracts/test_openapi.py: 192 warnings
+tests/contracts/test_stage8b_http.py: 384 warnings
+tests/contracts/test_stage8c_http.py: 192 warnings
+tests/contracts/test_stage8d_http.py: 180 warnings
+tests/contracts/test_stage8e_http.py: 1260 warnings
+tests/contracts/test_stage8f_http.py: 540 warnings
+tests/api/test_brand_vehicle_stage2_contract.py: 768 warnings
+tests/api/test_canonical_replay.py: 180 warnings
+tests/api/test_feishu_publication.py: 180 warnings
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: PydanticDeprecatedSince20: `json_encoders` is deprecated. See https://docs.pydantic.dev/2.13/concepts/serialization/#custom-serializers for alternatives. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    warnings.warn(
+
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/unit/fullstack/test_seed_collection_plan_provider.py::test_seed_script_requires_explicit_isolated_runtime_opt_in
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\_pytest\threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-14 (_readerthread)
+  
+  Traceback (most recent call last):
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\threading.py", line 1082, in _bootstrap_inner
+      self._context.run(self.run)
+      ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\threading.py", line 1024, in run
+      self._target(*self._args, **self._kwargs)
+      ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\subprocess.py", line 1614, in _readerthread
+      buffer.append(fh.read())
+                    ~~~~~~~^^
+  UnicodeDecodeError: 'gbk' codec can't decode byte 0xaf in position 534: illegal multibyte sequence
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+tests/unit/fullstack/test_wisersone_fixture_harness.py::test_fullstack_entry_refuses_database_access_without_opt_in[assert_wisersone_plan_workflow.py-AIMA_FULLSTACK_SEED]
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\_pytest\threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-16 (_readerthread)
+  
+  Traceback (most recent call last):
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\threading.py", line 1082, in _bootstrap_inner
+      self._context.run(self.run)
+      ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\threading.py", line 1024, in run
+      self._target(*self._args, **self._kwargs)
+      ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\subprocess.py", line 1614, in _readerthread
+      buffer.append(fh.read())
+                    ~~~~~~~^^
+  UnicodeDecodeError: 'gbk' codec can't decode byte 0xb8 in position 511: illegal multibyte sequence
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+tests/unit/fullstack/test_wisersone_fixture_harness.py::test_fullstack_entry_refuses_database_access_without_opt_in[fake_tikhub_comment_worker.py-AIMA_FULLSTACK_FAKE_TIKHUB]
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\_pytest\threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-18 (_readerthread)
+  
+  Traceback (most recent call last):
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\threading.py", line 1082, in _bootstrap_inner
+      self._context.run(self.run)
+      ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\threading.py", line 1024, in run
+      self._target(*self._args, **self._kwargs)
+      ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\subprocess.py", line 1614, in _readerthread
+      buffer.append(fh.read())
+                    ~~~~~~~^^
+  UnicodeDecodeError: 'gbk' codec can't decode byte 0xaf in position 286: illegal multibyte sequence
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+tests/unit/fullstack/test_wisersone_fixture_harness.py::test_wisersone_helper_refuses_default_host_directory_before_database_access
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\_pytest\threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-20 (_readerthread)
+  
+  Traceback (most recent call last):
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\threading.py", line 1082, in _bootstrap_inner
+      self._context.run(self.run)
+      ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\threading.py", line 1024, in run
+      self._target(*self._args, **self._kwargs)
+      ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\subprocess.py", line 1614, in _readerthread
+      buffer.append(fh.read())
+                    ~~~~~~~^^
+  UnicodeDecodeError: 'gbk' codec can't decode byte 0xa6 in position 495: illegal multibyte sequence
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+tests/unit/ingestion/test_xlsx_security.py::test_duplicate_xlsx_member_is_rejected
+  C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\zipfile\__init__.py:1730: UserWarning: Duplicate name: 'xl/workbook.xml'
+    return self._open_to_write(zinfo, force_zip64=force_zip64)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/unit/fullstack/test_seed_collection_plan_provider.py::test_seed_script_requires_explicit_isolated_runtime_opt_in
+FAILED tests/unit/fullstack/test_wisersone_fixture_harness.py::test_fullstack_entry_refuses_database_access_without_opt_in[assert_wisersone_plan_workflow.py-AIMA_FULLSTACK_SEED]
+FAILED tests/unit/fullstack/test_wisersone_fixture_harness.py::test_fullstack_entry_refuses_database_access_without_opt_in[fake_tikhub_comment_worker.py-AIMA_FULLSTACK_FAKE_TIKHUB]
+FAILED tests/unit/fullstack/test_wisersone_fixture_harness.py::test_wisersone_helper_refuses_default_host_directory_before_database_access
+FAILED tests/unit/test_ci_scope.py::test_template_validator_uses_production_identity_validation_without_secret_echo
+5 failed, 2640 passed, 22 skipped, 4384 warnings, 12 subtests passed in 176.88s (0:02:56)
+Traceback (most recent call last):
+  File "D:\test\AIMA_UGC\scripts\dev\validate_changed.py", line 287, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "D:\test\AIMA_UGC\scripts\dev\validate_changed.py", line 282, in main
+    _execute(commands)
+    ~~~~~~~~^^^^^^^^^^
+  File "D:\test\AIMA_UGC\scripts\dev\validate_changed.py", line 249, in _execute
+    subprocess.run((executable, *command[1:]), cwd=ROOT, check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '('D:/python314/Scripts\\uv.EXE', 'run', 'pytest', 'tests/unit', 'tests/contracts', 'tests/api', '-q')' returned non-zero exit status 1.
