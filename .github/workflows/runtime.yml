@@ -662,6 +662,7 @@ jobs:
                   "/run/secrets": "volume",
               },
               "migrate": {
+                  "/run/provider-secrets": "volume",
                   "/run/wisersone-input": "bind",
                   "/app/data": "bind",
                   "/app/logs": "bind",
@@ -694,6 +695,7 @@ jobs:
                   "/run/provider-secrets": "volume",
               },
               "scheduler": {
+                  "/run/provider-secrets": "volume",
                   "/run/wisersone-input": "bind",
                   "/app/data": "bind",
                   "/app/logs": "bind",
@@ -706,6 +708,8 @@ jobs:
               assert set(mounts) == set(targets), (service, mounts)
               for target, mount_type in targets.items():
                   assert mounts[target]["type"] == mount_type, (service, target, mounts[target])
+              if service in {"migrate", "scheduler"}:
+                  assert mounts["/run/provider-secrets"]["read_only"] is True
 
           expected_bind_sources = {
               "/run/wisersone-auth": str(host_root / "runtime/wisersone-auth"),

@@ -1,0 +1,1 @@
+Workflow Windows storage assertions PASS against actual Compose model

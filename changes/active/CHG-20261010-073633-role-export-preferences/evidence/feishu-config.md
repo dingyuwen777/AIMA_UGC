@@ -41,6 +41,10 @@
 
 独立 Reviewer 对上述两处夹具修复 NO_FINDINGS_WITHIN_SCOPE，直接复核 PG Red/Green、生产 Cursor 错误路径和完整恢复断言；没有写库或改文件。测试密钥为36字节，符合至少32字节约束。修后环境契约14 PASS、Ruff及文档/Secret/Completion检查 PASS；当前完整 Full-stack 已在第二轮 CI 的真实 API/Worker/DB 环境通过，无标签导出缺陷没有再复现。第三轮仅夹具/证据增量，仍重新取得当前提交 required CI，不用旧提交通过结果替代。
 
+[第三轮 Runtime](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/38029369006) 已通过 canonical 安全/恢复及相对根目录真实启动，继续在 Windows storage model 的严格挂载集合断言失败：旧 expected 未包含本次 Migration/Scheduler 读取无明文 Connector manifest 所需的 provider-secrets 卷。只补两处预期 volume 并明确断言只读，精确集合比较保留。提取 Workflow 自身的整段 Python 断言，在本机对真实 Compose 双文件模型执行，先取得相同 migrate 缺项 AssertionError，补齐后所有原断言 PASS；未修改生产挂载或放宽检查。直接输出：[挂载 Red](feishu-config-logs/ci-windows-model-red.txt)、[挂载 Green](feishu-config-logs/ci-windows-model-green.txt)。
+
+独立 Reviewer 重新读取原基线至当前生产 Compose 差异、完整 Windows 模型与后续真实启动/权限/日志/重启/Secret Hash/持久化步骤，并在内存中对真实渲染模型执行相同 Workflow 断言 PASS；NO_FINDINGS_WITHIN_SCOPE，无其他相邻断言漂移。当前 Workflow SHA256 `8A53552CA887C6ED7811FEB9E6F9C1BF0AAAD41ACD1FE4E62594BBE4221667D7`。最终容器启动仍由修复后当前提交 Runtime CI 证明。
+
 ## epoch 3 历史记录
 
 以下为已完成前轮的原始配置补充记录；其中“旧单应用兼容”“暂停合并”和人工PENDING已被上方epoch4决定取代，不作为当前配置或交付边界。
