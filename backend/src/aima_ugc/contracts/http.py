@@ -357,14 +357,16 @@ def _normalize_platform_inputs(value: object) -> object:
     return value
 
 
-type CollectionRunMode = Literal[
+type CollectionRunCreateMode = Literal[
     "discovery", "account_discovery", "batch_supplement", "content_supplement"
 ]
+type CollectionRunMode = CollectionRunCreateMode | Literal["media_refresh"]
 type CollectionRuntimeRecordType = Literal[
     "excel_import",
     "data_import_campaign",
     "tikhub_discovery",
     "tikhub_account_discovery",
+    "tikhub_media_refresh",
     "tikhub_batch_supplement",
     "tikhub_content_supplement",
     "canonical_replay",
@@ -538,7 +540,7 @@ class CollectionRunCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    mode: CollectionRunMode
+    mode: CollectionRunCreateMode
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     brand_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     import_batch_id: UUID | None = None
@@ -799,7 +801,7 @@ class CollectionRuntimeListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: str | None = Field(default=None, min_length=1, max_length=500)
-    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=7)
+    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=8)
     status: CollectionRuntimeStatus | None = None
     stage: str | None = Field(default=None, min_length=1, max_length=100)
     created_from: datetime | None = None
@@ -1354,6 +1356,7 @@ class ContentMediaResponse(BaseModel):
     url: str | None = None
     preview_url: str | None = None
     alt_text: str | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
 
 
 class ContentListItemResponse(BaseModel):

@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
+import runpy
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -35,6 +39,68 @@ def _load_local_runtime() -> ModuleType:
 
 
 LOCAL_RUNTIME = _load_local_runtime()
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("AIMA_HTTP_BIND_IP", "${CI_REVIEW_BIND:-127.0.0.1}"),
+        ("AIMA_IMAGE_TAG", "${CI_REVIEW_TAG:-fixture}"),
+    ],
+)
+def test_review_quote_changes_keep_real_compose_interpolation_responsibility(
+    tmp_path: Path,
+    key: str,
+    value: str,
+) -> None:
+    """真实 Compose config 证明引号改变消费语义；此路径绝不启动容器。"""
+    docker = shutil.which("docker")
+    if not docker:
+        pytest.skip("Docker Compose CLI 不可用；有 CLI 的正式 Runner 必须执行")
+    compose = tmp_path / "compose.yaml"
+    compose.write_text(
+        'services:\n  fixture:\n    image: "example:${AIMA_IMAGE_TAG:-fixed}"\n'
+        '    ports:\n      - "${AIMA_HTTP_BIND_IP:-127.0.0.1}:18080:8090"\n',
+        encoding="utf-8",
+    )
+    before, after = f"{key}={value}\n", f"{key}='{value}'\n"
+    outputs = []
+    environment = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in {"CI_REVIEW_BIND", "CI_REVIEW_TAG", "AIMA_HTTP_BIND_IP", "AIMA_IMAGE_TAG"}
+    }
+    for number, declaration in enumerate((before, after)):
+        template = tmp_path / f"sample-{number}.env"
+        template.write_text(declaration, encoding="utf-8")
+        outputs.append(
+            subprocess.run(
+                [
+                    docker,
+                    "compose",
+                    "-f",
+                    str(compose),
+                    "--env-file",
+                    str(template),
+                    "config",
+                    "--format",
+                    "json",
+                ],
+                capture_output=True,
+                env=environment,
+            )
+        )
+    assert outputs[0].returncode == 0
+    assert outputs[1].returncode != 0 or outputs[0].stdout != outputs[1].stdout
+    classify = runpy.run_path(str(ROOT / "scripts/quality/classify_ci_scope.py"))[
+        "classify_requirements"
+    ]
+    result = classify(
+        ["env.production.example"], template_changes={"env.production.example": (before, after)}
+    )
+    assert result.configuration_required
+    assert result.template_risk != "comments"
+    assert result.runtime_required and result.release_required
 
 
 def _env_keys(path: Path) -> set[str]:

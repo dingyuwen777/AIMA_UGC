@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_effective import effective_analysis_source
 from aima_ugc.modules.analysis.manual_override_tables import (
     analysis_content_manual_overrides_table,
 )
@@ -49,6 +50,23 @@ class PostgresAnalysisManualReviewRepository:
             .mappings()
             .one_or_none()
         )
+        if current is None:
+            source = effective_analysis_source(content_id, content_version)
+            inherited_version = self._session.scalar(select(source.c.manual_override_version))
+            if inherited_version is not None:
+                current = (
+                    self._session.execute(
+                        select(analysis_content_manual_overrides_table)
+                        .where(
+                            analysis_content_manual_overrides_table.c.content_id == content_id,
+                            analysis_content_manual_overrides_table.c.content_version
+                            == inherited_version,
+                        )
+                        .with_for_update()
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
         requested = {
             "voice_type": voice_type is not None,
             "sentiment": sentiment is not None,

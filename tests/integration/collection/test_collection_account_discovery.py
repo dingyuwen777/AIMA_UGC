@@ -48,6 +48,54 @@ from tests.integration.collection.test_stage8e_collection_http_runtime import (
 runtime = postgres_runtime
 
 
+def test_account_retry_restores_authentic_legacy_works_and_detail_chunks(runtime, monkeypatch):
+    """旧作品页与详情 wire 保持原字节；评论重试重放已成功 Raw 时仍可恢复。"""
+    import gzip
+    from io import BytesIO
+
+    from aima_ugc.bootstrap.collection_scope import TikHubCollectionScopeExecutor
+    from aima_ugc.platform.storage import CanonicalArtifactParent, CanonicalArtifactReader
+
+    original = TikHubCollectionScopeExecutor._persistent_filter_inputs
+    frozen = []
+
+    def legacy_chunk(executor, **kwargs):
+        expected = kwargs["expected"]
+        if expected and executor._canonical_for_attempt(kwargs["provider_attempt_id"]) is None:
+            wires = []
+            for canonical in expected:
+                old = executor._legacy_canonical_by_source[canonical.source.model_dump_json()]
+                wire = old.model_dump(mode="json")
+                wire.pop("media_collection_mode")
+                for media in wire["media"]:
+                    media.pop("observed_fields")
+                wires.append(json.dumps(wire, ensure_ascii=False) + "\n")
+            artifacts = executor._canonical_writer._artifacts
+            artifact = artifacts.store_stream(
+                kind="canonical-content.v1",
+                content_type="application/x-ndjson",
+                retention_class="canonical",
+                source=BytesIO(gzip.compress("".join(wires).encode(), mtime=0)),
+                max_bytes=1024 * 1024,
+                filename_suffix=".jsonl.gz",
+                encoding="gzip",
+            )
+            artifact = artifacts.link_canonical(
+                artifact.id,
+                parent=CanonicalArtifactParent(provider_attempt_id=kwargs["provider_attempt_id"]),
+            )
+            frozen.append((artifact, executor._canonical_reader._store))
+        return original(executor, **kwargs)
+
+    monkeypatch.setattr(TikHubCollectionScopeExecutor, "_persistent_filter_inputs", legacy_chunk)
+    test_account_worker_ingests_unbranded_post_via_existing_owner(
+        runtime, "xiaohongshu", True, retry_comments=True
+    )
+    assert len(frozen) == 2
+    for artifact, store in frozen:
+        assert tuple(CanonicalArtifactReader(store=store).read(artifact))
+
+
 def test_four_accounts_create_independent_scopes_and_frozen_v5_runtime(runtime):  # type: ignore[no-untyped-def]
     config_id, _ = _seed_config_and_search_pack(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"a" * 32)

@@ -1342,10 +1342,10 @@ export interface CollectionPlanUpdateRequest {
   schedule_expr: string;
 }
 
-export type CollectionRunMode = typeof CollectionRunMode[keyof typeof CollectionRunMode];
+export type CollectionRunCreateMode = typeof CollectionRunCreateMode[keyof typeof CollectionRunCreateMode];
 
 
-export const CollectionRunMode = {
+export const CollectionRunCreateMode = {
   discovery: 'discovery',
   account_discovery: 'account_discovery',
   batch_supplement: 'batch_supplement',
@@ -1413,7 +1413,7 @@ export interface CollectionRunCreateRequest {
   include_sub_comments?: boolean;
   /** @maxItems 20 */
   keyword_pack_ids?: string[];
-  mode: CollectionRunMode;
+  mode: CollectionRunCreateMode;
   /**
      * @minItems 1
      * @maxItems 5
@@ -1421,6 +1421,8 @@ export interface CollectionRunCreateRequest {
   platforms: CollectionRunPlatformRequest[];
   supplement_targets?: CollectionSupplementTargetSelection | null;
 }
+
+export type CollectionRunMode = CollectionRunCreateMode | 'media_refresh';
 
 export type CollectionSupplementSelectionResponseKind = typeof CollectionSupplementSelectionResponseKind[keyof typeof CollectionSupplementSelectionResponseKind];
 
@@ -1613,6 +1615,7 @@ export const CollectionRuntimeRecordType = {
   data_import_campaign: 'data_import_campaign',
   tikhub_discovery: 'tikhub_discovery',
   tikhub_account_discovery: 'tikhub_account_discovery',
+  tikhub_media_refresh: 'tikhub_media_refresh',
   tikhub_batch_supplement: 'tikhub_batch_supplement',
   tikhub_content_supplement: 'tikhub_content_supplement',
   canonical_replay: 'canonical_replay',
@@ -2073,6 +2076,7 @@ export const ContentDetailResponseCompetitionScope = {
 
 export interface ContentMediaResponse {
   alt_text?: string | null;
+  duration_ms?: number | null;
   media_type: string;
   /** @minimum 0 */
   position: number;
@@ -2279,6 +2283,41 @@ export interface ContentListResponse {
   has_more: boolean;
   items: ContentListItemResponse[];
   next_cursor?: string | null;
+}
+
+/**
+ * 用户播放或一次恢复时准备；绑定已有 Job 的观察永不创建新任务。
+ */
+export interface ContentMediaPlaybackPrepareRequest {
+  failed_source_revision?: string | null;
+  observed_job_id?: string | null;
+}
+
+export type ContentPlaybackStatus = typeof ContentPlaybackStatus[keyof typeof ContentPlaybackStatus];
+
+
+export const ContentPlaybackStatus = {
+  ready: 'ready',
+  preparing: 'preparing',
+  unavailable: 'unavailable',
+  cooldown: 'cooldown',
+} as const;
+
+/**
+ * preparing 携带 job_id；以 observed_job_id 只读轮询取得当前状态或会话。
+ */
+export interface ContentMediaPlaybackResponse {
+  content_id: string;
+  cooldown_until?: string | null;
+  failure_code?: string | null;
+  /** @minimum 0 */
+  generation: number;
+  job_id?: string | null;
+  /** @minimum 0 */
+  position: number;
+  source_revision: string;
+  status: ContentPlaybackStatus;
+  stream_url?: string | null;
 }
 
 export type ContentRelevanceReviewRequestDecision = typeof ContentRelevanceReviewRequestDecision[keyof typeof ContentRelevanceReviewRequestDecision];
@@ -4049,7 +4088,7 @@ limit?: number;
 export type ListCollectionRuntimeRunsParams = {
 search?: string | null;
 /**
- * @maxItems 7
+ * @maxItems 8
  */
 record_types?: CollectionRuntimeRecordType[];
 status?: CollectionRuntimeStatus | null;
@@ -4166,6 +4205,14 @@ cursor?: string | null;
  * @maximum 100
  */
 limit?: number;
+};
+
+export type StreamContentMediaPlaybackParams = {
+/**
+ * @minLength 1
+ * @maxLength 4096
+ */
+session: string;
 };
 
 export type ListDataImportServerDirectoriesParams = {
@@ -6468,6 +6515,81 @@ export const listContentComments = async (contentId: string,
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ContentCommentListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getPrepareContentMediaPlaybackUrl = (contentId: string,
+    position: number,) => {
+
+
+
+
+  return `/api/v1/contents/${contentId}/media/${position}/playback/prepare`
+}
+
+/**
+ * @summary Prepare Content Media Playback
+ */
+export const prepareContentMediaPlayback = async (contentId: string,
+    position: number,
+    contentMediaPlaybackPrepareRequest: ContentMediaPlaybackPrepareRequest, options?: RequestInit): Promise<ContentMediaPlaybackResponse> => {
+
+  const res = await fetch(getPrepareContentMediaPlaybackUrl(contentId,position),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(contentMediaPlaybackPrepareRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentMediaPlaybackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getStreamContentMediaPlaybackUrl = (contentId: string,
+    position: number,
+    params: StreamContentMediaPlaybackParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/contents/${contentId}/media/${position}/playback/stream?${stringifiedParams}` : `/api/v1/contents/${contentId}/media/${position}/playback/stream`
+}
+
+/**
+ * @summary Stream Content Media Playback
+ */
+export const streamContentMediaPlayback = async (contentId: string,
+    position: number,
+    params: StreamContentMediaPlaybackParams, options?: RequestInit): Promise<Blob> => {
+
+  const res = await fetch(getStreamContentMediaPlaybackUrl(contentId,position,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.blob();
+  const data: Blob = body as Blob
   return data
 }
 

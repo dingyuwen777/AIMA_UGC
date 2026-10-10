@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_reuse import PostgresAnalysisReuseRepository
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
 )
@@ -1958,6 +1959,12 @@ class PostgresCanonicalReplayJobExecutor:
                     )
                 ledger_checkpoint_ms = int((perf_counter() - ledger_checkpoint_started) * 1000)
                 projection_started = perf_counter()
+                PostgresAnalysisReuseRepository(session).converge_reuses(
+                    tuple((item.result.target_id, item.result.version_no) for item in batch_created)
+                    + tuple(
+                        (item.result.target_id, item.result.version_no) for item in fallback_items
+                    )
+                )
                 projection_content_count = flush_deferred_voice_plaza_projection(
                     session,
                     tuple(item.result.target_id for item in batch_created)

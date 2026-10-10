@@ -218,11 +218,22 @@ bootstrap/worker.py
 
 `CollectionRunExecutor` 负责 Run/Scope 生命周期；`TikHubCollectionScopeExecutor` 负责真正的 Provider 执行、Raw、Candidate、Mapper、Persistent Canonical、Filter 与 Ingestion。
 
-Discovery 以一个 Search Provider Attempt 的有界页面作为 Canonical Chunk。页面完成 Search
-Mapper 与必要 Detail fallback 后，把每个 Candidate 的最终 Filter 输入写入或复用唯一
-linked `canonical-content.v1` Artifact；共享 Reader 先验证 SHA-256、大小、完整 gzip、JSON
-与当前 Contract，再把全页交给 Filter。Artifact 父级是 Search Attempt，Detail-derived 行的
-Canonical Source 仍指向实际 Detail Attempt、Raw 与 item locator。
+Discovery 以一个 Search Provider Attempt 的有界页面作为 Canonical Chunk。Search 与每次
+Detail 各自写入或复用唯一 linked `canonical-content.v1` Artifact，内容只包含该 Raw 的真实
+Canonical。共享 Reader 先验证 SHA-256、大小、完整 gzip、JSON 与当前 Contract。过滤和评论
+决策使用同身份观察按已观察字段形成的临时有效视图；接受后仍逐 Raw 交给 Content Owner，
+由合并 Current 收敛分类与 Evidence，不把临时视图冒充第三方观察。
+
+历史 Search Chunk 可能保存当时的 Detail Canonical；旧小红书 Mapper 的搜索、账号作品页和
+详情也可能保留旧媒体投影。恢复只接受逐字段等于当前已验证 Raw 的真实观察或已知旧协议
+投影的行，不改写已冻结 Artifact；来源、内容身份、正文或媒体被篡改仍拒绝。小红书未知类型
+的图文详情成功后，可选视频详情的 HTTP 失败、空响应或预期映射错误都先保存已接受事实，
+再进入既有重试、失败或部分成功审计。HTTP 200 空响应保留成功传输的 Attempt/Raw 与失败的
+Scope 结果，不伪造 HTTP 错误或收费状态。
+
+已通过作者和日期准入的账号作品可以没有品牌命中；v2 冻结目录仍逐观察传入 Content Owner，
+由完整 Current 收敛品牌证据，包括清除已经消失的品牌。空分类权限同时验证真实账号 Scope
+和账号 Run 模式，不放宽关键词搜索的过滤要求。
 
 ### 3.3 0 Scope 为什么 fail closed
 
@@ -370,16 +381,16 @@ Mapper 失败或 Brand/Vehicle Filter 未命中后，很难知道来源项在哪
 Raw
 → Candidate（来源项身份）
 → Mapper
-→ Search Attempt 唯一 Persistent Canonical Artifact
+→ 每个 Attempt 各自唯一的 Persistent Canonical Artifact
 → 共享 Reader 完整性预检
 → BrandVehicleResolver / Decision
 → Ingestion
 → Candidate Ingestion 结果
 ```
 
-重复 identity 与多 Evidence 所需的合法 final observation 都保留在页面 Artifact 中，既有
-Content Owner 再执行去重。Mapper invalid 不会写入伪 Canonical，只保留 Raw、Candidate 和
-失败事实。Candidate 不复制最终业务字段，也不代替 Content。
+重复 identity 与多 Evidence 所需的合法观察保留在各自 Raw 所属的 Artifact 中，既有
+Content Owner 再执行去重与 Current 收敛。Mapper invalid 不会写入伪 Canonical，只保留
+Raw、Candidate 和失败事实。Candidate 不复制最终业务字段，也不代替 Content。
 
 ---
 
@@ -710,6 +721,26 @@ Run executor 改动
 ```
 
 最终仍以 PR 最新 HEAD 的完整 CI 为准。
+
+## 小红书媒体播放准备
+
+播放准备复用既有 `collection.run.v1` Registry、Job Runtime 和 Provider Request/Attempt/Raw，
+以封闭的 `collection-run-config.v6` 冻结一个小红书内容/媒体目标、Provider 配置、原 URL
+来源代次和 `max_sent_attempts=1`。它只创建一个 `content/media_refresh` Scope，禁用评论、
+回复、普通 Candidate/Ingestion 和品牌/AI处理。公共 Collection 创建请求仍不能指定此模式。
+每个任务 Deadline 只覆盖一次 Provider timeout 加收敛余量，不使用普通采集的多页预算。
+
+现有 Provider Preparer 在 Job/Scope 锁内复用 reserved 或成功 Raw；已经发送但失败、未知
+结果及未发送终态均不自动新增 Attempt，即使 Provider 配置允许多次重试。正常 Lease
+takeover 复用原 JobAttempt，完成 Raw 不出网恢复。Worker/取消/Reaper 终态回调条件结束仍
+属于该 Job 的 preparing 状态，保留成功 Raw 和真实费用审计。关闭 Drawer 只停本地视频
+与轮询，不能取消其他查看者共享的准备任务。
+
+执行入口是 [`backend/src/aima_ugc/bootstrap/collection_media_refresh.py`](../../bootstrap/collection_media_refresh.py)，
+冻结协议见 [`backend/src/aima_ugc/modules/collection/media_refresh.py`](media_refresh.py)。URL
+最终条件发布仍属于 Content Owner。运行中心读取 `media_refresh` / `tikhub_media_refresh`，
+已有最新补采状态继续只统计普通内容补采。真实 PostgreSQL Worker/Raw恢复/取消/超时与
+一次请求证据见 [`tests/integration/content/test_content_playback.py`](../../../../../tests/integration/content/test_content_playback.py)。
 
 ## 16. 账号发现来源
 

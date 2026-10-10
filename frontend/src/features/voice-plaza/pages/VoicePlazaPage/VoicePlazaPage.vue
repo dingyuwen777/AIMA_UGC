@@ -600,6 +600,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         @retry-comments="store.loadCommentRoots(true)"
         @load-more-comments="store.loadCommentRoots()"
         @load-comment-replies="store.loadCommentReplies"
+        @media-terminal="store.detailId && store.refreshMediaResult(store.detailId)"
         @review="reviewSingle"
         @review-vehicles="reviewDetailVehicles"
         @review-analysis="reviewDetailAnalysis"

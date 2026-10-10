@@ -251,6 +251,12 @@ describe('全局任务中心聚合', () => {
     })
   })
 
+  it('正式媒体刷新运行显示视频准备语义，保持只读任务入口', () => {
+    const store = useTaskCenterStore()
+    store.collectionRuns = [{ ...collectionRun, record_type: 'tikhub_media_refresh', display_name: '小红书视频播放准备', stage: 'media_refresh' }]
+    expect(store.activeItems[0]).toMatchObject({ title: '小红书视频播放准备', subtitle: '视频播放准备 · 小红书', progressDetail: '正在准备视频地址', cancelable: false, href: '/collection-runtime' })
+  })
+
   it('历史重筛任务区分新增记录与处理已有记录', () => {
     const store = useTaskCenterStore()
     store.collectionRuns = [{

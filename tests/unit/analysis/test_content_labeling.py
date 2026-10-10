@@ -171,7 +171,7 @@ def test_prompt_taxonomy_has_expected_baseline_and_documented_bootstrap_source()
     assert taxonomy.prompt_version == "content-labeling.v4.0"
     assert taxonomy.output_protocol_version == "content-labeling.tables.v1"
     assert taxonomy.voice_types == ("品牌官方发声", "真实用户发声", "营销推广发声")
-    assert taxonomy.sentiments == ("正面", "中性", "负面", "混合")
+    assert taxonomy.sentiments == ("正面", "中性", "负面")
     assert len(taxonomy.primary_labels) == 9
     assert len(taxonomy.all_secondary_labels) == 39
     assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling.md" in docs

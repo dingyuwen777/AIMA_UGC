@@ -74,6 +74,7 @@ class PostgresContentMediaCacheRepository:
                     contents_table.c.platform,
                     content_media_table.c.media_type,
                     content_media_table.c.url,
+                    content_media_table.c.preview_url,
                 )
                 .join(contents_table, contents_table.c.id == content_media_table.c.content_id)
                 .where(content_media_table.c.content_id == content_id)
@@ -254,6 +255,7 @@ class PostgresContentMediaCacheRepository:
                     contents_table.c.platform,
                     content_media_table.c.media_type,
                     content_media_table.c.url,
+                    content_media_table.c.preview_url,
                 )
                 .join(contents_table, contents_table.c.id == content_media_table.c.content_id)
                 .where(
@@ -285,7 +287,11 @@ def _source_from_row(row: object) -> ContentMediaSource:
         position=cast(int, mapping["position"]),
         platform=cast(str, mapping["platform"]),
         media_type=cast(str, mapping["media_type"]),
-        source_url=cast(str | None, mapping["url"]),
+        # 视频只把封面交给现有 raster cache，播放二进制永不成为缓存源。
+        source_url=cast(
+            str | None,
+            mapping["preview_url"] if mapping["media_type"] == "video" else mapping["url"],
+        ),
     )
 
 

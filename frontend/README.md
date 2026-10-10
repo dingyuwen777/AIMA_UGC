@@ -300,6 +300,13 @@ src/features/voice-plaza/
 
 Analysis Run 的历史、终态和跨页面任务摘要由全局任务中心读取现有 read API 展示；这不改变声音广场对 Analysis Run 创建/取消的业务 Owner，也不改变后端 Analysis Run 的保留策略。
 
+小红书媒体由 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentMediaGallery.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/ContentMediaGallery.vue) 统一展示。图片和视频封面使用同源图片缓存；横图、竖图、长图在稳定且受视口限制的画廊中完整显示，多图保留左右切换、计数和完整图片入口。列表标题旁不显示视频标签；笔记详情按后端真实视频类型保留标签、封面、时长和播放器，不恢复内容类型筛选或表格列。
+
+[`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/ContentVideoPlayer.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/ContentVideoPlayer.vue) 在用户点击准备后，通过生成 Client 取得同源短期播放会话，再显示原生播放器；不在打开详情时准备或自动播放。仅有封面的视频也保留准备和原帖入口。浏览器观察状态由 [`frontend/src/features/voice-plaza/mediaPlayback.ts`](src/features/voice-plaza/mediaPlayback.ts) 管理，每次显式播放最多一次受控恢复；原生错误不能证明来源失效，是否允许收费刷新仍由后端可信失败事实判断。关闭、切帖或切换媒体释放原生 src、停止本地请求和轮询，不取消其他用户共享的准备任务。失败保留正文、评论和封面，并提供原帖入口。
+
+异步准备通过同一生成接口的只读观察模式轮询，绑定首次返回的任务，不调用仅支持 Excel
+导入的 Job 查询。观察超时只结束本地等待，任务失败或冷却结束不自动创建新收费任务。
+
 当前新版 Analysis Run 正式开放 `selected` 与 `all` 两种范围。`selected` 保留显式选择 1—1000 条内容的上限；`all` 表示数据库当前全部 Content Current，即使页面没有勾选内容也可以发起，且不受当前筛选和已加载分页影响。前端对 `all` 只发送 `{ scope: 'all' }`，不会先翻页收集全部 ID。页面不负责 Planner/Shard/Current 选择规则，这些由后端 Analysis Domain、PostgreSQL 和 generated Contract 决定。
 
 人工相关性复核通过 generated Client 调当前正式 API；Feature `api.ts` 只提供页面语义薄封装，不在前端复制 `relevant / irrelevant / inherit_ai` 的后端状态机或数据库规则。完整业务语义看 Analysis README 与后端 Contract。
@@ -311,7 +318,7 @@ Analysis Run 的历史、终态和跨页面任务摘要由全局任务中心读�
 → GET /api/v1/content-filter-options
 → generated Client
 → voice-plaza Store
-→ 平台 / 相关性 / 状态 / 内容类型 / 情感 / 发声类型 / 两级标签筛选
+→ 平台 / 相关性 / 状态 / 情感 / 发声类型 / 两级标签筛选
 
 当前 active Analysis Scheme Taxonomy
 → GET /api/v1/content-analysis-taxonomy

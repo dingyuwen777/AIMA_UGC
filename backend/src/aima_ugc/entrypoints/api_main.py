@@ -18,6 +18,7 @@ from aima_ugc.bootstrap.api import HealthResponse, ReadinessChecks, ReadinessRes
 from aima_ugc.bootstrap.api import create_app as _create_app
 from aima_ugc.bootstrap.brand_vehicle_http import install_brand_vehicle_routes
 from aima_ugc.bootstrap.content_media_http import install_content_media_routes
+from aima_ugc.bootstrap.content_playback_http import install_content_playback_routes
 from aima_ugc.bootstrap.feishu_auth_http import build_feishu_identity, install_feishu_auth_routes
 from aima_ugc.bootstrap.import_revocation_http import install_import_revocation_routes
 from aima_ugc.bootstrap.provider_lifecycle_http import install_provider_lifecycle_routes
@@ -53,6 +54,7 @@ def _with_product_extension_routes[**P](
             )
             or DevelopmentIdentityResolver()
         )
+        install_content_playback_routes(application, identity_resolver=resolved_identity)
         if feishu_routes is not None:
             # 登录路由只在"自己装配 Resolver"时挂载，避免注入 Resolver 的测试被额外路由影响。
             install_feishu_auth_routes(application, auth_routes=feishu_routes)

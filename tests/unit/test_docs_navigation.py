@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import runpy
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -8,6 +9,25 @@ CHECKER_PATH = ROOT / "scripts" / "quality" / "check_docs.py"
 CHECKER = runpy.run_path(str(CHECKER_PATH))
 CHECK_REPOSITORY = CHECKER["check_repository"]
 RESOLVE_FILE_REFERENCE = CHECKER["_resolve_file_reference"]
+
+
+def test_review_usage_root_document_is_checked(tmp_path: Path) -> None:
+    _minimal_repository(tmp_path)
+    _write(tmp_path / "USAGE.md", "[missing](missing-usage-target.md)\n")
+    assert any("USAGE.md" in error and "DOC003" in error for error in CHECK_REPOSITORY(tmp_path))
+
+
+def test_unstaged_new_document_is_checked_but_ignored_runtime_is_not(tmp_path: Path) -> None:
+    """Git 新文档在 git add 前也要被检查，忽略产物不能混入当前文档。"""
+    _minimal_repository(tmp_path)
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    _write(tmp_path / ".gitignore", ".runtime/\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True, capture_output=True)
+    _write(tmp_path / "docs/new.md", "[missing](missing.md)\n")
+    _write(tmp_path / ".runtime/README.md", "[ignored](missing.md)\n")
+    errors = CHECK_REPOSITORY(tmp_path)
+    assert any("docs/new.md" in error and "DOC003" in error for error in errors)
+    assert not any(".runtime" in error for error in errors)
 
 
 def _write(path: Path, content: str) -> None:

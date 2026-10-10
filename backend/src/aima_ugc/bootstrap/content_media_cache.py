@@ -257,7 +257,7 @@ def _cacheable_source(source: ContentMediaSource | None) -> bool:
     return bool(
         source is not None
         and source.platform == "xiaohongshu"
-        and source.media_type == "image"
+        and source.media_type in {"image", "video"}
         and source.source_url
     )
 

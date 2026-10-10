@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from aima_ugc.adapters.providers.tikhub.capabilities import BILIBILI_TIKHUB_CAPABILITY
 from aima_ugc.bootstrap.collection_scope import (
     TikHubCollectionScopeExecutor,
     _DetailCandidate,
+    _DetailFetchOutcome,
     _ExecutedCall,
     _PreparedSearchContent,
 )
@@ -73,7 +76,7 @@ class _Actions:
             previous_capture_complete=False,
             initial_business_changed=False,
             decision=decision,
-            resolved_comment_count=None,
+            resolved_comment_count=kwargs["resolved_comment_count"],
             detail_completed=False,
             comments_completed=False,
         )
@@ -163,7 +166,7 @@ def _filter_snapshot() -> BrandVehicleFilterSnapshot:
 
 def test_bilibili_search_missing_comment_count_fetches_detail_before_incremental_comments() -> None:
     search_content = _content(comment_count=None, comment_count_observed=False).model_copy(
-        update={"title": "爱玛搜索命中"}
+        update={"title": "爱玛搜索命中", "observed_fields": ["title"]}
     )
     detail_content = _content(comment_count=7, comment_count_observed=True)
 
@@ -227,10 +230,10 @@ def test_bilibili_search_missing_comment_count_fetches_detail_before_incremental
 
 def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion() -> None:
     search_content = _content(comment_count=None, comment_count_observed=False).model_copy(
-        update={"title": "其他品牌"}
+        update={"title": "其他品牌", "observed_fields": ["title"]}
     )
     detail_content = _content(comment_count=0, comment_count_observed=True).model_copy(
-        update={"text": "仍然无关"}
+        update={"text": "仍然无关", "observed_fields": ["text", "metrics.comment_count"]}
     )
     executor = object.__new__(TikHubCollectionScopeExecutor)
     executor._brand_vehicle_resolver = BrandVehicleResolver()
@@ -239,9 +242,9 @@ def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion
     detail_candidate_id = uuid4()
     detail_calls: list[str] = []
 
-    def fake_detail(**_kwargs: object) -> tuple[_DetailCandidate, ...]:
+    def fake_detail(**_kwargs: object) -> _DetailFetchOutcome:
         detail_calls.append("detail")
-        return (_DetailCandidate(detail_content, detail_candidate_id),)
+        return _DetailFetchOutcome((_DetailCandidate(detail_content, detail_candidate_id),))
 
     executor._fetch_detail_candidates = fake_detail  # type: ignore[method-assign]
     stats = SimpleNamespace(filtered_content_count=0)
@@ -278,13 +281,13 @@ def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion
 
 def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
     search_content = _content(comment_count=None, comment_count_observed=False).model_copy(
-        update={"title": "其他品牌"}
+        update={"title": "其他品牌", "observed_fields": ["title"]}
     )
     first_detail = _content(comment_count=0, comment_count_observed=True).model_copy(
-        update={"text": "详情补充"}
+        update={"text": "详情补充", "observed_fields": ["text", "metrics.comment_count"]}
     )
     final_detail = _content(comment_count=0, comment_count_observed=True).model_copy(
-        update={"text": "爱玛最终详情"}
+        update={"text": "爱玛最终详情", "observed_fields": ["text", "metrics.comment_count"]}
     )
     executor = object.__new__(TikHubCollectionScopeExecutor)
     executor._brand_vehicle_resolver = BrandVehicleResolver()
@@ -295,9 +298,11 @@ def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
     executor._decision_service = CollectionDecisionService()  # type: ignore[attr-defined]
 
     detail_candidate_ids = (uuid4(), uuid4())
-    executor._fetch_detail_candidates = lambda **_kwargs: (  # type: ignore[method-assign]
-        _DetailCandidate(first_detail, detail_candidate_ids[0]),
-        _DetailCandidate(final_detail, detail_candidate_ids[1]),
+    executor._fetch_detail_candidates = lambda **_kwargs: _DetailFetchOutcome(
+        (  # type: ignore[method-assign]
+            _DetailCandidate(first_detail, detail_candidate_ids[0]),
+            _DetailCandidate(final_detail, detail_candidate_ids[1]),
+        )
     )
     executor._fetch_comments = lambda **_kwargs: SimpleNamespace(  # type: ignore[method-assign]
         completed=True,
@@ -351,3 +356,82 @@ def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
     assert writer.ingested == [search_candidate_id, *detail_candidate_ids]
     assert writer.ingested_payloads[0]["brand_vehicle_resolution"] is None
     assert writer.ingested_payloads[-1]["brand_vehicle_resolution"].matched is True  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    "source_type,matched", [("keyword_search", True), ("account", True), ("account", False)]
+)
+def test_sparse_followup_keeps_effective_filter_comment_facts_and_every_v2_owner_convergence(
+    source_type, matched
+) -> None:
+    """派生决策不能丢primary字段，也不能把合并字段冒充secondary Raw。"""
+    search = _content(comment_count=None, comment_count_observed=False).model_copy(
+        update={"title": "其他品牌", "observed_fields": ["title"]}
+    )
+    primary = _content(comment_count=0, comment_count_observed=True).model_copy(
+        update={
+            "title": "爱玛成功详情" if matched else "没有目录命中的详情",
+            "text": "已成功正文",
+            "observed_fields": ["title", "text", "metrics.comment_count"],
+        }
+    )
+    sparse = _content(comment_count=None, comment_count_observed=False).model_copy(
+        update={"observed_fields": ["media"]}
+    )
+    executor = object.__new__(TikHubCollectionScopeExecutor)
+    executor._brand_vehicle_resolver = BrandVehicleResolver()
+    writer = _Writer()
+    executor._content_writer = writer
+    executor._content_state = _StateReader()
+    executor._content_actions = _Actions()
+    executor._decision_service = CollectionDecisionService()
+    ids = (uuid4(), uuid4())
+    executor._fetch_detail_candidates = lambda **_: _DetailFetchOutcome(
+        (_DetailCandidate(primary, ids[0]), _DetailCandidate(sparse, ids[1]))
+    )
+    coverage_sources = []
+    executor._record_non_fetch_coverage = lambda **kwargs: coverage_sources.append(
+        kwargs["content"]
+    )
+    snapshot = _filter_snapshot()
+    snapshot = snapshot.model_copy(
+        update={"catalog": replace(snapshot.catalog, resolver_semantics="brand_scoped_vehicle_v2")}
+    )
+    kwargs = dict(
+        run=SimpleNamespace(config_snapshot={}),
+        scope=SimpleNamespace(
+            id=uuid4(), source_type=source_type, source_value="爱玛", platform="bilibili"
+        ),
+        provider_config=SimpleNamespace(),
+        context=_Context(),
+        stats=SimpleNamespace(technical_partial_results=0, filtered_content_count=0),
+        filter_snapshot=snapshot,
+    )
+    prepared = executor._prepare_search_content(
+        content=search, search_candidate_id=uuid4(), **kwargs
+    )
+    executor._process_search_content(
+        prepared=prepared,
+        content=prepared.final_content,
+        search_executed=_ExecutedCall(
+            request_id=uuid4(),
+            attempt_id=uuid4(),
+            raw_artifact_id=uuid4(),
+            observed_at=_NOW,
+            body={},
+        ),
+        capability=BILIBILI_TIKHUB_CAPABILITY,
+        policy=CollectionDecisionPolicyV1(),
+        **kwargs,
+    )
+    assert not writer.filtered
+    assert len(writer.ingested) == 3
+    assert [item["canonical"] for item in writer.ingested_payloads] == [search, primary, sparse]
+    assert all(
+        item["brand_vehicle_snapshot"] is snapshot.catalog for item in writer.ingested_payloads
+    )
+    assert all(
+        item["brand_vehicle_resolution"].matched == matched for item in writer.ingested_payloads
+    )
+    assert executor._content_actions.action.resolved_comment_count == 0
+    assert coverage_sources == [primary]

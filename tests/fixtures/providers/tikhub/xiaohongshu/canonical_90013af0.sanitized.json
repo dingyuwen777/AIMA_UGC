@@ -1,0 +1,1339 @@
+{
+  "base_revision": "90013af0a07c32a17509adb4deb7509ad97927c9",
+  "cases": [
+    {
+      "case": "search_unknown",
+      "raw": {
+        "id": "a00000000000000000000001",
+        "type": "future",
+        "title": "脱敏搜索",
+        "images_list": [
+          {
+            "url": "https://sns-i11.rednotecdn.com/fixture-search.webp"
+          }
+        ]
+      },
+      "canonical_wire": {
+        "observed_fields": [
+          "content_type",
+          "alternate_ids",
+          "title",
+          "media"
+        ],
+        "schema_version": "content.v1",
+        "platform": "xiaohongshu",
+        "external_content_id": "a00000000000000000000001",
+        "alternate_ids": {
+          "note_id": "a00000000000000000000001"
+        },
+        "content_type": "image",
+        "title": "脱敏搜索",
+        "text": null,
+        "canonical_url": null,
+        "share_url": null,
+        "author": null,
+        "published_at": null,
+        "source_updated_at": null,
+        "observed_at": "2026-10-09T00:00:00Z",
+        "media": [
+          {
+            "media_type": "image",
+            "external_media_id": null,
+            "url": "https://sns-i11.rednotecdn.com/fixture-search.webp",
+            "preview_url": null,
+            "width": null,
+            "height": null,
+            "duration_ms": null,
+            "position": 0,
+            "mime_type": null,
+            "alt_text": null
+          }
+        ],
+        "topics": [],
+        "mentions": [],
+        "locations": [],
+        "metrics": {
+          "schema_version": "metrics.v1",
+          "like_count": null,
+          "comment_count": null,
+          "share_count": null,
+          "repost_count": null,
+          "favorite_count": null,
+          "view_count": null,
+          "play_count": null,
+          "danmaku_count": null,
+          "coin_count": null,
+          "download_count": null,
+          "reply_count": null
+        },
+        "status": null,
+        "source": {
+          "schema_version": "source.v1",
+          "provider_name": "tikhub",
+          "operation": "search_notes",
+          "provider_request_id": "00000000-0000-4000-8000-000000000011",
+          "provider_attempt_id": "00000000-0000-4000-8000-000000000012",
+          "raw_artifact_id": "00000000-0000-4000-8000-000000000013",
+          "source_type": "keyword_search",
+          "source_value": "synthetic-fixture",
+          "item_locator": "synthetic-item",
+          "observed_at": "2026-10-09T00:00:00Z"
+        }
+      }
+    },
+    {
+      "case": "image_detail_video_cover",
+      "raw": {
+        "ip_location": "<redacted-string>",
+        "user": {
+          "red_official_verified": false,
+          "id": "id-0001",
+          "fstatus": "<redacted-string>",
+          "userid": "<redacted-string>",
+          "show_red_official_verify_icon": false,
+          "red_official_verify_type": 0,
+          "track_duration": 0,
+          "level": {
+            "image": "<redacted-string>"
+          },
+          "image": "https://sns-avatar-qc.rednotecdn.com/fixture-20.webp",
+          "followed": false,
+          "red_id": "id-0002",
+          "nickname": "<redacted-string>",
+          "name": "<redacted-string>"
+        },
+        "feedback_info": {
+          "dislike_status": 0
+        },
+        "pre_view_count": -1,
+        "last_update_time": 1720000000,
+        "has_related_goods": false,
+        "comments_count": 30,
+        "liked": false,
+        "collected": false,
+        "foot_tags": [],
+        "id": "a00000000000000000000001",
+        "share_code_flag": 0,
+        "biz_map": {},
+        "liked_count": 33,
+        "head_tags": [],
+        "title": "<redacted-string>",
+        "share_info": {
+          "content": "<redacted-string>",
+          "show_wechat_tag": false,
+          "title": "<redacted-string>",
+          "image": "http://sns-img-qc.xhscdn.com/fixture-21.webp",
+          "function_entries": [
+            {
+              "type": "generate_image"
+            },
+            {
+              "type": "quote_note"
+            },
+            {
+              "type": "copy_link"
+            }
+          ],
+          "link": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "is_star": false,
+          "guide_audited": true,
+          "wechat_share_desc": "<redacted-string>",
+          "block_private_msg": false
+        },
+        "sticky": false,
+        "seeded_count": 0,
+        "need_next_step": false,
+        "content_trans_info": {
+          "strategy": 9
+        },
+        "hash_tag": [],
+        "text_language_code": "<redacted-string>",
+        "type": "video",
+        "topics": [],
+        "desc": "<redacted-string>",
+        "countdown": 0,
+        "ats": [],
+        "widgets_groups": [
+          [
+            "<redacted-string>",
+            "<redacted-string>",
+            "<redacted-string>"
+          ],
+          [
+            "<redacted-string>",
+            "<redacted-string>",
+            "<redacted-string>"
+          ]
+        ],
+        "enable_brand_lottery": false,
+        "mini_program_info": {
+          "title": "<redacted-string>",
+          "webpage_url": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "thumb": "http://sns-img-qc.xhscdn.com/fixture-24.webp",
+          "share_title": "<redacted-string>",
+          "user_name": "<redacted-string>",
+          "path": "<redacted-string>",
+          "desc": "<redacted-string>"
+        },
+        "in_censor": false,
+        "api_upgrade": -1,
+        "use_water_color": false,
+        "need_product_review": false,
+        "media_save_config": {
+          "disable_save": false,
+          "disable_watermark": false,
+          "disable_weibo_cover": false
+        },
+        "enable_co_produce": false,
+        "red_envelope_note": false,
+        "shared_count": 6,
+        "images_list": [
+          {
+            "index": 0,
+            "fileid": "<redacted-string>",
+            "scale_to_large": 4,
+            "width": 1080,
+            "original": "https://sns-i11.rednotecdn.com/fixture-25.webp",
+            "longitude": 0,
+            "latitude": 0,
+            "url": "https://sns-i11.rednotecdn.com/fixture-26.webp",
+            "url_multi_level": {
+              "low": "https://sns-i11.rednotecdn.com/fixture-27.webp",
+              "high": "https://sns-i11.rednotecdn.com/fixture-28.webp",
+              "medium": "https://sns-i11.rednotecdn.com/fixture-29.webp"
+            },
+            "need_load_original_image": true,
+            "origin_img": {
+              "width": 1080,
+              "size": 0,
+              "height": 1920
+            },
+            "height": 1920,
+            "trace_id": "id-0004",
+            "text_intention": 0
+          }
+        ],
+        "may_have_red_packet": false,
+        "comment_prompt_config": {
+          "placeholder_short": "<redacted-string>",
+          "placeholder_long": "<redacted-string>",
+          "forbidden_cmt_type": 0
+        },
+        "has_music": false,
+        "enable_fls_bridge_cards": false,
+        "model_type": "<redacted-string>",
+        "seeded": false,
+        "goods_info": {},
+        "view_count": 0,
+        "cooperate_binds": [],
+        "function_switch": [
+          {
+            "type": "video_download",
+            "enable": false,
+            "reason": "<redacted-string>"
+          },
+          {
+            "type": "quote_note",
+            "enable": true
+          },
+          {
+            "enable": true,
+            "type": "heat_for_author"
+          }
+        ],
+        "time": 1778505633,
+        "has_co_produce": false,
+        "long_press_share_info": {
+          "content": "<redacted-string>",
+          "show_wechat_tag": false,
+          "title": "<redacted-string>",
+          "function_entries": [
+            {
+              "type": "image_download"
+            }
+          ],
+          "guide_audited": false,
+          "is_star": false,
+          "block_private_msg": false
+        },
+        "collected_count": 9,
+        "note_text_press_options": [
+          {
+            "key": "<redacted-string>",
+            "extra": "<redacted-string>"
+          }
+        ],
+        "privacy": {
+          "type": 0,
+          "show_tips": false,
+          "nick_names": "<redacted-string>"
+        },
+        "enable_fls_related_cards": false,
+        "qq_mini_program_info": {
+          "share_title": "<redacted-string>",
+          "webpage_url": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "thumb": "http://sns-img-qc.xhscdn.com/fixture-31.webp",
+          "title": "<redacted-string>",
+          "user_name": "<redacted-string>",
+          "path": "<redacted-string>",
+          "desc": "<redacted-string>"
+        },
+        "widgets_context": "<redacted-string>",
+        "liked_users": []
+      },
+      "canonical_wire": {
+        "observed_fields": [
+          "content_type",
+          "alternate_ids",
+          "title",
+          "text",
+          "author.external_account_id",
+          "author.alternate_ids",
+          "author.display_name",
+          "author.verified",
+          "metrics.like_count",
+          "metrics.comment_count",
+          "metrics.favorite_count",
+          "metrics.share_count",
+          "metrics.view_count",
+          "published_at",
+          "source_updated_at",
+          "media",
+          "locations"
+        ],
+        "schema_version": "content.v1",
+        "platform": "xiaohongshu",
+        "external_content_id": "a00000000000000000000001",
+        "alternate_ids": {
+          "note_id": "a00000000000000000000001"
+        },
+        "content_type": "video",
+        "title": "<redacted-string>",
+        "text": "<redacted-string>",
+        "canonical_url": null,
+        "share_url": null,
+        "author": {
+          "external_account_id": "<redacted-string>",
+          "alternate_ids": {
+            "red_id": "id-0002"
+          },
+          "handle": null,
+          "display_name": "<redacted-string>",
+          "profile_url": null,
+          "avatar_url": null,
+          "bio": null,
+          "verified": false,
+          "verification_label": null,
+          "region": null,
+          "follower_count": null,
+          "following_count": null,
+          "content_count": null,
+          "total_like_count": null
+        },
+        "published_at": "2026-05-11T13:20:33Z",
+        "source_updated_at": "2024-07-03T09:46:40Z",
+        "observed_at": "2026-10-09T00:00:00Z",
+        "media": [
+          {
+            "media_type": "image",
+            "external_media_id": "<redacted-string>",
+            "url": "https://sns-i11.rednotecdn.com/fixture-26.webp",
+            "preview_url": null,
+            "width": 1080,
+            "height": 1920,
+            "duration_ms": null,
+            "position": 0,
+            "mime_type": null,
+            "alt_text": null
+          }
+        ],
+        "topics": [],
+        "mentions": [],
+        "locations": [
+          {
+            "location_type": "ip_region",
+            "label": "<redacted-string>",
+            "country": null,
+            "region": null,
+            "city": null,
+            "latitude": null,
+            "longitude": null
+          }
+        ],
+        "metrics": {
+          "schema_version": "metrics.v1",
+          "like_count": 33,
+          "comment_count": 30,
+          "share_count": 6,
+          "repost_count": null,
+          "favorite_count": 9,
+          "view_count": 0,
+          "play_count": null,
+          "danmaku_count": null,
+          "coin_count": null,
+          "download_count": null,
+          "reply_count": null
+        },
+        "status": null,
+        "source": {
+          "schema_version": "source.v1",
+          "provider_name": "tikhub",
+          "operation": "get_image_note_detail",
+          "provider_request_id": "00000000-0000-4000-8000-000000000011",
+          "provider_attempt_id": "00000000-0000-4000-8000-000000000012",
+          "raw_artifact_id": "00000000-0000-4000-8000-000000000013",
+          "source_type": "keyword_search",
+          "source_value": "synthetic-fixture",
+          "item_locator": "synthetic-item",
+          "observed_at": "2026-10-09T00:00:00Z"
+        }
+      }
+    },
+    {
+      "case": "video_detail",
+      "raw": {
+        "ip_location": "<redacted-string>",
+        "user": {
+          "id": "id-0001",
+          "red_official_verified": false,
+          "fstatus": "<redacted-string>",
+          "userid": "<redacted-string>",
+          "show_red_official_verify_icon": false,
+          "red_official_verify_type": 0,
+          "track_duration": 0,
+          "level": {
+            "image": "<redacted-string>"
+          },
+          "image": "https://sns-avatar-qc.rednotecdn.com/fixture-1.webp",
+          "followed": false,
+          "red_id": "id-0002",
+          "preload_posted": false,
+          "name": "<redacted-string>",
+          "nickname": "<redacted-string>"
+        },
+        "liked": false,
+        "pre_view_count": -1,
+        "id": "a00000000000000000000001",
+        "comments_count": 30,
+        "has_related_goods": false,
+        "collected": false,
+        "feedback_info": {
+          "dislike_status": 0
+        },
+        "foot_tags": [],
+        "auto_slide_down": 0,
+        "last_update_time": 1720000000,
+        "share_code_flag": 0,
+        "lazy_load_mode": 0,
+        "regenerate_bit_map": 0,
+        "related_goods_num": 0,
+        "liked_count": 33,
+        "title": "<redacted-string>",
+        "share_info": {
+          "content": "<redacted-string>",
+          "show_wechat_tag": false,
+          "title": "<redacted-string>",
+          "image": "http://sns-img-qc.xhscdn.com/fixture-2.webp",
+          "is_star": false,
+          "link": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "wechat_share_desc": "<redacted-string>",
+          "block_private_msg": false,
+          "function_entries": [
+            {
+              "type": "video_download"
+            },
+            {
+              "type": "generate_image"
+            },
+            {
+              "type": "quote_note"
+            }
+          ],
+          "guide_audited": true
+        },
+        "sticky": false,
+        "seeded_count": 0,
+        "need_next_step": false,
+        "content_trans_info": {
+          "strategy": 9
+        },
+        "hash_tag": [],
+        "video_info_v2": {
+          "capa": {
+            "is_user_select": false,
+            "is_upload": false,
+            "frame_ts": 0,
+            "duration": 17
+          },
+          "consumer": {
+            "can_super_resolution": false
+          },
+          "image": {
+            "thumbnail": "https://sns-i11.rednotecdn.com/fixture-4.webp",
+            "thumbnail_dim": "https://sns-i11.rednotecdn.com/fixture-5.webp",
+            "first_frame": "https://sns-i11.rednotecdn.com/fixture-6.webp"
+          },
+          "media": {
+            "user_level": 0,
+            "audio_stream": {},
+            "video": {
+              "drm_type": 0,
+              "bbox": {
+                "ocr_v3": [
+                  {
+                    "y": 0,
+                    "w": 0,
+                    "x": 0,
+                    "h": 0
+                  }
+                ],
+                "ocr_v4": [
+                  {
+                    "y": 0,
+                    "w": 0,
+                    "x": 0,
+                    "h": 0
+                  }
+                ],
+                "ocr_v5": [
+                  {
+                    "y": 0,
+                    "w": 0,
+                    "x": 0,
+                    "h": 0
+                  }
+                ],
+                "ocr_v2": [
+                  {
+                    "y": 0,
+                    "w": 0,
+                    "x": 0,
+                    "h": 0
+                  }
+                ]
+              },
+              "biz_id": "id-0004",
+              "width": 1080,
+              "opaque1": {
+                "hasHumanVoice": "<redacted-string>",
+                "rightAvgLuma": "<redacted-string>",
+                "domestic": "<redacted-string>",
+                "isSupportSubtitle": "<redacted-string>",
+                "amend_mobile": "<redacted-string>",
+                "audioLevInfo": "<redacted-string>",
+                "topAvgLuma": "<redacted-string>",
+                "audioClsInfo": "id-0005",
+                "bottomAvgLuma": "<redacted-string>",
+                "loudnorm": "<redacted-string>"
+              },
+              "hdr_type": 0,
+              "biz_name": 110,
+              "height": 1920,
+              "duration": 18,
+              "md5": "<redacted-string>",
+              "stream_types": [
+                258,
+                309,
+                301
+              ],
+              "bound": [
+                {
+                  "y": 0,
+                  "w": 0,
+                  "x": 0,
+                  "h": 0
+                }
+              ]
+            },
+            "stream": {
+              "h265": [
+                {
+                  "audio_bitrate": 96125,
+                  "stream_type": 309,
+                  "master_url": "http://sns-v11.rednotecdn.com/fixture-7.mp4",
+                  "weight": 62,
+                  "volume": 0,
+                  "video_duration": 17800,
+                  "duration": 17834,
+                  "vmaf": -1,
+                  "psnr": 39.011002,
+                  "video_codec": "hevc",
+                  "audio_channels": 2,
+                  "default_stream": 1,
+                  "backup_urls": [
+                    "http://sns-v27.rednotecdn.com/fixture-8.mp4"
+                  ],
+                  "video_bitrate": 1073230,
+                  "fps": 30,
+                  "opaque1": {
+                    "pcdn_302_flag": "<redacted-string>",
+                    "use_pcdn": "<redacted-string>",
+                    "didLoudnorm": "<redacted-string>",
+                    "encode_stream": "<redacted-string>",
+                    "quality_grade_fallback": "<redacted-string>",
+                    "pcdn_supplier": "<redacted-string>",
+                    "quality_grade_fallback_with_desc": "<redacted-string>"
+                  },
+                  "size": 2618190,
+                  "audio_codec": "aac",
+                  "rotate": 0,
+                  "format": "mp4",
+                  "token": "<redacted-secret>",
+                  "sr": 0,
+                  "stream_desc": "<redacted-string>",
+                  "height": 1280,
+                  "width": 720,
+                  "audio_duration": 17809,
+                  "quality_type": "<redacted-string>",
+                  "avg_bitrate": 1174471,
+                  "hdr_type": 0,
+                  "ssim": 0
+                },
+                {
+                  "audio_bitrate": 96125,
+                  "stream_type": 301,
+                  "master_url": "http://sns-v11.rednotecdn.com/fixture-9.mp4",
+                  "weight": 70,
+                  "volume": 0,
+                  "video_duration": 17800,
+                  "duration": 17834,
+                  "vmaf": -1,
+                  "psnr": 38.870998,
+                  "video_codec": "hevc",
+                  "audio_channels": 2,
+                  "default_stream": 0,
+                  "backup_urls": [
+                    "http://sns-v27.rednotecdn.com/fixture-10.mp4"
+                  ],
+                  "video_bitrate": 1446544,
+                  "fps": 30,
+                  "opaque1": {
+                    "pcdn_302_flag": "<redacted-string>",
+                    "use_pcdn": "<redacted-string>",
+                    "didLoudnorm": "<redacted-string>",
+                    "encode_stream": "<redacted-string>",
+                    "quality_grade_fallback": "<redacted-string>",
+                    "pcdn_supplier": "<redacted-string>",
+                    "quality_grade_fallback_with_desc": "<redacted-string>"
+                  },
+                  "size": 3448804,
+                  "audio_codec": "aac",
+                  "rotate": 0,
+                  "format": "mp4",
+                  "token": "<redacted-secret>",
+                  "sr": 0,
+                  "stream_desc": "<redacted-string>",
+                  "height": 1920,
+                  "width": 1080,
+                  "audio_duration": 17809,
+                  "quality_type": "<redacted-string>",
+                  "avg_bitrate": 1547069,
+                  "hdr_type": 0,
+                  "ssim": 0
+                },
+                {
+                  "audio_bitrate": 96125,
+                  "stream_type": 115,
+                  "master_url": "http://sns-v11.rednotecdn.com/fixture-11.mp4",
+                  "weight": 73,
+                  "volume": 0,
+                  "video_duration": 17800,
+                  "duration": 17834,
+                  "vmaf": -1,
+                  "psnr": 39.325001,
+                  "video_codec": "hevc",
+                  "audio_channels": 2,
+                  "default_stream": 0,
+                  "backup_urls": [
+                    "http://sns-v27.rednotecdn.com/fixture-12.mp4"
+                  ],
+                  "video_bitrate": 1798946,
+                  "fps": 30,
+                  "opaque1": {
+                    "pcdn_302_flag": "<redacted-string>",
+                    "use_pcdn": "<redacted-string>",
+                    "didLoudnorm": "<redacted-string>",
+                    "encode_stream": "<redacted-string>",
+                    "quality_grade_fallback": "<redacted-string>",
+                    "pcdn_supplier": "<redacted-string>",
+                    "quality_grade_fallback_with_desc": "<redacted-string>"
+                  },
+                  "size": 4232900,
+                  "audio_codec": "aac",
+                  "rotate": 0,
+                  "format": "mp4",
+                  "token": "<redacted-secret>",
+                  "sr": 0,
+                  "stream_desc": "<redacted-string>",
+                  "height": 1920,
+                  "width": 1080,
+                  "audio_duration": 17809,
+                  "quality_type": "<redacted-string>",
+                  "avg_bitrate": 1898800,
+                  "hdr_type": 0,
+                  "ssim": 0
+                }
+              ],
+              "h266": [],
+              "h264": [
+                {
+                  "audio_bitrate": 56565,
+                  "stream_type": 258,
+                  "master_url": "http://sns-v11.rednotecdn.com/fixture-13.mp4",
+                  "weight": 59,
+                  "volume": 0,
+                  "video_duration": 17800,
+                  "duration": 17834,
+                  "vmaf": -1,
+                  "psnr": 0,
+                  "video_codec": "h264",
+                  "audio_channels": 2,
+                  "default_stream": 0,
+                  "backup_urls": [
+                    "http://sns-v27.rednotecdn.com/fixture-14.mp4"
+                  ],
+                  "video_bitrate": 2846173,
+                  "fps": 30,
+                  "opaque1": {
+                    "pcdn_302_flag": "<redacted-string>",
+                    "use_pcdn": "<redacted-string>",
+                    "didLoudnorm": "<redacted-string>",
+                    "encode_stream": "<redacted-string>",
+                    "quality_grade_fallback": "<redacted-string>",
+                    "pcdn_supplier": "<redacted-string>",
+                    "quality_grade_fallback_with_desc": "<redacted-string>"
+                  },
+                  "size": 6475342,
+                  "audio_codec": "aac",
+                  "rotate": 0,
+                  "format": "mp4",
+                  "token": "<redacted-secret>",
+                  "sr": 0,
+                  "stream_desc": "<redacted-string>",
+                  "height": 1280,
+                  "width": 720,
+                  "audio_duration": 17809,
+                  "quality_type": "<redacted-string>",
+                  "avg_bitrate": 2904717,
+                  "hdr_type": 0,
+                  "ssim": 0
+                }
+              ],
+              "av1": []
+            },
+            "video_id": "id-0006"
+          }
+        },
+        "text_language_code": "<redacted-string>",
+        "type": "video",
+        "topics": [],
+        "desc": "<redacted-string>",
+        "countdown": 0,
+        "ats": [],
+        "has_no_more": false,
+        "widgets_groups": [
+          [
+            "<redacted-string>",
+            "<redacted-string>",
+            "<redacted-string>"
+          ],
+          [
+            "<redacted-string>",
+            "<redacted-string>",
+            "<redacted-string>"
+          ]
+        ],
+        "enable_brand_lottery": false,
+        "api_upgrade": -1,
+        "need_product_review": false,
+        "media_save_config": {
+          "disable_watermark": false,
+          "disable_weibo_cover": false,
+          "disable_save": false
+        },
+        "cny_red_envelope_note": false,
+        "simple_music_info": {
+          "deeplink": "<redacted-string>",
+          "music_id": "id-0007",
+          "url": "https://sns-music.xhscdn.com/fixture-15.webp",
+          "disable_panel": true,
+          "name": "<redacted-string>"
+        },
+        "shared_count": 6,
+        "images_list": [
+          {
+            "index": 0,
+            "url_size_large": "<redacted-string>",
+            "fileid": "<redacted-string>",
+            "scale_to_large": 0,
+            "width": 1080,
+            "url": "https://sns-i11.rednotecdn.com/fixture-16.webp",
+            "original": "https://sns-i11.rednotecdn.com/fixture-17.webp",
+            "longitude": 0,
+            "latitude": 0,
+            "need_load_original_image": false,
+            "height": 1920,
+            "trace_id": "id-0008"
+          }
+        ],
+        "may_have_red_packet": false,
+        "comment_prompt_config": {
+          "placeholder_short": "<redacted-string>",
+          "placeholder_long": "<redacted-string>",
+          "forbidden_cmt_type": 0
+        },
+        "final_feed_item": false,
+        "enable_fls_bridge_cards": false,
+        "hide_button": false,
+        "model_type": "<redacted-string>",
+        "seeded": false,
+        "enable_listen_video": false,
+        "cooperate_binds": [],
+        "track_id": "id-0009",
+        "view_count": 0,
+        "function_switch": [
+          {
+            "type": "video_download",
+            "enable": true
+          },
+          {
+            "type": "quote_note",
+            "enable": true
+          },
+          {
+            "type": "heat_for_author",
+            "enable": true
+          }
+        ],
+        "source_item": false,
+        "source_note": true,
+        "time": 1778505633,
+        "nice_info": {
+          "display": true,
+          "nice_status": 2
+        },
+        "cursor_score": "id-0009",
+        "collected_count": 9,
+        "downgrade_type": 0,
+        "interaction_info": {
+          "niced": false,
+          "share_count": 6,
+          "nice_count": 0
+        },
+        "enable_fls_related_cards": false,
+        "privacy": {
+          "type": 0,
+          "show_tips": false,
+          "nick_names": "<redacted-string>"
+        },
+        "qq_mini_program_info": {
+          "title": "<redacted-string>",
+          "webpage_url": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "thumb": "http://sns-img-qc.xhscdn.com/fixture-19.webp",
+          "share_title": "<redacted-string>",
+          "user_name": "<redacted-string>",
+          "path": "<redacted-string>",
+          "desc": "<redacted-string>"
+        },
+        "widgets_context": "<redacted-string>"
+      },
+      "canonical_wire": {
+        "observed_fields": [
+          "content_type",
+          "alternate_ids",
+          "title",
+          "text",
+          "author.external_account_id",
+          "author.alternate_ids",
+          "author.display_name",
+          "author.verified",
+          "metrics.like_count",
+          "metrics.comment_count",
+          "metrics.favorite_count",
+          "metrics.share_count",
+          "metrics.view_count",
+          "published_at",
+          "source_updated_at",
+          "media",
+          "locations"
+        ],
+        "schema_version": "content.v1",
+        "platform": "xiaohongshu",
+        "external_content_id": "a00000000000000000000001",
+        "alternate_ids": {
+          "note_id": "a00000000000000000000001"
+        },
+        "content_type": "video",
+        "title": "<redacted-string>",
+        "text": "<redacted-string>",
+        "canonical_url": null,
+        "share_url": null,
+        "author": {
+          "external_account_id": "<redacted-string>",
+          "alternate_ids": {
+            "red_id": "id-0002"
+          },
+          "handle": null,
+          "display_name": "<redacted-string>",
+          "profile_url": null,
+          "avatar_url": null,
+          "bio": null,
+          "verified": false,
+          "verification_label": null,
+          "region": null,
+          "follower_count": null,
+          "following_count": null,
+          "content_count": null,
+          "total_like_count": null
+        },
+        "published_at": "2026-05-11T13:20:33Z",
+        "source_updated_at": "2024-07-03T09:46:40Z",
+        "observed_at": "2026-10-09T00:00:00Z",
+        "media": [
+          {
+            "media_type": "video",
+            "external_media_id": null,
+            "url": null,
+            "preview_url": null,
+            "width": 1080,
+            "height": 1920,
+            "duration_ms": 18000,
+            "position": 0,
+            "mime_type": null,
+            "alt_text": null
+          }
+        ],
+        "topics": [],
+        "mentions": [],
+        "locations": [
+          {
+            "location_type": "ip_region",
+            "label": "<redacted-string>",
+            "country": null,
+            "region": null,
+            "city": null,
+            "latitude": null,
+            "longitude": null
+          }
+        ],
+        "metrics": {
+          "schema_version": "metrics.v1",
+          "like_count": 33,
+          "comment_count": 30,
+          "share_count": 6,
+          "repost_count": null,
+          "favorite_count": 9,
+          "view_count": 0,
+          "play_count": null,
+          "danmaku_count": null,
+          "coin_count": null,
+          "download_count": null,
+          "reply_count": null
+        },
+        "status": null,
+        "source": {
+          "schema_version": "source.v1",
+          "provider_name": "tikhub",
+          "operation": "get_video_note_detail",
+          "provider_request_id": "00000000-0000-4000-8000-000000000011",
+          "provider_attempt_id": "00000000-0000-4000-8000-000000000012",
+          "raw_artifact_id": "00000000-0000-4000-8000-000000000013",
+          "source_type": "account",
+          "source_value": "synthetic-fixture",
+          "item_locator": "synthetic-item",
+          "observed_at": "2026-10-09T00:00:00Z"
+        }
+      }
+    },
+    {
+      "case": "account_detail_video_cover",
+      "raw": {
+        "ip_location": "<redacted-string>",
+        "user": {
+          "red_official_verified": false,
+          "id": "id-0001",
+          "fstatus": "<redacted-string>",
+          "userid": "<redacted-string>",
+          "show_red_official_verify_icon": false,
+          "red_official_verify_type": 0,
+          "track_duration": 0,
+          "level": {
+            "image": "<redacted-string>"
+          },
+          "image": "https://sns-avatar-qc.rednotecdn.com/fixture-20.webp",
+          "followed": false,
+          "red_id": "id-0002",
+          "nickname": "<redacted-string>",
+          "name": "<redacted-string>"
+        },
+        "feedback_info": {
+          "dislike_status": 0
+        },
+        "pre_view_count": -1,
+        "last_update_time": 1720000000,
+        "has_related_goods": false,
+        "comments_count": 30,
+        "liked": false,
+        "collected": false,
+        "foot_tags": [],
+        "id": "a00000000000000000000001",
+        "share_code_flag": 0,
+        "biz_map": {},
+        "liked_count": 33,
+        "head_tags": [],
+        "title": "<redacted-string>",
+        "share_info": {
+          "content": "<redacted-string>",
+          "show_wechat_tag": false,
+          "title": "<redacted-string>",
+          "image": "http://sns-img-qc.xhscdn.com/fixture-21.webp",
+          "function_entries": [
+            {
+              "type": "generate_image"
+            },
+            {
+              "type": "quote_note"
+            },
+            {
+              "type": "copy_link"
+            }
+          ],
+          "link": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "is_star": false,
+          "guide_audited": true,
+          "wechat_share_desc": "<redacted-string>",
+          "block_private_msg": false
+        },
+        "sticky": false,
+        "seeded_count": 0,
+        "need_next_step": false,
+        "content_trans_info": {
+          "strategy": 9
+        },
+        "hash_tag": [],
+        "text_language_code": "<redacted-string>",
+        "type": "video",
+        "topics": [],
+        "desc": "<redacted-string>",
+        "countdown": 0,
+        "ats": [],
+        "widgets_groups": [
+          [
+            "<redacted-string>",
+            "<redacted-string>",
+            "<redacted-string>"
+          ],
+          [
+            "<redacted-string>",
+            "<redacted-string>",
+            "<redacted-string>"
+          ]
+        ],
+        "enable_brand_lottery": false,
+        "mini_program_info": {
+          "title": "<redacted-string>",
+          "webpage_url": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "thumb": "http://sns-img-qc.xhscdn.com/fixture-24.webp",
+          "share_title": "<redacted-string>",
+          "user_name": "<redacted-string>",
+          "path": "<redacted-string>",
+          "desc": "<redacted-string>"
+        },
+        "in_censor": false,
+        "api_upgrade": -1,
+        "use_water_color": false,
+        "need_product_review": false,
+        "media_save_config": {
+          "disable_save": false,
+          "disable_watermark": false,
+          "disable_weibo_cover": false
+        },
+        "enable_co_produce": false,
+        "red_envelope_note": false,
+        "shared_count": 6,
+        "images_list": [
+          {
+            "index": 0,
+            "fileid": "<redacted-string>",
+            "scale_to_large": 4,
+            "width": 1080,
+            "original": "https://sns-i11.rednotecdn.com/fixture-25.webp",
+            "longitude": 0,
+            "latitude": 0,
+            "url": "https://sns-i11.rednotecdn.com/fixture-26.webp",
+            "url_multi_level": {
+              "low": "https://sns-i11.rednotecdn.com/fixture-27.webp",
+              "high": "https://sns-i11.rednotecdn.com/fixture-28.webp",
+              "medium": "https://sns-i11.rednotecdn.com/fixture-29.webp"
+            },
+            "need_load_original_image": true,
+            "origin_img": {
+              "width": 1080,
+              "size": 0,
+              "height": 1920
+            },
+            "height": 1920,
+            "trace_id": "id-0004",
+            "text_intention": 0
+          }
+        ],
+        "may_have_red_packet": false,
+        "comment_prompt_config": {
+          "placeholder_short": "<redacted-string>",
+          "placeholder_long": "<redacted-string>",
+          "forbidden_cmt_type": 0
+        },
+        "has_music": false,
+        "enable_fls_bridge_cards": false,
+        "model_type": "<redacted-string>",
+        "seeded": false,
+        "goods_info": {},
+        "view_count": 0,
+        "cooperate_binds": [],
+        "function_switch": [
+          {
+            "type": "video_download",
+            "enable": false,
+            "reason": "<redacted-string>"
+          },
+          {
+            "type": "quote_note",
+            "enable": true
+          },
+          {
+            "enable": true,
+            "type": "heat_for_author"
+          }
+        ],
+        "time": 1778505633,
+        "has_co_produce": false,
+        "long_press_share_info": {
+          "content": "<redacted-string>",
+          "show_wechat_tag": false,
+          "title": "<redacted-string>",
+          "function_entries": [
+            {
+              "type": "image_download"
+            }
+          ],
+          "guide_audited": false,
+          "is_star": false,
+          "block_private_msg": false
+        },
+        "collected_count": 9,
+        "note_text_press_options": [
+          {
+            "key": "<redacted-string>",
+            "extra": "<redacted-string>"
+          }
+        ],
+        "privacy": {
+          "type": 0,
+          "show_tips": false,
+          "nick_names": "<redacted-string>"
+        },
+        "enable_fls_related_cards": false,
+        "qq_mini_program_info": {
+          "share_title": "<redacted-string>",
+          "webpage_url": "https://www.xiaohongshu.com/explore/a00000000000000000000001",
+          "thumb": "http://sns-img-qc.xhscdn.com/fixture-31.webp",
+          "title": "<redacted-string>",
+          "user_name": "<redacted-string>",
+          "path": "<redacted-string>",
+          "desc": "<redacted-string>"
+        },
+        "widgets_context": "<redacted-string>",
+        "liked_users": []
+      },
+      "canonical_wire": {
+        "observed_fields": [
+          "content_type",
+          "alternate_ids",
+          "title",
+          "text",
+          "author.external_account_id",
+          "author.alternate_ids",
+          "author.display_name",
+          "author.verified",
+          "metrics.like_count",
+          "metrics.comment_count",
+          "metrics.favorite_count",
+          "metrics.share_count",
+          "metrics.view_count",
+          "published_at",
+          "source_updated_at",
+          "media",
+          "locations"
+        ],
+        "schema_version": "content.v1",
+        "platform": "xiaohongshu",
+        "external_content_id": "a00000000000000000000001",
+        "alternate_ids": {
+          "note_id": "a00000000000000000000001"
+        },
+        "content_type": "video",
+        "title": "<redacted-string>",
+        "text": "<redacted-string>",
+        "canonical_url": null,
+        "share_url": null,
+        "author": {
+          "external_account_id": "<redacted-string>",
+          "alternate_ids": {
+            "red_id": "id-0002"
+          },
+          "handle": null,
+          "display_name": "<redacted-string>",
+          "profile_url": null,
+          "avatar_url": null,
+          "bio": null,
+          "verified": false,
+          "verification_label": null,
+          "region": null,
+          "follower_count": null,
+          "following_count": null,
+          "content_count": null,
+          "total_like_count": null
+        },
+        "published_at": "2026-05-11T13:20:33Z",
+        "source_updated_at": "2024-07-03T09:46:40Z",
+        "observed_at": "2026-10-09T00:00:00Z",
+        "media": [
+          {
+            "media_type": "image",
+            "external_media_id": "<redacted-string>",
+            "url": "https://sns-i11.rednotecdn.com/fixture-26.webp",
+            "preview_url": null,
+            "width": 1080,
+            "height": 1920,
+            "duration_ms": null,
+            "position": 0,
+            "mime_type": null,
+            "alt_text": null
+          }
+        ],
+        "topics": [],
+        "mentions": [],
+        "locations": [
+          {
+            "location_type": "ip_region",
+            "label": "<redacted-string>",
+            "country": null,
+            "region": null,
+            "city": null,
+            "latitude": null,
+            "longitude": null
+          }
+        ],
+        "metrics": {
+          "schema_version": "metrics.v1",
+          "like_count": 33,
+          "comment_count": 30,
+          "share_count": 6,
+          "repost_count": null,
+          "favorite_count": 9,
+          "view_count": 0,
+          "play_count": null,
+          "danmaku_count": null,
+          "coin_count": null,
+          "download_count": null,
+          "reply_count": null
+        },
+        "status": null,
+        "source": {
+          "schema_version": "source.v1",
+          "provider_name": "tikhub",
+          "operation": "get_image_note_detail",
+          "provider_request_id": "00000000-0000-4000-8000-000000000011",
+          "provider_attempt_id": "00000000-0000-4000-8000-000000000012",
+          "raw_artifact_id": "00000000-0000-4000-8000-000000000013",
+          "source_type": "account",
+          "source_value": "synthetic-fixture",
+          "item_locator": "synthetic-item",
+          "observed_at": "2026-10-09T00:00:00Z"
+        }
+      }
+    },
+    {
+      "case": "account_works",
+      "raw": {
+        "id": "a00000000000000000000001",
+        "type": "normal",
+        "title": "脱敏账号作品",
+        "images_list": [
+          {
+            "original": "https://sns-i11.rednotecdn.com/fixture-account.webp",
+            "width": 720,
+            "height": 1280
+          }
+        ]
+      },
+      "canonical_wire": {
+        "observed_fields": [
+          "content_type",
+          "alternate_ids",
+          "title",
+          "media"
+        ],
+        "schema_version": "content.v1",
+        "platform": "xiaohongshu",
+        "external_content_id": "a00000000000000000000001",
+        "alternate_ids": {
+          "note_id": "a00000000000000000000001"
+        },
+        "content_type": "image",
+        "title": "脱敏账号作品",
+        "text": null,
+        "canonical_url": null,
+        "share_url": null,
+        "author": null,
+        "published_at": null,
+        "source_updated_at": null,
+        "observed_at": "2026-10-09T00:00:00Z",
+        "media": [
+          {
+            "media_type": "image",
+            "external_media_id": null,
+            "url": null,
+            "preview_url": null,
+            "width": 720,
+            "height": 1280,
+            "duration_ms": null,
+            "position": 0,
+            "mime_type": null,
+            "alt_text": null
+          }
+        ],
+        "topics": [],
+        "mentions": [],
+        "locations": [],
+        "metrics": {
+          "schema_version": "metrics.v1",
+          "like_count": null,
+          "comment_count": null,
+          "share_count": null,
+          "repost_count": null,
+          "favorite_count": null,
+          "view_count": null,
+          "play_count": null,
+          "danmaku_count": null,
+          "coin_count": null,
+          "download_count": null,
+          "reply_count": null
+        },
+        "status": null,
+        "source": {
+          "schema_version": "source.v1",
+          "provider_name": "tikhub",
+          "operation": "get_user_posted_notes",
+          "provider_request_id": "00000000-0000-4000-8000-000000000011",
+          "provider_attempt_id": "00000000-0000-4000-8000-000000000012",
+          "raw_artifact_id": "00000000-0000-4000-8000-000000000013",
+          "source_type": "account",
+          "source_value": "synthetic-fixture",
+          "item_locator": "synthetic-item",
+          "observed_at": "2026-10-09T00:00:00Z"
+        }
+      }
+    }
+  ]
+}

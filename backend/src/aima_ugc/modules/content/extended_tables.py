@@ -57,6 +57,7 @@ content_media_table = Table(
     Column("duration_ms", BigInteger()),
     Column("mime_type", Text()),
     Column("alt_text", Text()),
+    Column("observation_metadata", JSONB(), nullable=False, server_default="{}"),
     *_source_columns(),
     CheckConstraint("position >= 0", name="position_nonnegative"),
     CheckConstraint(

@@ -7,6 +7,9 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
+from aima_ugc.adapters.persistence.postgres.content_complete import (
+    PostgresCompleteContentRepository,
+)
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
@@ -15,6 +18,7 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
+from aima_ugc.contracts.canonical import CanonicalContentV1
 from aima_ugc.contracts.http import ContentListQuery
 from aima_ugc.modules.content.tables import (
     accounts_table,
@@ -22,10 +26,12 @@ from aima_ugc.modules.content.tables import (
     contents_table,
 )
 from aima_ugc.platform.config import load_settings
+from aima_ugc.platform.time import beijing_now
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from sqlalchemy import insert, select, update
 
+from tests.integration.content.test_content_current_concurrency import _source
 from tests.integration.stage3_brand_support import (
     stage3_filter_brand_id as _stage3_filter_brand_id,
 )
@@ -130,6 +136,28 @@ def test_excel_follower_count_is_persisted_visible_sortable_and_account_current_
         assert snapshots["excel-fans-1"]["follower_count"] == 12_000
         assert snapshots["excel-fans-2"]["follower_count"] == 0
         assert snapshots["excel-fans-3"].get("follower_count") is None
+
+        observed_at = beijing_now()
+        sparse = CanonicalContentV1(
+            platform="xiaohongshu",
+            external_content_id="excel-fans-1",
+            content_type="note",
+            share_url="https://example.com/enriched-excel",
+            observed_at=observed_at,
+            observed_fields=["share_url"],
+            source=_source(runtime.database, observed_at=observed_at, suffix="excel-sparse-detail"),
+        )
+        with runtime.database.new_session() as session, session.begin():
+            result = PostgresCompleteContentRepository(session).ingest_content(sparse)
+            assert result.version_no == 2
+            author_snapshot = session.scalar(
+                select(content_versions_table.c.author_snapshot).where(
+                    content_versions_table.c.content_id == result.target_id,
+                    content_versions_table.c.version_no == 2,
+                )
+            )
+            assert author_snapshot["display_name"] == "作者1"
+            assert author_snapshot["follower_count"] == 12_000
 
         service = PostgresContentHttpService(
             runtime,

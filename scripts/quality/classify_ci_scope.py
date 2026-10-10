@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import runpy
 import subprocess
+import sys
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 ALL_FULLSTACK_SPECS = (
@@ -36,7 +38,7 @@ BACKEND_ALL = ("all",)
 FRONTEND_ALL = ("all",)
 
 
-DOCS_ONLY_EXACT = {"README.md"}
+DOCS_ONLY_EXACT = {"README.md", "USAGE.md"}
 GOVERNANCE_ONLY_EXACT = {"AGENTS.md"}
 DOCS_ONLY_PREFIXES = ("docs/",)
 DOCS_ONLY_SUFFIXES = {".md", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
@@ -53,6 +55,76 @@ CI_SELF_EXACT = {
     "tests/unit/test_ci_main_evidence_reuse.py",
     "tests/unit/test_actions_runner_optimization.py",
     "tests/unit/test_validate_changed.py",
+    "scripts/quality/check_env_templates.py",
+    "scripts/quality/verify_pr_baseline.py",
+}
+ENV_TEMPLATES = frozenset({"env.local.example", "env.production.example"})
+RUNTIME_EXACT = frozenset(
+    {
+        ".dockerignore",
+        "Dockerfile",
+        "alembic.ini",
+        "compose.yaml",
+        "compose.windows.yaml",
+        "frontend/nginx.conf",
+        "pyproject.toml",
+        "uv.lock",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+    }
+)
+RUNTIME_PREFIXES = (
+    "scripts/deploy/",
+    "migrations/",
+    "backend/src/aima_ugc/entrypoints/",
+    "backend/src/aima_ugc/bootstrap/",
+    "backend/src/aima_ugc/platform/",
+    "backend/src/aima_ugc/modules/system/",
+)
+TOOLING_EXACT = (RUNTIME_EXACT - {"frontend/nginx.conf"}) | frozenset(
+    {
+        ".gitignore",
+        ".python-version",
+        ".node-version",
+        ".uv-version",
+        "scripts/setup_dev_environment.ps1",
+        "scripts/setup_dev_environment.cmd",
+        "scripts/dev/backend.py",
+        "scripts/dev/frontend.py",
+        "scripts/dev/local_runtime.py",
+        "scripts/dev/configure_docker_desktop_mirrors.ps1",
+    }
+)
+LINUX_SOURCE_BOOTSTRAP_EXACT = frozenset(
+    {
+        "backend/src/aima_ugc/adapters/persistence/postgres/system.py",
+    }
+)
+RELEASE_EXACT = frozenset(
+    {
+        "Dockerfile",
+        "compose.yaml",
+        "compose.windows.yaml",
+        "scripts/release/release_bundle.py",
+        "scripts/deploy/start_compose.py",
+        "scripts/deploy/stop_compose.py",
+        "scripts/deploy/reset_keep_vehicle_catalog.sh",
+        "scripts/release/build_local_release.ps1",
+        "tests/unit/test_docker_build_sources.py",
+        "tests/unit/test_release_workflow.py",
+        "tests/unit/test_release_bundle.py",
+        "tests/unit/test_compose_auto_scripts.py",
+        "frontend/nginx.conf",
+    }
+)
+DEV_HELPER_TARGETS = {
+    "scripts/dev/compile_content_labeling.py": (
+        "tests/unit/analysis/test_analysis_scheme_compilation.py",
+    ),
+    "scripts/dev/probe_collection_decision.py": (
+        "tests/unit/collection/test_stage7_decision_probe.py",
+    ),
 }
 REPOSITORY_QUALITY_EXACT = {
     "scripts/quality/actions_hygiene.py",
@@ -140,6 +212,14 @@ class CiRequirements:
     postgres_targets: tuple[str, ...]
     postgres_suites: tuple[str, ...]
     fullstack_specs: tuple[str, ...]
+    template_required: bool = False
+    configuration_required: bool = False
+    template_risk: str = "none"
+    runtime_required: bool = False
+    tooling_linux_required: bool = False
+    tooling_windows_required: bool = False
+    release_required: bool = False
+    reasons: tuple[str, ...] = ()
 
 
 def _normalize_path(path: str) -> str:
@@ -553,14 +633,51 @@ def _full_requirements() -> CiRequirements:
         postgres_targets=(),
         postgres_suites=POSTGRES_ALL,
         fullstack_specs=FULLSTACK_ALL,
+        template_required=True,
+        configuration_required=True,
+        runtime_required=True,
+        tooling_linux_required=True,
+        tooling_windows_required=True,
+        release_required=True,
+        reasons=("CI/共享基础设施/未知路径要求完整证明；不由变更后的控制面免除自己。",),
     )
 
 
-def classify_requirements(paths: Iterable[str]) -> CiRequirements:
+def classify_requirements(
+    paths: Iterable[str],
+    *,
+    template_changes: dict[str, tuple[str | None, str | None]] | None = None,
+) -> CiRequirements:
     """汇总 changed paths；只有明确白名单能降低成本，未知或高风险路径始终回退 full。"""
     normalized = tuple(path for raw in paths if (path := _normalize_path(raw)))
     if not normalized:
         return _full_requirements()
+
+    templates = tuple(path for path in normalized if path in ENV_TEMPLATES)
+    if templates:
+        remaining = tuple(path for path in normalized if path not in ENV_TEMPLATES)
+        requirements = classify_requirements(remaining or ("README.md",))
+        risk, deployment = _template_risk(templates, template_changes)
+        if risk == "unknown":
+            return replace(_full_requirements(), template_risk=risk)
+        return replace(
+            requirements,
+            profile=requirements.profile
+            if remaining and requirements.repository_required
+            else "configuration",
+            template_required=True,
+            configuration_required=risk != "comments" or requirements.configuration_required,
+            template_risk=risk,
+            runtime_required=requirements.runtime_required or deployment,
+            tooling_windows_required=requirements.tooling_windows_required
+            or deployment
+            or ("env.local.example" in templates and risk != "comments"),
+            release_required=requirements.release_required or deployment,
+            reasons=(
+                *requirements.reasons,
+                f"env 模板风险={risk}；配置解析/打包/渲染承担模板责任。",
+            ),
+        )
 
     product_paths = tuple(
         path for path in normalized if not _is_docs_path(path) and not _is_governance_path(path)
@@ -613,6 +730,11 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
     kinds: set[str] = set()
 
     for path in product_paths:
+        if path in DEV_HELPER_TARGETS:
+            backend_required = True
+            backend_targets.update(DEV_HELPER_TARGETS[path])
+            kinds.add("backend")
+            continue
         if _is_ci_self_path(path) or path in FULL_EXACT or path.startswith(FULL_PREFIXES):
             return _full_requirements()
 
@@ -767,7 +889,88 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         postgres_targets=selected_postgres_targets,
         postgres_suites=selected_postgres_suites,
         fullstack_specs=selected_specs,
+        runtime_required=any(
+            path in RUNTIME_EXACT
+            or path.startswith(RUNTIME_PREFIXES)
+            or path == "backend/src/aima_ugc/adapters/persistence/postgres/system.py"
+            for path in normalized
+        ),
+        tooling_linux_required=any(
+            path in TOOLING_EXACT
+            or path in LINUX_SOURCE_BOOTSTRAP_EXACT
+            or path.startswith(RUNTIME_PREFIXES)
+            for path in normalized
+        ),
+        tooling_windows_required=any(
+            path in TOOLING_EXACT or path.startswith(RUNTIME_PREFIXES) for path in normalized
+        ),
+        release_required=any(path in RELEASE_EXACT for path in normalized),
+        reasons=(f"{profile} 按已知消费者选择直接证据；未知边界仍回退 full。",),
     )
+
+
+def _template_risk(
+    paths: tuple[str, ...], changes: dict[str, tuple[str | None, str | None]] | None
+) -> tuple[str, bool]:
+    """只分析正式模板的声明变化；缺失或删除无法证明为低风险。"""
+    parse = runpy.run_path(str(Path(__file__).with_name("check_env_templates.py")))[
+        "parse_template"
+    ]
+    risk = "comments"
+    deployment = False
+    for path in paths:
+        before, after = (changes or {}).get(path, (None, None))
+        if before is None or after is None:
+            return "unknown", True
+        try:
+            # 引号/转义/插值影响 Compose 消费语义，风险比较不得先去掉外引号。
+            old = parse(before, path, legacy_duplicates=True, preserve_syntax=True)
+            new = parse(after, path, preserve_syntax=True)
+        except ValueError:
+            return "unknown", True
+        keys = {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
+        try:
+            parse(before, path)
+        except ValueError:
+            # 旧模板后值覆盖是历史事实；去重仍要求配置验证，不能把修复判作未知全量。
+            risk = "values"
+        if keys and risk == "comments":
+            risk = "values"
+        if any(
+            key.startswith(
+                (
+                    "AIMA_FEISHU_",
+                    "AIMA_TIKHUB_",
+                    "AIMA_LLM_",
+                    "AIMA_HTTP_",
+                    "AIMA_DOCKER_",
+                    "AIMA_BUILD_",
+                    "AIMA_HOST_",
+                    "AIMA_HISTORICAL_",
+                    "AIMA_DB_",
+                    "AIMA_IMAGE_",
+                )
+            )
+            or "SECRET" in key
+            or "KEY" in key
+            for key in keys
+        ):
+            risk = "sensitive"
+        deployment = deployment or any(
+            key.startswith(
+                (
+                    "AIMA_HTTP_",
+                    "AIMA_DOCKER_",
+                    "AIMA_BUILD_",
+                    "AIMA_HOST_",
+                    "AIMA_HISTORICAL_",
+                    "AIMA_DB_",
+                    "AIMA_IMAGE_",
+                )
+            )
+            for key in keys
+        )
+    return risk, deployment
 
 
 def classify_paths(paths: Iterable[str]) -> str:
@@ -775,23 +978,177 @@ def classify_paths(paths: Iterable[str]) -> str:
     return classify_requirements(paths).profile
 
 
-def _changed_paths(base: str, head: str) -> list[str] | None:
-    """读取两个提交间全部路径；关闭 rename detection 以同时保留旧/新路径风险。"""
-    if not base or not head or set(base) == {"0"}:
-        return None
+def _git_bytes(arguments: list[str], *, root: Path | None = None) -> bytes:
+    """读取 Git 事实；无法证明范围时明确失败，不能把错误当成空变更。"""
     try:
         completed = subprocess.run(
-            ["git", "diff", "--no-renames", "--name-only", "-z", base, head],
+            ["git", *arguments],
+            cwd=root,
             check=True,
             capture_output=True,
         )
-    except subprocess.CalledProcessError:
-        return None
-    return [
-        item.decode("utf-8", errors="surrogateescape")
-        for item in completed.stdout.split(b"\0")
-        if item
-    ]
+    except subprocess.CalledProcessError as exc:
+        raise ValueError("Git 对象/基线查询失败；请确认 ref 与完整历史（fetch-depth: 0）") from exc
+    return completed.stdout
+
+
+def scope_base(
+    base: str, head: str, *, comparison: str = "merge-base", root: Path | None = None
+) -> str:
+    """PR 使用唯一 merge-base；push 使用显式两个提交，不能混用执行树和影响范围。"""
+    if not base or not head or set(base) == {"0"}:
+        raise ValueError("Git 基线/目标不能为空或零 SHA；定时安全网请显式使用 --full")
+    for ref in (base, head):
+        _git_bytes(["rev-parse", "--verify", f"{ref}^{{commit}}"], root=root)
+    if comparison == "direct":
+        return base
+    if _git_bytes(["rev-parse", "--is-shallow-repository"], root=root).strip() == b"true":
+        raise ValueError("PR merge-base 无法在 shallow repository 证明完整；请使用 fetch-depth: 0")
+    bases = _git_bytes(["merge-base", "--all", base, head], root=root).decode().splitlines()
+    if len(bases) != 1:
+        raise ValueError(f"Git merge-base 必须唯一，实际 {len(bases)} 个；禁止猜测影响范围")
+    return bases[0]
+
+
+def changed_scope(
+    base: str,
+    head: str,
+    *,
+    comparison: str = "merge-base",
+    root: Path | None = None,
+    include_worktree: bool = False,
+) -> list[str]:
+    """统一恢复分支自身与开发期 staged/unstaged/untracked 路径。"""
+    start = scope_base(base, head, comparison=comparison, root=root)
+    arguments = ["diff", "--no-renames", "--name-only", "-z", start]
+    worktree = include_worktree and head == "HEAD"
+    if not worktree:
+        arguments.append(head)
+    raw = _git_bytes(arguments, root=root)
+    if worktree:
+        raw += _git_bytes(["ls-files", "--others", "--exclude-standard", "-z"], root=root)
+    return list(
+        dict.fromkeys(
+            item.decode("utf-8", errors="surrogateescape") for item in raw.split(b"\0") if item
+        )
+    )
+
+
+def _changed_paths(base: str, head: str) -> list[str]:
+    """兼容既有内部入口，默认采用真实 PR 三点语义。"""
+    return changed_scope(base, head)
+
+
+def normalize_available_targets(requirements: CiRequirements, *, root: Path) -> CiRequirements:
+    """按实际 checkout/worktree 收敛可执行证据；删除目标只能升级 Owner 责任。"""
+    missing: set[str] = set()
+
+    def exists(target: str) -> bool:
+        available = target == "all" or (root / target).exists()
+        if not available:
+            missing.add(target)
+        return available
+
+    backend: set[str] = set()
+    for target in requirements.backend_targets:
+        if exists(target):
+            backend.add(target)
+            continue
+        owner = Path(target).parent
+        # 不跨过 Unit/API/Contract Owner 根，防止把普通单测扩成数据库测试。
+        while owner.as_posix().startswith(("tests/unit", "tests/api", "tests/contracts")):
+            if (root / owner).is_dir() and any((root / owner).rglob("test_*.py")):
+                backend.add(owner.as_posix())
+                break
+            owner = owner.parent
+        else:
+            backend.add("all")
+    ordered_backend = _ordered_targets(backend, all_value=BACKEND_ALL)
+    # Owner 目录已经覆盖其叶子，避免 rename 后新叶子和整个 Owner 重复执行。
+    backend_targets = tuple(
+        target
+        for target in ordered_backend
+        if not any(target.startswith(other + "/") for other in ordered_backend if other != target)
+    )
+
+    def frontend_targets(targets: tuple[str, ...]) -> tuple[str, ...]:
+        return targets if all(exists(target) for target in targets) else FRONTEND_ALL
+
+    unit = frontend_targets(requirements.frontend_unit_targets)
+    browser = frontend_targets(requirements.frontend_e2e_specs)
+    postgres_targets: set[str] = set()
+    postgres_suites = set(requirements.postgres_suites)
+    for target in requirements.postgres_targets:
+        if exists(target):
+            postgres_targets.add(target)
+            continue
+        relative = target.removeprefix("tests/integration/")
+        suite = relative.split("/", 1)[0]
+        owner = root / "tests/integration" / suite
+        if suite in ALL_POSTGRES_SUITES and owner.is_dir() and any(owner.rglob("test_*.py")):
+            postgres_suites.add(suite)
+        else:
+            postgres_suites.add("all")
+    postgres_targets = {
+        target
+        for target in postgres_targets
+        if "all" not in postgres_suites
+        and not any(target.startswith(f"tests/integration/{suite}/") for suite in postgres_suites)
+    }
+    fullstack = requirements.fullstack_specs
+    if any(spec != "all" and not exists(f"frontend/e2e-fullstack/{spec}") for spec in fullstack):
+        fullstack = FULLSTACK_ALL
+    return replace(
+        requirements,
+        backend_targets=backend_targets,
+        frontend_unit_targets=unit,
+        frontend_e2e_specs=browser,
+        postgres_targets=_ordered_postgres_targets(postgres_targets),
+        postgres_suites=_ordered_postgres_suites(postgres_suites),
+        fullstack_specs=fullstack,
+        reasons=(
+            *requirements.reasons,
+            "缺失目标按实际 checkout 升级 Owner 证据：" + ", ".join(sorted(missing)),
+        )
+        if missing
+        else requirements.reasons,
+    )
+
+
+def classify_scope(
+    base: str,
+    head: str,
+    *,
+    comparison: str = "merge-base",
+    root: Path | None = None,
+    include_worktree: bool = False,
+) -> tuple[CiRequirements, list[str]]:
+    """范围和模板内容读取采用同一基线、目标与 worktree 事实。"""
+    paths = changed_scope(
+        base, head, comparison=comparison, root=root, include_worktree=include_worktree
+    )
+    start = scope_base(base, head, comparison=comparison, root=root)
+    changes: dict[str, tuple[str | None, str | None]] = {}
+    for path in paths:
+        if path not in ENV_TEMPLATES:
+            continue
+
+        def read(ref: str, target_path: str = path) -> str | None:
+            try:
+                return _git_bytes(["show", f"{ref}:{target_path}"], root=root).decode("utf-8")
+            except ValueError:
+                return None
+
+        before = read(start)
+        if include_worktree and head == "HEAD":
+            target = (root or Path.cwd()) / path
+            after = target.read_text(encoding="utf-8") if target.is_file() else None
+        else:
+            after = read(head)
+        changes[path] = before, after
+    checkout_root = root or Path(_git_bytes(["rev-parse", "--show-toplevel"]).decode().strip())
+    requirements = classify_requirements(paths, template_changes=changes)
+    return normalize_available_targets(requirements, root=checkout_root), paths
 
 
 def _bool_output(value: bool) -> str:
@@ -822,6 +1179,16 @@ def _write_github_output(path: Path, requirements: CiRequirements, changed_count
         "fullstack_specs": " ".join(requirements.fullstack_specs),
         "changed_count": str(changed_count),
     }
+    for key in (
+        "template_required",
+        "configuration_required",
+        "runtime_required",
+        "tooling_linux_required",
+        "tooling_windows_required",
+        "release_required",
+    ):
+        values[key] = _bool_output(getattr(requirements, key))
+    values["template_risk"] = requirements.template_risk
     with path.open("a", encoding="utf-8") as handle:
         for key, value in values.items():
             handle.write(f"{key}={value}\n")
@@ -830,6 +1197,7 @@ def _write_github_output(path: Path, requirements: CiRequirements, changed_count
 def _requirements_json(requirements: CiRequirements, changed_paths: list[str]) -> str:
     """输出开发期/CI 共用的机器可读分类结果。"""
     payload = {
+        **asdict(requirements),
         "profile": requirements.profile,
         "repository_required": requirements.repository_required,
         "repository_quality_required": requirements.repository_quality_required,
@@ -857,19 +1225,26 @@ def _requirements_json(requirements: CiRequirements, changed_paths: list[str]) -
 def main() -> int:
     """从 Git diff 计算 CI 证明责任，并可输出给 GitHub Actions。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base", required=True, help="变更基线 commit SHA")
-    parser.add_argument("--head", required=True, help="变更目标 commit SHA")
+    parser.add_argument("--base", default="", help="变更基线 commit SHA")
+    parser.add_argument("--head", default="HEAD", help="变更目标 commit SHA")
+    parser.add_argument("--comparison", choices=("merge-base", "direct"), default="merge-base")
+    parser.add_argument("--full", action="store_true", help="显式定时全量安全网")
     parser.add_argument("--github-output", type=Path, help="可选 GITHUB_OUTPUT 文件")
     parser.add_argument("--json", action="store_true", help="仅输出机器可读 JSON")
     args = parser.parse_args()
 
-    changed_paths = _changed_paths(args.base, args.head)
-    if changed_paths is None:
+    if args.full:
         requirements = _full_requirements()
         changed_paths = []
         changed_count = 0
     else:
-        requirements = classify_requirements(changed_paths)
+        try:
+            requirements, changed_paths = classify_scope(
+                args.base, args.head, comparison=args.comparison
+            )
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         changed_count = len(changed_paths)
 
     if args.json:

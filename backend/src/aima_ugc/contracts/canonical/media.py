@@ -9,6 +9,8 @@ from .base import CanonicalBaseModel, Identifier, Latitude, Longitude, NonNegati
 
 
 class CanonicalMediaV1(CanonicalBaseModel):
+    """媒体属性观察；旧 Canonical 未带 observed_fields 时沿用完整行语义。"""
+
     media_type: Literal["image", "video", "live_photo", "audio", "cover", "other"]
     external_media_id: Identifier | None = None
     url: AnyHttpUrl | None = None
@@ -19,6 +21,22 @@ class CanonicalMediaV1(CanonicalBaseModel):
     position: NonNegativeInt = 0
     mime_type: str | None = None
     alt_text: str | None = None
+    observed_fields: (
+        list[
+            Literal[
+                "media_type",
+                "external_media_id",
+                "url",
+                "preview_url",
+                "width",
+                "height",
+                "duration_ms",
+                "mime_type",
+                "alt_text",
+            ]
+        ]
+        | None
+    ) = None
 
 
 class CanonicalTopicV1(CanonicalBaseModel):

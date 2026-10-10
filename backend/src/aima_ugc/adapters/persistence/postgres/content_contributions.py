@@ -895,7 +895,15 @@ def _build_delta(
             }
 
     return {
-        "schema_version": "content-source-contribution.v1",
+        "schema_version": (
+            "content-source-contribution.v2"
+            if "media" in observation.observed_fields
+            and (
+                observation.media_collection_mode == "partial"
+                or any(item.observed_fields is not None for item in observation.media)
+            )
+            else "content-source-contribution.v1"
+        ),
         "created_content": previous.content_id is None,
         "content_fields": content_fields,
         "author_snapshot": author_snapshot,

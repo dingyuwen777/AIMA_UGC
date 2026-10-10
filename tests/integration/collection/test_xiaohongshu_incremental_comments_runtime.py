@@ -18,11 +18,17 @@ from aima_ugc.adapters.persistence.postgres.collection import PostgresCollection
 from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
     PostgresCollectionRunExecutionGateway,
 )
+from aima_ugc.adapters.persistence.postgres.content import PostgresContentRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.adapters.storage.local import LocalArtifactStore
 from aima_ugc.bootstrap.collection_scope import TikHubCollectionScopeExecutor
+from aima_ugc.contracts.canonical import (
+    CanonicalContentV1,
+    CanonicalMetricsV1,
+    CanonicalSourceV1,
+)
 from aima_ugc.modules.collection.collection_run_executor import CollectionRunExecutor
 from aima_ugc.modules.collection.execution import (
     CollectionExecutionService,
@@ -33,7 +39,6 @@ from aima_ugc.modules.content.extended_tables import content_media_table
 from aima_ugc.modules.content.tables import (
     comment_coverage_observations_table,
     comments_table,
-    contents_table,
 )
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.modules.system.tables import provider_configs_table
@@ -44,6 +49,7 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import delete, insert, select
 
+from tests.integration.collection.test_collection_content_runtime import _create_live_source
 from tests.integration.stage3_brand_support import stage4_collection_config_snapshot
 
 _FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
@@ -206,23 +212,31 @@ def _raw_service(runtime: DatabaseRuntime, root: Path) -> RawArtifactService:
 
 
 def _seed_previous_content(runtime: DatabaseRuntime) -> UUID:
-    content_id = uuid4()
+    source = _create_live_source(runtime, source_value="incremental-comments-history")
     session = runtime.new_session()
     try:
         with session.begin():
-            session.execute(
-                insert(contents_table).values(
-                    id=content_id,
-                    platform="xiaohongshu",
-                    external_content_id=_CONTENT_EXTERNAL_ID,
-                    content_type="image",
-                    first_seen_at=_OBSERVED_AT,
-                    last_seen_at=_OBSERVED_AT,
-                    current_version=1,
-                    current_comment_count=10,
-                    field_observed_at={},
-                    updated_at=_OBSERVED_AT,
+            # 通过 Owner 同时建立 Current 和不可变 Version，避免不完整历史事实。
+            content_id = (
+                PostgresContentRepository(session)
+                .ingest_content(
+                    CanonicalContentV1(
+                        platform="xiaohongshu",
+                        external_content_id=_CONTENT_EXTERNAL_ID,
+                        content_type="image",
+                        observed_at=_OBSERVED_AT,
+                        metrics=CanonicalMetricsV1(comment_count=10),
+                        observed_fields=["content_type", "metrics.comment_count"],
+                        source=CanonicalSourceV1(
+                            provider_name="tikhub",
+                            provider_request_id=str(source.request_id),
+                            provider_attempt_id=str(source.attempt_id),
+                            raw_artifact_id=source.artifact_id,
+                            observed_at=_OBSERVED_AT,
+                        ),
+                    )
                 )
+                .target_id
             )
             session.execute(
                 insert(comments_table).values(

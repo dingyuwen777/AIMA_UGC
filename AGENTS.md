@@ -12,7 +12,7 @@
 处理本项目研发任务时：
 
 1. **无论采用哪种通用治理执行方式，都必须先读取并遵守当前目录及上级适用的项目规则**，再依据当前真实文件恢复本任务所需的技术栈、架构、Contract、Schema/Migration、CI、部署、设计和运行事实；不得用通用示例、历史聊天、缓存或猜测覆盖项目事实。
-2. 在实质性工程任务形成执行计划前，读取 `.agents/skills/ENTRY.md` 作为当前项目工程约束入口，并使用项目已配置的治理能力取得本任务真正需要的完整约束。系统、开发者或用户级更高优先级指令若明确指定其他执行方式，**只改变通用治理约束的取得和呈现方式；不得因此跳过、替代或降低目标项目自身规则、Contract、Schema/Migration、CI、正式设计、部署和验收边界**。
+2. 在实质性工程任务形成执行计划前，读取 [`.agents/skills/ENTRY.md`](.agents/skills/ENTRY.md) 作为当前项目工程约束入口，并使用项目已配置的治理能力取得本任务真正需要的完整约束。系统、开发者或用户级更高优先级指令若明确指定其他执行方式，**只改变通用治理约束的取得和呈现方式；不得因此跳过、替代或降低目标项目自身规则、Contract、Schema/Migration、CI、正式设计、部署和验收边界**。
 3. **自主决策与提问边界**：按 `RULE_RESOLVED → FACT_RESOLVABLE → CONVENTION_RESOLVED → DEFAULT_RESOLVED → SELF_DECIDE` 依次解析；规则已定、事实可恢复、项目已有稳定模式、已有安全默认，或只是局部低风险可逆实现细节时，必须自行继续，不向用户提问。只有 `OWNER_DECISION / AUTHORIZATION_REQUIRED / REQUIRED_USER_INPUT / CAPABILITY_BLOCKER` 可以请求用户/Owner 决定、授权、必要输入或解除 blocker。**不得把已经可以自行解决的问题重新包装成多个方案让用户选择**，也不得重复确认已经有效的决定。
 
 **三个研发门禁**：实质实现前做 Development Preflight（Requirement/Acceptance、治理写入、CI Cost/Evidence、交付终点）；新建 Issue/PR 必须 canonical candidate → create-mode pre-write PASS → platform write → live reread → 同检，已有实例实质更新按适用 create/live Contract，FAIL 不写。仅 Requirement/Acceptance/Scope 语义变化才更新唯一 Requirement Source，并只使受影响计划/Handoff/Evidence stale；非语义编辑不机械重跑。PR Ready/可合并/完成前做 Completion：重读最新 Requirement Source，逐 Acceptance 映射当前直接 Evidence；有 unresolved 即停。Reviewer/subagent 只做独立增强，缺失时 Parent hard gate 仍执行。代码 Review 首轮先闭合 material projections 再整批发布 Findings；返修前 Repair Package 先自审，第二轮只核原 Findings + repair diff + 相邻回归 + Acceptance。**Reviewer 自身漏审不作为终态**，须内部 self-recovery 后再给稳定结论。
@@ -106,23 +106,26 @@
 
 只读分析、方案、答疑或 Review 不自动获得 Issue、Change、分支、提交、push 或 PR 写权限。L1 机械修改和边界明确的隔离小修继续使用当前轻量路径，不为形式创建完整治理对象。
 
-持久 gated L2 和 L3，或项目/用户已明确要求通过 PR 交付的实现任务，在生产代码修改前按以下顺序初始化：
+持久 gated L2 和 L3，或项目/用户已明确要求通过 PR 交付的实现任务，默认采用本地优先流程；完整用户说明由 [USAGE.md](USAGE.md) 维护：
 
 ```text
 确认或创建 Requirement Source / Issue
 → 同步最新 main
 → 创建并切换本地任务分支
-→ 在本地建立 Change / 失败测试 / 最小治理提交
-→ 形成首个本地提交
+→ 在本地建立 Change / 失败测试并实现
+→ 必要技术验证、Completion 与独立 Review
+→ 用户本地验收（适用时）
+→ 同步最新 main，解决冲突并重验受影响范围
+→ 形成可审查的本地提交
 → 首次 push 创建同名远程跟踪分支
-→ 创建早期 PR
+→ 创建 PR，取得当前 HEAD 的 required CI
 ```
 
 硬规则：
 
 1. 本地开发从**本地任务分支**开始；不得直接在 `main` 上开始正式实现；
 2. 远程分支只能由已有本地分支的**首次 push**建立；不得先创建远程空分支，再把它当成本地开发起点；
-3. **早期 PR**在首个可审查治理、Change 或失败测试提交推送后尽早创建，用于 Requirement Source、CI 和 Review 追溯，不表示实现已经 Ready；
+3. 默认在本地实现和必要验证后进入 push / PR；只有当前项目或用户明确要求早期 PR 时才提前创建，并记录它不替代本地验收。用户可见且存在实际验收路径时等待用户验收；纯内部工程没有有意义的人工验收路径时记录 `NOT_APPLICABLE`，用户明确免等待时记录 `USER_WAIVED`，不得冒充用户已验收；
 4. 宿主已验证可自动完成 Draft → Ready 时使用 Draft PR；否则创建普通 PR，并明确“逻辑未就绪”，所有 Ready 门禁完成前禁止 merge；
 5. 保持 `Issue ↔ Change ↔ branch ↔ PR` 稳定关联。PR 使用 `Requirement-Source:`，只有当前 PR 完成整个 Issue 时才使用关闭关键字；
 6. 当前宿主没有相应外部写权限时，在依赖该权限的动作前停止并报告，不用远程空分支、口头关联或本地副本冒充已建立追溯链。

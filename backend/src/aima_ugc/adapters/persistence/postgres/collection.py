@@ -247,6 +247,56 @@ class PostgresCollectionRepository:
             )
         )
 
+    def settle_media_refresh_job_terminal(
+        self, job_id: UUID, *, status: str, error_code: str | None
+    ) -> None:
+        """Job 取消、超时或异常退出后，结清单 Scope 播放准备父事实。"""
+        run = self.get_run_by_job_id(job_id)
+        if run is None or run.config_snapshot.get("mode") != "media_refresh":
+            return
+        current = self._lock_run(run.id)
+        if status not in {"failed", "cancelled"}:
+            return
+        scopes = self.list_scopes(run.id)
+        totals = {key: 0 for key in ("requested_count", "succeeded_count", "failed_count")}
+        for scope in scopes:
+            counts = read_collection_scope_execution_counts(self._session, scope_id=scope.id)
+            stats = {**scope.stats, **asdict(counts)}
+            for key in totals:
+                totals[key] += int(stats[key])
+            self._session.execute(
+                update(collection_scopes_table)
+                .where(
+                    collection_scopes_table.c.id == scope.id,
+                )
+                .values(stats=stats)
+            )
+        self._session.execute(
+            update(collection_scopes_table)
+            .where(
+                collection_scopes_table.c.run_id == run.id,
+                collection_scopes_table.c.status.in_(("queued", "running")),
+            )
+            .values(
+                status=status, stop_reason=error_code or status, finished_at=func.clock_timestamp()
+            )
+        )
+        if current["status"] not in _RUN_TERMINAL_STATUSES or status == "cancelled":
+            self._session.execute(
+                update(collection_runs_table)
+                .where(
+                    collection_runs_table.c.id == run.id,
+                )
+                .values(
+                    status=status,
+                    finished_at=func.clock_timestamp(),
+                    error_summary=error_code or status,
+                    content_count=0,
+                    comment_count=0,
+                    **totals,
+                )
+            )
+
     def start_run(self, run_id: UUID) -> CollectionRunRecord:
         """把 queued Run 推进到 running；同一 running Run 可安全重入。"""
         current = self._lock_run(run_id)

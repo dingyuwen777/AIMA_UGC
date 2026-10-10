@@ -78,6 +78,7 @@ const COLLECTION_TYPE_LABELS: Record<string, string> = {
   data_import_campaign: '数据导入',
   tikhub_discovery: '主动采集',
   tikhub_content_supplement: '内容补采',
+  tikhub_media_refresh: '视频播放准备',
   tikhub_batch_supplement: '辅助补采',
   canonical_replay: '历史重筛',
 }
@@ -97,6 +98,7 @@ const COLLECTION_STAGE_LABELS: Record<string, string> = {
   ingesting: '正在写入数据',
   content_discovery: '正在采集内容',
   content_enrichment: '正在补充内容',
+  media_refresh: '正在准备视频地址',
   replaying: '正在重筛入库',
   succeeded: '处理完成',
   failed: '处理失败',
@@ -154,7 +156,9 @@ function collectionTask(run: CollectionRuntimeItemResponse): TaskCenterItem {
   const contentCount = run.collection_stats?.content_count
   const rowsIngested = run.import_stats?.rows_ingested
   const replayRowsIngested = run.canonical_replay_stats?.rows_ingested
-  const resultText = typeof replayRowsIngested === 'number'
+  const resultText = run.record_type === 'tikhub_media_refresh'
+    ? COLLECTION_STAGE_LABELS[run.stage] ?? '正在准备视频'
+    : typeof replayRowsIngested === 'number'
     ? `新增记录 ${replayRowsIngested} 条 · 处理已有记录 ${run.canonical_replay_stats?.existing_convergence ?? 0} 条`
     : typeof contentCount === 'number'
     ? `${contentCount} 条内容`

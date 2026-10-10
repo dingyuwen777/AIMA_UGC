@@ -15,6 +15,8 @@ CLASSIFIER = ROOT / "scripts" / "quality" / "classify_ci_scope.py"
 _CLASSIFIER_NS = runpy.run_path(str(CLASSIFIER))
 CLASSIFY_REQUIREMENTS = _CLASSIFIER_NS["classify_requirements"]
 REQUIREMENTS_JSON = _CLASSIFIER_NS["_requirements_json"]
+CLASSIFY_SCOPE = _CLASSIFIER_NS["classify_scope"]
+CHANGED_SCOPE = _CLASSIFIER_NS["changed_scope"]
 
 
 def _git_ref_exists(ref: str) -> bool:
@@ -54,17 +56,12 @@ def _git_paths(command: list[str]) -> tuple[str, ...]:
 
 def changed_paths(base: str, head: str, *, include_worktree: bool) -> tuple[str, ...]:
     """恢复开发期真实变更；默认覆盖 staged/unstaged/untracked，而不复制风险映射。"""
-    if include_worktree and head == "HEAD":
-        tracked = _git_paths(["git", "diff", "--no-renames", "--name-only", "-z", base])
-        untracked = _git_paths(["git", "ls-files", "--others", "--exclude-standard", "-z"])
-        return tuple(dict.fromkeys((*tracked, *untracked)))
-    return _git_paths(["git", "diff", "--no-renames", "--name-only", "-z", base, head])
+    return tuple(CHANGED_SCOPE(base, head, root=ROOT, include_worktree=include_worktree))
 
 
 def classify(base: str, head: str, *, include_worktree: bool = True) -> dict[str, Any]:
     """把真实 changed paths 交给唯一 CI classifier，开发入口不维护 impact mapping。"""
-    paths = list(changed_paths(base, head, include_worktree=include_worktree))
-    requirements = CLASSIFY_REQUIREMENTS(paths)
+    requirements, paths = CLASSIFY_SCOPE(base, head, root=ROOT, include_worktree=include_worktree)
     return json.loads(REQUIREMENTS_JSON(requirements, paths))
 
 
@@ -116,7 +113,29 @@ def build_fix_commands(requirements: dict[str, Any]) -> list[tuple[str, ...]]:
 
 def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, ...]]:
     """根据 classifier 输出构造无外部服务副作用的本地验证命令。"""
-    commands: list[tuple[str, ...]] = []
+    commands: list[tuple[str, ...]] = [
+        ("uv", "run", "python", "scripts/quality/check_docs.py"),
+        ("uv", "run", "python", "scripts/quality/scan_secrets.py"),
+        ("uv", "run", "python", "scripts/quality/check_docs_facts.py"),
+        ("uv", "run", "python", "scripts/quality/check_agent_governance.py"),
+    ]
+    if requirements.get("template_required"):
+        command = ("uv", "run", "python", "scripts/quality/check_env_templates.py")
+        commands.append(
+            (*command, "--static") if not requirements.get("configuration_required") else command
+        )
+    if requirements.get("configuration_required"):
+        commands.append(
+            (
+                "uv",
+                "run",
+                "pytest",
+                "tests/unit/test_env_compose_config_contract.py",
+                "tests/unit/identity/test_settings_multi_connector.py",
+                "tests/unit/test_release_bundle.py",
+                "-q",
+            )
+        )
 
     if requirements.get("backend_required"):
         changed_python = _existing_python_paths(requirements.get("changed_paths", []))
@@ -139,10 +158,6 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
                 targeted_prefix=("uv", "run", "pytest"),
             )
         )
-        if requirements.get("backend_targets") and "all" not in requirements.get(
-            "backend_targets", []
-        ):
-            commands.append(("uv", "run", "pytest", "tests/api", "-q"))
 
     if requirements.get("contract_required"):
         commands.extend(
@@ -163,10 +178,10 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
                     "npm",
                     "--prefix",
                     "frontend",
-                    "exec",
-                    "--",
-                    "vitest",
                     "run",
+                    "test",
+                    "--",
+                    "--run",
                     *_frontend_relative(unit_targets),
                 )
             )
@@ -180,10 +195,9 @@ def build_validation_commands(requirements: dict[str, Any]) -> list[tuple[str, .
                     "npm",
                     "--prefix",
                     "frontend",
-                    "exec",
+                    "run",
+                    "test:e2e",
                     "--",
-                    "playwright",
-                    "test",
                     *_frontend_relative(e2e_specs),
                 )
             )
@@ -240,7 +254,7 @@ def main() -> int:
     parser.add_argument(
         "--committed-only",
         action="store_true",
-        help="仅比较 base..head，不包含 working tree/untracked",
+        help="仅比较唯一 merge-base..head，不包含 working tree/untracked",
     )
     parser.add_argument(
         "--fix", action="store_true", help="先收敛 changed Python 格式和 generated artifacts"
@@ -250,7 +264,10 @@ def main() -> int:
     args = parser.parse_args()
 
     base = args.base or default_base()
-    requirements = classify(base, args.head, include_worktree=not args.committed_only)
+    try:
+        requirements = classify(base, args.head, include_worktree=not args.committed_only)
+    except ValueError as exc:
+        parser.exit(2, f"{exc}\n")
     commands = build_validation_commands(requirements)
     if args.json:
         print(json.dumps(requirements, ensure_ascii=False, sort_keys=True))

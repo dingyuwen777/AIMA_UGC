@@ -485,27 +485,16 @@ class PostgresWorkbenchRepository:
                   ON version.content_id = content.id
                  AND version.version_no = content.current_version
                 LEFT JOIN accounts AS account ON account.id = content.author_account_id
-                LEFT JOIN LATERAL (
-                    SELECT result.*
-                    FROM analysis_content_results AS result
-                    JOIN analysis_content_runs AS run ON run.id = result.analysis_run_id
-                    WHERE result.content_id = projection.content_id
-                      AND result.content_version = projection.content_version
-                      AND run.analysis_scheme_version_id = :active_scheme_version_id
-                    ORDER BY run.sequence_no DESC, result.id DESC
-                    LIMIT 1
-                ) AS active_result ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT review.decision
-                    FROM analysis_content_relevance_reviews AS review
-                    WHERE review.content_id = projection.content_id
-                      AND review.content_version = projection.content_version
-                    ORDER BY review.review_no DESC, review.reviewed_at DESC, review.id DESC
-                    LIMIT 1
-                ) AS review ON TRUE
+                LEFT JOIN LATERAL effective_analysis_source(
+                    projection.content_id, projection.content_version, :active_scheme_version_id
+                ) AS effective_source ON TRUE
+                LEFT JOIN analysis_content_results AS active_result
+                  ON active_result.id = effective_source.analysis_result_id
+                LEFT JOIN analysis_content_relevance_reviews AS review
+                  ON review.id = effective_source.relevance_review_id
                 LEFT JOIN analysis_content_manual_overrides AS manual
                   ON manual.content_id = projection.content_id
-                 AND manual.content_version = projection.content_version
+                 AND manual.content_version = effective_source.manual_override_version
                 LEFT JOIN LATERAL (
                     SELECT jsonb_agg(
                         jsonb_build_object(
@@ -652,30 +641,16 @@ class PostgresWorkbenchRepository:
                            ELSE COALESCE(result_labels.items, '[]'::jsonb)
                        END AS effective_labels
                 FROM projection_scope AS scope
-                LEFT JOIN LATERAL (
-                    SELECT result.*
-                    FROM analysis_content_results AS result
-                    JOIN analysis_content_runs AS run ON run.id = result.analysis_run_id
-                    WHERE result.content_id = scope.content_id
-                      AND result.content_version = scope.content_version
-                      AND run.analysis_scheme_version_id = :active_scheme_version_id
-                    ORDER BY run.sequence_no DESC, result.id DESC
-                    LIMIT 1
-                ) AS fallback_result ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT relevance_review.decision
-                    FROM analysis_content_relevance_reviews AS relevance_review
-                    WHERE relevance_review.content_id = scope.content_id
-                      AND relevance_review.content_version = scope.content_version
-                    ORDER BY relevance_review.review_no DESC,
-                             relevance_review.reviewed_at DESC,
-                             relevance_review.id DESC
-                    LIMIT 1
-                ) AS review ON fallback_result.id IS NOT NULL
+                LEFT JOIN LATERAL effective_analysis_source(
+                    scope.content_id, scope.content_version, :active_scheme_version_id
+                ) AS effective_source ON TRUE
+                LEFT JOIN analysis_content_results AS fallback_result
+                  ON fallback_result.id = effective_source.analysis_result_id
+                LEFT JOIN analysis_content_relevance_reviews AS review
+                  ON review.id = effective_source.relevance_review_id
                 LEFT JOIN analysis_content_manual_overrides AS manual
-                  ON fallback_result.id IS NOT NULL
-                 AND manual.content_id = scope.content_id
-                 AND manual.content_version = scope.content_version
+                  ON manual.content_id = scope.content_id
+                 AND manual.content_version = effective_source.manual_override_version
                 LEFT JOIN LATERAL (
                     SELECT jsonb_agg(
                         jsonb_build_object(

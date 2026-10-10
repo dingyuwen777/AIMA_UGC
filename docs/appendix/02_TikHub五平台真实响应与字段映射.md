@@ -227,6 +227,19 @@ GET /api/v1/xiaohongshu/app_v2/get_video_note_detail
 
 图文详情的 `images_list[].index` 不能作为 Canonical 媒体位置：真实响应中多张图片可能全部返回 `index=0`。Mapper 按 `images_list` 数组顺序生成从 `0` 开始的唯一 `position`，避免 `content_media(content_id, position)` 冲突中断后续评论补采。
 
+2026-10-09 的同一视频 ID 双详情实证确认：视频详情的播放源位于
+`video_info_v2.media.stream.h264[0].master_url` / `backup_urls`，该流的 `video_duration` /
+`duration` 为毫秒，尺寸、容器与编码按选中的同一流映射。另一层 `media.video.duration`
+为秒，其尺寸不能与 h264 流的时长混合。封面来自 `video_info_v2.image.first_frame` /
+`thumbnail`。同 ID 图文详情只有 `images_list` 封面，没有视频播放结构；`type=video` 和
+cover-only 响应仍映射为视频，不能降为图片。
+
+未知类型先请求图文详情，确认视频后同一已校验 ID 至多跟进一次视频详情；明确 image/video
+各请求正确详情一次。Canonical 只声明实际观察属性，稀疏封面不能清空已有播放源。
+无法识别媒体属性的列表项不能证明完整集合，明确空数组仍表示删除。永久真实结构 Fixture：
+[`tests/fixtures/providers/tikhub/xiaohongshu/video_detail_20261009.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/video_detail_20261009.sanitized.json)
+和 [`tests/fixtures/providers/tikhub/xiaohongshu/video_cover_detail_20261009.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/video_cover_detail_20261009.sanitized.json)。
+
 Fixture：
 
 - [`tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json)

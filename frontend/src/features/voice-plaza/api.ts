@@ -16,6 +16,7 @@ import {
   listContentComments,
   listDataExports,
   previewContentAnalysisRun,
+  prepareContentMediaPlayback,
   reviewContentAnalysis,
   reviewContentVehicles,
   type AnalysisContentRunCreateRequest,
@@ -31,6 +32,8 @@ import {
   type ContentAnalysisCreatedResponse,
   type ContentAnalysisSubmitRequest,
   type ContentDetailResponse,
+  type ContentMediaPlaybackPrepareRequest,
+  type ContentMediaPlaybackResponse,
   type ContentCommentListResponse,
   type ContentFilterOptionsResponse,
   type ContentListResponse,
@@ -76,20 +79,30 @@ function unwrap<T>(value: T): T {
   return value
 }
 
-/** 将有真实源 URL 的小红书图片收敛到同源缓存，并过滤完全不可展示的媒体记录。 */
+/** 小红书图片与视频封面共用同源缓存；视频身份保留供显式播放准备。 */
 export function withLocalMediaPreview(detail: ContentDetailResponse): ContentDetailResponse {
   if (detail.platform !== 'xiaohongshu') return detail
   const media = (detail.media ?? [])
     .map((item) =>
-      item.media_type === 'image' && item.url
+      (item.media_type === 'image' && item.url) || (item.media_type === 'video' && item.preview_url)
         ? {
             ...item,
             preview_url: `/api/v1/contents/${detail.id}/media/${item.position}`,
           }
         : item,
     )
-    .filter((item) => Boolean(item.preview_url || item.url))
+    .filter((item) => item.media_type === 'video' || Boolean(item.preview_url || item.url))
   return { ...detail, media }
+}
+
+/** 通过正式 Client 准备同源播放会话，取消仅作用于本次浏览器请求。 */
+export async function prepareMediaPlayback(
+  contentId: string,
+  position: number,
+  request: ContentMediaPlaybackPrepareRequest,
+  signal: AbortSignal,
+): Promise<ContentMediaPlaybackResponse> {
+  return unwrap(await prepareContentMediaPlayback(contentId, position, request, { signal }))
 }
 
 export async function fetchContents(params: ListContentsParams): Promise<ContentListResponse> {

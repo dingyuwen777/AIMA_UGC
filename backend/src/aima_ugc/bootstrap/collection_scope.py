@@ -53,6 +53,7 @@ from aima_ugc.adapters.providers.tikhub.account_identity import (
     resolve_search_identity,
 )
 from aima_ugc.adapters.providers.tikhub.capabilities import TIKHUB_PLATFORM_CAPABILITIES
+from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu_legacy import legacy_media_projection
 from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 from aima_ugc.adapters.providers.tikhub.runtime import (
     TikHubOperationCall,
@@ -74,6 +75,7 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     mapping_context,
 )
 from aima_ugc.contracts.canonical import (
+    CanonicalAuthorV1,
     CanonicalCommentV1,
     CanonicalContentV1,
     CanonicalSourceV1,
@@ -208,6 +210,25 @@ class _DetailCandidate:
 
 
 @dataclass(frozen=True, slots=True)
+class _DetailFetchOutcome:
+    """成功 Raw 与可选补充调用失败分别保留，消费者先摄取成功事实再传播原错误。"""
+
+    candidates: tuple[_DetailCandidate, ...]
+    optional_provider_failure: _ProviderCallFailed | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ContentDecisionFacts:
+    """跨观察派生的决策视图；没有 Canonical/source，禁止作为某个 Raw 的摄取输入。"""
+
+    title: str | None
+    text: str | None
+    author: CanonicalAuthorV1 | None
+    published_at: datetime | None
+    comment_source: CanonicalContentV1
+
+
+@dataclass(frozen=True, slots=True)
 class _PreparedSearchContent:
     """一个 Search Candidate 完成当前 Detail fallback 后的最终 Filter 输入。"""
 
@@ -216,6 +237,7 @@ class _PreparedSearchContent:
     search_candidate_id: UUID
     prefetched_details: tuple[_DetailCandidate, ...] = ()
     detail_unavailable: bool = False
+    optional_provider_failure: _ProviderCallFailed | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -373,6 +395,7 @@ class TikHubCollectionScopeExecutor:
         self._raw_artifacts = raw_artifacts
         self._canonical_writer = CanonicalArtifactWriter(artifacts=artifacts)
         self._canonical_reader = CanonicalArtifactReader(store=artifact_store)
+        self._legacy_canonical_by_source: dict[str, CanonicalContentV1] = {}
         self._transport_factory = transport_factory
         self._secret_resolver = secret_resolver
         self._observed_at = observed_at or (lambda: beijing_now())
@@ -397,6 +420,21 @@ class TikHubCollectionScopeExecutor:
         context: JobExecutionContextProtocol,
     ) -> CollectionScopeExecutionResult:
         """执行关键词发现或既有 Import Batch Content 的正式补采 Scope。"""
+        # Worker 长期复用 Executor；旧协议证明携带正文，只能存活于当前 Scope。
+        self._legacy_canonical_by_source.clear()
+        try:
+            return self._execute_scope(run=run, scope=scope, context=context)
+        finally:
+            self._legacy_canonical_by_source.clear()
+
+    def _execute_scope(
+        self,
+        *,
+        run: CollectionRunRecord,
+        scope: CollectionScopeRecord,
+        context: JobExecutionContextProtocol,
+    ) -> CollectionScopeExecutionResult:
+        """在当前 Scope 的临时兼容证明边界内执行正式调用链。"""
         is_discovery = (
             scope.source_type == "keyword_search" and scope.operation_group == "content_discovery"
         )
@@ -404,7 +442,10 @@ class TikHubCollectionScopeExecutor:
         is_enrichment = (
             scope.source_type == "content" and scope.operation_group == "content_enrichment"
         )
-        if not is_discovery and not is_enrichment and not is_account:
+        is_media_refresh = (
+            scope.source_type == "content" and scope.operation_group == "media_refresh"
+        )
+        if not is_discovery and not is_enrichment and not is_account and not is_media_refresh:
             raise ValueError("TikHub Scope Runtime 不支持当前 source_type/operation_group")
 
         _validate_decision_policy(run)
@@ -412,6 +453,12 @@ class TikHubCollectionScopeExecutor:
         platform = _tikhub_platform(scope.platform)
         runtime_config = _platform_runtime_config(run, scope.platform)
         provider_config = self._provider_config_for_run(run, runtime_config)
+        if is_media_refresh:
+            from .collection_media_refresh import execute_media_refresh
+
+            return execute_media_refresh(
+                self, run=run, scope=scope, provider_config=provider_config, context=context
+            )
         capability = _capability(platform)
         policy = _decision_policy(run)
         if is_enrichment:
@@ -466,6 +513,7 @@ class TikHubCollectionScopeExecutor:
                 )
                 stats.account_stage = "posts"
             for current_page_no in range(first_page_no, MAX_SEARCH_PAGES + 1):
+                self._legacy_canonical_by_source.clear()
                 if context.cancel_requested():
                     self._refresh_counts(scope=scope, context=context, stats=stats)
                     return _result(
@@ -561,6 +609,7 @@ class TikHubCollectionScopeExecutor:
                             raise
                         stats.technical_partial_results += 1
                         continue
+                    self._remember_legacy_canonical(search_content, raw_item)
                     if is_account:
                         account_page_contents.append(search_content)
                         account_page_ids.append(search_content.external_content_id)
@@ -609,7 +658,12 @@ class TikHubCollectionScopeExecutor:
                     if is_account:
                         assert account_identity is not None and account_selection is not None
                         admission = account_content_admission(
-                            prepared.final_content,
+                            _content_decision_facts(
+                                (
+                                    prepared.search_content,
+                                    *(item.content for item in prepared.prefetched_details),
+                                )
+                            ),
                             identity=account_identity,
                             published_from=account_selection.published_from,
                             published_to=account_selection.published_to,
@@ -640,10 +694,19 @@ class TikHubCollectionScopeExecutor:
                     )
                     persistent_contents = tuple(item.final_content for item in prepared_contents)
                 else:
-                    persistent_contents = self._persistent_filter_inputs(
+                    # 新 Chunk 只保存同一个 Search Raw 的真实观察；决策视图不冒充 Raw。
+                    self._persistent_filter_inputs(
                         provider_attempt_id=executed.attempt_id,
-                        expected=tuple(item.final_content for item in prepared_contents),
+                        expected=tuple(item.search_content for item in prepared_contents),
+                        legacy_alternatives=tuple(
+                            (
+                                item.search_content,
+                                *(detail.content for detail in item.prefetched_details),
+                            )
+                            for item in prepared_contents
+                        ),
                     )
+                    persistent_contents = tuple(item.final_content for item in prepared_contents)
                 for prepared, persistent_content in zip(
                     prepared_contents,
                     persistent_contents,
@@ -1048,7 +1111,7 @@ class TikHubCollectionScopeExecutor:
                 progress=scope.progress,
                 stats=stats.payload(),
             )
-            details = self._fetch_detail_candidates(
+            detail_outcome = self._fetch_detail_candidates(
                 run=run,
                 scope=scope,
                 content=seed,
@@ -1056,7 +1119,11 @@ class TikHubCollectionScopeExecutor:
                 context=context,
                 stats=stats,
             )
+            details = detail_outcome.candidates
             latest = details[-1].content
+            comment_source = _content_decision_facts(
+                tuple(item.content for item in details)
+            ).comment_source
             latest_identity = resolve_comment_target(
                 platform=_tikhub_platform(scope.platform),
                 external_content_id=latest.external_content_id,
@@ -1083,7 +1150,7 @@ class TikHubCollectionScopeExecutor:
             decision = self._decision_service.decide(
                 CollectionDecisionRequestV1(
                     current=ContentObservationV1(
-                        comment_count=_observed_comment_count(latest),
+                        comment_count=_observed_comment_count(comment_source),
                         business_changed=False,
                     ),
                     previous=prior.previous,
@@ -1103,8 +1170,13 @@ class TikHubCollectionScopeExecutor:
                 previous_capture_complete=prior.previous.full_comment_capture_complete,
                 initial_business_changed=prior.business_changed,
                 decision=decision,
-                resolved_comment_count=_observed_comment_count(latest),
+                resolved_comment_count=_observed_comment_count(comment_source),
                 fence=context.fence,
+            )
+            # 旧补采 Run 没有目录快照，继续原协议；新 Run 即使稀疏详情为空
+            # 也传递完整冻结目录，由 Writer 在字段合并后重新解析 Current。
+            supplement_filter = (
+                _discovery_filter(run) if run.config_snapshot.get("brand_vehicle_filter") else None
             )
             for candidate in details:
                 try:
@@ -1112,6 +1184,19 @@ class TikHubCollectionScopeExecutor:
                         canonical=candidate.content,
                         fence=context.fence,
                         candidate_id=candidate.candidate_id,
+                        expected_content_id=target.content_id,
+                        brand_vehicle_snapshot=(
+                            supplement_filter.catalog if supplement_filter is not None else None
+                        ),
+                        brand_vehicle_resolution=(
+                            resolve_canonical_brand_vehicle(
+                                supplement_filter,
+                                candidate.content,
+                                resolver=self._brand_vehicle_resolver,
+                            )
+                            if supplement_filter is not None
+                            else None
+                        ),
                         identity_guard=(
                             (latest_identity.lookup_id_type, latest_identity.lookup_id)
                             if latest_identity.lookup_id_type is not None
@@ -1131,6 +1216,9 @@ class TikHubCollectionScopeExecutor:
                     raise _CommentTargetUnavailable("identity_conflict") from exc
                 if ingestion.target_id != target.content_id:
                     raise RuntimeError("Batch Detail 未收敛到原 Content")
+
+            if detail_outcome.optional_provider_failure is not None:
+                raise detail_outcome.optional_provider_failure
 
             if action.comments_completed:
                 self._refresh_counts(scope=scope, context=context, stats=stats)
@@ -1156,7 +1244,7 @@ class TikHubCollectionScopeExecutor:
                 outcome = self._fetch_comments(
                     run=run,
                     scope=scope,
-                    content=latest,
+                    content=comment_source,
                     content_id=target.content_id,
                     provider_config=provider_config,
                     capability=capability,
@@ -1181,7 +1269,7 @@ class TikHubCollectionScopeExecutor:
                 stats.comment_stage = "finished" if policy.comments_enabled else None
                 stats.comment_coverage = self._record_non_fetch_coverage(
                     content_id=target.content_id,
-                    content=latest,
+                    content=comment_source,
                     context=context,
                     comment_reason=action.decision.comment_reason,
                     comment_target=action.decision.comment_target,
@@ -1391,7 +1479,7 @@ class TikHubCollectionScopeExecutor:
                 search_candidate_id=search_candidate_id,
             )
 
-        details = self._fetch_detail_candidates(
+        detail_outcome = self._fetch_detail_candidates(
             run=run,
             scope=scope,
             content=content,
@@ -1399,11 +1487,13 @@ class TikHubCollectionScopeExecutor:
             context=context,
             stats=stats,
         )
+        details = detail_outcome.candidates
         return _PreparedSearchContent(
             search_content=content,
             final_content=details[-1].content,
             search_candidate_id=search_candidate_id,
             prefetched_details=details,
+            optional_provider_failure=detail_outcome.optional_provider_failure,
         )
 
     def _process_search_content(
@@ -1428,8 +1518,11 @@ class TikHubCollectionScopeExecutor:
         search_content = prepared.search_content
         prefetched_details = prepared.prefetched_details
         detail_prefetched = bool(prefetched_details)
-        accepted_resolution = resolve_canonical_brand_vehicle(
-            filter_snapshot, content, resolver=self._brand_vehicle_resolver
+        facts = _content_decision_facts(
+            (search_content, *(item.content for item in prefetched_details))
+        )
+        accepted_resolution = self._brand_vehicle_resolver.resolve(
+            filter_snapshot.catalog, title=facts.title, raw_text=facts.text, transcript_text=None
         )
         if not accepted_resolution.matched and scope.source_type != "account":
             self._content_writer.record_candidate_filtered(
@@ -1446,13 +1539,6 @@ class TikHubCollectionScopeExecutor:
             stats.filtered_content_count += 1
             return
 
-        if detail_prefetched:
-            final_detail = prefetched_details[-1]
-            prefetched_details = (
-                *prefetched_details[:-1],
-                _DetailCandidate(content=content, candidate_id=final_detail.candidate_id),
-            )
-
         action = self._content_actions.get(
             scope_id=scope.id,
             external_content_id=content.external_content_id,
@@ -1464,7 +1550,7 @@ class TikHubCollectionScopeExecutor:
                 if policy.comment_mode == "full"
                 else self._content_state.evaluate(content)
             )
-            search_comment_count = _observed_comment_count(content)
+            search_comment_count = _observed_comment_count(facts.comment_source)
             decision = self._decision_service.decide(
                 CollectionDecisionRequestV1(
                     current=ContentObservationV1(
@@ -1522,6 +1608,9 @@ class TikHubCollectionScopeExecutor:
                 )
                 if candidate_resolution is not None and not candidate_resolution.matched:
                     candidate_resolution = None
+            if filter_snapshot.catalog.resolver_semantics == "brand_scoped_vehicle_v2":
+                # 接受资格来自完整派生事实；每个真实观察都由 Owner 按合并 Current 收敛。
+                candidate_resolution = accepted_resolution
             ingestion = self._content_writer.ingest_content(
                 canonical=candidate.content,
                 fence=context.fence,
@@ -1536,6 +1625,8 @@ class TikHubCollectionScopeExecutor:
             content_id = ingestion.target_id
         if content_id is None:  # pragma: no cover - candidates 固定非空
             raise RuntimeError("Search/Detail 未产生 Content")
+        if prepared.optional_provider_failure is not None:
+            raise prepared.optional_provider_failure
         if prepared.detail_unavailable:
             if run.config_snapshot.get("include_comments", True) is True:
                 self._record_non_fetch_coverage(
@@ -1555,7 +1646,7 @@ class TikHubCollectionScopeExecutor:
                 CollectionDecisionRequestV1(
                     context=CollectionDecisionContextV1(detail_already_fetched=True),
                     current=ContentObservationV1(
-                        comment_count=_observed_comment_count(content),
+                        comment_count=_observed_comment_count(facts.comment_source),
                         business_changed=False,
                     ),
                     previous=_previous_from_action(action),
@@ -1566,13 +1657,13 @@ class TikHubCollectionScopeExecutor:
             action = self._content_actions.complete_detail(
                 action_id=action.id,
                 decision=post_detail,
-                resolved_comment_count=_observed_comment_count(content),
+                resolved_comment_count=_observed_comment_count(facts.comment_source),
                 fence=context.fence,
             )
         if action.comments_completed:
             return
 
-        comment_source = content
+        comment_source = facts.comment_source
         decision = action.decision
         if (
             action.decision.detail_action == "fetch"
@@ -1656,6 +1747,7 @@ class TikHubCollectionScopeExecutor:
         *,
         provider_attempt_id: UUID,
         expected: tuple[CanonicalContentV1, ...],
+        legacy_alternatives: tuple[tuple[CanonicalContentV1, ...], ...] | None = None,
     ) -> tuple[CanonicalContentV1, ...]:
         """写入或复用一个 Search Attempt Chunk，并校验确定性 Mapper 结果。"""
 
@@ -1673,9 +1765,31 @@ class TikHubCollectionScopeExecutor:
                 if artifact is None:
                     raise
         actual = tuple(self._canonical_reader.read(artifact))
+
+        def proven(row: CanonicalContentV1, candidate: CanonicalContentV1) -> bool:
+            legacy = getattr(self, "_legacy_canonical_by_source", {}).get(
+                candidate.source.model_dump_json()
+            )
+            return row == candidate or (legacy is not None and row == legacy)
+
         if actual != expected:
-            raise ValueError("TikHub Persistent Canonical 与本次 Mapper 输出不一致")
-        return actual
+            # 旧媒体 Mapper 与旧 Search 的 Detail-derived 行都必须逐字段等于
+            # 当前已验证 Raw 的已知协议投影；Artifact 自述不能扩大兼容范围。
+            alternatives_by_row = legacy_alternatives or tuple((item,) for item in expected)
+            legacy = len(actual) == len(alternatives_by_row) and all(
+                any(proven(row, candidate) for candidate in alternatives)
+                for row, alternatives in zip(actual, alternatives_by_row, strict=True)
+            )
+            if not legacy:
+                raise ValueError("TikHub Persistent Canonical 与本次 Mapper 输出不一致")
+        return expected
+
+    def _remember_legacy_canonical(self, canonical: CanonicalContentV1, raw: JsonObject) -> None:
+        """只从当前已验证 Attempt/Raw 的映射登记旧协议等价项，不信任 Artifact 自述。"""
+        if canonical.platform == "xiaohongshu":
+            self._legacy_canonical_by_source[canonical.source.model_dump_json()] = (
+                legacy_media_projection(canonical, raw)
+            )
 
     def _canonical_for_attempt(self, provider_attempt_id: UUID) -> ArtifactRecord | None:
         """在 Writer 竞争或 Worker 重试后读取唯一 linked 页面 Artifact。"""
@@ -1704,7 +1818,7 @@ class TikHubCollectionScopeExecutor:
     ) -> CanonicalContentV1:
         """抓取并写入 Detail；v2 Run 把过滤证据延续到最终 Content Version。"""
 
-        details = self._fetch_detail_candidates(
+        detail_outcome = self._fetch_detail_candidates(
             run=run,
             scope=scope,
             content=content,
@@ -1712,6 +1826,7 @@ class TikHubCollectionScopeExecutor:
             context=context,
             stats=stats,
         )
+        details = detail_outcome.candidates
         latest_detail: CanonicalContentV1 | None = None
         for detail in details:
             detail_resolution = (
@@ -1739,7 +1854,11 @@ class TikHubCollectionScopeExecutor:
             latest_detail = detail.content
         if latest_detail is None:  # pragma: no cover - 前置非空校验保证
             raise RuntimeError("TikHub Detail 未产生 Canonical Content")
-        return latest_detail
+        if detail_outcome.optional_provider_failure is not None:
+            raise detail_outcome.optional_provider_failure
+        return _content_decision_facts(
+            (content, *(item.content for item in details))
+        ).comment_source
 
     def _fetch_detail_candidates(
         self,
@@ -1750,7 +1869,8 @@ class TikHubCollectionScopeExecutor:
         provider_config: ProviderConfig,
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
-    ) -> tuple[_DetailCandidate, ...]:
+        _allow_video_followup: bool = True,
+    ) -> _DetailFetchOutcome:
         """通过正式 Provider/Raw/Mapper 获取一次 Detail，但不提前写 Content。"""
 
         platform = _tikhub_platform(scope.platform)
@@ -1789,7 +1909,11 @@ class TikHubCollectionScopeExecutor:
                 request_fingerprint=prior_request.request_fingerprint,
                 fence=context.fence,
             )
-        locator = supported_locator if direct_target.state != "resolved" or reuse_locator else None
+        locator = (
+            supported_locator
+            if _allow_video_followup and (direct_target.state != "resolved" or reuse_locator)
+            else None
+        )
         detail_call = locator_call if locator is not None else build_detail_call(platform, content)
         if detail_call is None:  # pragma: no cover - locator 与调用同步构造
             raise RuntimeError("TikHub 身份解析调用缺失")
@@ -1810,6 +1934,8 @@ class TikHubCollectionScopeExecutor:
         if not detail_items:
             if locator is not None:
                 raise _CommentTargetUnavailable("identity_unavailable")
+            if not _allow_video_followup:
+                raise _ProviderCallFailed(error_code="detail_response_empty", retryable=False)
             raise ValueError("TikHub Detail 响应未包含可映射内容")
         if locator is not None and len(detail_items) != 1:
             raise _CommentTargetUnavailable("identity_ambiguous")
@@ -1852,6 +1978,10 @@ class TikHubCollectionScopeExecutor:
                     result="invalid",
                     error_code=type(exc).__name__,
                 )
+                if not _allow_video_followup and isinstance(exc, ValueError):
+                    raise _ProviderCallFailed(
+                        error_code="detail_mapping_invalid", retryable=False
+                    ) from exc
                 raise
             if locator is not None:
                 resolved = resolve_comment_target(
@@ -1904,15 +2034,42 @@ class TikHubCollectionScopeExecutor:
                     result="invalid",
                     error_code="detail_content_identity_mismatch",
                 )
+                if not _allow_video_followup:
+                    raise _ProviderCallFailed(
+                        error_code="detail_content_identity_mismatch", retryable=False
+                    )
                 raise ValueError("TikHub Detail 与 Search Content 身份不一致")
+            self._remember_legacy_canonical(detail_content, raw_item)
             mapped.append(_DetailCandidate(content=detail_content, candidate_id=candidate_id))
-        if scope.source_type == "account":
-            # 详情是独立响应事实，不能附着到可先成功、后补齐详情的作品页 Artifact。
-            self._persistent_filter_inputs(
-                provider_attempt_id=executed.attempt_id,
-                expected=tuple(item.content for item in mapped),
-            )
-        return tuple(mapped)
+        # 每个成功 Detail Raw 都有自己的不可变 Canonical，额外详情失败不抹去它。
+        self._persistent_filter_inputs(
+            provider_attempt_id=executed.attempt_id,
+            expected=tuple(item.content for item in mapped),
+        )
+        if (
+            _allow_video_followup
+            and platform == "xiaohongshu"
+            and content.content_type not in {"image", "video"}
+            and detail_call.operation == "get_image_note_detail"
+            and len(mapped) == 1
+            and mapped[0].content.content_type == "video"
+        ):
+            # 已校验同一 note_id 后最多补一次视频详情；恢复仍复用 Request/Raw。
+            try:
+                followup = self._fetch_detail_candidates(
+                    run=run,
+                    scope=scope,
+                    content=mapped[0].content,
+                    provider_config=provider_config,
+                    context=context,
+                    stats=stats,
+                    _allow_video_followup=False,
+                )
+            except _ProviderCallFailed as exc:
+                stats.technical_partial_results += 1
+                return _DetailFetchOutcome(tuple(mapped), optional_provider_failure=exc)
+            mapped.extend(followup.candidates)
+        return _DetailFetchOutcome(tuple(mapped))
 
     def _fetch_comments(
         self,
@@ -2718,6 +2875,11 @@ class TikHubCollectionScopeExecutor:
                 prepared=prepared,
             )
         if prepared.attempt.dispatch_status != "reserved":
+            if run.config_snapshot.get("mode") == "media_refresh":
+                raise _ProviderCallFailed(
+                    error_code=prepared.attempt.error_code or prepared.attempt.dispatch_status,
+                    retryable=False,
+                )
             raise RuntimeError(
                 f"Provider Attempt 未处于可发送状态: {prepared.attempt.dispatch_status}"
             )
@@ -2873,6 +3035,39 @@ def _previous_from_action(
     return PreviousContentStateV1(
         comment_count=action.previous_comment_count,
         full_comment_capture_complete=action.previous_capture_complete,
+    )
+
+
+def _content_decision_facts(observations: tuple[CanonicalContentV1, ...]) -> _ContentDecisionFacts:
+    """按观察时间与显式字段派生过滤/评论事实；保留评论计数的原始观察来源。"""
+    if not observations:
+        raise ValueError("详情决策必须有成功观察")
+    values: dict[str, object] = {"title": None, "text": None, "published_at": None}
+    author: dict[str, object] = {}
+    freshness: dict[str, datetime] = {}
+    comment_source = observations[-1]
+    comment_at: datetime | None = None
+    for observation in observations:
+        for path in observation.observed_fields:
+            if path in freshness and observation.observed_at < freshness[path]:
+                continue
+            if path in values:
+                values[path] = getattr(observation, path)
+                freshness[path] = observation.observed_at
+            elif path.startswith("author.") and observation.author is not None:
+                field = path.removeprefix("author.")
+                author[field] = getattr(observation.author, field)
+                freshness[path] = observation.observed_at
+        if "metrics.comment_count" in observation.observed_fields and (
+            comment_at is None or observation.observed_at >= comment_at
+        ):
+            comment_source, comment_at = observation, observation.observed_at
+    return _ContentDecisionFacts(
+        title=cast(str | None, values["title"]),
+        text=cast(str | None, values["text"]),
+        author=CanonicalAuthorV1.model_validate(author) if author else None,
+        published_at=cast(datetime | None, values["published_at"]),
+        comment_source=comment_source,
     )
 
 
@@ -3102,7 +3297,8 @@ def _discovery_filter(
     )
     expected_semantics = (
         "not_applicable"
-        if run.config_snapshot.get("mode") == "account_discovery"
+        if run.config_snapshot.get("mode")
+        in {"account_discovery", "content_supplement", "batch_supplement", "date_supplement"}
         else "keyword_pack"
     )
     if snapshot.search_semantics != expected_semantics:

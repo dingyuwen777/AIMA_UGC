@@ -7,70 +7,86 @@ on:
     types:
       - opened
       - reopened
+      - synchronize
       - ready_for_review
-    paths:
-      - ".github/workflows/tooling.yml"
-      - ".gitignore"
-      - ".python-version"
-      - ".node-version"
-      - ".uv-version"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "env.local.example"
-      - "frontend/package.json"
-      - "frontend/package-lock.json"
-      - "scripts/setup_dev_environment.ps1"
-      - "scripts/setup_dev_environment.cmd"
-      - "scripts/dev/**"
-      - "compose.yaml"
-      - "compose.windows.yaml"
-      - "env.production.example"
-      - "migrations/**"
-      - "backend/src/aima_ugc/platform/**"
-      - "backend/src/aima_ugc/bootstrap/**"
-      - "backend/src/aima_ugc/entrypoints/**"
-      - "backend/src/aima_ugc/modules/system/**"
-      - "backend/src/aima_ugc/adapters/persistence/postgres/system.py"
+      - edited
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/tooling.yml"
-      - ".gitignore"
-      - ".python-version"
-      - ".node-version"
-      - ".uv-version"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "env.local.example"
-      - "frontend/package.json"
-      - "frontend/package-lock.json"
-      - "scripts/setup_dev_environment.ps1"
-      - "scripts/setup_dev_environment.cmd"
-      - "scripts/dev/**"
-      - "compose.yaml"
-      - "compose.windows.yaml"
-      - "env.production.example"
-      - "migrations/**"
-      - "backend/src/aima_ugc/platform/**"
-      - "backend/src/aima_ugc/bootstrap/**"
-      - "backend/src/aima_ugc/entrypoints/**"
-      - "backend/src/aima_ugc/modules/system/**"
-      - "backend/src/aima_ugc/adapters/persistence/postgres/system.py"
 
   schedule:
     - cron: "0 20 * * 0"
 
 permissions:
   contents: read
+  issues: read
   pull-requests: read
   checks: read
 
 concurrency:
-  group: tooling-${{ github.event.pull_request.number || github.ref }}
+  group: tooling-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'metadata' || 'full' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  tooling-plan:
+    name: Tooling Preflight
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.action != 'edited' || github.event.changes.base))
+    runs-on: ubuntu-24.04
+    outputs:
+      linux_required: ${{ steps.scope.outputs.tooling_linux_required }}
+      windows_required: ${{ steps.scope.outputs.tooling_windows_required }}
+      release_required: ${{ steps.scope.outputs.release_required }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Classify shared Tooling responsibility
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            python3 scripts/quality/classify_ci_scope.py --full --github-output "${GITHUB_OUTPUT}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            python3 scripts/quality/classify_ci_scope.py --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --github-output "${GITHUB_OUTPUT}"
+          else
+            python3 scripts/quality/classify_ci_scope.py --comparison direct --base "${{ github.event.before }}" --head "${GITHUB_SHA}" --github-output "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Lightweight source and template preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
+          python3 scripts/quality/scan_secrets.py
+          python3 scripts/quality/check_env_templates.py --static
+
+      - name: Verify PR requirement and readiness before expensive validation
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/check_pr_requirement_source.py --event "${GITHUB_EVENT_PATH}" --root .
+          python3 scripts/quality/check_change_completion.py --root . --changed-since "${{ github.event.pull_request.base.sha }}"
+
+      - name: Setup template validation Python
+        if: steps.scope.outputs.configuration_required == 'true'
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Validate template configuration packaging and Compose
+        if: steps.scope.outputs.configuration_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "uv==$(tr -d '\r\n' < .uv-version)"
+          uv sync --locked
+          uv run python scripts/quality/check_env_templates.py --compose
+
   main-evidence:
     name: Reuse merged PR Tooling Evidence
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -138,10 +154,13 @@ jobs:
           fi
 
   linux-tooling:
-    name: Linux Local Development Tooling
-    needs: main-evidence
+    name: >-
+      ${{ github.event.action == 'edited' && !github.event.changes.base && 'Metadata: Linux Local Development Tooling' || 'Linux Local Development Tooling' }}
+    needs: [main-evidence, tooling-plan]
     if: >-
       always() &&
+      needs.tooling-plan.result == 'success' &&
+      needs.tooling-plan.outputs.linux_required == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
       (github.event_name != 'push' || needs.main-evidence.outputs.linux_reusable != 'true')
     runs-on: ubuntu-24.04
@@ -344,10 +363,13 @@ jobs:
           rm -rf .runtime env.local /tmp/legacy-password.log /tmp/aima-local-backend-lifecycle.log
 
   windows-tooling:
-    name: Windows Development and Compose Tooling
-    needs: main-evidence
+    name: >-
+      ${{ github.event.action == 'edited' && !github.event.changes.base && 'Metadata: Windows Development and Compose Tooling' || 'Windows Development and Compose Tooling' }}
+    needs: [main-evidence, tooling-plan]
     if: >-
       always() &&
+      needs.tooling-plan.result == 'success' &&
+      needs.tooling-plan.outputs.windows_required == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
       (github.event_name != 'push' || needs.main-evidence.outputs.windows_reusable != 'true')
     runs-on: windows-2025

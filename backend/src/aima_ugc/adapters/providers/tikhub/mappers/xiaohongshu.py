@@ -41,7 +41,10 @@ def map_content(
     """把搜索卡片或真实详情事实映射为一条原子 Content Observation。"""
     item = _unwrap_content(raw)
     external_id = _required_string(item, "id", "note_id")
-    observed_fields: list[str] = ["content_type", "alternate_ids"]
+    observed_fields: list[str] = ["alternate_ids"]
+    content_type = _content_type(item)
+    if content_type != "unknown":
+        observed_fields.append("content_type")
 
     title = _optional_string(item, "title")
     text = _optional_string(item, "desc", "text", "content")
@@ -65,7 +68,17 @@ def map_content(
         observed_fields.append("source_updated_at")
 
     media = _map_media(item)
-    if media:
+    complete_media = (
+        content_type == "image"
+        and isinstance(item.get("images_list"), list)
+        and context.operation == "get_image_note_detail"
+        and len(media) == len(item["images_list"])
+    ) or (
+        content_type == "video"
+        and context.operation == "get_video_note_detail"
+        and bool(_first_dict(item, "video_info_v2", "video_info"))
+    )
+    if media or complete_media:
         observed_fields.append("media")
     topics = _map_topics(item)
     if topics:
@@ -78,7 +91,7 @@ def map_content(
         platform="xiaohongshu",
         external_content_id=external_id,
         alternate_ids={"note_id": external_id},
-        content_type=_content_type(item),
+        content_type=content_type,
         title=title,
         text=text,
         author=author,
@@ -86,6 +99,7 @@ def map_content(
         source_updated_at=source_updated_at,
         observed_at=context.observed_at,
         media=media,
+        media_collection_mode="complete" if complete_media else "partial",
         topics=topics,
         locations=locations,
         metrics=metrics,
@@ -254,22 +268,66 @@ def _map_content_metrics(
 
 
 def _map_media(raw: dict[str, Any]) -> list[CanonicalMediaV1]:
+    """视频的图片列表只是封面；所选流的尺寸与时长不能混用源视频属性。"""
+    if _content_type(raw) == "unknown":
+        return []
     if _content_type(raw) == "video":
         video_info = _first_dict(raw, "video_info_v2", "video_info")
         media = _first_dict(video_info, "media")
         video = _first_dict(media, "video")
-        if video:
-            duration, _ = _count(video, "duration")
-            width, _ = _count(video, "width")
-            height, _ = _count(video, "height")
-            return [
-                CanonicalMediaV1(
-                    media_type="video",
-                    width=width,
-                    height=height,
-                    duration_ms=duration * 1000 if duration is not None else None,
-                )
-            ]
+        streams = _first_dict(media, "stream").get("h264")
+        stream = (
+            next(
+                (
+                    item
+                    for item in streams
+                    if isinstance(item, dict)
+                    and item.get("video_codec") == "h264"
+                    and item.get("format") == "mp4"
+                    and item.get("audio_codec") in {None, "aac"}
+                ),
+                {},
+            )
+            if isinstance(streams, list)
+            else {}
+        )
+        values: dict[str, Any] = {"media_type": "video"}
+        source = stream or video
+        for field in ("width", "height"):
+            value, _ = _count(source, field)
+            if value is not None:
+                values[field] = value
+        duration, _ = _count(source, "video_duration", "duration")
+        if duration is not None:
+            values["duration_ms"] = duration if stream else duration * 1000
+        video_id = _optional_string(media, "video_id")
+        if video_id is not None:
+            values["external_media_id"] = video_id
+        url = _http_url(stream, "master_url")
+        if url is None and isinstance(stream.get("backup_urls"), list):
+            url = next(
+                (
+                    _http_url({"url": item}, "url")
+                    for item in stream["backup_urls"]
+                    if isinstance(item, str) and item.startswith(("http://", "https://"))
+                ),
+                None,
+            )
+        if url is not None:
+            values["url"] = url
+            values["mime_type"] = "video/mp4"
+        image = _first_dict(video_info, "image")
+        preview = _http_url(image, "first_frame", "thumbnail")
+        images = raw.get("images_list")
+        if preview is None and isinstance(images, list):
+            preview = next(
+                (_http_url(item, "url", "original") for item in images if isinstance(item, dict)),
+                None,
+            )
+        if preview is not None:
+            values["preview_url"] = preview
+        # 类型已明确即保留视频行；没有播放源仍可以展示封面并受控刷新。
+        return [CanonicalMediaV1.model_validate({**values, "observed_fields": list(values)})]
 
     images = raw.get("images_list")
     if not isinstance(images, list):
@@ -280,15 +338,25 @@ def _map_media(raw: dict[str, Any]) -> list[CanonicalMediaV1]:
             continue
         width, _ = _count(image, "width")
         height, _ = _count(image, "height")
+        values = {
+            "media_type": "image",
+            "external_media_id": _optional_string(image, "fileid", "file_id", "id"),
+            "url": _http_url(image, "url", "original", "url_size_large"),
+            "width": width,
+            "height": height,
+        }
+        values = {key: value for key, value in values.items() if value is not None}
+        if len(values) == 1:
+            # 错误占位对象或未知字段不能证明该位置有图片，更不能证明完整全集。
+            continue
+        # App V2 可能给多张图片重复 index=0，数组顺序才是稳定位置事实。
         mapped.append(
-            CanonicalMediaV1(
-                media_type="image",
-                external_media_id=_optional_string(image, "fileid", "file_id", "id"),
-                url=_http_url(image, "url", "url_size_large"),
-                width=width,
-                height=height,
-                # App V2 真实响应可能给多张图片重复 index=0，数组顺序才是稳定位置事实。
-                position=fallback_position,
+            CanonicalMediaV1.model_validate(
+                {
+                    **values,
+                    "position": fallback_position,
+                    "observed_fields": list(values),
+                }
             )
         )
     return mapped
@@ -327,8 +395,9 @@ def _map_locations(raw: dict[str, Any]) -> list[CanonicalLocationV1]:
 
 
 def _content_type(raw: dict[str, Any]) -> str:
+    """只有 Provider 明确 normal/video 才证明内容类型。"""
     value = (_optional_string(raw, "type", "note_type") or "").lower()
-    return "video" if value == "video" else "image"
+    return {"video": "video", "normal": "image"}.get(value, "unknown")
 
 
 def _timestamp(raw: dict[str, Any], *keys: str) -> datetime | None:

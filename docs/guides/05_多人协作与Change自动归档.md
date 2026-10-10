@@ -10,6 +10,8 @@
 Requirement / Issue
 → changes/active/<ID>/CHANGE.md
 → task branch
+→ 本地实现 / 必要技术验证 / Review
+→ 用户本地验收（适用时）
 → Implementation PR
 → current-head CI + Review
 → merge main
@@ -19,6 +21,8 @@ Requirement / Issue
 ~~~
 
 不需要持久 Change 的轻量任务仍按当前治理完成 Requirement、验证和交付，但不会为了形式创建 Change。
+
+默认先完成本地开发，再进入 push / PR，完整流程由 [USAGE.md](../../USAGE.md) 维护。用户明确免等待时记录 `USER_WAIVED`；纯内部任务没有有意义的人工验收路径时记录 `NOT_APPLICABLE`。早期 PR 只有在项目或用户明确要求时建立，不能代替本地验收和当前 HEAD 的 required CI。
 
 ## 2. 开发者负责到哪里
 
@@ -56,10 +60,10 @@ Review 的专业方法、Finding 分类和修复收敛遵守当前 Agent_Skills�
 Workflow 从 merged PR 的 changed files 中只接受：
 
 - 没有 Active Change → 明确 not-applicable；
-- 恰好一个 Active Change → 可以确定性归档；
-- 多个 Active Change → fail closed，不猜归属。
+- 一个或多个 Active Change → 逐项验证 merged revision 中的内容与当前 main 一致，再按明确的 source/target 成对路径归档；
+- 身份不唯一、内容漂移或 diff 超出这些成对路径 → fail closed，不猜归属。
 
-归档只允许改变同一 Change 的路径和生命周期字段，不修改产品代码、Migration、Docs、Workflow 或其他 Change。
+归档只移动本次 merged PR 明确携带的 `CHANGE.md`，并冻结其生命周期字段，不修改产品代码、Migration、Docs、Workflow 或无关 Change。同目录的合法证据文件保留原路径；目录只有在为空时才移除。交付记录应在 `CHANGE.md` 内保留可独立核查的结论，并用归档后仍有效的引用指向补充证据。
 
 ## 5. 为什么归档不由开发者手工完成
 
