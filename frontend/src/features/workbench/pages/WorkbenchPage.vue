@@ -237,9 +237,10 @@ function voicePlazaQuery(
   extra: { primaryLabel?: string; day?: string; contentId?: string } = {},
 ): LocationQueryRaw {
   const filters = store.filters
+  const mindDrill = Boolean(extra.primaryLabel)
   const query: LocationQueryRaw = {
-    published_from: extra.day ?? filters.dateFrom,
-    published_to: extra.day ?? filters.dateTo,
+    published_from: extra.day ?? (mindDrill ? store.mindDateRange.dateFrom : filters.dateFrom),
+    published_to: extra.day ?? (mindDrill ? store.mindDateRange.dateTo : filters.dateTo),
   }
   if (filters.platforms.length) query.platforms = [...filters.platforms]
   if (filters.sentiments.length) query.sentiments = [...filters.sentiments]
@@ -250,8 +251,9 @@ function voicePlazaQuery(
     if (filters.primaryLabels.length) query.primary_labels = [...filters.primaryLabels]
   }
   if (filters.secondaryLabels.length) query.secondary_labels = [...filters.secondaryLabels]
-  if (filters.brandIds.length) query.brand_ids = [...filters.brandIds]
-  if (filters.vehicleModelIds.length) query.vehicle_model_ids = [...filters.vehicleModelIds]
+  const brandIds = mindDrill ? store.aggregateFilters.brandIds : filters.brandIds
+  if (brandIds.length) query.brand_ids = [...brandIds]
+  if (!mindDrill && filters.vehicleModelIds.length) query.vehicle_model_ids = [...filters.vehicleModelIds]
   if (extra.contentId) query.content_id = extra.contentId
   return query
 }
