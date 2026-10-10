@@ -23,6 +23,7 @@ export function mediaPlaybackMessage(code: string | null | undefined): string {
 export function createMediaPlayback(
   identity: () => { contentId: string; position: number },
   onTerminal: () => void,
+  canRecover: () => boolean,
 ) {
   const status = ref<'idle' | 'preparing' | 'ready' | 'unavailable' | 'cooldown'>('idle')
   const streamUrl = ref<string | null>(null)
@@ -180,6 +181,10 @@ export function createMediaPlayback(
     // 原生中止不触发付费恢复；播放器释放 src 后必须回到可显式重试状态。
     if (code === 1) {
       fail('browser_playback_aborted')
+      return
+    }
+    if (!canRecover()) {
+      fail('browser_playback_failed')
       return
     }
     if (recoveryUsed || !sourceRevision) {

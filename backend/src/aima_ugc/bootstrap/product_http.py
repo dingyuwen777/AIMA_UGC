@@ -156,7 +156,7 @@ class PostgresProductHttpService:
         finally:
             session.close()
 
-    def get_export_column_catalog(self) -> ExportColumnCatalogResponse:
+    def get_export_column_catalog(self, principal: Principal) -> ExportColumnCatalogResponse:
         """返回 Reporting Owner 维护的当前安全列白名单。"""
 
         return ExportColumnCatalogResponse(
@@ -169,6 +169,7 @@ class PostgresProductHttpService:
                     default_selected=item.default_selected,
                 )
                 for item in EXPORT_COLUMNS
+                if principal.role == "administrator" or not item.administrator_only
             ),
         )
 

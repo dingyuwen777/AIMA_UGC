@@ -31,12 +31,14 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/collection-runtime',
     name: 'collection-runtime',
+    meta: { requiresAdministrator: true },
     component: () =>
       import('../features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue'),
   },
   {
     path: '/collection-strategy',
     name: 'collection-strategy',
+    meta: { requiresAdministrator: true },
     component: () =>
       import('../features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue'),
   },

@@ -2,9 +2,29 @@ from __future__ import annotations
 
 import runpy
 from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = ROOT / "scripts" / "dev" / "validate_changed.py"
+
+
+@pytest.mark.parametrize("resolved", ["C:/node/npm.cmd", None])
+def test_validation_resolves_platform_executable_before_spawning(monkeypatch, resolved) -> None:
+    """Windows 批处理入口必须先按 PATHEXT 解析，未找到时保留原有错误语义。"""
+    script = runpy.run_path(str(SCRIPT_PATH))
+    lookup = Mock(return_value=resolved)
+    execute = Mock()
+    monkeypatch.setattr(script["shutil"], "which", lookup)
+    monkeypatch.setattr(script["subprocess"], "run", execute)
+
+    script["_execute"]([("npm", "--prefix", "frontend", "run", "lint")])
+
+    lookup.assert_called_once_with("npm")
+    execute.assert_called_once_with(
+        (resolved or "npm", "--prefix", "frontend", "run", "lint"), cwd=ROOT, check=True
+    )
 
 
 def test_local_targeted_validation_does_not_repeat_global_api_and_runs_docs_first() -> None:

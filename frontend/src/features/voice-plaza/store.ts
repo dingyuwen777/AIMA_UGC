@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { defineStore, storeToRefs } from 'pinia'
 
 import type {
@@ -29,6 +29,9 @@ import {
   ContentRelevance as ContentRelevanceValues,
   PlatformName as PlatformNameValues,
 } from '../../generated/api/client'
+import { ownsPrincipalFilters } from '../../shared/api/principalScope'
+import { useContentRevisionStore } from '../../shared/api/contentRevision'
+import { useIdentityStore } from '../identity/store'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
 import { createClientIdempotencyKey } from '../../shared/idempotency'
 import { useVehicleCatalogStore } from '../../shared/domain/vehicleCatalog'
@@ -227,7 +230,7 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     legacyLabelCompatibility: null,
     legacyVehicleCompatibility: null,
   }
-  if (typeof sessionStorage === 'undefined') return fallback
+  if (typeof sessionStorage === 'undefined' || !ownsPrincipalFilters()) return fallback
   try {
     const parsed = JSON.parse(sessionStorage.getItem(FILTER_SESSION_KEY) ?? 'null') as unknown
     if (!parsed || typeof parsed !== 'object') return fallback
@@ -337,6 +340,8 @@ function errorMessage(error: unknown): string {
 }
 
 export const useVoicePlazaStore = defineStore('voice-plaza', () => {
+  const identity = useIdentityStore()
+  const contentRevision = useContentRevisionStore()
   const taskCenter = useTaskCenterStore()
   const { analysisRuns, hasActiveAnalysisRuns, cancellingAnalysisRunId } = storeToRefs(taskCenter)
   const vehicleCatalog = useVehicleCatalogStore()
@@ -415,6 +420,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
 
   /** 仅跟进本页创建的补采，复用 Collection Run 状态，不维护第二份任务列表。 */
   function trackSupplement(runId: string): void {
+    if (!identity.isAdministrator) return
     supplementRunIds.add(runId)
     lastSupplementPollAt = 0
   }
@@ -427,7 +433,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
 
   /** 终态重新读取服务器窗口；详情与评论失败时保留跟进以便重试。 */
   async function pollSupplements(): Promise<void> {
-    if (supplementPolling || !supplementRunIds.size || pageIsHidden()
+    if (!identity.isAdministrator || supplementPolling || !supplementRunIds.size || pageIsHidden()
       || Date.now() - lastSupplementPollAt < 5000) return
     const revision = pollRevision
     supplementPolling = true
@@ -448,10 +454,11 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       terminal.forEach((runId) => supplementRunIds.delete(runId))
     } catch (reason) {
       if (revision === pollRevision) error.value = errorMessage(reason)
-    } finally { supplementPolling = false }
+    } finally { if (revision === pollRevision) supplementPolling = false }
   }
   let lastExportPollAt = 0
   let lastFilterOptionsPollAt = 0
+  let displayedContentRevision: string | null = null
   let displayedAnalysisSignature = '[]'
   const listPageCache = new Map<string, { page: ContentListResponse, cachedAt: number }>()
   let nextPagePrefetch: {
@@ -459,7 +466,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     cursor: string
     promise: Promise<ContentListResponse | null>
   } | null = null
-  const analysisSignature = computed(() => JSON.stringify(analysisRuns.value.map((run) => [
+  const analysisSignature = computed(() => JSON.stringify((identity.isAdministrator ? analysisRuns.value : []).map((run) => [
     run.id, run.status, run.stats?.succeeded, run.stats?.failed, run.stats?.stale,
     run.stats?.cancelled,
   ]).sort(([left], [right]) => String(left).localeCompare(String(right)))))
@@ -516,7 +523,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
 
   /** 保存已应用条件而不是输入中的草稿，页面重载后仍从同一查询状态恢复。 */
   function persistAppliedSearch(): void {
-    if (typeof sessionStorage === 'undefined') return
+    if (typeof sessionStorage === 'undefined' || !ownsPrincipalFilters()) return
     try {
       sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify({
         filters: copyFilters(appliedFilters),
@@ -728,6 +735,7 @@ async function refreshLoadedWindow(): Promise<boolean> {
     let pageNext: string | null = null
     while (true) {
       const page = await fetchContents(listParams(cursor))
+      if (revision !== listRevision || filtersAtStart !== JSON.stringify(listParams())) return false
       for (const item of page.items) {
         if (seenIds.has(item.id)) continue
         seenIds.add(item.id)
@@ -753,16 +761,19 @@ async function refreshLoadedWindow(): Promise<boolean> {
     error.value = message
     return false
   } finally {
-    windowRefreshInFlight = false
+    if (revision === listRevision) windowRefreshInFlight = false
   }
 }
 
 async function refreshAnalysisCapabilities(): Promise<void> {
+    if (!identity.isAdministrator) return
+    const epoch = identity.scopeEpoch
     try {
       const capability = await fetchContentAnalysisCapabilities()
+      if (epoch !== identity.scopeEpoch) return
       analysisConfigured.value = capability.configured
     } catch (reason) {
-      error.value = errorMessage(reason)
+      if (epoch === identity.scopeEpoch) error.value = errorMessage(reason)
     }
   }
 
@@ -815,6 +826,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       const prefetched = nextPagePrefetch?.revision === revision && nextPagePrefetch.cursor === cursor
         ? await nextPagePrefetch.promise
         : null
+      if (revision !== listRevision) return
       nextPagePrefetch = null
       const page = prefetched ?? await fetchContents(listParams(cursor))
       if (revision !== listRevision) return
@@ -1054,22 +1066,25 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     contentIds: string[],
     decision: ContentRelevanceReviewRequestDecision,
   ): Promise<ContentRelevanceReviewResponse | null> {
-    if (contentIds.length === 0 || reviewingRelevance.value) return null
+    if (!identity.isAdministrator || contentIds.length === 0 || reviewingRelevance.value) return null
     reviewingRelevance.value = true
     error.value = null
+    const epoch = identity.scopeEpoch
     try {
       const result = await submitContentRelevanceReview({
         content_ids: [...contentIds],
         decision,
       })
+      if (epoch !== identity.scopeEpoch) return null
       selectedIds.value = selectedIds.value.filter((id) => !contentIds.includes(id))
       await refreshLoadedWindow()
       return result
     } catch (reason) {
+      if (epoch !== identity.scopeEpoch) return null
       error.value = errorMessage(reason)
       return null
     } finally {
-      reviewingRelevance.value = false
+      if (epoch === identity.scopeEpoch) reviewingRelevance.value = false
     }
   }
 
@@ -1078,23 +1093,29 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     vehicleModelIds: string[],
     unlockExisting: boolean,
   ): Promise<boolean> {
-    if (!detail.value || reviewingDetail.value) return false
+    if (!identity.isAdministrator || !detail.value || reviewingDetail.value) return false
+    const target = detail.value
     reviewingDetail.value = true
     error.value = null
+    const epoch = identity.scopeEpoch
     try {
-      await reviewVehicles(detail.value.id, {
-        content_version: detail.value.content_version,
+      await reviewVehicles(target.id, {
+        content_version: target.content_version,
         vehicle_model_ids: vehicleModelIds,
         unlock_existing: unlockExisting,
       })
-      detail.value = await fetchContentDetail(detail.value.id)
+      if (epoch !== identity.scopeEpoch) return false
+      const refreshed = await fetchContentDetail(target.id)
+      if (epoch !== identity.scopeEpoch || detailId.value !== target.id) return false
+      detail.value = refreshed
       await refreshLoadedWindow()
       return true
     } catch (reason) {
+      if (epoch !== identity.scopeEpoch) return false
       error.value = errorMessage(reason)
       return false
     } finally {
-      reviewingDetail.value = false
+      if (epoch === identity.scopeEpoch) reviewingDetail.value = false
     }
   }
 
@@ -1102,29 +1123,36 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   async function reviewDetailAnalysis(
     request: Omit<ContentAnalysisManualReviewRequest, 'content_version'>,
   ): Promise<boolean> {
-    if (!detail.value || reviewingDetail.value) return false
+    if (!identity.isAdministrator || !detail.value || reviewingDetail.value) return false
+    const target = detail.value
     reviewingDetail.value = true
     error.value = null
+    const epoch = identity.scopeEpoch
     try {
-      await reviewAnalysis(detail.value.id, {
+      await reviewAnalysis(target.id, {
         ...request,
-        content_version: detail.value.content_version,
+        content_version: target.content_version,
       })
-      detail.value = await fetchContentDetail(detail.value.id)
+      if (epoch !== identity.scopeEpoch) return false
+      const refreshed = await fetchContentDetail(target.id)
+      if (epoch !== identity.scopeEpoch || detailId.value !== target.id) return false
+      detail.value = refreshed
       await refreshLoadedWindow()
       await refreshFilterOptions()
       return true
     } catch (reason) {
+      if (epoch !== identity.scopeEpoch) return false
       error.value = errorMessage(reason)
       return false
     } finally {
-      reviewingDetail.value = false
+      if (epoch === identity.scopeEpoch) reviewingDetail.value = false
     }
   }
 
   async function previewAnalysis(
     scope: AnalysisScope,
   ): Promise<AnalysisContentRunPreviewResponse | null> {
+    if (!identity.isAdministrator) return null
     const revision = ++analysisPreviewRevision
     analysisDraft = null
     analysisPreview.value = null
@@ -1164,11 +1192,12 @@ async function refreshAnalysisCapabilities(): Promise<void> {
 
   /** 确认创建 Run；409 表示确认基线已失效，自动刷新 Preview 但不自动扩大任务。 */
   async function confirmAnalysis(): Promise<number | null> {
-    if (!analysisDraft || !analysisPreview.value || previewingAnalysis.value || submittingAnalysis.value) return null
+    if (!identity.isAdministrator || !analysisDraft || !analysisPreview.value || previewingAnalysis.value || submittingAnalysis.value) return null
     const draft = analysisDraft
     const preview = analysisPreview.value
     submittingAnalysis.value = true
     error.value = null
+    const epoch = identity.scopeEpoch
     try {
       const created = await submitAnalysisRun({
         client_idempotency_key: draft.clientIdempotencyKey,
@@ -1177,11 +1206,15 @@ async function refreshAnalysisCapabilities(): Promise<void> {
         run_intent: 'manual_reanalysis',
         targets: draft.targets,
       })
+      if (epoch !== identity.scopeEpoch) return null
       await refreshAnalysisRuns(true)
+      if (epoch !== identity.scopeEpoch) return null
       analysisDraft = null
       analysisPreview.value = null
       return created.target_count
     } catch (reason) {
+      if (epoch !== identity.scopeEpoch) return null
+
       if (analysisDraft !== draft) return null
       const message = errorMessage(reason)
       if (reason instanceof VoicePlazaApiError && reason.status === 409) {
@@ -1194,16 +1227,18 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       }
       return null
     } finally {
-      submittingAnalysis.value = false
+      if (epoch === identity.scopeEpoch) submittingAnalysis.value = false
     }
   }
 
   async function refreshAnalysisRuns(afterCreation = false): Promise<void> {
+    if (!identity.isAdministrator) return
     await taskCenter.refreshAnalysisRuns(afterCreation)
-    if (taskCenter.analysisError) error.value = taskCenter.analysisError
+    if (identity.isAdministrator && taskCenter.analysisError) error.value = taskCenter.analysisError
   }
 
   async function cancelRun(runId: string): Promise<boolean> {
+    if (!identity.isAdministrator) return false
     error.value = null
     const cancelled = await taskCenter.cancelAnalysisRun(runId)
     if (!cancelled && taskCenter.warning) error.value = taskCenter.warning
@@ -1213,6 +1248,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
   async function refreshExports(): Promise<void> {
     if (exportsRefreshInFlight) return
     exportsRefreshInFlight = true
+    const epoch = identity.scopeEpoch
     try {
       const [response, catalog] = await Promise.all([
         fetchDataExports(),
@@ -1220,12 +1256,14 @@ async function refreshAnalysisCapabilities(): Promise<void> {
           ? Promise.resolve(exportColumnCatalog.value)
           : fetchExportColumnCatalog(),
       ])
+      if (epoch !== identity.scopeEpoch) return
       exports.value = response.items
       exportColumnCatalog.value = catalog
     } catch (reason) {
+      if (epoch !== identity.scopeEpoch) return
       error.value = errorMessage(reason)
     } finally {
-      exportsRefreshInFlight = false
+      if (epoch === identity.scopeEpoch) exportsRefreshInFlight = false
     }
   }
 
@@ -1237,27 +1275,34 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     if ((scope === 'page' || scope === 'query') && items.value.length === 0) return null
     submittingExport.value = true
     error.value = null
+    const epoch = identity.scopeEpoch
     try {
       const targets = scope === 'page'
         ? { scope: 'selected' as const, content_ids: items.value.map((item) => item.id) }
         : targetSelection(scope)
       const created = await submitDataExport({ targets, format: 'xlsx', columns })
+      if (epoch !== identity.scopeEpoch) return null
       const record = await fetchDataExport(created.export_id)
+      if (epoch !== identity.scopeEpoch) return null
       exports.value = [record, ...exports.value.filter((item) => item.id !== record.id)]
       return created.target_count
     } catch (reason) {
+      if (epoch !== identity.scopeEpoch) return null
       error.value = errorMessage(reason)
       return null
     } finally {
-      submittingExport.value = false
+      if (epoch === identity.scopeEpoch) submittingExport.value = false
     }
   }
 
   async function downloadExport(exportId: string): Promise<Blob | null> {
     error.value = null
+    const epoch = identity.scopeEpoch
     try {
-      return await fetchDataExportFile(exportId)
+      const blob = await fetchDataExportFile(exportId)
+      return epoch === identity.scopeEpoch ? blob : null
     } catch (reason) {
+      if (epoch !== identity.scopeEpoch) return null
       error.value = errorMessage(reason)
       return null
     }
@@ -1287,8 +1332,11 @@ async function refreshAnalysisCapabilities(): Promise<void> {
 
   /** 先读落库进度再刷新内容；慢窗口未包含的新进度留到下一次，终态也不丢刷新。 */
   async function poll(): Promise<void> {
-    if (pageIsHidden()) return
+    if (!identity.principal || pageIsHidden()) return
     const revision = pollRevision
+    await contentRevision.refresh()
+    if (revision !== pollRevision || pageIsHidden()) return
+    const observedContentRevision = contentRevision.revision
     if (hasActiveExportJobs.value && Date.now() - lastExportPollAt >= 5000) {
       lastExportPollAt = Date.now()
       void refreshExports()
@@ -1301,17 +1349,23 @@ async function refreshAnalysisCapabilities(): Promise<void> {
       lastFilterOptionsPollAt = Date.now()
       void refreshFilterOptions()
     }
-    await taskCenter.pollAnalysisRuns()
+    if (identity.isAdministrator) await taskCenter.pollAnalysisRuns()
     if (revision !== pollRevision || pageIsHidden()) return
     await pollSupplements()
     if (revision !== pollRevision || pageIsHidden()) return
     const signature = analysisSignature.value
-    if (signature !== displayedAnalysisSignature && !loading.value && !loadingNext.value &&
+    // 首次修订也要追赶；与管理员运行变化合并，单次轮询最多刷新一个已加载窗口。
+    const contentChanged = observedContentRevision !== null && observedContentRevision !== displayedContentRevision
+    if ((contentChanged || signature !== displayedAnalysisSignature) && !loading.value && !loadingNext.value &&
       !filterOptionsLoading.value && await refreshLoadedWindow()) {
+      if (revision !== pollRevision) return
       await refreshFilterOptions()
+      if (revision !== pollRevision) return
+      void refreshCount('estimated')
+      displayedContentRevision = observedContentRevision
       displayedAnalysisSignature = signature
     }
-    if (taskCenter.analysisError) error.value = taskCenter.analysisError
+    if (identity.isAdministrator && taskCenter.analysisError) error.value = taskCenter.analysisError
   }
 
   function pageIsHidden(): boolean {
@@ -1333,6 +1387,57 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     if (pollHandle !== undefined) clearInterval(pollHandle)
     pollHandle = undefined
   }
+
+  /** 账号切换先失效每条在途链，再清空列表、详情、选择、导出和管理状态。 */
+  watch(() => identity.scopeEpoch, () => {
+    stopPolling()
+    listRevision += 1
+    taxonomyRevision += 1
+    filterOptionsRevision += 1
+    analysisPreviewRevision += 1
+    cancelCount()
+    closeDetail()
+    const saved = readPersistedSearch()
+    Object.assign(filters, copyFilters(saved.filters))
+    Object.assign(appliedFilters, copyFilters(saved.filters))
+    sortBy.value = saved.sortBy
+    sortDirection.value = saved.sortDirection
+    legacyLabelCompatibility.value = saved.legacyLabelCompatibility
+    items.value = []
+    selectedIds.value = []
+    nextCursor.value = null
+    hasMore.value = false
+    exports.value = []
+    analysisPreview.value = null
+    analysisDraft = null
+    analysisConfigured.value = null
+    taxonomy.value = null
+    taxonomyLoading.value = false
+    taxonomyError.value = null
+    filterOptions.value = null
+    filterOptionsLoading.value = false
+    filterOptionsError.value = null
+    exportColumnCatalog.value = null
+    contentCount.value = null
+    countError.value = null
+    error.value = null
+    listError.value = null
+    loading.value = false
+    loadingNext.value = false
+    loadingDetail.value = false
+    submittingAnalysis.value = false
+    previewingAnalysis.value = false
+    submittingExport.value = false
+    reviewingRelevance.value = false
+    reviewingDetail.value = false
+    windowRefreshInFlight = false
+    exportsRefreshInFlight = false
+    supplementPolling = false
+    displayedAnalysisSignature = '[]'
+    displayedContentRevision = null
+    listPageCache.clear()
+    nextPagePrefetch = null
+  }, { flush: 'sync' })
 
   return {
     filters,
@@ -1389,6 +1494,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     listError,
     refresh,
     refreshResults,
+    refreshLoadedWindow,
     refreshAnalysisCapabilities,
     refreshTaxonomy,
     refreshFilterOptions,

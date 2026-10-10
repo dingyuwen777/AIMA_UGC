@@ -12,6 +12,7 @@ const props = defineProps<{
   contentType: string
   originalUrl?: string | null
   open: boolean
+  canRecover: boolean
 }>()
 const emit = defineEmits<{ terminal: [] }>()
 const grid = ref<HTMLElement | null>(null)
@@ -95,6 +96,7 @@ watch(() => [props.contentId, props.media.map((entry) => `${entry.position}:${en
             :media="entry"
             :original-url="originalUrl"
             :active="open && activeIndex === index"
+            :can-recover="canRecover"
             @terminal="emit('terminal')"
           />
           <a

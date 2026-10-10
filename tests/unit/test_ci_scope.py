@@ -275,7 +275,7 @@ def test_real_criss_cross_merge_bases_and_unrelated_histories_fail_closed(tmp_pa
 def test_template_validator_uses_production_identity_validation_without_secret_echo(
     tmp_path: Path,
 ) -> None:
-    """非法 Connector JSON 必须由生产 Settings 拒绝，错误不得回显其值。"""
+    """非法 Connector 输入必须由正式启动解析拒绝，错误不得回显其值。"""
     validator = runpy.run_path(str(ROOT / "scripts/quality/check_env_templates.py"))
     for name in (
         "env.local.example",
@@ -287,8 +287,12 @@ def test_template_validator_uses_production_identity_validation_without_secret_e
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / name, target)
     template = tmp_path / "env.local.example"
-    text = template.read_text(encoding="utf-8").replace(
-        "AIMA_FEISHU_CONNECTORS=\n", "AIMA_FEISHU_CONNECTORS=invalid-private-marker\n"
+    text = template.read_text(encoding="utf-8")
+    raw = validator["parse_template"](text, template.name, preserve_syntax=True)[
+        "AIMA_FEISHU_CONNECTORS"
+    ]
+    text = text.replace(
+        f"AIMA_FEISHU_CONNECTORS={raw}", "AIMA_FEISHU_CONNECTORS=invalid-private-marker"
     )
     template.write_text(text, encoding="utf-8")
     with pytest.raises(ValueError, match="PlatformSettings") as failure:

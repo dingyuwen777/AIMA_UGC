@@ -785,6 +785,7 @@ def _smoke_env(
             "AIMA_DOCKER_SUBNET": subnet,
             "AIMA_DOCKER_GATEWAY": gateway,
             "AIMA_TIKHUB_ENABLED": "false",
+            "AIMA_IDENTITY_MODE": "development",
         },
         drop_keys=DISABLED_SMOKE_RUNTIME_KEYS,
     )

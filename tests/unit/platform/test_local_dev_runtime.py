@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -72,6 +73,36 @@ def test_local_config_keeps_optional_features_disabled_when_blank(tmp_path: Path
     assert config.llm_configured is False
     assert config.llm_partially_configured is False
     assert config.scheduler_enabled is False
+
+
+def test_feishu_inline_credentials_are_materialized_per_application(tmp_path: Path) -> None:
+    """同企业不同应用仍各自落盘，业务子进程和配置 repr 不携带凭据。"""
+    connectors = [
+        {
+            "code": code,
+            "display_name": "同一企业",
+            "app_id": f"cli_{code}",
+            "app_secret": f"fixture-{code}-credential",
+            "admin_group_id": "admin",
+            "user_group_id": "user",
+            "redirect_uri": f"http://127.0.0.1:5173/api/v1/auth/feishu/{code}/callback",
+        }
+        for code in ("first", "second")
+    ]
+    path = tmp_path / "env.local"
+    path.write_text(
+        "AIMA_FEISHU_CONNECTORS='" + json.dumps(connectors, indent=2) + "'", encoding="utf-8"
+    )
+    config = load_local_dev_config(path)
+    paths = runtime_paths(tmp_path)
+    environment = build_runtime_environment(paths=paths, config=config)
+    for code in ("first", "second"):
+        secret = f"fixture-{code}-credential"
+        assert (paths.external_secrets / f"feishu_{code}_secret").read_text().strip() == secret
+        assert secret not in repr(config)
+        assert secret not in repr(environment)
+    runtime = json.loads(environment["AIMA_FEISHU_CONNECTORS"])
+    assert all("app_secret" not in item for item in runtime)
 
 
 def test_local_config_marks_partial_llm_without_failing_base_runtime(tmp_path: Path) -> None:
@@ -326,3 +357,15 @@ def test_env_parser_rejects_non_assignment_line(tmp_path: Path) -> None:
         assert "KEY=value" in str(exc)
     else:
         raise AssertionError("invalid env.local line must fail")
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["AIMA_FEISHU_ADMIN_GROUP_ID", "AIMA_FEISHU_USER_GROUP_ID", "AIMA_FEISHU_REDIRECT_URI"],
+)
+def test_local_config_rejects_removed_login_variables(tmp_path: Path, name: str) -> None:
+    """源码入口不能忽略旧登录配置后继续使用开发身份。"""
+    path = tmp_path / "env.local"
+    path.write_text(f"{name}=obsolete\n", encoding="utf-8")
+    with pytest.raises(LocalDevError, match="AIMA_FEISHU_CONNECTORS"):
+        load_local_dev_config(path)

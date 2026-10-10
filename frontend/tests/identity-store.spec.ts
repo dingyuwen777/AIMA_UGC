@@ -1,3 +1,4 @@
+import { setTestPrincipal } from './rolePrincipal'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -5,6 +6,7 @@ const generated = vi.hoisted(() => ({
   getCurrentPrincipal: vi.fn(),
   listNotifications: vi.fn(),
   markNotificationsRead: vi.fn(),
+  logoutCurrentSession: vi.fn(),
 }))
 
 vi.mock('../src/generated/api/client', () => generated)
@@ -49,6 +51,7 @@ describe('identity and principal inbox', () => {
       .mockResolvedValueOnce({ items: [{ ...notification, is_read: true }], unread_count: 0 })
     generated.markNotificationsRead.mockResolvedValue({ requested_count: 1, changed_count: 1 })
     const store = useIdentityStore()
+    setTestPrincipal()
 
     await store.refreshNotifications()
     await store.markRead(['01991f80-6d5d-7dc8-95cb-c67c12345678'])
@@ -89,6 +92,7 @@ describe('identity and principal inbox', () => {
       .mockRejectedValueOnce(new Error('notifications unavailable'))
       .mockResolvedValueOnce({ items: [], unread_count: 0 })
     const store = useIdentityStore()
+    setTestPrincipal()
 
     await store.refreshNotifications()
     expect(store.notificationError).toContain('notifications unavailable')
@@ -97,5 +101,33 @@ describe('identity and principal inbox', () => {
     await store.refreshNotifications()
     expect(store.notificationError).toBeNull()
     expect(generated.listNotifications).toHaveBeenCalledTimes(2)
+  })
+
+  it('登出后迟到身份读取不能复活旧账号', async () => {
+    let finish!: (principal: unknown) => void
+    generated.getCurrentPrincipal.mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    generated.logoutCurrentSession.mockResolvedValue(undefined)
+    const store = useIdentityStore()
+    const pending = store.revalidatePrincipal()
+    await store.logout()
+    finish({ principal_id: 'old-A', display_name: 'A', role: 'administrator', source: 'development' })
+    await pending
+    expect(store.principal).toBeNull()
+    expect(store.outcome).toBe('unauthenticated')
+  })
+
+  it('跨标签页复核换账号立即清除通知，旧账号通知不得覆盖新账号', async () => {
+    setTestPrincipal('user', 'A')
+    let finish!: (response: unknown) => void
+    generated.listNotifications.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const store = useIdentityStore()
+    const oldNotifications = store.refreshNotifications()
+    generated.getCurrentPrincipal.mockResolvedValue({ principal_id: 'B', display_name: 'B', role: 'user', source: 'development' })
+    await store.revalidatePrincipal()
+    finish({ items: [{ id: 'A-only' }], unread_count: 1 })
+    await oldNotifications
+    expect(store.principal?.principal_id).toBe('B')
+    expect(store.notifications).toEqual([])
+    expect(store.unreadCount).toBe(0)
   })
 })

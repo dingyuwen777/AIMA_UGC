@@ -1,3 +1,4 @@
+import { setTestPrincipal } from './rolePrincipal'
 import { createPinia, type Pinia } from 'pinia'
 import { createSSRApp, h, type Component } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -74,9 +75,10 @@ async function renderComponent(
   props: Record<string, unknown> = {},
   prepare?: (pinia: Pinia) => void,
 ): Promise<string> {
-  const app = createSSRApp({ render: () => h(component, props) })
+  const app = createSSRApp({ render: () => h(component, { isAdministrator: true, ...props }) })
   const pinia = createPinia()
   app.use(pinia)
+  setTestPrincipal('administrator', 'design-admin', pinia)
   prepare?.(pinia)
   const router = createRouter({
     history: createMemoryHistory(),

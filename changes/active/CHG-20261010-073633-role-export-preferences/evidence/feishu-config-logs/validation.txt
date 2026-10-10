@@ -1,0 +1,633 @@
+Preflight profile=full; changed_count=18
+- backend/src/aima_ugc/platform/config/settings.py
+- changes/active/CHG-20261010-073633-role-export-preferences/CHANGE.md
+- compose.windows.yaml
+- compose.yaml
+- docs/02_环境运行与部署.md
+- docs/blueprint/05_日志安全部署与运维.md
+- docs/operations/06_飞书身份接入配置手册.md
+- env.local.example
+- env.production.example
+- scripts/deploy/prepare_host.py
+- scripts/dev/local_runtime.py
+- scripts/quality/check_env_templates.py
+- tests/unit/platform/test_local_dev_runtime.py
+- tests/unit/test_ci_scope.py
+- tests/unit/test_env_compose_config_contract.py
+- tests/unit/test_release_bundle.py
+- backend/src/aima_ugc/bootstrap/feishu_config_input.py
+- tests/unit/platform/test_feishu_config_input.py
+Optional fix before validation:
+  uv run ruff format backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+  uv run python scripts/contracts/generate.py
+  npm --prefix frontend run generate:api
+Local validation:
+  uv run python scripts/quality/check_docs.py
+  uv run python scripts/quality/scan_secrets.py
+  uv run python scripts/quality/check_docs_facts.py
+  uv run python scripts/quality/check_agent_governance.py
+  uv run python scripts/quality/check_env_templates.py
+  uv run pytest tests/unit/test_env_compose_config_contract.py tests/unit/identity/test_settings_multi_connector.py tests/unit/test_release_bundle.py -q
+  uv run ruff format --check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+  uv run ruff check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+  uv run mypy backend/src
+  uv run pytest tests/unit tests/contracts tests/api -q
+  uv run python scripts/contracts/generate.py --check
+  uv run python scripts/contracts/check_compatibility.py
+  npm --prefix frontend run lint
+  npm --prefix frontend run test -- --run
+  npm --prefix frontend run build
+  npm --prefix frontend run test:e2e
+Deferred to formal CI:
+  - PostgreSQL Integration
+  - Real Full-stack Golden Path
++ uv run python scripts/quality/check_docs.py
+当前项目文档入口、链接、治理边界与仓库文件导航检查通过。
++ uv run python scripts/quality/scan_secrets.py
+源码、Provider 证据、Agent 规则、Change 与文档 Secret 扫描通过。
++ uv run python scripts/quality/check_docs_facts.py
+当前权威文档与 OpenAPI、Schema、Job、Workflow、Route、模块、Provider、版本、Analysis、Release 和 Roadmap 生命周期机器事实一致。
++ uv run python scripts/quality/check_agent_governance.py
+AIMA 项目治理入口、generated projection 与 CI 接线检查通过。
++ uv run python scripts/quality/check_env_templates.py
+配置模板静态/运行配置与适用消费者检查通过。
++ uv run pytest tests/unit/test_env_compose_config_contract.py tests/unit/identity/test_settings_multi_connector.py tests/unit/test_release_bundle.py -q
+.................................s.............                          [100%]
+46 passed, 1 skipped in 2.47s
++ uv run ruff format --check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+10 files already formatted
++ uv run ruff check backend/src/aima_ugc/platform/config/settings.py scripts/deploy/prepare_host.py scripts/dev/local_runtime.py scripts/quality/check_env_templates.py tests/unit/platform/test_local_dev_runtime.py tests/unit/test_ci_scope.py tests/unit/test_env_compose_config_contract.py tests/unit/test_release_bundle.py backend/src/aima_ugc/bootstrap/feishu_config_input.py tests/unit/platform/test_feishu_config_input.py
+All checks passed!
++ uv run mypy backend/src
+Success: no issues found in 480 source files
++ uv run pytest tests/unit tests/contracts tests/api -q
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+........................................................................ [ 29%]
+........................................................................ [ 32%]
+........................................................................ [ 35%]
+........................................................................ [ 37%]
+........................................................................ [ 40%]
+........................................................................ [ 43%]
+........................................................................ [ 45%]
+......................s................................................. [ 48%]
+........................................................................ [ 51%]
+....................................................................ssss [ 53%]
+ss.....................................................sss.............. [ 56%]
+..s.................................................ss.................. [ 59%]
+........ssss......s................................................................................................................. [ 64%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 75%]
+......ssss.............................................................. [ 77%]
+........................................................................ [ 80%]
+........................................................................ [ 83%]
+........................................................................ [ 85%]
+........................................................................ [ 88%]
+........................................................................ [ 91%]
+........................................................................ [ 94%]
+........................................................................ [ 96%]
+........................................................................ [ 99%]
+...............                                                          [100%]
+============================== warnings summary ===============================
+.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: 110 warnings
+tests/unit/content/test_content_playback_http.py: 2 warnings
+tests/unit/contracts/test_product_resource_lifecycle_openapi.py: 198 warnings
+tests/unit/identity/test_feishu_auth_http.py: 192 warnings
+tests/contracts/test_openapi.py: 192 warnings
+tests/contracts/test_stage8b_http.py: 384 warnings
+tests/contracts/test_stage8c_http.py: 192 warnings
+tests/contracts/test_stage8d_http.py: 180 warnings
+tests/contracts/test_stage8e_http.py: 1260 warnings
+tests/contracts/test_stage8f_http.py: 540 warnings
+tests/api/test_brand_vehicle_stage2_contract.py: 768 warnings
+tests/api/test_canonical_replay.py: 180 warnings
+tests/api/test_feishu_publication.py: 180 warnings
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: PydanticDeprecatedSince20: `json_encoders` is deprecated. See https://docs.pydantic.dev/2.13/concepts/serialization/#custom-serializers for alternatives. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    warnings.warn(
+
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/unit/ingestion/test_xlsx_security.py::test_duplicate_xlsx_member_is_rejected
+  C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\zipfile\__init__.py:1730: UserWarning: Duplicate name: 'xl/workbook.xml'
+    return self._open_to_write(zinfo, force_zip64=force_zip64)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2645 passed, 22 skipped, 4380 warnings, 12 subtests passed in 165.33s (0:02:45)
++ uv run python scripts/contracts/generate.py --check
+OpenAPI、Analysis、Canonical、Provider、Collection 与 Export Contract 已同步。
++ uv run python scripts/contracts/check_compatibility.py
+OpenAPI 基线与 Analysis/Canonical/Provider/Collection/Export Schema 漂移检查通过。
++ npm --prefix frontend run lint
+
+> aima-ugc-frontend@0.1.0 lint
+> eslint . --max-warnings=0
+
++ npm --prefix frontend run test -- --run
+
+> aima-ugc-frontend@0.1.0 test
+> vitest --run
+
+
+ RUN  v4.1.11 D:/test/AIMA_UGC/frontend
+
+
+ Test Files  42 passed (42)
+      Tests  361 passed (361)
+   Start at  12:19:45
+   Duration  4.28s (transform 9.38s, setup 0ms, import 23.13s, tests 3.16s, environment 22ms)
+
++ npm --prefix frontend run build
+
+> aima-ugc-frontend@0.1.0 build
+> npm run typecheck && vite build
+
+
+> aima-ugc-frontend@0.1.0 typecheck
+> npm run typecheck:ts7 && npm run typecheck:vue
+
+
+> aima-ugc-frontend@0.1.0 typecheck:ts7
+> node ./node_modules/@typescript/native/lib/tsc.js --project tsconfig.native.json --noEmit
+
+
+> aima-ugc-frontend@0.1.0 typecheck:vue
+> vue-tsc --noEmit
+
+vite v8.2.1 building client environment for production...
+[2K
+transforming...✓ 870 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                       0.40 kB │ gzip:   0.28 kB
+dist/assets/useCollectionSupplement-B7FfI-UY.css      0.77 kB │ gzip:   0.34 kB
+dist/assets/AimaDrawer-DeedBfnA.css                   1.07 kB │ gzip:   0.52 kB
+dist/assets/AimaPageHeader-DD5myM3k.css               1.23 kB │ gzip:   0.51 kB
+dist/assets/BrandMultiSelect-ka2x9ns3.css             3.41 kB │ gzip:   0.98 kB
+dist/assets/CollectionStrategyPage-CKgsYwJf.css      21.56 kB │ gzip:   4.46 kB
+dist/assets/AdminConfigurationPage-gDs4v5yv.css      29.01 kB │ gzip:   4.69 kB
+dist/assets/CollectionRuntimePage-D6VhocSu.css       43.63 kB │ gzip:   6.19 kB
+dist/assets/VoicePlazaPage-C2PToS1Q.css              47.78 kB │ gzip:   7.92 kB
+dist/assets/index-Dgiq2FD-.css                       59.59 kB │ gzip:  10.58 kB
+dist/assets/AimaPageHeader-rouOCHFb.js                1.61 kB │ gzip:   0.84 kB
+dist/assets/AimaDrawer-Dk0Ma7EQ.js                    4.18 kB │ gzip:   2.13 kB
+dist/assets/BrandMultiSelect-DJGrjPjv.js              6.29 kB │ gzip:   2.70 kB
+dist/assets/useCollectionSupplement-Ct9xW4de.js       7.63 kB │ gzip:   3.44 kB
+dist/assets/CollectionStrategyPage-DYrFsbtA.js       58.19 kB │ gzip:  16.73 kB
+dist/assets/AdminConfigurationPage-B8I2EpTK.js       78.61 kB │ gzip:  23.08 kB
+dist/assets/CollectionRuntimePage-DMwY5vHf.js       110.99 kB │ gzip:  31.51 kB
+dist/assets/VoicePlazaPage-BEgeGOUh.js              114.20 kB │ gzip:  34.06 kB
+dist/assets/index-BnQrOXRy.js                     1,336.56 kB │ gzip: 447.34 kB
+
+✓ built in 944ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
++ npm --prefix frontend run test:e2e
+> aima-ugc-frontend@0.1.0 test:e2e
+> playwright test
+
+[WebServer] (node:13908) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 218 tests using 6 workers
+
+(node:23808) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:9368) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23932) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:31840) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:36408) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:11160) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   4 e2e\admin-configuration-figma.spec.ts:146:3 › collection tests only saved configuration and preserves unsaved input (4.0s)
+  ok   1 e2e\admin-configuration-figma.spec.ts:75:1 › quickly accepts all-history replay planning from the catalog header (4.2s)
+  ok   5 e2e\admin-configuration-figma.spec.ts:111:1 › retries an uncertain all-Canonical request with the same idempotency key (4.7s)
+  ok   2 e2e\admin-configuration-figma.spec.ts:146:3 › llm tests only saved configuration and preserves unsaved input (5.3s)
+  ok   6 e2e\admin-configuration-figma.spec.ts:167:3 › ignores error from a connection test after another configuration is selected (4.7s)
+  ok   3 e2e\admin-configuration-figma.spec.ts:167:3 › ignores success from a connection test after another configuration is selected (5.5s)
+  ok   7 e2e\admin-configuration-figma.spec.ts:190:1 › preserves provider draft on save failure and prevents edits during its submission (3.5s)
+  ok   8 e2e\admin-configuration-figma.spec.ts:216:1 › brand and vehicle create dialogs do not expose internal code controls (3.7s)
+  ok  10 e2e\admin-configuration-figma.spec.ts:303:1 › accepts duplicate-only alias cleanup when editing existing catalog entries (4.0s)
+  ok   9 e2e\admin-configuration-figma.spec.ts:231:1 › deduplicates normalized Brand and Vehicle aliases and reports the saved result (4.6s)
+  ok  12 e2e\admin-configuration-figma.spec.ts:503:1 › keeps Vehicle save explicit and the editor stable while an update is pending (4.4s)
+  ok  11 e2e\admin-configuration-figma.spec.ts:365:1 › updates Brand aliases and creates a Vehicle through the Brand-owned 1:N path (5.2s)
+  ok  13 e2e\admin-configuration-figma.spec.ts:569:1 › keeps the vehicle draft and catalog stable when save fails (3.8s)
+  ok  16 e2e\admin-configuration-figma.spec.ts:652:1 › opens the active analysis rule instead of a newer draft (3.1s)
+  ok  15 e2e\admin-configuration-figma.spec.ts:629:1 › locks the current analysis rule while publishing and keeps its draft after a conflict (3.6s)
+  ok  17 e2e\admin-configuration-figma.spec.ts:683:1 › provider advanced rate limit saves a numeric value and can be cleared (4.0s)
+  ok  14 e2e\admin-configuration-figma.spec.ts:604:1 › keeps the nested vehicle and audit tables reachable at supported desktop widths (5.7s)
+  ok  19 e2e\admin-configuration-figma.spec.ts:741:1 › keeps an in-flight connection test locked after equivalent edits or selection changes (3.5s)
+  ok  21 e2e\admin-configuration-figma.spec.ts:815:1 › keeps the analysis-rule copy editor open while its name is cleared (3.3s)
+  ok  20 e2e\admin-configuration-figma.spec.ts:770:1 › analysis rule must save visible changes before publishing its persisted version (4.1s)
+  ok  23 e2e\admin-configuration-figma.spec.ts:866:1 › retries a provider-directory load failure before enabling an empty configuration form (3.3s)
+  ok  22 e2e\admin-configuration-figma.spec.ts:828:1 › five admin tabs keep their real controls and desktop layouts reachable (4.5s)
+  ok  24 e2e\admin-configuration-figma.spec.ts:886:1 › shows a failed connection result and can test again without losing saved configuration (3.6s)
+  ok  25 e2e\admin-configuration-figma.spec.ts:903:1 › does not warn when an untouched provider configuration switches tabs (2.8s)
+  ok  18 e2e\admin-configuration-figma.spec.ts:709:1 › AI 容量只读自动刷新且不覆盖草稿，保存不提交人工执行字段 (9.8s)
+  ok  27 e2e\admin-configuration-figma.spec.ts:935:1 › guards unsaved brand catalog edits before opening the read-only audit tab (3.9s)
+  ok  28 e2e\admin-configuration-figma.spec.ts:955:1 › guards an edited analysis-rule copy name before switching tabs (3.4s)
+  ok  29 e2e\admin-configuration-figma.spec.ts:971:1 › guards unsaved analysis-rule and report-generation inputs before switching tabs (4.4s)
+  ok  26 e2e\admin-configuration-figma.spec.ts:910:1 › guards unsaved AI model and TikHub drafts before switching tabs (6.7s)
+  ok  31 e2e\admin-configuration-release2.spec.ts:245:1 › admin exposes database reports in the six approved tabs (3.7s)
+  ok  30 e2e\admin-configuration-release2.spec.ts:232:1 › 管理员目录和配置编辑滚动条三状态保持几何 (6.3s)
+  ok  33 e2e\admin-configuration-release2.spec.ts:332:1 › brand catalog follows the 1440 wide geometry and keeps tables locally scrollable (4.0s)
+  ok  35 e2e\admin-configuration-release2.spec.ts:379:1 › 1440 provider and scheme layouts keep fixed readable lists plus flexible editors (3.8s)
+  ok  34 e2e\admin-configuration-release2.spec.ts:356:1 › 1180 compact stacks brand and provider editors instead of overflowing the page (4.8s)
+  ok  36 e2e\admin-configuration-release2.spec.ts:406:1 › analysis rules group versions and archived rules can be removed without cluttering the main list (4.3s)
+  ok  37 e2e\admin-configuration-release2.spec.ts:438:1 › vehicle create and edit use the business vehicle name without exposing category (3.5s)
+  ok  38 e2e\admin-configuration-release2.spec.ts:468:1 › brand creation hides internal code while normal detail keeps it technical (3.4s)
+  ok  39 e2e\admin-configuration-release2.spec.ts:485:1 › audit keeps its 1176px table inside the local viewport with controls outside it (3.1s)
+  ok  32 e2e\admin-configuration-release2.spec.ts:259:1 › database report preflight, polling recovery, downloads and independent publication (11.1s)
+  ok  40 e2e\artifact-retention.spec.ts:118:1 › shows Excel import source retention from terminal Job time when Batch time is absent (4.4s)
+  ok  41 e2e\artifact-retention.spec.ts:164:1 › shows the seven-day Excel export window in the existing export dialog (4.4s)
+  ok  43 e2e\collection-runtime.spec.ts:230:1 › shows canonical replay as one filterable runtime record with aggregate details (3.7s)
+  ok  42 e2e\collection-runtime.spec.ts:184:1 › keeps all runtime columns reachable at compact and wide Figma widths (4.5s)
+  ok  44 e2e\collection-runtime.spec.ts:287:1 › confirms cancel and revoke from the canonical replay modal (3.7s)
+  ok  45 e2e\collection-runtime.spec.ts:320:1 › shows returned conflict fields separately from conflicting row totals (4.2s)
+  ok  46 e2e\collection-runtime.spec.ts:343:1 › confirms a Beijing date range before applying the runtime query (4.0s)
+  ok  48 e2e\collection-runtime.spec.ts:402:1 › shows unavailable revocation evidence without offering a destructive action (3.9s)
+  ok  49 e2e\collection-runtime.spec.ts:414:1 › creates an all-active-brand Excel import and a selected-brand discovery Run (3.8s)
+  ok  47 e2e\collection-runtime.spec.ts:360:1 › previews revocation, respects confirmation cancellation, and recovers from a failed submission (4.7s)
+  ok  50 e2e\collection-runtime.spec.ts:445:1 › centralizes runtime facts, opens Batch detail, and creates a local Campaign with all-active brands (4.7s)
+  ok  51 e2e\collection-runtime.spec.ts:478:1 › creates a one-time TikHub discovery Run from multiple Keyword Packs (5.4s)
+  ok  53 e2e\collection-runtime.spec.ts:561:1 › creates a date supplement in the centered import-style modal (4.9s)
+  ok  56 e2e\collection-runtime.spec.ts:624:1 › shows a Data Import Campaign without a synthetic Job and opens its persisted detail (4.2s)
+  ok  52 e2e\collection-runtime.spec.ts:504:1 › validates five-platform account targets and confirms fees without a paid preview (6.6s)
+  ok  54 e2e\collection-runtime.spec.ts:582:1 › submits all five date-eligible platforms with optional replies (6.3s)
+  ok  55 e2e\collection-runtime.spec.ts:605:1 › retains valid selections across date refresh and removes unavailable ones (6.2s)
+  ok  58 e2e\collection-runtime.spec.ts:692:1 › explains failed Import terminal state without inventing pending stages (3.5s)
+  ok  57 e2e\collection-runtime.spec.ts:665:1 › shows date eligibility errors, empty results and resets on reopen (4.3s)
+  ok  60 e2e\collection-runtime.spec.ts:786:1 › shows frozen account dates and confirms retry before using the shared run actions (3.8s)
+  ok  61 e2e\collection-runtime.spec.ts:829:1 › keeps unified Error Contract technical ids out of the product list error state (4.3s)
+  ok  59 e2e\collection-runtime.spec.ts:703:1 › shows a safe actionable error when the Worker cannot read the Provider Secret (5.2s)
+  ok  62 e2e\collection-strategy-figma-geometry.spec.ts:146:1 › matches the formal 1440×900 Figma geometry for the strategy workspace (5.7s)
+  ok  63 e2e\collection-strategy-figma-geometry.spec.ts:167:1 › matches the keyword modal and approved TikHub plan modal geometry (4.7s)
+  ok  65 e2e\collection-strategy-figma-geometry.spec.ts:221:1 › keeps compact strategy panels inside the workspace and long keywords inside their card (3.1s)
+  ok  64 e2e\collection-strategy-figma-geometry.spec.ts:206:1 › removes the global relevance entry and matches the formal plan detail drawer geometry (4.8s)
+  ok  66 e2e\collection-strategy-figma-geometry.spec.ts:231:1 › preserves keyword pack edit and add drafts after rejected requests (4.6s)
+  ok  67 e2e\collection-strategy-figma-geometry.spec.ts:254:1 › edits a 1-member existing pack in the shared dialog without changing original attributes (5.7s)
+  ok  69 e2e\collection-strategy-figma-geometry.spec.ts:286:1 › opens complete current pack details from plan references and returns to the plan (4.8s)
+  ok  70 e2e\collection-strategy-figma-geometry.spec.ts:323:1 › supports Escape and returns keyboard focus for every strategy overlay (5.5s)
+  ok  71 e2e\collection-strategy-figma-geometry.spec.ts:344:1 › edits the selected plan through the shared TikHub modal and preserves its identity (6.1s)
+  ok  73 e2e\collection-strategy-figma-geometry.spec.ts:393:1 › keeps keyword edits and creation inputs visible after server validation fails (4.5s)
+  ok  74 e2e\collection-strategy-figma-projection.spec.ts:70:1 › uses the current Figma business projection without leaking Provider details (3.8s)
+  ok  72 e2e\collection-strategy-figma-geometry.spec.ts:375:1 › keeps long plan names and filters readable across supported desktop widths (6.7s)
+  ok  75 e2e\collection-strategy-figma-projection.spec.ts:93:1 › wraps the keyword detail card below the list at the compact 1180 viewport (3.6s)
+  ok  77 e2e\collection-strategy.spec.ts:162:1 › removes the global relevance entry and still protects Keyword Packs used by plans (3.5s)
+  ok  76 e2e\collection-strategy.spec.ts:119:1 › matches the approved Figma workspace and resolves the current Brand filter from the API catalog (4.8s)
+  ok  78 e2e\collection-strategy.spec.ts:173:1 › copies a plan in one click, retries duplicate names, and keeps the source detail open (4.0s)
+  ok  79 e2e\collection-strategy.spec.ts:204:1 › uses product confirmation for archive and permanent delete flows (4.2s)
+  ok  68 e2e\collection-strategy-figma-geometry.spec.ts:254:1 › edits a 501-member existing pack in the shared dialog without changing original attributes (14.6s)
+  ok  80 e2e\collection-strategy.spec.ts:246:1 › creates a periodic Collection Plan with paginated active Brand filtering and no new vehicle scope (6.3s)
+  ok  82 e2e\collection-strategy.spec.ts:360:1 › cancelling TikHub creation makes no write request and restores trigger focus (4.4s)
+  ok  81 e2e\collection-strategy.spec.ts:301:1 › retains a full-mode draft after failure, prevents pending duplicates, and refreshes saved results (6.0s)
+  ok  83 e2e\collection-strategy.spec.ts:377:1 › defaults the shared creation dialog to WisersOne and submits name, frequency and selected Brands (5.3s)
+  ok  84 e2e\collection-strategy.spec.ts:432:1 › keeps an existing WisersOne plan type fixed when editing name and frequency (4.9s)
+  ok  85 e2e\collection-strategy.spec.ts:466:1 › enables and disables WisersOne without requiring TikHub keywords or capabilities (5.4s)
+  ok  87 e2e\data-import-policy.spec.ts:65:1 › keeps the selected write policy when switching import sources (4.8s)
+  ok  88 e2e\excel-import-submit-state.spec.ts:130:1 › requires a source file but not Provider search or a single-vehicle filter (4.4s)
+  ok  90 e2e\excel-import-submit-state.spec.ts:149:1 › creates a local Campaign when randomUUID is unavailable (5.2s)
+  ok  89 e2e\excel-import-submit-state.spec.ts:180:1 › stages local files through Campaign upload and restores a visible error (5.3s)
+  ok  91 e2e\excel-import-submit-state.spec.ts:223:1 › allows an interrupted local upload Campaign to be cancelled (5.3s)
+  ok  86 e2e\data-import-cancellation.spec.ts:42:1 › 预检过程中可以取消导入，并持续展示取消状态直到终态 (9.8s)
+  ok  92 e2e\frontend-reliability.spec.ts:48:1 › keeps healthy admin resources usable when audit fails and paginates audit after retry (4.8s)
+  ok  93 e2e\historical-migration.spec.ts:150:1 › selects only server-relative files, preflights, and explicitly starts a campaign (5.5s)
+  ok  95 e2e\historical-migration.spec.ts:235:1 › continues directory enumeration with the server cursor (4.2s)
+  ok  94 e2e\historical-migration.spec.ts:214:1 › selects a server directory for bounded recursive discovery (4.8s)
+  ok  96 e2e\historical-migration.spec.ts:245:1 › reopens an existing campaign after a page reload (4.4s)
+  ok  97 e2e\historical-migration.spec.ts:252:1 › does not invent a percentage while directory discovery has no total (4.8s)
+  ok 101 e2e\manual-relevance-review.spec.ts:87:1 › marks AI irrelevant content as relevant through the explicit decision contract (4.2s)
+  ok 102 e2e\manual-relevance-review.spec.ts:118:1 › marks AI relevant content as irrelevant from the business-relevant list (3.8s)
+  ok 100 e2e\historical-migration.spec.ts:381:1 › uses campaign failed-chunk facts even when bounded detail omits failed chunks (5.2s)
+  ok 103 e2e\manual-relevance-review.spec.ts:149:1 › undoes a manual relevant override without deleting the AI irrelevant fact (3.7s)
+  ok  98 e2e\historical-migration.spec.ts:290:1 › keeps polling a cancelling campaign until it reaches cancelled (9.8s)
+  ok 104 e2e\manual-relevance-review.spec.ts:181:1 › keeps manual override undoable when the current AI result is stale (3.6s)
+  ok  99 e2e\historical-migration.spec.ts:341:1 › refreshes running import statistics and settled source results before completion (9.2s)
+  ok 105 e2e\manual-relevance-review.spec.ts:213:1 › batch marks selected AI relevant content as irrelevant through the same endpoint (4.1s)
+  ok 106 e2e\markdown-analysis-scheme.spec.ts:11:1 › Markdown 导入、保存错误、只读编译预览及发布走公开管理入口 (8.4s)
+  ok 107 e2e\responsive-layout.spec.ts:233:3 › keeps all formal pages bounded at compact-1180 (14.5s)
+  ok 108 e2e\responsive-layout.spec.ts:233:3 › keeps all formal pages bounded at compact-1280 (14.8s)
+  ok 109 e2e\responsive-layout.spec.ts:233:3 › keeps all formal pages bounded at baseline-1440 (14.9s)
+  ok 110 e2e\responsive-layout.spec.ts:233:3 › keeps all formal pages bounded at large-1600 (14.5s)
+  ok 111 e2e\responsive-layout.spec.ts:233:3 › keeps all formal pages bounded at wide-1920 (15.5s)
+  ok 113 e2e\responsive-layout.spec.ts:309:1 › keeps narrow sidebar navigation inside its own width and routes normally (5.8s)
+  ok 114 e2e\responsive-layout.spec.ts:322:1 › constrains a real dialog to the viewport safe margin in a narrow window (3.6s)
+  ok 115 e2e\responsive-layout.spec.ts:338:1 › anchors typography at 1440 and grows it only within the approved desktop bounds (4.5s)
+  ok 116 e2e\task-center.spec.ts:112:1 › 从声音广场打开全局任务中心并统一查看三类活动任务 (4.8s)
+  ok 112 e2e\responsive-layout.spec.ts:233:3 › keeps all formal pages bounded at wide-2560 (16.7s)
+  ok 117 e2e\voice-plaza-design.spec.ts:157:3 › matches release-2 geometry and keeps the viewport usable at 1180px (5.6s)
+  ok 119 e2e\voice-plaza-design.spec.ts:157:3 › matches release-2 geometry and keeps the viewport usable at 1440px (4.7s)
+  ok 118 e2e\voice-plaza-design.spec.ts:157:3 › matches release-2 geometry and keeps the viewport usable at 1280px (5.5s)
+  ok 120 e2e\voice-plaza-design.spec.ts:157:3 › matches release-2 geometry and keeps the viewport usable at 1600px (4.4s)
+  ok 121 e2e\voice-plaza-design.spec.ts:157:3 › matches release-2 geometry and keeps the viewport usable at 1920px (4.2s)
+  ok 123 e2e\voice-plaza-design.spec.ts:250:1 › keeps table-local scrolling as a fallback below the compact desktop width (5.4s)
+  ok 126 e2e\voice-plaza-design.spec.ts:325:1 › late export catalog initializes defaults without replacing edited columns (4.9s)
+  ok 124 e2e\voice-plaza-design.spec.ts:265:1 › vehicle groups use catalog data and confirm drafts without losing keyboard focus (5.8s)
+  ok 122 e2e\voice-plaza-design.spec.ts:157:3 › matches release-2 geometry and keeps the viewport usable at 2560px (7.2s)
+  ok 125 e2e\voice-plaza-design.spec.ts:299:1 › date range supports keyboard selection and sends Beijing boundaries only after confirmation (5.8s)
+  ok 127 e2e\voice-plaza-design.spec.ts:349:1 › keeps terminal analysis history out of the formal data canvas and available in the task center (5.5s)
+  ok 128 e2e\voice-plaza-design.spec.ts:381:1 › matches the formal 1440 desktop shell and empty-state composition (4.1s)
+  ok 129 e2e\voice-plaza-design.spec.ts:412:1 › renders the formal loading state while the content request is in flight (4.1s)
+  ok 130 e2e\voice-plaza-design.spec.ts:440:1 › shows the matching total without waiting for the slow content list (4.2s)
+  ok 132 e2e\voice-plaza-design.spec.ts:506:1 › keeps the formal runtime-unavailable warning while the content list stays usable (4.4s)
+  ok 131 e2e\voice-plaza-design.spec.ts:477:1 › renders the formal error banner and recoverable list error state (4.7s)
+  ok 133 e2e\voice-plaza-design.spec.ts:528:1 › matches the formal detail, analysis and export overlay geometry (5.7s)
+  ok 134 e2e\voice-plaza-design.spec.ts:621:1 › detail quick navigation scrolls to the formal content, AI, manual and comments sections (5.2s)
+  ok 135 e2e\voice-plaza-media-carousel.spec.ts:92:1 › 普通鼠标可通过左右按钮逐张查看全部缓存图片 (6.1s)
+  ok 136 e2e\voice-plaza-media-carousel.spec.ts:130:3 › 横图竖图长图完整显示且切换不跳动 1440 (6.9s)
+  ok 138 e2e\voice-plaza-media-carousel.spec.ts:173:1 › 视频列表不显示标签，详情保留标识与时长，点击才准备且关闭释放src (6.1s)
+  ok 139 e2e\voice-plaza-media-carousel.spec.ts:203:1 › 准备中可继续阅读和编辑，关闭停止只读观察且不取消共享任务 (5.3s)
+  ok 137 e2e\voice-plaza-media-carousel.spec.ts:130:3 › 横图竖图长图完整显示且切换不跳动 390 (7.3s)
+  ok 140 e2e\voice-plaza-media-carousel.spec.ts:244:1 › 只读观察成功直接显示原生播放器，不经过Import Job查询或再次空prepare (4.9s)
+  ok 141 e2e\voice-plaza-review-regressions.spec.ts:59:1 › 辅助能力失败时保留成功加载的空内容状态 (4.4s)
+  ok 142 e2e\voice-plaza-review-regressions.spec.ts:97:1 › 车型目录响应缺少 items 时显示错误且不中断页面渲染 (3.5s)
+  ok 144 e2e\voice-plaza-review-regressions.spec.ts:131:1 › Failed Analysis Run 在全局任务中心解释 llm_transport_unavailable (4.6s)
+  ok 143 e2e\voice-plaza-review-regressions.spec.ts:131:1 › Failed Analysis Run 在全局任务中心解释 analysis_shard_failed (5.4s)
+  ok 145 e2e\voice-plaza-review-regressions.spec.ts:131:1 › Failed Analysis Run 在全局任务中心解释 llm_validation_unhealthy (4.7s)
+  ok 146 e2e\voice-plaza.spec.ts:130:1 › 含竞品查询同时包含仅竞品和混合，仍可切换为仅竞品 (5.6s)
+  ok 148 e2e\voice-plaza.spec.ts:452:1 › 工作台内容深链跨分页直接定位声音广场真实笔记 (5.3s)
+  ok 149 e2e\voice-plaza.spec.ts:466:1 › 导入记录查看声音时不继承会话中陈旧筛选 (3.9s)
+  ok 147 e2e\voice-plaza.spec.ts:399:1 › renders every AI label and opens the text-first content detail (6.4s)
+  ok 151 e2e\voice-plaza.spec.ts:586:1 › 旧 cross-parent singular 深链在目录加载后保持原 AND 语义并明确提示 (5.0s)
+  ok 152 e2e\voice-plaza.spec.ts:640:1 › 旧 catalog-missing singular 深链在目录加载后仍保留精确条件 (4.2s)
+  ok 150 e2e\voice-plaza.spec.ts:485:1 › 旧 secondary-only 深链跨 building 到 ready 始终保持原查询语义 (6.9s)
+  ok 154 e2e\voice-plaza.spec.ts:713:1 › renders the newest first page before slow filter options are ready (3.6s)
+  ok 153 e2e\voice-plaza.spec.ts:674:1 › loads backend filter options and submits voice type with dependent labels (5.1s)
+  ok 155 e2e\voice-plaza.spec.ts:743:1 › keeps filters and content usable when manual-edit taxonomy is unavailable (4.6s)
+  ok 156 e2e\voice-plaza.spec.ts:771:1 › does not block the initial content list on a slow manual-edit taxonomy (3.7s)
+  ok 157 e2e\voice-plaza.spec.ts:790:1 › keeps stable filters and content usable when dynamic filter options are unavailable (4.7s)
+  ok 158 e2e\voice-plaza.spec.ts:824:1 › 标签多选使用不改变布局且可按常见方式关闭的互斥浮层 (4.9s)
+  ok 161 e2e\voice-plaza.spec.ts:950:1 › 主动查询清除旧结果，延迟和失败保持列表几何 (4.7s)
+  ok 159 e2e\voice-plaza.spec.ts:879:1 › 后台筛选目录延迟和失败保留草稿、打开的面板和几何 (6.3s)
+  ok 160 e2e\voice-plaza.spec.ts:914:1 › 详情后台失败保持人工纠正草稿、正文几何和滚动位置 (5.7s)
+  ok 162 e2e\voice-plaza.spec.ts:971:1 › 声音广场详情浮层滚动条三状态保持几何 (5.9s)
+  ok 163 e2e\voice-plaza.spec.ts:979:1 › 完整多选深链替换旧会话，并在筛选摘要显示真实条件 (4.7s)
+  ok 164 e2e\voice-plaza.spec.ts:1003:1 › 一级标签多选约束二级候选，父级取消后失效二级不会进入查询 (6.9s)
+  ok 166 e2e\voice-plaza.spec.ts:1081:1 › shows AI unavailable and disables analysis when runtime is not configured (4.9s)
+  ok 167 e2e\voice-plaza.spec.ts:1096:1 › 慢导出初始化不阻塞活动 AI 的自动刷新 (6.1s)
+  ok 168 e2e\voice-plaza.spec.ts:1121:1 › creates explicit analysis and durable Excel export jobs (6.2s)
+  ok 169 e2e\voice-plaza.spec.ts:1238:1 › 旧内容类型会话及链接不会进入列表、计数、AI 和导出筛选快照 (6.6s)
+  ok 171 e2e\voice-plaza.spec.ts:1326:1 › creates an all-data analysis run without browser-side content ids (5.8s)
+  ok 170 e2e\voice-plaza.spec.ts:1385:1 › keeps export history visible but disables empty query export creation (6.3s)
+  ok 165 e2e\voice-plaza.spec.ts:1048:1 › restores the applied platform filter after leaving and reloading the page (11.5s)
+  ok 172 e2e\voice-plaza.spec.ts:1407:1 › 普通用户保留选择和详情结果，任务中心不请求管理数据 (6.5s)
+  ok 173 e2e\voice-plaza.spec.ts:1434:1 › 个人默认字段加载完成前不展示错误勾选，临时导出不保存默认 (6.1s)
+  ok 174 e2e\voice-plaza.spec.ts:1464:1 › 默认字段并发冲突保留草稿，重新读取后显式保存新 revision (6.3s)
+  ok 175 e2e\voice-plaza.spec.ts:1509:1 › 失效个人字段安全回退，恢复系统默认显式提交 null 并保留 revision (5.2s)
+  ok 176 e2e\voice-plaza.spec.ts:1531:1 › 恢复默认等待期间锁定字段，失败后原草稿仍可继续编辑 (6.3s)
+  ok 177 e2e\wisersone-runtime.spec.ts:53:1 › shows scheduled download progress and cancels the same task without creating another download (6.4s)
+  ok 178 e2e\wisersone-runtime.spec.ts:86:1 › keeps a failed task selected after retry errors and opens its completed unified import result (7.0s)
+  ok 179 e2e\wisersone-runtime.spec.ts:158:1 › shows download list failure and recovers an empty list when the task window reopens (6.3s)
+  ok 180 e2e\workbench.spec.ts:58:3 › 九标签在 6×48 完整单行可读、左右布局且无正常内部滚动 (6.0s)
+  ok 181 e2e\workbench.spec.ts:58:3 › 九标签在 6×80 完整单行可读、左右布局且无正常内部滚动 (5.2s)
+  ok 186 e2e\workbench.spec.ts:101:1 › 首次后台聚合独立跟进，不等待一小时，失败状态可以重试 (2.5s)
+  ok 187 e2e\workbench.spec.ts:118:1 › 异常长一级标签守住可读字号，省略显示且详情保留全名 (2.5s)
+  x  183 e2e\workbench.spec.ts:58:3 › 九标签在 8×80 完整单行可读、左右布局且无正常内部滚动 (7.2s)
+(node:33192) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 190 e2e\workbench.spec.ts:229:1 › 后台聚合请求及失败保留成功图表、日期和几何 (2.5s)
+  ok 189 e2e\workbench.spec.ts:186:1 › 已应用日期及其它筛选在刷新后的首个模块请求中恢复，重置也持久化 (7.5s)
+  x  188 e2e\workbench.spec.ts:145:1 › 雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻 (8.3s)
+  ok 191 e2e\workbench.spec.ts:259:1 › 筛选与卡片统一细滚动条，三卡日期位于右上且取同一范围 (2.2s)
+(node:15832) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 192 e2e\workbench.spec.ts:546:1 › 工作台按 active Taxonomy 展示真实模块，并使用后端 as_of (2.9s)
+  ok 193 e2e\workbench.spec.ts:642:1 › 空声音流时原生筛选面板紧贴对应触发器并位于视口内 (3.0s)
+  ok 194 e2e\workbench.spec.ts:596:1 › 声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开关 (3.2s)
+  ok 196 e2e\workbench.spec.ts:731:1 › 声音流筛选下拉可操作，选择后同口径刷新三个真实模块请求 (2.6s)
+  ok 195 e2e\workbench.spec.ts:686:1 › 声音流自动滚动时筛选面板保持打开，筛选条滚动时关闭 (3.0s)
+  ok 197 e2e\workbench.spec.ts:757:1 › 确认日期后起止日期同时进入声音流、心智与趋势查询 (2.1s)
+  ok 198 e2e\workbench.spec.ts:785:1 › 反向点击日期也形成合法范围并立即请求三个模块 (2.5s)
+  ok 199 e2e\workbench.spec.ts:809:1 › 日期取消、单日确认、清空后的默认范围始终一致 (2.9s)
+  ok 200 e2e\workbench.spec.ts:838:1 › 一级标签多选只开放对应二级候选，并在父级取消后清理失效子项 (2.9s)
+  ok 201 e2e\workbench.spec.ts:867:1 › 筛选后的后端结果同步替换三个模块，重置后恢复 (2.7s)
+  ok 202 e2e\workbench.spec.ts:886:1 › 新筛选请求失败时不把上一筛选结果冒充当前数据 (2.4s)
+  ok 203 e2e\workbench.spec.ts:904:1 › 品牌心智失败只重试自身，不耦合刷新声音流和趋势 (2.3s)
+  ok 205 e2e\workbench.spec.ts:983:1 › 声音流滚完一页后使用签名游标继续下一页，末页不会重复上一页 (2.8s)
+  ok 206 e2e\workbench.spec.ts:1025:1 › 短声音流按 Figma 连续滚动，平台标识复用声音广场样式 (2.1s)
+  ok 204 e2e\workbench.spec.ts:934:1 › 声音流展示完整返回列表并自动向上滚动，悬停、聚焦和减少动画时暂停 (3.9s)
+  ok 207 e2e\workbench.spec.ts:1055:1 › 普通刷新一小时一次，隐藏时暂停且恢复仅补过期聚合，不重置声音流 (2.1s)
+  ok 210 e2e\workbench.spec.ts:1165:1 › 趋势模块横向按单列缩放，窄模块内部自适应且不重叠 (2.1s)
+  x  184 e2e\workbench.spec.ts:58:3 › 九标签在 12×48 完整单行可读、左右布局且无正常内部滚动 (30.0s)
+(node:1472) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 208 e2e\workbench.spec.ts:1094:1 › 请求耗时后连续两轮仍在完成后一小时刷新 (5.8s)
+  ok 211 e2e\workbench.spec.ts:1197:1 › 三个模块在各自最窄宽度下独立重排且不产生横向溢出 (2.0s)
+  ok 209 e2e\workbench.spec.ts:1135:1 › 显式编辑态先改草稿，取消恢复；保存一次提交完整 revision (5.9s)
+  ok 212 e2e\workbench.spec.ts:1236:1 › 品牌心智深链把当前日期和一级标签恢复到声音广场 (3.3s)
+  ok 214 e2e\workbench.spec.ts:1266:1 › 窄窗口的高度拖动按保存的合法行数呈现 (4.0s)
+  ok 215 e2e\workbench.spec.ts:1286:1 › 点击声音流笔记携带真实 Content ID 定位声音广场 (3.5s)
+  ok 213 e2e\workbench.spec.ts:1251:1 › 心智钻取保留已经应用的二级标签 (4.2s)
+  x  182 e2e\workbench.spec.ts:58:3 › 九标签在 8×48 完整单行可读、左右布局且无正常内部滚动 (40.2s)
+  ok 216 e2e\workbench.spec.ts:1294:1 › Analysis Run 新结果及终态分别触发工作台合并刷新 (4.7s)
+  ok 217 e2e\workbench.spec.ts:1326:1 › 普通用户初始数据完成后才收到首个稳定修订，也会追赶聚合且不读管理任务 (3.6s)
+  ok 218 e2e\workbench.spec.ts:1355:1 › 修订追赶与后台聚合跟进等待同一慢请求，不叠加覆盖当前结果 (4.6s)
+  x  185 e2e\workbench.spec.ts:58:3 › 九标签在 12×160 完整单行可读、左右布局且无正常内部滚动 (1.0m)
+
+
+  1) e2e\workbench.spec.ts:58:3 › 九标签在 8×48 完整单行可读、左右布局且无正常内部滚动 ────────────────────────────────────
+
+    Test timeout of 30000ms exceeded.
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+      - navigating to "http://127.0.0.1:4173/", waiting until "load"
+
+
+      62 |     } }))
+      63 |     await page.route('**/api/v1/workbench/mind**', (route) => route.fulfill({ json: nineMind() }))
+    > 64 |     await page.goto('/')
+         |                ^
+      65 |     const chart = page.locator('.radar-stage')
+      66 |     await expect(chart.locator('.radar-chart svg text')).toHaveCount(0)
+      67 |     await expect(chart.locator('.radar-label')).toHaveCount(9)
+        at D:\test\AIMA_UGC\frontend\e2e\workbench.spec.ts:64:16
+
+    Error Context: test-results\workbench-九标签在-8×48-完整单行可读、左右布局且无正常内部滚动\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\workbench-九标签在-8×48-完整单行可读、左右布局且无正常内部滚动\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\workbench-九标签在-8×48-完整单行可读、左右布局且无正常内部滚动\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e\workbench.spec.ts:58:3 › 九标签在 8×80 完整单行可读、左右布局且无正常内部滚动 ────────────────────────────────────
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  locator('.radar-stage').locator('.radar-label')
+    Expected: 9
+    Received: 0
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 5000ms
+      - waiting for locator('.radar-stage').locator('.radar-label')
+        14 × locator resolved to 0 elements
+           - unexpected value "0"
+
+
+      65 |     const chart = page.locator('.radar-stage')
+      66 |     await expect(chart.locator('.radar-chart svg text')).toHaveCount(0)
+    > 67 |     await expect(chart.locator('.radar-label')).toHaveCount(9)
+         |                                                 ^
+      68 |     const labels = await chart.locator('.radar-label').evaluateAll((elements) => elements.map((element) => {
+      69 |       const box = element.getBoundingClientRect()
+      70 |       return { text: element.textContent?.trim(), left: box.left, top: box.top, right: box.right, bottom: box.bottom,
+        at D:\test\AIMA_UGC\frontend\e2e\workbench.spec.ts:67:49
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\workbench-九标签在-8×80-完整单行可读、左右布局且无正常内部滚动\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\workbench-九标签在-8×80-完整单行可读、左右布局且无正常内部滚动\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\workbench-九标签在-8×80-完整单行可读、左右布局且无正常内部滚动\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\workbench-九标签在-8×80-完整单行可读、左右布局且无正常内部滚动\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e\workbench.spec.ts:58:3 › 九标签在 12×48 完整单行可读、左右布局且无正常内部滚动 ───────────────────────────────────
+
+    Test timeout of 30000ms exceeded while running "beforeEach" hook.
+
+      540 | }
+      541 |
+    > 542 | test.beforeEach(async ({ page }) => {
+          |      ^
+      543 |   await mockWorkbench(page)
+      544 | })
+      545 |
+        at D:\test\AIMA_UGC\frontend\e2e\workbench.spec.ts:542:6
+
+    Error Context: test-results\workbench-九标签在-12×48-完整单行可读、左右布局且无正常内部滚动\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\workbench-九标签在-12×48-完整单行可读、左右布局且无正常内部滚动\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\workbench-九标签在-12×48-完整单行可读、左右布局且无正常内部滚动\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) e2e\workbench.spec.ts:58:3 › 九标签在 12×160 完整单行可读、左右布局且无正常内部滚动 ──────────────────────────────────
+
+    Test timeout of 30000ms exceeded while running "beforeEach" hook.
+
+      540 | }
+      541 |
+    > 542 | test.beforeEach(async ({ page }) => {
+          |      ^
+      543 |   await mockWorkbench(page)
+      544 | })
+      545 |
+        at D:\test\AIMA_UGC\frontend\e2e\workbench.spec.ts:542:6
+
+    Tearing down "context" exceeded the test timeout of 30000ms.
+
+    Error: browserContext.close: Test timeout of 30000ms exceeded.
+    Browser logs:
+
+    <launching> C:\Program Files\Google\Chrome\Application\chrome.exe --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=C:\Users\YNND\AppData\Local\Temp\playwright_chromiumdev_profile-nR0Exf --remote-debugging-pipe --no-startup-window
+    <launched> pid=26188
+    [pid=26188][err] [26188:42724:1010/122124.592:ERROR:google_apis\gcm\engine\registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+    [pid=26188][err] [26188:42724:1010/122124.592:ERROR:google_apis\gcm\engine\registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+    [pid=26188][err] [26188:42724:1010/122153.289:ERROR:google_apis\gcm\engine\registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+    [pid=26188][err] [26188:11984:1010/122255.288:ERROR:gpu\command_buffer\client\cmd_buffer_helper.cc:143] ContextResult::kFatalFailure: CommandBufferHelper::AllocateRingBuffer() failed
+    [pid=26188] <gracefully close start>
+    [pid=26188] <kill>
+    [pid=26188] <will force kill>
+    [pid=26188] taskkill stdout: SUCCESS: The process with PID 25888 (child process of PID 26188) has been terminated.
+    SUCCESS: The process with PID 41992 (child process of PID 26188) has been terminated.
+    SUCCESS: The process with PID 42528 (child process of PID 26188) has been terminated.
+    SUCCESS: The process with PID 43780 (child process of PID 26188) has been terminated.
+    SUCCESS: The process with PID 26188 (child process of PID 31840) has been terminated.
+
+
+    Error Context: test-results\workbench-九标签在-12×160-完整单行可读、左右布局且无正常内部滚动\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\workbench-九标签在-12×160-完整单行可读、左右布局且无正常内部滚动\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\workbench-九标签在-12×160-完整单行可读、左右布局且无正常内部滚动\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) e2e\workbench.spec.ts:145:1 › 雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻 ────────────────────────────────────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 2
+    Received: 3
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      176 |   await expect(page.locator('.radar-label[aria-pressed="true"]')).toContainText('13%')
+      177 |   await page.clock.fastForward(60 * 60 * 1000)
+    > 178 |   await expect.poll(() => requests).toBe(2)
+          |                                     ^
+      179 |   await expect(detail.locator('h3')).toHaveText(label)
+      180 |   await expect(page.locator('.radar-label[aria-pressed="true"]')).toContainText(label)
+      181 |   await detail.getByRole('button', { name: '查看该心智的用户原声 →' }).click()
+        at D:\test\AIMA_UGC\frontend\e2e\workbench.spec.ts:178:37
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\workbench-雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\workbench-雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\workbench-雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\workbench-雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5 failed
+    e2e\workbench.spec.ts:58:3 › 九标签在 8×48 完整单行可读、左右布局且无正常内部滚动 ─────────────────────────────────────
+    e2e\workbench.spec.ts:58:3 › 九标签在 8×80 完整单行可读、左右布局且无正常内部滚动 ─────────────────────────────────────
+    e2e\workbench.spec.ts:58:3 › 九标签在 12×48 完整单行可读、左右布局且无正常内部滚动 ────────────────────────────────────
+    e2e\workbench.spec.ts:58:3 › 九标签在 12×160 完整单行可读、左右布局且无正常内部滚动 ───────────────────────────────────
+    e2e\workbench.spec.ts:145:1 › 雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻 ─────────────────────────────────────
+  213 passed (4.4m)
+Traceback (most recent call last):
+  File "D:\test\AIMA_UGC\scripts\dev\validate_changed.py", line 287, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "D:\test\AIMA_UGC\scripts\dev\validate_changed.py", line 282, in main
+    _execute(commands)
+    ~~~~~~~~^^^^^^^^^^
+  File "D:\test\AIMA_UGC\scripts\dev\validate_changed.py", line 249, in _execute
+    subprocess.run((executable, *command[1:]), cwd=ROOT, check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\YNND\AppData\Roaming\uv\python\cpython-3.14.7-windows-x86_64-none\Lib\subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '('D:\\node\\npm.CMD', '--prefix', 'frontend', 'run', 'test:e2e')' returned non-zero exit status 1.

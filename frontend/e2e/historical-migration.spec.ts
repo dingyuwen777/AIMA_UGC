@@ -143,7 +143,7 @@ test.beforeEach(async ({ page }) => {
         body: JSON.stringify({ ...readyCampaign, status: 'queued', can_start: false }),
       })
     }
-    return route.fulfill({ status: 404, body: 'not mocked' })
+    return route.fallback()
   })
 })
 

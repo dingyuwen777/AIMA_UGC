@@ -1,3 +1,4 @@
+import { setTestPrincipal } from './rolePrincipal'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -33,6 +34,7 @@ describe('AI Analysis Run all scope', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
+    setTestPrincipal()
     api.fetchContentAnalysisCapabilities.mockResolvedValue({ configured: true })
     api.previewAnalysisRun.mockResolvedValue({
       target_count: 4200,

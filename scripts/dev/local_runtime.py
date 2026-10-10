@@ -8,7 +8,8 @@ import secrets
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 
 POSTGRES_IMAGE = "postgres:18.4"
@@ -22,6 +23,14 @@ POSTGRES_USER = "aima_ugc"
 LOCAL_TIKHUB_SECRET_REF = "tikhub_api_key"
 LOCAL_LLM_SECRET_REF = "llm_api_key"
 
+_IDENTITY_ENV_KEYS = (
+    "AIMA_IDENTITY_MODE",
+    "AIMA_FEISHU_SCOPE",
+    "AIMA_FEISHU_COOKIE_SECURE",
+    "AIMA_FEISHU_SESSION_TTL_HOURS",
+    "AIMA_FEISHU_STATE_TTL_SECONDS",
+    "AIMA_FEISHU_CONNECTORS",
+)
 _SOURCE_LOCAL_KEYS = frozenset(
     {
         "AIMA_TIKHUB_BASE_URL",
@@ -34,6 +43,9 @@ _SOURCE_LOCAL_KEYS = frozenset(
         "AIMA_HISTORICAL_IMPORT_ROOT",
         "AIMA_HOST_ROOT",
         "AIMA_DEV_ENABLE_SCHEDULER",
+        "AIMA_IDENTITY_MODE",
+        "AIMA_FEISHU_CONNECTORS",
+        "AIMA_FEISHU_CONNECTORS_FILE",
         "AIMA_FEISHU_BASE_URL",
         "AIMA_FEISHU_APP_ID",
         "AIMA_FEISHU_APP_TOKEN",
@@ -93,12 +105,7 @@ _COMPOSE_LOCAL_KEYS = frozenset(
         "AIMA_FEISHU_APP_SECRET_REF",
         "AIMA_FEISHU_TIMEOUT_SECONDS",
         "AIMA_FEISHU_MAX_RETRIES",
-        # 飞书身份接入（单 ③）：源码开发也可直接配这组；留空即不启用。
-        # ⚠️ 与 TikHub/LLM 的本地约定一致：**App Secret 不经环境变量**传，
-        # 只写引用名，真实内容放 AIMA_EXTERNAL_SECRET_DIR 下的同名文件。
-        "AIMA_FEISHU_ADMIN_GROUP_ID",
-        "AIMA_FEISHU_USER_GROUP_ID",
-        "AIMA_FEISHU_REDIRECT_URI",
+        # 飞书凭据仅作为启动输入，业务子进程只收到移除凭据后的配置。
         "AIMA_FEISHU_SCOPE",
         "AIMA_FEISHU_COOKIE_SECURE",
         "AIMA_FEISHU_SESSION_TTL_HOURS",
@@ -146,6 +153,7 @@ class LocalDevConfig:
     feishu_max_retries: str | None = None
     feishu_dry_run: str | None = None
     host_root: str = "./.runtime/compose"
+    identity_environment: tuple[tuple[str, str], ...] = field(default=(), repr=False)
 
     @property
     def tikhub_configured(self) -> bool:
@@ -248,31 +256,49 @@ def ensure_env_local(root: Path) -> tuple[Path, bool]:
     return target, True
 
 
-def parse_env_file(path: Path) -> dict[str, str]:
-    """解析本地简单 `KEY=value` 文件；不做变量插值或命令执行。"""
-
-    values: dict[str, str] = {}
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
-        raise LocalDevError(f"无法读取本地配置：{path}") from exc
-
-    for line_no, raw_line in enumerate(lines, start=1):
+def env_assignments(text: str, source: str) -> Iterator[tuple[int, str, str]]:
+    """读取赋值，支持 Compose 的单引号多行 JSON；保留引号供模板风险检查。"""
+    lines = iter(enumerate(text.splitlines(), start=1))
+    for line_no, raw_line in lines:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
             line = line[7:].lstrip()
         if "=" not in line:
-            raise LocalDevError(f"{path}:{line_no} 必须使用 KEY=value 格式")
+            raise ValueError(f"{source}:{line_no} 必须使用 KEY=value 格式")
         key, raw_value = line.split("=", 1)
         key = key.strip()
         value = raw_value.strip()
         if not key or not key.replace("_", "A").isalnum() or key[0].isdigit():
-            raise LocalDevError(f"{path}:{line_no} 包含非法配置名：{key!r}")
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        values[key] = value
+            raise ValueError(f"{source}:{line_no} 包含非法配置名")
+        if value.startswith("'"):
+            while len(value) == 1 or not value.endswith("'") or value.endswith("\\'"):
+                try:
+                    _number, continuation = next(lines)
+                except StopIteration:
+                    raise ValueError(f"{source}:{line_no} 单引号未闭合") from None
+                value += "\n" + continuation
+        yield line_no, key, value
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
+    """解析本地 KEY=value 与单引号多行值；不做插值或命令执行。"""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise LocalDevError(f"无法读取本地配置：{path}") from exc
+    values: dict[str, str] = {}
+    try:
+        for _line_no, key, value in env_assignments(text, str(path)):
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                quote = value[0]
+                value = value[1:-1]
+                if quote == "'":
+                    value = value.replace("\\'", "'")
+            values[key] = value
+    except ValueError as exc:
+        raise LocalDevError(str(exc)) from None
     return values
 
 
@@ -280,6 +306,15 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
     """从共享 `env.local` 加载源码配置，并只把真正未知的字段返回给调用方告警。"""
 
     values = parse_env_file(path)
+    if any(
+        values.get(name, "").strip()
+        for name in (
+            "AIMA_FEISHU_ADMIN_GROUP_ID",
+            "AIMA_FEISHU_USER_GROUP_ID",
+            "AIMA_FEISHU_REDIRECT_URI",
+        )
+    ):
+        raise LocalDevError("旧扁平飞书登录配置已移除，请统一使用 AIMA_FEISHU_CONNECTORS")
     unknown = tuple(sorted(key for key in values if key not in _KNOWN_LOCAL_KEYS))
     return LocalDevConfig(
         tikhub_base_url=_clean(values.get("AIMA_TIKHUB_BASE_URL")) or "https://api.tikhub.io",
@@ -296,6 +331,11 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
             key="AIMA_DEV_ENABLE_SCHEDULER",
         ),
         unknown_keys=unknown,
+        identity_environment=tuple(
+            (key, value)
+            for key in _IDENTITY_ENV_KEYS
+            if (value := _clean(values.get(key))) is not None
+        ),
         feishu_base_url=_clean(values.get("AIMA_FEISHU_BASE_URL")),
         feishu_app_id=_clean(values.get("AIMA_FEISHU_APP_ID")),
         feishu_app_token=_clean(values.get("AIMA_FEISHU_APP_TOKEN")),
@@ -358,6 +398,20 @@ def build_runtime_environment(
 ) -> dict[str, str]:
     """把共享 `env.local` 中的源码配置转换为正式进程 AIMA_* + Secret File。"""
 
+    from aima_ugc.bootstrap.feishu_config_input import (
+        FeishuConfigInputError,
+        materialize_feishu_config,
+        parse_feishu_config_input,
+    )
+
+    identity = dict(config.identity_environment)
+    try:
+        feishu = parse_feishu_config_input(identity.pop("AIMA_FEISHU_CONNECTORS", None))
+        materialize_feishu_config(paths.external_secrets, feishu)
+    except FeishuConfigInputError as exc:
+        raise LocalDevError(str(exc)) from None
+    if feishu.connectors_json is not None:
+        identity["AIMA_FEISHU_CONNECTORS"] = feishu.connectors_json
     environment = dict(os.environ)
     # Windows 安全软件可能注入不可写的全局 keylog 路径；只从本地子进程环境移除，
     # 避免 Python 初始化 TLS 时因写权限失败而让 API/Worker 意外退出。
@@ -395,6 +449,8 @@ def build_runtime_environment(
     environment["AIMA_HOST_ROOT"] = str(wisersone_host_root.resolve())
     environment["AIMA_WISERSONE_AUTH_DIR"] = str(wisersone_auth.resolve())
     environment["AIMA_WISERSONE_INPUT_DIR"] = str(wisersone_input.resolve())
+
+    environment.update(identity)
 
     for key, value in (
         ("AIMA_FEISHU_BASE_URL", config.feishu_base_url),

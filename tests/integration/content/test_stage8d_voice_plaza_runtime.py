@@ -75,6 +75,7 @@ from aima_ugc.modules.content.read_model_tables import (
     voice_plaza_projection_state_table,
 )
 from aima_ugc.modules.content.tables import accounts_table, contents_table
+from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
     register_data_export_job,
@@ -705,12 +706,15 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         assert [item.id for item in legacy_filtered.items] == [content_ids[0]]
 
         reporting = PostgresReportingHttpService(runtime)
+        export_principal = Principal(
+            "user:stage8d", "Stage8D 管理员", "administrator", "development"
+        )
         export_created = reporting.create_export(
             DataExportSubmitRequest(
                 targets=ContentTargetSelection(scope="selected", content_ids=content_ids)
             ),
             request_id="stage8d-export",
-            actor_ref="user:stage8d",
+            principal=export_principal,
         )
         session = runtime.database.new_session()
         try:
@@ -731,7 +735,10 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
                 )
         finally:
             session.close()
-        assert reporting.get_export(export_created.export_id).artifact_id is None
+        assert (
+            reporting.get_export(export_created.export_id, principal=export_principal).artifact_id
+            is None
+        )
         export_registry = JobRegistry()
         register_data_export_job(
             export_registry,
@@ -745,14 +752,14 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             retry_delay_seconds=0,
         )
         assert export_worker.run_once() is True
-        exported = reporting.get_export(export_created.export_id)
+        exported = reporting.get_export(export_created.export_id, principal=export_principal)
         assert exported.job.status == "succeeded"
         assert exported.stats is not None
         assert exported.stats.content_count == 2
         assert exported.stats.analyzed_count == 1
         assert exported.stats.unanalyzed_count == 1
 
-        download = reporting.download_export(export_created.export_id)
+        download = reporting.download_export(export_created.export_id, principal=export_principal)
         workbook = load_workbook(BytesIO(b"".join(download.chunks)), read_only=True, data_only=True)
         try:
             content_sheet = workbook["内容"]

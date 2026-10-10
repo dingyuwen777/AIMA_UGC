@@ -130,6 +130,7 @@ from aima_ugc.modules.reporting.report_tables import (
 from aima_ugc.modules.reporting.tables import (
     reporting_data_export_items_table,
     reporting_data_exports_table,
+    reporting_user_export_column_defaults_table,
 )
 from aima_ugc.modules.system.lifecycle_schema import register_system_lifecycle_schema
 from aima_ugc.modules.system.tables import (
@@ -264,6 +265,7 @@ __all__ = [
     "report_items_table",
     "report_artifacts_table",
     "reporting_data_exports_table",
+    "reporting_user_export_column_defaults_table",
     "system_settings_table",
     "content_vehicle_evidence_table",
     "content_vehicle_review_locks_table",

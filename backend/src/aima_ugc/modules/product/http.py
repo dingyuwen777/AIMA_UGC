@@ -44,7 +44,7 @@ class ProductHttpService(Protocol):
 
         ...
 
-    def get_export_column_catalog(self) -> ExportColumnCatalogResponse:
+    def get_export_column_catalog(self, principal: Principal) -> ExportColumnCatalogResponse:
         """返回版本化导出列白名单。"""
 
         ...

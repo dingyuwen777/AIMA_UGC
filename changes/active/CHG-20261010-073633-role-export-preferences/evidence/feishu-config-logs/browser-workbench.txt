@@ -1,0 +1,52 @@
+
+> aima-ugc-frontend@0.1.0 test:e2e
+> playwright test e2e/workbench.spec.ts --workers=1 --retries=0
+
+[WebServer] (node:37276) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 39 tests using 1 worker
+
+(node:38336) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 e2e\workbench.spec.ts:58:3 › 九标签在 6×48 完整单行可读、左右布局且无正常内部滚动 (1.2s)
+  ok  2 e2e\workbench.spec.ts:58:3 › 九标签在 6×80 完整单行可读、左右布局且无正常内部滚动 (1.0s)
+  ok  3 e2e\workbench.spec.ts:58:3 › 九标签在 8×48 完整单行可读、左右布局且无正常内部滚动 (1.1s)
+  ok  4 e2e\workbench.spec.ts:58:3 › 九标签在 8×80 完整单行可读、左右布局且无正常内部滚动 (1.1s)
+  ok  5 e2e\workbench.spec.ts:58:3 › 九标签在 12×48 完整单行可读、左右布局且无正常内部滚动 (1.1s)
+  ok  6 e2e\workbench.spec.ts:58:3 › 九标签在 12×160 完整单行可读、左右布局且无正常内部滚动 (1.1s)
+  ok  7 e2e\workbench.spec.ts:101:1 › 首次后台聚合独立跟进，不等待一小时，失败状态可以重试 (1.1s)
+  ok  8 e2e\workbench.spec.ts:118:1 › 异常长一级标签守住可读字号，省略显示且详情保留全名 (962ms)
+  ok  9 e2e\workbench.spec.ts:145:1 › 雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻 (1.6s)
+  ok 10 e2e\workbench.spec.ts:186:1 › 已应用日期及其它筛选在刷新后的首个模块请求中恢复，重置也持久化 (3.2s)
+  ok 11 e2e\workbench.spec.ts:229:1 › 后台聚合请求及失败保留成功图表、日期和几何 (1.1s)
+  ok 12 e2e\workbench.spec.ts:259:1 › 筛选与卡片统一细滚动条，三卡日期位于右上且取同一范围 (1.3s)
+  ok 13 e2e\workbench.spec.ts:546:1 › 工作台按 active Taxonomy 展示真实模块，并使用后端 as_of (1.2s)
+  ok 14 e2e\workbench.spec.ts:596:1 › 声音流筛选首次关闭，并在缺少原生 Popover API 时仍可开关 (1.3s)
+  ok 15 e2e\workbench.spec.ts:642:1 › 空声音流时原生筛选面板紧贴对应触发器并位于视口内 (1.2s)
+  ok 16 e2e\workbench.spec.ts:686:1 › 声音流自动滚动时筛选面板保持打开，筛选条滚动时关闭 (1.5s)
+  ok 17 e2e\workbench.spec.ts:731:1 › 声音流筛选下拉可操作，选择后同口径刷新三个真实模块请求 (1.5s)
+  ok 18 e2e\workbench.spec.ts:757:1 › 确认日期后起止日期同时进入声音流、心智与趋势查询 (1.4s)
+  ok 19 e2e\workbench.spec.ts:785:1 › 反向点击日期也形成合法范围并立即请求三个模块 (1.1s)
+  ok 20 e2e\workbench.spec.ts:809:1 › 日期取消、单日确认、清空后的默认范围始终一致 (1.9s)
+  ok 21 e2e\workbench.spec.ts:838:1 › 一级标签多选只开放对应二级候选，并在父级取消后清理失效子项 (1.3s)
+  ok 22 e2e\workbench.spec.ts:867:1 › 筛选后的后端结果同步替换三个模块，重置后恢复 (1.3s)
+  ok 23 e2e\workbench.spec.ts:886:1 › 新筛选请求失败时不把上一筛选结果冒充当前数据 (1.2s)
+  ok 24 e2e\workbench.spec.ts:904:1 › 品牌心智失败只重试自身，不耦合刷新声音流和趋势 (1.2s)
+  ok 25 e2e\workbench.spec.ts:934:1 › 声音流展示完整返回列表并自动向上滚动，悬停、聚焦和减少动画时暂停 (2.2s)
+  ok 26 e2e\workbench.spec.ts:983:1 › 声音流滚完一页后使用签名游标继续下一页，末页不会重复上一页 (1.2s)
+  ok 27 e2e\workbench.spec.ts:1025:1 › 短声音流按 Figma 连续滚动，平台标识复用声音广场样式 (1.1s)
+  ok 28 e2e\workbench.spec.ts:1055:1 › 普通刷新一小时一次，隐藏时暂停且恢复仅补过期聚合，不重置声音流 (1.1s)
+  ok 29 e2e\workbench.spec.ts:1094:1 › 请求耗时后连续两轮仍在完成后一小时刷新 (4.5s)
+  ok 30 e2e\workbench.spec.ts:1135:1 › 显式编辑态先改草稿，取消恢复；保存一次提交完整 revision (5.1s)
+  ok 31 e2e\workbench.spec.ts:1165:1 › 趋势模块横向按单列缩放，窄模块内部自适应且不重叠 (1.9s)
+  ok 32 e2e\workbench.spec.ts:1197:1 › 三个模块在各自最窄宽度下独立重排且不产生横向溢出 (1.0s)
+  ok 33 e2e\workbench.spec.ts:1236:1 › 品牌心智深链把当前日期和一级标签恢复到声音广场 (1.2s)
+  ok 34 e2e\workbench.spec.ts:1251:1 › 心智钻取保留已经应用的二级标签 (1.5s)
+  ok 35 e2e\workbench.spec.ts:1266:1 › 窄窗口的高度拖动按保存的合法行数呈现 (1.7s)
+  ok 36 e2e\workbench.spec.ts:1286:1 › 点击声音流笔记携带真实 Content ID 定位声音广场 (1.1s)
+  ok 37 e2e\workbench.spec.ts:1294:1 › Analysis Run 新结果及终态分别触发工作台合并刷新 (4.7s)
+  ok 38 e2e\workbench.spec.ts:1326:1 › 普通用户初始数据完成后才收到首个稳定修订，也会追赶聚合且不读管理任务 (1.8s)
+  ok 39 e2e\workbench.spec.ts:1355:1 › 修订追赶与后台聚合跟进等待同一慢请求，不叠加覆盖当前结果 (2.7s)
+
+  39 passed (1.2m)

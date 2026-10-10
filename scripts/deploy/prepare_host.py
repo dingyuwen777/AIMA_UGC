@@ -265,13 +265,29 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
+        resolved_root = _resolve_host_root(args.root)
+        feishu = None
+        if "AIMA_FEISHU_CONNECTORS" in os.environ:
+            from aima_ugc.bootstrap.feishu_config_input import parse_feishu_config_input
+
+            # 校验输入先于任何宿主写入；原始凭据不传给后续业务容器。
+            feishu = parse_feishu_config_input(os.environ.pop("AIMA_FEISHU_CONNECTORS"))
         prepare_host(
-            args.root,
+            resolved_root,
             check_only=args.check_only,
             runtime_only=args.runtime_only,
             runtime_bind_compatible=args.runtime_bind_compatible,
         )
-    except HostPreparationError as exc:
+        if feishu is not None and not args.check_only:
+            from aima_ugc.bootstrap.feishu_config_input import materialize_feishu_config
+
+            materialize_feishu_config(
+                resolved_root / "shared/provider-secrets",
+                feishu,
+                write_manifest=True,
+                owner=(APP_UID, APP_GID),
+            )
+    except (HostPreparationError, ValueError) as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
     action = "校验" if args.check_only else "准备"

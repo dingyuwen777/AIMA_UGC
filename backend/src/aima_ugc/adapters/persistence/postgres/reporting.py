@@ -94,6 +94,7 @@ class PostgresDataExportRepository:
         export_id: UUID,
         job_id: UUID,
         request_snapshot: dict[str, object],
+        created_by: str,
         target_statement: Any,
         columns: tuple[str, ...],
         column_catalog_version: int,
@@ -106,6 +107,7 @@ class PostgresDataExportRepository:
                 artifact_id=None,
                 format="xlsx",
                 request_snapshot=snapshot,
+                created_by=created_by,
                 columns=list(columns),
                 column_catalog_version=column_catalog_version,
                 created_at=beijing_now(),
@@ -137,16 +139,13 @@ class PostgresDataExportRepository:
             )
         return target_count
 
-    def get(self, export_id: UUID) -> DataExportRecord | None:
-        row = (
-            self._session.execute(
-                select(reporting_data_exports_table).where(
-                    reporting_data_exports_table.c.id == export_id
-                )
-            )
-            .mappings()
-            .one_or_none()
+    def get(self, export_id: UUID, *, created_by: str | None = None) -> DataExportRecord | None:
+        statement = select(reporting_data_exports_table).where(
+            reporting_data_exports_table.c.id == export_id
         )
+        if created_by is not None:
+            statement = statement.where(reporting_data_exports_table.c.created_by == created_by)
+        row = self._session.execute(statement).mappings().one_or_none()
         return _row_to_export(row) if row is not None else None
 
     def get_by_job_id(self, job_id: UUID) -> DataExportRecord | None:
@@ -163,14 +162,20 @@ class PostgresDataExportRepository:
         )
         return _row_to_export(row) if row is not None else None
 
-    def list_recent(self, *, limit: int = 20) -> tuple[DataExportRecord, ...]:
+    def list_recent(
+        self,
+        *,
+        limit: int = 20,
+        created_by: str | None = None,
+    ) -> tuple[DataExportRecord, ...]:
+        statement = select(reporting_data_exports_table)
+        if created_by is not None:
+            statement = statement.where(reporting_data_exports_table.c.created_by == created_by)
         rows = self._session.execute(
-            select(reporting_data_exports_table)
-            .order_by(
+            statement.order_by(
                 reporting_data_exports_table.c.created_at.desc(),
                 reporting_data_exports_table.c.id.desc(),
-            )
-            .limit(limit)
+            ).limit(limit)
         ).mappings()
         return tuple(_row_to_export(row) for row in rows)
 
@@ -622,6 +627,7 @@ def _row_to_export(row: Any) -> DataExportRecord:
         stats=cast(dict[str, object] | None, row["stats"]),
         created_at=cast(datetime, row["created_at"]),
         completed_at=cast(datetime | None, row["completed_at"]),
+        created_by=cast(str | None, row["created_by"]),
     )
 
 

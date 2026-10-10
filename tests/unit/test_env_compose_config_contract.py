@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import re
 import runpy
@@ -26,6 +27,19 @@ CODE_OWNED_RUNTIME_KEYS = (
 )
 
 
+def test_runtime_ci_declares_isolated_development_identity() -> None:
+    """真实 Compose 验收无企业凭据，必须显式开发模式而不降低生产默认。"""
+    workflow = (ROOT / ".github/workflows/runtime.yml").read_text(encoding="utf-8")
+    blocks = re.findall(
+        r'cat > "\$\{(?:LOCAL_)?ENV_FILE\}" <<EOF\n(.*?)^\s*EOF$',
+        workflow,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert len(blocks) == 3
+    for index, block in enumerate(blocks):
+        assert "AIMA_IDENTITY_MODE=development" in block, index
+
+
 def _load_local_runtime() -> ModuleType:
     """按真实脚本路径加载 local_runtime，避免测试修改全局 import path。"""
 
@@ -39,6 +53,62 @@ def _load_local_runtime() -> ModuleType:
 
 
 LOCAL_RUNTIME = _load_local_runtime()
+
+
+def test_multiline_connector_input_matches_source_and_compose(tmp_path: Path) -> None:
+    """真实 Compose 读取多行/转义输入，只有 bootstrap 接收明文，业务容器只读配置文件。"""
+    docker = shutil.which("docker")
+    if not docker:
+        pytest.skip("Docker Compose CLI 不可用")
+    entries = [
+        {
+            "code": "fixture",
+            "display_name": "O'Brien 企业",
+            "app_id": "cli_fixture",
+            "app_secret": "fixture-$KEEP-${UNCHANGED}",
+            "admin_group_id": "admin",
+            "user_group_id": "user",
+            "redirect_uri": "http://127.0.0.1:5173/api/v1/auth/feishu/fixture/callback",
+        }
+    ]
+    raw = json.dumps(entries, ensure_ascii=False, indent=2)
+    env_file = tmp_path / "fixture.env"
+    env_file.write_text(
+        "AIMA_FEISHU_CONNECTORS='" + raw.replace("'", "\\'") + "'\n", encoding="utf-8"
+    )
+    source = LOCAL_RUNTIME.parse_env_file(env_file)["AIMA_FEISHU_CONNECTORS"]
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("AIMA_")}
+    for overlay in ([], ["-f", str(ROOT / "compose.windows.yaml")]):
+        result = subprocess.run(
+            [
+                docker,
+                "compose",
+                "-f",
+                str(ROOT / "compose.yaml"),
+                *overlay,
+                "--env-file",
+                str(env_file),
+                "config",
+                "--format",
+                "json",
+            ],
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        assert result.returncode == 0, result.stderr
+        services = json.loads(result.stdout)["services"]
+        # config 输出是可再次输入 Compose 的模型，字面 $ 会编码成 $$。
+        rendered = services["bootstrap"]["environment"]["AIMA_FEISHU_CONNECTORS"]
+        assert json.loads(rendered.replace("$$", "$")) == json.loads(source)
+        for name in ("api", "worker", "scheduler", "configure", "migrate"):
+            runtime = services[name]
+            assert "AIMA_FEISHU_CONNECTORS" not in runtime["environment"]
+            assert runtime["environment"]["AIMA_FEISHU_CONNECTORS_FILE"].endswith(
+                "/feishu-connectors.json"
+            )
+            assert any(volume["target"] == "/run/provider-secrets" for volume in runtime["volumes"])
 
 
 @pytest.mark.parametrize(

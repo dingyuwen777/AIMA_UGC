@@ -701,6 +701,20 @@ test('explains failed Import terminal state without inventing pending stages', a
 })
 
 test('shows a safe actionable error when the Worker cannot read the Provider Secret', async ({ page }) => {
+  // 结果深链进入声音广场后仍使用正式只读入口，不能依赖未声明请求。
+  await page.route('**/api/v1/contents?**', (route) => route.fulfill({ json: { items: [], next_cursor: null, has_more: false } }))
+  await page.route('**/api/v1/contents/count', (route) => route.fulfill({ json: {
+    count_mode: 'estimated', count: 0, count_kind: 'exact', as_of: '2026-08-21T10:00:00+08:00', truncated: false,
+  } }))
+  await page.route('**/api/v1/content-analysis-capabilities', (route) => route.fulfill({ json: { configured: false } }))
+  await page.route('**/api/v1/content-analysis-taxonomy', (route) => route.fulfill({ json: {
+    prompt_version: 'content-labeling.v3.0', prompt_sha256: 'a'.repeat(64), schema_version: 'aima-content-taxonomy.v2',
+    taxonomy_sha256: 'b'.repeat(64), sentiments: [], voice_types: [], labels: [],
+  } }))
+  await page.route('**/api/v1/content-filter-options', (route) => route.fulfill({ json: {
+    platforms: [], relevances: ['relevant', 'irrelevant'], analysis_statuses: [], content_types: [],
+    sentiments: [], voice_types: [], labels: [], catalog_status: 'ready',
+  } }))
   const failedRun = {
     ...runDetail,
     mode: 'batch_supplement',
@@ -723,7 +737,6 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
     started_at: '2026-08-21T10:00:01+08:00',
     finished_at: '2026-08-21T10:00:02+08:00',
   }
-  await page.unroute('**/api/v1/**')
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === '/api/v1/collection-runtime/summary') {
@@ -755,7 +768,7 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
     if (url.pathname === `/api/v1/collection-runs/${runId}`) {
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(failedRun) })
     }
-    return route.fulfill({ status: 404, body: 'not mocked' })
+    return route.fallback()
   })
 
   await page.goto('/collection-runtime')
@@ -814,11 +827,13 @@ test('shows frozen account dates and confirms retry before using the shared run 
 })
 
 test('keeps unified Error Contract technical ids out of the product list error state', async ({ page }) => {
-  await page.unroute('**/api/v1/**')
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === '/api/v1/collection-runtime/summary') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ processing_count: 0, completed_today_count: 0, contents_ingested_today: 0, as_of: '2026-08-21T02:00:00Z' }) })
-    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ title: '分页服务暂不可用', status: 503, detail: '分页服务配置不可用，请使用 request_id 联系管理员。', request_id: 'req_stage8e_error', errors: [] }) })
+    if (url.pathname === '/api/v1/collection-runtime/runs') {
+      return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ title: '分页服务暂不可用', status: 503, detail: '分页服务配置不可用，请使用 request_id 联系管理员。', request_id: 'req_stage8e_error', errors: [] }) })
+    }
+    await route.fallback()
   })
   await page.goto('/collection-runtime')
   const runtimeTable = page.getByRole('region', { name: '采集运行记录', exact: true })

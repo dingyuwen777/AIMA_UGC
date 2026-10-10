@@ -408,63 +408,31 @@ class FeishuLoginRequiredResolver:
 
         self._routes = routes
 
+    @property
+    def trusted_browser_urls(self) -> tuple[str, ...]:
+        """只信任已配置 Connector 的回调来源，不接受客户端转发头扩权。"""
+        return self._routes.trusted_browser_urls
+
     def resolve(self, request: Request) -> Principal:
         """解析 Principal；无有效会话时抛 `AuthenticationRequired`（→ 401）。"""
 
         return self._routes.resolve_principal(request)
 
 
-def build_feishu_auth_settings(settings: PlatformSettings) -> FeishuAuthSettings | None:
-    """从平台配置构造飞书登录配置；**未配置返回 `None`**（调用方沿用开发身份）。
-
-    允许 `None` 是刻意的：`AIMA_FEISHU_*` 一个都没设时，进程行为必须与接入前完全一致
-    （不破坏既有开发身份与既有测试）。只设了一部分则由 `PlatformSettings` 校验直接报错，
-    不会静默降级成"看起来配了、其实没启用"。
-    """
-
-    app_id = settings.feishu_app_id
-    if app_id is None:
-        return None
-    admin_group_id = settings.feishu_admin_group_id
-    user_group_id = settings.feishu_user_group_id
-    redirect_uri = settings.feishu_redirect_uri
-    # 走到这里说明配置校验已保证三者非空；显式重复判断只为让类型收窄可读。
-    if admin_group_id is None or user_group_id is None or redirect_uri is None:
-        return None
-
-    return FeishuAuthSettings(
-        app_id=app_id,
-        app_secret_ref=settings.feishu_app_secret_ref,
-        admin_group_id=admin_group_id,
-        user_group_id=user_group_id,
-        redirect_uri=redirect_uri,
-        scope=settings.feishu_scope,
-        # Cookie 的 Secure 按环境：默认跟随回调地址的协议（本地 http 关、生产 https 开），
-        # 也允许用 AIMA_FEISHU_COOKIE_SECURE 显式覆盖。
-        cookie_secure=(
-            settings.feishu_cookie_secure
-            if settings.feishu_cookie_secure is not None
-            else redirect_uri.startswith("https://")
-        ),
-        session_ttl=timedelta(hours=settings.feishu_session_ttl_hours),
-        state_ttl=timedelta(seconds=settings.feishu_state_ttl_seconds),
-    )
-
-
 class FeishuAuthRoutes:
-    """登录路由的装配体：持有多企业配置与 DB Runtime，并在关闭时释放连接池。
+    """持有 Connector 运行快照与 DB Runtime，并在关闭时释放连接池。
 
-    ════════ 两种配置形态（并存）════════
-
-    | 形态 | `auth_settings` | `connectors` | 可用路由 |
-    |---|---|---|---|
-    | **单企业**（改造前的现状）| 有值 | 空 | 旧路径 `/login` · `/callback` |
-    | **多企业**（本次新增）| 可为 `None` | 非空 | 新旧路径**都可用** |
-
-    **为什么多企业时旧路径也可用**：它需要"一家默认企业"的语义。
-    多企业时把**配置里的第一家**当作默认 —— 这样旧回调地址（已登记进飞书后台）
-    不会立刻失效，给迁移留出窗口。
+    正式装配只消费 CONNECTORS 数组；auth_settings 是既有无 code HTTP 别名的默认快照，
+    由数组首项提供，不是另一套环境配置。带 code 的入口只查对应项，不回退到默认应用。
     """
+
+    @property
+    def trusted_browser_urls(self) -> tuple[str, ...]:
+        """反向代理后的浏览器来源由正式回调配置确定。"""
+        settings = tuple(self._connectors.values())
+        if self._settings is not None:
+            settings = (*settings, self._settings)
+        return tuple(item.redirect_uri for item in settings)
 
     def __init__(
         self,
@@ -479,8 +447,8 @@ class FeishuAuthRoutes:
     ) -> None:
         """保存配置与可注入依赖；`session_factory` / `client` 未注入时惰性自建。
 
-        `connectors` 是 `企业标识 -> 该企业的飞书配置`；为空即单企业形态。
-        `connector_display_names` 是 `企业标识 -> 界面上显示的名字`
+        `connectors` 是 `应用入口标识 -> 该应用的运行快照`。
+        `connector_display_names` 是 `应用入口标识 -> 界面上显示的名字`
         （由配置层的 `FeishuConnector.display_name` 提供 ——
         `FeishuAuthSettings` 本身不持有显示名，因为它是运行时快照、只管鉴权要素）。
         """
@@ -496,13 +464,7 @@ class FeishuAuthRoutes:
         )
         self._runtime: DatabaseRuntime | None = None
         self._owns_runtime = session_factory is None
-        # ── 多企业（本次新增）──────────────────────────────────────────────
-        # `code -> FeishuAuthSettings`。**为空**表示单企业形态，
-        # 此时所有路径都走 `self._settings`（行为与改造前逐字一致）。
-        #
-        # ⚠️ 为什么保留 `self._settings` 而不改成"注册表 + 默认值"二选一：
-        #   `self._settings` 已被 7 处内部代码引用，且旧路由依赖"唯一配置"语义。
-        #   加一个并列的映射，改动面最小、旧行为零风险。
+        # 无 code 别名与带 code 路由共享数组中的快照，保持既有 HTTP Contract。
         self._connectors: dict[str, FeishuAuthSettings] = dict(connectors or {})
         # 企业标识 → 显示名。只用于前端展示列表；缺失时回退成 code 本身。
         self._connector_display_names: dict[str, str] = dict(connector_display_names or {})
@@ -510,11 +472,7 @@ class FeishuAuthRoutes:
     # ------------------------------------------------------- 多企业：配置查找
     @property
     def supports_multiple_connectors(self) -> bool:
-        """**当前是否配置了多家企业**（是数据状态，不是"路由是否存在"）。
-
-        ⚠️ 别和"路由是否注册"混淆：多企业路由**总是注册**（见 `install` 的说明），
-        本属性只回答"这次部署实际配了几家"。
-        """
+        """是否已装配应用注册表；单项数组也返回 True。"""
 
         return bool(self._connectors)
 
@@ -1323,14 +1281,8 @@ def build_feishu_identity(
 ) -> tuple[IdentityResolver, FeishuAuthRoutes]:
     """装配飞书身份：返回 `(resolver, 路由装配体)`。
 
-    未配置飞书时返回 `DevelopmentIdentityResolver` —— 与接入前的**默认行为完全一致**；
-    配置了飞书时才返回 `FeishuLoginRequiredResolver`（无会话 → 401）。
-
-    **支持两种配置形态**：
-
-    · **单企业**（`AIMA_FEISHU_APP_ID` 等）→ 与改造前逐字一致；
-    · **多企业**（`AIMA_FEISHU_CONNECTORS`）→ 额外注册带 `{connector_code}` 的路由，
-      并为每个企业构造独立的 `FeishuAuthSettings`（各自的 App ID / Secret 引用 / 组 ID / 回调）。
+    登录只消费 CONNECTORS 数组，一项即单应用，各项独立装配凭据与用户组。
+    显式 feishu 模式缺少数组时失败关闭；development 模式无数组时保留本地开发身份。
     """
 
     resolved_settings = load_settings() if settings is None else settings
@@ -1360,22 +1312,15 @@ def build_feishu_identity(
         resolver: IdentityResolver = FeishuLoginRequiredResolver(routes)
         return resolver, routes
 
-    # ── 单企业（改造前的路径，行为不变）───────────────────────────────────
-    auth_settings = build_feishu_auth_settings(resolved_settings)
+    if resolved_settings.identity_mode == "feishu":
+        raise ValueError("AIMA_IDENTITY_MODE=feishu 必须配置完整 AIMA_FEISHU_CONNECTORS 与用户组")
     routes = FeishuAuthRoutes(
-        auth_settings=auth_settings,
+        auth_settings=None,
         session_factory=session_factory,
         client=client,
         app_secret_reader=read_app_secret,
     )
-    if auth_settings is None:
-        # 未配置：既不产生 401 语义，也不改变任何既有路由的行为。
-        return DevelopmentIdentityResolver(), routes
-
-    # 配了飞书才启用会话解析（无会话 → 401）；解析器与登录路由共用同一个装配体，
-    # 因此也共用同一个数据库 Runtime / Session 工厂。
-    resolver2: IdentityResolver = FeishuLoginRequiredResolver(routes)
-    return resolver2, routes
+    return DevelopmentIdentityResolver(), routes
 
 
 def _build_connector_settings_map(
@@ -1435,7 +1380,6 @@ __all__ = [
     "FeishuLoginRequiredResolver",
     "LoginStateInvalid",
     "ResolvedIdentity",
-    "build_feishu_auth_settings",
     "build_feishu_identity",
     "install_feishu_auth_routes",
     "is_safe_return_to",

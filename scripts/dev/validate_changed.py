@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import runpy
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -243,7 +244,9 @@ def _execute(commands: list[tuple[str, ...]]) -> None:
     """顺序执行无外部服务副作用的本地验证并保留原始退出码。"""
     for command in commands:
         print("+ " + " ".join(command), flush=True)
-        subprocess.run(command, cwd=ROOT, check=True)
+        # Windows 的 npm 入口是 .cmd，CreateProcess 不会自行按 PATHEXT 查找。
+        executable = shutil.which(command[0]) or command[0]
+        subprocess.run((executable, *command[1:]), cwd=ROOT, check=True)
 
 
 def main() -> int:

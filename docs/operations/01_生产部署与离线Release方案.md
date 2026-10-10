@@ -502,9 +502,17 @@ python3 start_compose.py --env-file /data/AIMA_UGC/env.production
 
 ---
 
+### 多用户权限版本发布
+
+部署前设置 `AIMA_IDENTITY_MODE=feishu`，并配置完整单企业或多企业 Connector、稳定管理员/普通用户 Group ID、对应回调和 Secret 引用；两组同时命中取管理员，均未命中拒绝登录。Compose 默认 feishu，API 不允许缺配置时降级为开发身份。隔离本地与 Release Smoke 必须显式 development，不能作为企业认证验收。
+
+先应用 [migrations/versions/20261010_0087_export_ownership_defaults.py](../../migrations/versions/20261010_0087_export_ownership_defaults.py)，再联动切换 API、Worker 和前端。迁移只扩展 Export 归属、索引和个人默认字段表，并回填可靠历史创建者，不扫描 Content 或改写 Artifact。不得单独发布后端权限限制而让旧前端持续轮询管理 API。
+
+生产候选环境仍须独立验收两企业 OAuth、两角色菜单/API/文件访问、Cookie 安全、最终 HTTPS/端口的 Origin/Referer、Session 撤销与账号切换；会话期间不会逐请求复核远端组，默认最长约 8 小时后重新登录判定。正式验收不能由 Development Principal 或隔离本地自动化结果代替。
+
 ## 13. 回滚
 
-应用回滚和数据恢复必须区分。
+应用回滚和数据恢复必须区分。多用户版本回滚保留新增 Schema、创建者与个人配置；0087 只允许隔离空库 DDL 往返，有导出或个人配置时拒绝 downgrade。回到可能重新开放未认证 API 的旧应用前，先建立网关/网络临时访问隔离，验证后再恢复授权访问。
 
 ### 应用版本可兼容当前 Schema
 

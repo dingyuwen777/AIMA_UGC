@@ -17,25 +17,23 @@ x-backend-environment: &backend-environment
   - AIMA_LOG_MAX_BYTES=${AIMA_LOG_MAX_BYTES:-20971520}
   - AIMA_LOG_BACKUP_COUNT=${AIMA_LOG_BACKUP_COUNT:-10}
   - AIMA_LOG_COMPRESS=${AIMA_LOG_COMPRESS:-true}
+  # 正式容器默认失败关闭；隔离本地/CI 需要显式 development。
+  - AIMA_IDENTITY_MODE=${AIMA_IDENTITY_MODE:-feishu}
   - AIMA_LLM_BASE_URL
   - AIMA_LLM_PROVIDER_NAME
   - AIMA_LLM_MODEL
   - AIMA_TIKHUB_ENABLED
   - AIMA_TIKHUB_BASE_URL
   - AIMA_TIKHUB_SECRET_REF
-  # 飞书身份接入（单 ③）：整组留空 = 不启用，进程沿用开发身份（与接入前一致）。
-  # ⚠️ App Secret 不在环境变量里：把文件放到
-  # ${AIMA_HOST_ROOT}/shared/provider-secrets/feishu_app_secret（已在下面 bind 挂载）。
+  # 飞书身份接入：feishu 模式配置不完整时 API 拒绝启动，禁止静默降级。
+  # 初始化容器将每应用凭据拆成文件；业务容器仅读取清理后的配置及 Secret 引用。
   - AIMA_FEISHU_APP_ID
   - AIMA_FEISHU_APP_SECRET_REF
-  - AIMA_FEISHU_ADMIN_GROUP_ID
-  - AIMA_FEISHU_USER_GROUP_ID
-  - AIMA_FEISHU_REDIRECT_URI
   - AIMA_FEISHU_SCOPE
   - AIMA_FEISHU_COOKIE_SECURE
   - AIMA_FEISHU_SESSION_TTL_HOURS
   - AIMA_FEISHU_STATE_TTL_SECONDS
-  - AIMA_FEISHU_CONNECTORS
+  - AIMA_FEISHU_CONNECTORS_FILE=/run/provider-secrets/feishu-connectors.json
 
 x-backend-build: &backend-build
   context: .
@@ -53,6 +51,10 @@ x-backend-service: &backend-service
   group_add:
     - "11001"
   volumes:
+    - type: bind
+      source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/provider-secrets
+      target: /run/provider-secrets
+      read_only: true
     - type: bind
       source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
       target: /run/wisersone-input
@@ -78,6 +80,8 @@ services:
     image: aima-ugc-backend:${AIMA_IMAGE_TAG:-internal-v1a}
     build: *backend-build
     user: "0:0"
+    environment:
+      AIMA_FEISHU_CONNECTORS: ${AIMA_FEISHU_CONNECTORS:-}
     command:
       - python
       - scripts/deploy/prepare_host.py

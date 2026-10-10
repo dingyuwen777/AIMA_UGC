@@ -9,6 +9,7 @@ const props = defineProps<{
   media: ContentMediaResponse
   originalUrl?: string | null
   active: boolean
+  canRecover: boolean
 }>()
 const emit = defineEmits<{ terminal: [] }>()
 const video = ref<HTMLVideoElement | null>(null)
@@ -16,6 +17,7 @@ const coverFailed = ref(false)
 const playback = createMediaPlayback(
   () => ({ contentId: props.contentId, position: props.media.position }),
   () => emit('terminal'),
+  () => props.canRecover,
 )
 const { status, streamUrl, message, cooldownUntil } = playback
 const duration = computed(() => {

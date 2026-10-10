@@ -18,6 +18,7 @@ class DataExportRecord:
     completed_at: datetime | None
     columns: tuple[str, ...] = ()
     column_catalog_version: int = 1
+    created_by: str | None = None
 
 
 __all__ = ["DataExportRecord"]

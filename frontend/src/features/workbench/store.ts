@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
 import type {
@@ -28,6 +28,7 @@ import {
   saveWorkbenchLayout,
 } from './api'
 import { readWorkbenchFilters, saveWorkbenchFilters } from './filterPersistence'
+import { useIdentityStore } from '../identity/store'
 
 export interface WorkbenchFilters {
   dateFrom: string
@@ -174,6 +175,7 @@ function sortedModules(modules: readonly WorkbenchLayoutModule[]): WorkbenchLayo
 }
 
 export const useWorkbenchStore = defineStore('workbench', () => {
+  const identity = useIdentityStore()
   const filters = ref<WorkbenchFilters>(defaultFilters())
   const aggregateFilters = ref<WorkbenchAggregateFilters>({ dateFrom: '', dateTo: '', brandIds: [] })
   const mindDateRange = ref<WorkbenchDateRange>({ dateFrom: '', dateTo: '' })
@@ -298,13 +300,15 @@ export const useWorkbenchStore = defineStore('workbench', () => {
 
   /** 重新读取 Taxonomy，用于 active Scheme 切换后的口径同步。 */
   async function refreshTaxonomy(): Promise<void> {
+    const epoch = identity.scopeEpoch
     try {
       const current = await fetchWorkbenchTaxonomy()
+      if (epoch !== identity.scopeEpoch) return
       taxonomy.value = current
       filters.value = sanitizeTaxonomyFilters(filters.value, current)
       trendVoiceTypes.value = sanitizeVoiceTypes(trendVoiceTypes.value, current)
     } catch (error) {
-      referenceError.value = apiErrorMessage(error)
+      if (epoch === identity.scopeEpoch) referenceError.value = apiErrorMessage(error)
     }
   }
 
@@ -325,11 +329,13 @@ export const useWorkbenchStore = defineStore('workbench', () => {
 
   /** 当前数据口径变化后，Taxonomy 目录必须跟随响应 hash 重新读取。 */
   async function alignTaxonomyWithData(): Promise<void> {
+    const epoch = identity.scopeEpoch
     const responseHash = trend.value?.taxonomy_sha256
       ?? mind.value?.taxonomy_sha256
       ?? stream.value?.taxonomy_sha256
     if (!responseHash || taxonomy.value?.taxonomy_sha256 === responseHash) return
     await refreshTaxonomy()
+    if (epoch !== identity.scopeEpoch) return
     if (taxonomy.value?.taxonomy_sha256 !== responseHash) {
       taxonomy.value = null
       globalError.value = '当前 Analysis Scheme 的 Taxonomy 暂未同步，请稍后重试。'
@@ -408,6 +414,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       globalError.value = 'Analysis Scheme 已切换，正在重新同步工作台口径。'
       if (!retried) {
         await refreshTaxonomy()
+        if (revision !== dataRevision) return
         await refreshData(true, true)
         return
       }
@@ -532,8 +539,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
 
   /** 周期补读只刷新两个聚合模块，避免每 15 秒把全量声音流遍历重置到第一页。 */
   async function refreshAggregates(): Promise<void> {
+    const epoch = identity.scopeEpoch
     await Promise.all([refreshModule('mind', true), refreshModule('trend', true)])
-    lastAutoRefreshAt.value = Date.now()
+    if (epoch === identity.scopeEpoch) lastAutoRefreshAt.value = Date.now()
   }
 
   /** 默认品牌由当前目录解析，不能固定 UUID，也不能先发全品牌查询。 */
@@ -556,7 +564,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
 
   /** 先恢复参考身份，再按同一最终查询并行加载三个模块；再次进入保留用户筛选。 */
   async function initialize(): Promise<void> {
+    const epoch = identity.scopeEpoch
     await refreshReferenceData()
+    if (epoch !== identity.scopeEpoch) return
     if (!initialized) {
       const saved = readWorkbenchFilters()
       if (saved) {
@@ -575,7 +585,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       initialized = true
     }
     await refreshData()
-    lastAutoRefreshAt.value = Date.now()
+    if (epoch === identity.scopeEpoch) lastAutoRefreshAt.value = Date.now()
   }
 
   /** 重置应用与首次一致的爱玛七日条件，并失效另一查询的结果。 */
@@ -704,6 +714,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   /** 一次提交完整布局草稿；409 等并发错误保留草稿供用户重试或取消。 */
   async function saveLayout(): Promise<boolean> {
     if (!layout.value || savingLayout.value) return false
+    const epoch = identity.scopeEpoch
     savingLayout.value = true
     layoutError.value = null
     try {
@@ -711,16 +722,17 @@ export const useWorkbenchStore = defineStore('workbench', () => {
         revision: layout.value.revision,
         modules: sortedModules(draftModules.value),
       })
+      if (epoch !== identity.scopeEpoch) return false
       layout.value = saved
       draftModules.value = cloneModules(saved.modules)
       editing.value = false
       showNotice('工作台布局已保存。')
       return true
     } catch (error) {
-      layoutError.value = apiErrorMessage(error)
+      if (epoch === identity.scopeEpoch) layoutError.value = apiErrorMessage(error)
       return false
     } finally {
-      savingLayout.value = false
+      if (epoch === identity.scopeEpoch) savingLayout.value = false
     }
   }
 
@@ -733,6 +745,33 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   function selectMind(primaryLabel: string): void {
     selectedMind.value = primaryLabel
   }
+
+  /** 页面重新挂载前同步清空账号数据，并撤销旧模块/参考请求的提交权。 */
+  watch(() => identity.scopeEpoch, () => {
+    dataRevision += 1
+    referenceRevision += 1
+    for (const key of ['stream', 'mind', 'trend'] as const) moduleRequestRevision[key] += 1
+    initialized = false
+    filters.value = defaultFilters()
+    taxonomy.value = null
+    stream.value = null
+    mind.value = null
+    trend.value = null
+    layout.value = null
+    draftModules.value = []
+    editing.value = false
+    savingLayout.value = false
+    loadingReference.value = false
+    moduleLoading.value = { stream: false, mind: false, trend: false }
+    moduleErrors.value = { stream: null, mind: null, trend: null }
+    referenceError.value = null
+    globalError.value = null
+    layoutError.value = null
+    selectedMind.value = null
+    mindMetric.value = 'share'
+    lastAutoRefreshAt.value = null
+    clearNotice()
+  }, { flush: 'sync' })
 
   return {
     filters,

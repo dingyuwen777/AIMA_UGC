@@ -432,7 +432,7 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(
                     ),
                 ),
                 request_id="stage5-export-targets",
-                actor_ref="user:stage5",
+                principal=principal,
             )
             selected_export = reporting.create_export(
                 DataExportSubmitRequest(
@@ -446,7 +446,7 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(
                     )
                 ),
                 request_id="stage5-selected-export-targets",
-                actor_ref="user:stage5",
+                principal=principal,
             )
         assert selected_export.target_count == 2
         with runtime.database.engine.begin() as connection:
@@ -468,7 +468,7 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(
                     targets=ContentTargetSelection(scope="selected", content_ids=(uuid4(),))
                 ),
                 request_id="stage5-empty-export-targets",
-                actor_ref="user:stage5",
+                principal=principal,
             )
         with runtime.database.engine.begin() as connection:
             assert (
@@ -555,7 +555,7 @@ def test_brand_vehicle_filters_share_targets_and_export_frozen_version(
             retry_delay_seconds=0,
         )
         assert export_worker.run_once() is True
-        downloaded = reporting.download_export(export.export_id)
+        downloaded = reporting.download_export(export.export_id, principal=principal)
         workbook = load_workbook(
             BytesIO(b"".join(downloaded.chunks)), read_only=True, data_only=True
         )
