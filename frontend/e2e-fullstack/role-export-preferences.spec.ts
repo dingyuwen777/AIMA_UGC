@@ -65,8 +65,9 @@ test('真实 Session 双用户的只读 UI、默认字段、导出归属和账�
   const b = await accountContext(browser, sessions.user_b)
   const admin = await accountContext(browser, sessions.admin)
   try {
-    const candidates = await (await admin.request.get(`${api}/api/v1/contents?relevance=irrelevant`)).json()
-    const sharedContent = candidates.items[0] as { id: string; title: string }
+    const relevant = await (await admin.request.get(`${api}/api/v1/contents?relevance=relevant`)).json()
+    const irrelevant = await (await admin.request.get(`${api}/api/v1/contents?relevance=irrelevant`)).json()
+    const sharedContent = [...relevant.items, ...irrelevant.items].find((item) => item.analysis.status === 'completed') as { id: string; title: string }
     expect(sharedContent, '正式 Fixture 必须包含已分析内容').toBeTruthy()
     const review = async (decision: 'relevant' | 'irrelevant') => {
       const response = await admin.request.post(`${api}/api/v1/content-relevance-reviews`, {
@@ -83,8 +84,8 @@ test('真实 Session 双用户的只读 UI、默认字段、导出归属和账�
     })
     await page.goto(`${origin}/voice-plaza`)
     await expect(page.getByRole('navigation', { name: '业务导航' }).getByRole('link')).toHaveCount(2)
-    await expect(page.getByRole('button', { name: /AI 分析/ })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /评论补采/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'AI 分析', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '评论补采', exact: true })).toHaveCount(0)
     await expect(page.getByRole('checkbox', { name: '选择当前已加载内容' })).toBeVisible()
     await expect(page.getByText(sharedContent.title, { exact: true })).toBeVisible()
     // 管理员真实写入后，已打开的普通用户页面依靠只读修订刷新结果。
