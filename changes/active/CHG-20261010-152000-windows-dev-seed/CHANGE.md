@@ -7,7 +7,7 @@ status: ready_for_review
 owner: Codex
 branch: feature/716-windows-dev-seed
 created: 2026-10-10T15:20:00+08:00
-updated: 2026-10-10T21:11:00+08:00
+updated: 2026-10-10T21:23:00+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -212,6 +212,10 @@ Parent 单Writer；独立只读Reviewer审查后形成整批F1–F4，修复后�
 本轮曾遇到沙箱前端TEMP权限错误、D盘LFS未跟踪过滤临时文件积累导致空间不足、脚本单独mypy未解析项目源码，以及新增单测两处默认GBK读取；已分别使用任务TEMP、正常暂存LFS原包并删除本次失败tmp、以正式backend/src加新增脚本作为静态检查范围、显式UTF-8读取复验通过。V1最终绿色输出保存为unit-utf8-final.log，unit-reviewed-final.log是修复前失败记录，不冒充成功。Windows绑定目录的冷查询耗时不作为生产性能证据。
 
 API专项首段默认和AI筛选列表各5条、详情及AI结果通过；随后因把root=self的一级评论误选成回复样本而失败。更正为实际二级回复后，发现测试使用bootstrap工厂缺扩展品牌路由；改为正式entrypoints.api_main.app，全部扩展查询通过。这两处均属临时验收接线修正，未据此修改业务代码。真实包13条一级评论/9条回复。无日期工作台声音流查询389.46s返回200，取消动作匹配时已无该活动查询；随后带真实页面日期范围读取15.94s返回200。保留慢查询事实，不伪称取消成功或生产性能通过。
+
+PR #718 首轮HEAD 83701da2 的主CI在单元测试发现环境隔离遗漏：runner同时设置CI/GITHUB_ACTIONS，已有Schema保留用例先走CI跳过分支，1 failed、2115 passed、10 skipped。只修单测两处各显式清除这两个外部标志，ci=True参数仍随后设置CI以验证对应分支；不改生产跳过规则、不降低原断言。CI=true本地目标Red为1 failed；双标志重现仍Red后最终两个单元文件48 passed、1 skipped（github-env-green.log，0.83s），Ruff check/format通过。首次沙箱basetemp权限错误不作为目标Red。真实PG workspace原已清两标志，无需改变。该修复由独立Reviewer另行复核后提交并重新取得当前HEAD CI；首轮Compose、离线候选回放、Windows/Linux工具通过仅作为首轮事实，不代替新HEAD门禁。
+
+独立Repair Review结论NO_FINDINGS_WITHIN_SCOPE：复核live #716/PR #718、最终4行增量、完整双标志Red/Green及相邻生产/PG fixture，独立Ruff check/format exit0；测试SHA256为2a9ccaf7244819f0118fec695bd608072a9f8c4054c3fd130b04723472ce293e，三份生产SHA不变。新HEAD仍须取得平台CI，本结论不冒充新CI通过。
 
 ## 未验证内容与剩余风险
 

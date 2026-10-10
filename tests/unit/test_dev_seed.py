@@ -295,6 +295,8 @@ def test_no_snapshot_or_skipped_still_checks_shared_failure(
     from types import SimpleNamespace
 
     paths = seed.runtime_paths(tmp_path)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     if ci:
         monkeypatch.setenv("CI", "true")
     identity = {
@@ -337,6 +339,8 @@ def test_existing_schema_does_not_inspect_or_restore(tmp_path: Path, monkeypatch
     from contextlib import nullcontext
     from types import SimpleNamespace
 
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     paths = seed.runtime_paths(tmp_path)
     archive = tmp_path / "devdata/seed/aima_recent30.tar.gz"
     archive.parent.mkdir(parents=True)
