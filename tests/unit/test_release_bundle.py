@@ -4,6 +4,7 @@ import codecs
 import importlib.util
 import json
 import os
+import runpy
 import shutil
 import subprocess
 import sys
@@ -367,15 +368,16 @@ def test_smoke_env_overrides_default_network(tmp_path: Path) -> None:
         subnet="10.254.254.0/24",
         gateway="10.254.254.1",
     )
-    values = dict(
-        line.split("=", 1)
-        for line in env_path.read_text(encoding="utf-8").splitlines()
-        if line and not line.startswith("#")
-    )
+    parse_env_file = runpy.run_path(str(ROOT / "scripts/dev/local_runtime.py"))["parse_env_file"]
+    values = parse_env_file(env_path)
 
     assert values["AIMA_DOCKER_SUBNET"] == "10.254.254.0/24"
     assert values["AIMA_DOCKER_GATEWAY"] == "10.254.254.1"
     assert values["AIMA_HTTP_PORT"] == "49152"
+    original = parse_env_file(ROOT / "env.production.example")
+    assert json.loads(values["AIMA_FEISHU_CONNECTORS"]) == json.loads(
+        original["AIMA_FEISHU_CONNECTORS"]
+    )
 
 
 def test_http_smoke_uses_direct_local_connection(monkeypatch: pytest.MonkeyPatch) -> None:

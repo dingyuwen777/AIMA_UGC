@@ -28,7 +28,7 @@ DEFAULT_FEISHU_APP_SECRET_REF = "feishu_app_secret"
 class PlatformSettings(BaseModel):
     """业务无关的进程运行配置。"""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
 
     data_dir: Path
     identity_mode: Literal["development", "feishu"] = "development"
@@ -69,56 +69,25 @@ class PlatformSettings(BaseModel):
     feishu_timeout_seconds: float = Field(default=30.0, gt=0, le=1800)
     feishu_max_retries: int = Field(default=3, ge=0, le=8)
     feishu_dry_run: bool = True
-    # ── 飞书身份接入（单 ③）───────────────────────────────────────────────
-    # ⚠️ 这一组**全部可选**：一个都不配时 `feishu_app_id is None`，进程沿用开发身份，
-    # 行为与接入前逐字一致（既有测试与本地开发不受影响）。
-    # App Secret **不在这里**：配置只保存"引用"（文件名），内容由 platform/security 读。
+    # 报告/多维表的独立应用，不用于网页登录身份装配。
     feishu_app_id: str | None = None
     feishu_app_secret_ref: str = Field(default=DEFAULT_FEISHU_APP_SECRET_REF, min_length=1)
-    feishu_admin_group_id: str | None = None
-    feishu_user_group_id: str | None = None
-    feishu_redirect_uri: str | None = None
     feishu_scope: str = Field(default=DEFAULT_FEISHU_SCOPE, min_length=1)
     # `None` = 跟随回调地址协议推断（本地 http 关、生产 https 开）；显式设 true/false 可覆盖。
     feishu_cookie_secure: bool | None = None
     feishu_session_ttl_hours: int = Field(default=8, ge=1, le=720)
     feishu_state_ttl_seconds: int = Field(default=600, ge=60, le=3600)
-    # ── 飞书多企业接入（本次新增）─────────────────────────────────────────
-    #
-    # 上面那组 `feishu_*` 字段是**单企业**形态（一个进程只服务一家企业）。
-    # 本字段让一个进程能同时服务**多家企业**：值是**一段 JSON 数组**，
-    # 每个元素描述一家企业（code / 显示名 / App ID / Secret 引用 / 两个组 ID / 回调地址）。
-    #
-    # ⚠️ 与上面那组的关系是**并存而非替代**：
-    #   · 本字段**为空** → 行为与改造前**逐字一致**（沿用上面的单企业字段）。
-    #     这是"向后兼容"的关键：老 `.env` 不改也能跑。
-    #   · 本字段**非空** → 启用多企业，上面的单企业字段被忽略（但仍在配置里，不报错）。
-    #
-    # ⚠️ 为什么用 JSON 字符串而不是多个扁平环境变量：
-    #   ① 一家企业 = 一个对象，增删企业**只动一处**；
-    #   ② 能对**整组**做跨字段校验（code 唯一、app_id 唯一等），
-    #      而扁平变量只能逐项校验，跨条目的冲突会被漏掉；
-    #   ③ 将来若要做"连接器管理"界面，这段 JSON 可直接序列化进库。
-    #   实测：单行 JSON（含中文）能被正确解析，`env.local` 已是 UTF-8。
-    feishu_connectors_json: str | None = None
+    # 登录唯一配置：一个应用一个数组元素；启动流程已把明文凭据转成文件引用。
+    feishu_connectors_json: str | None = Field(default=None, repr=False)
 
     @field_validator(
         "feishu_app_id",
-        "feishu_admin_group_id",
-        "feishu_user_group_id",
-        "feishu_redirect_uri",
         "feishu_connectors_json",
         mode="before",
     )
     @classmethod
     def normalize_blank_to_none(cls, value: object) -> object:
-        """空字符串一律归一成 `None`（= 没配）。
-
-        ⚠️ 这条不是洁癖，是**部署正确性**：Compose/CI 常把可选变量写成
-        `AIMA_FEISHU_APP_ID=`（留空）。若不归一，`""` 会被当成"配了 App ID"，
-        于是进程启用飞书身份却拿不到组 ID → 所有人 403；
-        或者反过来，整组校验直接抛错让容器起不来。留空必须与"没写这一项"等价。
-        """
+        """Compose 可选配置留空等价于未配置，正式身份是否可用由装配校验。"""
 
         if isinstance(value, str) and not value.strip():
             return None
@@ -140,67 +109,15 @@ class PlatformSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_feishu_configuration(self) -> PlatformSettings:
-        """飞书配置**要么整组配齐，要么整组不配**，不允许半配。
-
-        为什么必须拒绝"半配"：只给了 App ID 而没给组 ID 时，进程会启用飞书 Resolver
-        却又无法判角色 —— 表现成"所有人登录后 403"，且没有任何配置错误提示。
-        与其静默降级，不如在启动/加载配置时直接报错。
-
-        **多企业形态**（`AIMA_FEISHU_CONNECTORS` 非空）走另一条分支：
-        逐条解析 + 跨条目校验，任何问题都在**启动时**带着可定位信息报出来。
-        """
-
-        # ── 多企业形态（优先判定）──────────────────────────────────────────
-        # 一旦配置了多企业，就以它为准：单企业字段被忽略（不报错，便于渐进迁移）。
-        if self.feishu_connectors_json is not None and self.feishu_connectors_json.strip():
+        """独立校验登录数组与报告应用，报告配置不能替代登录所需的用户组。"""
+        if self.feishu_connectors_json is not None:
             self._validate_feishu_connectors()
-            return self
-
-        if self.feishu_app_id is None:
-            if any(
-                (self.feishu_admin_group_id, self.feishu_user_group_id, self.feishu_redirect_uri)
-            ):
-                raise ValueError("配置飞书登录字段时必须配置 AIMA_FEISHU_APP_ID")
-            return self
-
-        # 多维表发布只需要 App ID/Token/Secret，不启用网页登录时允许不配置用户组。
-        # 只有显式填写了任一登录字段，才要求登录三元组完整。
-        login_values = (
-            self.feishu_admin_group_id,
-            self.feishu_user_group_id,
-            self.feishu_redirect_uri,
-        )
-        bitable_values = (
-            self.feishu_app_token,
-            self.feishu_wiki_token,
-            self.feishu_table_id,
-        )
-        if not any(value is not None and value.strip() for value in login_values) and any(
-            value is not None and value.strip() for value in bitable_values
-        ):
+        if self.feishu_app_id is not None:
+            if self.feishu_app_id != self.feishu_app_id.strip():
+                raise ValueError("AIMA_FEISHU_APP_ID 不能有首尾空白")
             from aima_ugc.platform.security import validate_secret_ref
 
             validate_secret_ref(self.feishu_app_secret_ref)
-            return self
-
-        missing = [
-            name
-            for name, value in (
-                ("AIMA_FEISHU_ADMIN_GROUP_ID", self.feishu_admin_group_id),
-                ("AIMA_FEISHU_USER_GROUP_ID", self.feishu_user_group_id),
-                ("AIMA_FEISHU_REDIRECT_URI", self.feishu_redirect_uri),
-            )
-            if value is None or not value.strip()
-        ]
-        if missing:
-            raise ValueError("启用飞书登录必须同时配置 " + "、".join(missing))
-        if self.feishu_app_id != self.feishu_app_id.strip():
-            raise ValueError("AIMA_FEISHU_APP_ID 不能有首尾空白")
-
-        # Secret 引用必须是**相对路径**（不能是绝对路径或含 ..），避免读到批准根之外的文件。
-        from aima_ugc.platform.security import validate_secret_ref
-
-        validate_secret_ref(self.feishu_app_secret_ref)
         return self
 
     def _validate_feishu_connectors(self) -> None:
@@ -216,11 +133,11 @@ class PlatformSettings(BaseModel):
         except (TypeError, ValueError) as exc:
             raise ValueError(
                 f"AIMA_FEISHU_CONNECTORS 不是合法 JSON：{exc}。"
-                "它应是一段 JSON 数组，每个元素描述一家企业"
+                "它应是一段 JSON 数组，每个元素描述一个应用"
             ) from exc
         if not isinstance(payload, list):
             raise ValueError(
-                "AIMA_FEISHU_CONNECTORS 必须是 JSON 数组（每个元素一家企业），"
+                "AIMA_FEISHU_CONNECTORS 必须是 JSON 数组（每个元素一个应用），"
                 f"实际是 {type(payload).__name__}"
             )
 
@@ -358,9 +275,6 @@ _ENV_TO_FIELD = {
     "AIMA_FEISHU_MAX_RETRIES": "feishu_max_retries",
     "AIMA_FEISHU_DRY_RUN": "feishu_dry_run",
     "AIMA_FEISHU_APP_SECRET_REF": "feishu_app_secret_ref",
-    "AIMA_FEISHU_ADMIN_GROUP_ID": "feishu_admin_group_id",
-    "AIMA_FEISHU_USER_GROUP_ID": "feishu_user_group_id",
-    "AIMA_FEISHU_REDIRECT_URI": "feishu_redirect_uri",
     "AIMA_FEISHU_SCOPE": "feishu_scope",
     "AIMA_FEISHU_COOKIE_SECURE": "feishu_cookie_secure",
     "AIMA_FEISHU_SESSION_TTL_HOURS": "feishu_session_ttl_hours",
@@ -412,12 +326,42 @@ def load_settings(
 ) -> PlatformSettings:
     """加载当前进程配置；只读取显式列出的 AIMA_* 环境变量。"""
     source = os.environ if environ is None else environ
+    # 旧登录变量不能静默忽略，否则本地可能误退回开发管理员身份。
+    if any(
+        source.get(name, "").strip()
+        for name in (
+            "AIMA_FEISHU_ADMIN_GROUP_ID",
+            "AIMA_FEISHU_USER_GROUP_ID",
+            "AIMA_FEISHU_REDIRECT_URI",
+        )
+    ):
+        raise ValueError("旧扁平飞书登录配置已移除，请统一使用 AIMA_FEISHU_CONNECTORS")
     values: dict[str, object] = dict(_DEFAULTS)
     for env_name, field_name in _ENV_TO_FIELD.items():
         if env_name in source:
             values[field_name] = source[env_name]
 
     root = (Path.cwd() if base_dir is None else base_dir).resolve(strict=False)
+    # Compose 初始化阶段已将凭据拆出；业务进程只读不含 Secret 的运行配置。
+    connector_file = source.get("AIMA_FEISHU_CONNECTORS_FILE")
+    if connector_file:
+        from aima_ugc.platform.security.secrets import read_secret_file
+
+        raw = read_secret_file(_resolve_path(connector_file, root)).get_secret_value()
+        values["feishu_connectors_json"] = None if raw == "null" else raw
+    connector_input = values.get("feishu_connectors_json")
+    if isinstance(connector_input, str):
+        try:
+            payload = json.loads(connector_input)
+        except ValueError:
+            payload = None  # 其余格式错误仍交由现有 Settings 校验。
+        if isinstance(payload, list) and any(
+            isinstance(item, dict) and "app_secret" in item for item in payload
+        ):
+            raise ValueError(
+                "app_secret 只能由源码 launcher / Compose bootstrap 处理；"
+                "业务进程应使用清理后的 Connector 配置"
+            )
     for field_name in (
         "data_dir",
         "log_dir",

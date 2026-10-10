@@ -22,6 +22,11 @@ affected_paths:
   - migrations
   - tests
   - docs
+  - scripts
+  - compose.yaml
+  - compose.windows.yaml
+  - env.local.example
+  - env.production.example
 contracts:
   - HTTP
   - ExportColumnCatalogResponse
@@ -40,7 +45,7 @@ Requirement-Source: #714。管理员负责生产和治理，普通用户查看�
 
 ## 背景
 
-用户已批准完整实现。decision epoch 2：2026-10-10 最新指令要求完成修改并执行本地验证，先不要合并远程 main；撤销此前本地验证豁免，保留开发分支供验收。
+用户已批准完整实现。decision epoch 4：登录仅使用 CONNECTORS 数组，一项即单应用，取消旧扁平登录配置兼容；最新指令授权本地全部任务修改验证与独立 Review/CI 通过后合并远程 main，免等待额外人工确认记 USER_WAIVED。此前 epoch 2 暂停合并的决定已被撤销；不发布、不部署、不操作生产数据。
 
 ## 当前现状
 
@@ -75,7 +80,7 @@ Requirement-Source: #714。管理员负责生产和治理，普通用户查看�
 
 ## 成功标准
 
-以 #714 / AC1–AC22 为唯一完成定义；不从本 Change 或测试数量反推需求。
+以 #714 / AC1–AC23 为唯一完成定义；不从本 Change 或测试数量反推需求。
 
 ## 范围
 
@@ -107,7 +112,7 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 1. 最终路由清单及 Principal 请求缓存、Cookie 同源检查 → Identity/bootstrap → 每实际路由显式归类，无未知匿名入口 → 本地 API 拒绝与无副作用回归。
 2. Export created_by/索引/角色列与默认表/API → Reporting/persistence/Contract/Migration → 所有读取先 owner 过滤，默认 revision 原子并发 → 本地 PostgreSQL、Contract、XLSX 回归。
 3. Shell/声音广场/任务源/刷新/会话隔离及导出弹窗 → frontend → 普通用户保留只读与导出，无管理请求，草稿稳定 → 本地 Unit/Browser/真实 Full-stack。
-4. 文档、独立 Review、上游 Completion、保留本地提交与开发分支、任务测试资源清理 → 对应交付证据回写；Human Local Acceptance PENDING，不执行 push/PR/merge。
+4. 文档、独立 Review、上游 Completion、当前 main/HEAD/base CI → 通过后 REST guarded merge、main-fresh、原生归档和任务分支/临时资源清理；人工额外等待 USER_WAIVED，生产操作未授权。
 
 ## 证据到决策
 
@@ -126,7 +131,7 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | R1 | 飞书/Session 身份 | #714 / AC1 | satisfied | `tests/unit/identity/`、platform 身份映射/Session/单多 Connector 本地回归；沿用稳定组 ID/管理员优先/八小时会话，真实企业 OAuth 候选验收见 R20 边界 |
-| R2 | 最终路由完整 policy | #714 / AC2 | satisfied | [最终 175 项实际 Method+Path 清单](evidence/route-authorization-inventory.md)、`tests/api/test_route_authorization.py`：未知/重复/未受保护路由启动拒绝、隐藏与扩展均覆盖、每请求 Principal 复用 |
+| R2 | 最终路由完整 policy | #714 / AC2 | satisfied | [最终 175 项实际 Method+Path 清单](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/route-authorization-inventory.md)、`tests/api/test_route_authorization.py`：未知/重复/未受保护路由启动拒绝、隐藏与扩展均覆盖、每请求 Principal 复用 |
 | R3 | 管理 API 拒绝无副作用 | #714 / AC3 | satisfied | `test_route_authorization.py` 逐最终管理路由执行前拒绝和服务探针；`test_role_exports_and_defaults.py` 真实 Session/DB/Job/Artifact 事实不变；统一 401/403/422/409 错误 |
 | R4 | 共享只读与旁路 | #714 / AC4 | satisfied | `test_role_export_columns_and_csrf.py`、Content/Workbench 集成和 Full-stack；普通用户播放仅读取既有结果，通用 Job 管理授权，媒体恢复 F3 定向回归 |
 | R5 | 配置/CSRF | #714 / AC5 | satisfied | `test_feishu_auth_http.py`、`test_role_export_columns_and_csrf.py`；显式 feishu/development、Compose 正式默认失败关闭、Cookie 同源写校验、合法 OAuth 回调/配置来源通过 |
@@ -144,11 +149,29 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 | R17 | 默认弹窗与冻结 | #714 / AC17 | satisfied | 延迟默认、409、恢复失败 Browser 和 Full-stack 跨浏览器恢复；显式保存/恢复、草稿保护、临时导出不改默认；PG 生成并重读 XLSX 验证冻结字段和顺序 |
 | R18 | 会话隔离 | #714 / AC18 | satisfied | `principal-scope.spec.ts`、`identity-store.spec.ts`、旧异步 Unit、sessionStorage/Legacy Browser、真实多标签页 Cookie 换号：同用户恢复、历史无归属清除、换号清 Pinia/默认/在途结果 |
 | R19 | Migration/Contract/回滚 | #714 / AC19 | satisfied | 新增 0087，不改旧 Migration/Content/Artifact；Migration PG/历史兼容 14 项、Generated Contract/兼容检查通过；正式部署文档说明整体联动与保留配置回滚/旧漏洞访问隔离 |
-| R20 | 本地分层验证 | #714 / AC20 | satisfied | [本地验证记录](evidence/local-validation.md)：2611 pytest、361 Vitest、218 Browser、真实 Session Full-stack 原 20+修后 1、972 唯一 PG、XLSX 重读、迁移/Contract/类型/构建；首次采集五项未复现风险保留，原模块/原序 96 PASS；企业候选/远程 CI 明确未执行 |
-| R21 | 独立 Review/文档/兼容 | #714 / AC21 | satisfied | [独立 Review 与修复](evidence/review-repair.md)：首轮三项 P2 全部由原 Reviewer CLOSED；最终直接日志 addendum 判定本地可验收/无 blocking Acceptance gap；正式产品/Reporting/Schema/部署文档与管理员原流程回归同步 |
-| R22 | 保留分支、不合并与任务清理 | #714 / AC22 | satisfied | [本地交付与清理](evidence/local-delivery.md)：两个临时分支/worktree、测试服务、两个专属 PG 容器/匿名卷、任务 Source/temp/Secret/数据及前端生成产物均已清理；根开发分支保留，无 push/PR/CI/merge/发布/部署 |
+| R20 | 本地分层验证 | #714 / AC20 | satisfied | [本地验证记录](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/local-validation.md)：2611 pytest、361 Vitest、218 Browser、真实 Session Full-stack 原 20+修后 1、972 唯一 PG、XLSX 重读、迁移/Contract/类型/构建；首次采集五项未复现风险保留，原模块/原序 96 PASS；企业候选/远程 CI 明确未执行 |
+| R21 | 独立 Review/文档/兼容 | #714 / AC21 | satisfied | [独立 Review 与修复](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/review-repair.md)：首轮三项 P2 全部由原 Reviewer CLOSED；最终直接日志 addendum 判定本地可验收/无 blocking Acceptance gap；正式产品/Reporting/Schema/部署文档与管理员原流程回归同步 |
+| R22 | 交付边界、远程门禁与任务清理 | #714 / AC22 | satisfied | epoch 4 明确授权 merge，额外人工等待 USER_WAIVED；原临时资源清理见历史记录，本轮本地准备及远程门禁见 [飞书补充验收](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config.md)。PR/CI/merge/main-fresh/原生归档与最后清理由平台 Owner 持有直接事实，合并前不冒充完成 |
+| R23 | 登录唯一数组、分应用凭据自动落盘与模板精简 | #714 / AC23 | satisfied | [飞书配置补充验收](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config.md) epoch 4：删除旧扁平登录字段/装配回退，误用旧变量启动拒绝；单项数组与独立报告应用回归70PASS、源码/配置组308PASS/8SKIP；独立配置F1/F2/F3均CLOSED。前轮实际Compose/正式wheel Linux凭据读取证据按未变边界复用，真实企业 OAuth 未验证 |
+
+## epoch 3 飞书配置补充计划
+
+用户明确要求各应用凭据在 CONNECTORS 中独立配置并同步精简两份模板。L3 安全/启动配置变化，单 Writer 实现，独立只读 Review required（MAY_SPLIT / REQUIRED）。不改 OAuth 协议、业务身份或数据库，不重启用户正在使用的进程，不执行远程合并。
+
+1. 启动输入中每项支持 `app_secret`，默认按 code 生成文件引用；复用 Connector 正式校验，所有输入和目标先校验再写入；旧引用文件模式保留。
+2. 源码 launcher 只传清理后的 Connector；Compose 初始化容器消费原始输入并写 Secret 与无敏感字段的运行配置，业务容器只读后者。测试覆盖分应用隔离、轮换、错误脱敏、路径/符号链接与兼容行为。
+3. 两份模板统一推荐数组（单应用一项），保留旧变量兼容及独立报告应用说明；源码 5173、Compose 实际入口、生产 HTTPS 分开说明。同步现有运维 Owner。
+4. 验证本轮 pytest、真实 Compose render、隔离 Linux 初始化/权限读取、配置/文档/Secret 门禁；唯一 changed-scope classifier 实际选择 full，因此执行完整本地 Backend/Contract/Vitest/Typecheck/Build/Browser。原 Browser 首轮 5 项失败后保留日志，隔离现有小时计数 fixture 并按 CI 三并发、关闭重试完成 218 项通过；生产前端不变。独立 Review 后更新本地证据，人工验收仍 PENDING。
 
 # 计划改动
+
+## epoch 4 配置与交付决定
+
+用户明确取消旧单应用登录配置兼容：登录唯一配置为 AIMA_FEISHU_CONNECTORS，一项即单应用；报告/多维表独立应用字段保留。最新指令授权全部本地任务修改通过验证、独立 Review、main-fresh 和当前 HEAD/base CI 后合并远程 main。免等待额外人工确认记为 USER_WAIVED，不冒充已人工验收；仍不发布、不部署、不操作生产数据。唯一 Requirement Source #714 已更新并通过 candidate/create 与 live Contract 检查。
+
+本轮为 L3 认证配置兼容性变化；NO_SPLIT 单 Writer，独立复核 REQUIRED。先补旧变量拒绝、单项数组与报告独立配置失败用例，再删除 Settings/登录装配旧分支，清理 launcher、Compose、模板与手册说明。保留既有 HTTP 登录路由 Contract 与手工 Secret 引用，不引入数据库/依赖变更。原 R1–21 证据按影响复用；R23 配置兼容结论及 R22 交付状态失效，待本轮直接验证与远程交付补齐。验收新增：旧扁平登录变量明确报错、正式模式缺数组失败关闭、单项数组登录可用，报告 App ID 不能启用网页登录。
+
+验证先执行身份/启动/Compose targeted pytest、Ruff/mypy、生成 Contract 与配置/文档门禁，再由正式 changed-scope preflight 和 PR CI 提供适用当前组合验证；完整原始输出保留。本地完成后恢复最新 main、审查提交、首次 push 建同名分支，按平台 Contract 创建 Draft PR；current-head/current-base required CI 与阻塞 Findings 清零后 Ready/合并、原生归档和任务清理。
 
 | 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
 | --- | --- | --- | --- |
@@ -189,16 +212,16 @@ epoch 2 本地验证 required。复用 `scripts/dev/validate_changed.py --base o
 
 # 完成审计
 
-- [x] upstream_re_read：2026-10-10 再次 live 读取 #714（updated_at `2026-10-10T00:19:28Z`，epoch 2 未变），核对 AGENTS、技术决策与生产路线；以用户最新本地验证/暂停合并指令为交付边界。
-- [x] change_coverage：按 #714 AC1–22 逐条核对，R1–22 均有当前实现/直接测试/独立复核/实际清理证据；未来企业候选、远程 CI 和人工验收按上游既定交付边界列未执行，未用 Change 自证需求全集。
-- [x] reverse_audit：最终 API→UI、UI→生成 Client→Owner、Schema/迁移→查询归属、Job→冻结文件→下载列权限，以及 Principal→会话/草稿/旧异步反向检查；普通用户选择/AI 结果/媒体/评论保留，管理侧原入口回归已覆盖。
-- [x] unresolved_cleared：原 Reviewer 确认 F1/F2/F3 全部 CLOSED、无 blocking 本地 Acceptance gap；所有本地验证和临时资源清理完成。首次采集异常当前原序未复现、根因未知作为已披露风险，未伪造修复或环境归因。Human PENDING/无远程交付符合用户当前边界。
+- [x] upstream_re_read：2026-10-10 live 重读唯一 #714（updated_at `2026-10-10T05:01:08Z`，epoch 4，与已校验 candidate 字节一致），AC1–23 无遗漏，最新合并授权和取消旧配置兼容已进入本 Change。
+- [x] change_coverage：AC1–21 原实现/证据按影响复核仍有效，AC23 补当前旧变量拒绝、单项数组登录、报告独立、模板/手册和独立 Review；AC22 的平台交付步骤保持真实未执行状态直到对应 PR/Actions Owner 读回。真实企业/生产未验证，人工免等待 USER_WAIVED。
+- [x] reverse_audit：保留原 API↔UI↔Owner、对象/列/异步审计；逐项核对 env→launcher/bootstrap→Secret/无明文manifest→Settings→唯一Connector数组→OAuth/Session。单项与多项走同一装配，报告配置独立；既有HTTP别名无删除，不存在旧配置回退。原生归档只移动CHANGE.md，因此证据链接用稳定仓库URL指向保留的资产。
+- [x] unresolved_cleared：原角色 Reviewer F1/F2/F3 CLOSED；配置 F1/F2/F3 CLOSED，epoch4独立 NO_FINDINGS_WITHIN_SCOPE，核心及启动回归通过。保留原采集未复现风险与历史Browser首轮失败记录；正式CI/main-fresh/归档由授权交付流程继续，不据此宣称生产可发布。
 
 # 完成证据与状态
 
 ## 新鲜证据
 
-起点 fetch main 成功；Issue candidate create Contract PASS，平台创建 #714，epoch 2 candidate pre-write PASS、平台更新后 live 重读与 candidate 字节相同。当前代码 `513c79804f3fe14121ba0b0422865e16a2ac8d61`；完整 changed-scope preflight 退出 0（2611 pytest、361 Vitest、218 Browser、类型/构建/Contract 等）；真实 Session Full-stack 原 20 项及新增 1 项均通过。详见 [本地验证记录](evidence/local-validation.md) 与 [Review 修复记录](evidence/review-repair.md)。
+epoch 2 起点 fetch 与 Issue 写前/live 校验通过，原完整 preflight 退出0、2611 pytest/361 Vitest/218 Browser、真实 Session Full-stack 原20+修后新增1项等直接结果见 [本地验证记录](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/local-validation.md) 与 [Review 修复记录](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/review-repair.md)。epoch 3 当前 HEAD `2510bd272840f73a338b123f4b8fc20324a8e7f1`，其上未提交配置补充；Issue candidate/live 校验通过并最终 live 重读相同。当前 full classifier 的后端2645、Vitest361、Contract/类型/构建通过；原整条 preflight 因 Browser 首轮5FAIL退出1，随后修正测试夹具、三并发零重试全套218PASS，未冒充原命令退出0。实际 Compose 与 Linux CLI/UID10001 验证、独立无阻塞结论及原始日志见 [飞书配置补充验收](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config.md)。
 
 ## 未验证内容与剩余风险
 
@@ -206,7 +229,7 @@ epoch 2 本地验证 required。复用 `scripts/dev/validate_changed.py --base o
 
 ## 交付状态
 
-本地实现、自动验证、独立复核与临时资源清理已完成；`check_change_completion.py --root . --require-active-ready` 通过，Change 为本地 ready_for_review。后端、测试、前端与交付证据形成可审查的本地提交，尚无 push/PR/CI/merge。Human Local Acceptance PENDING；保留根开发分支，远程 main 合并暂停。此状态不代表 PR Ready、可合并或生产候选就绪。
+本地实现、适用自动验证与独立复核按 epoch 4 补充证据完成，Change 保持 active/ready_for_review。用户已授权合并；Human Local Acceptance 为 USER_WAIVED，不冒充人工已验收。接下来由 PR/Actions Owner 持有 current-head/current-base CI、guarded merge、main-fresh 与原生归档事实，最后清理本任务分支和临时资源。未授权 Release、部署及生产数据操作，真实 env/Secret/数据库/依赖保留；本记录不代表生产候选已验收。
 
 ## 备注
 

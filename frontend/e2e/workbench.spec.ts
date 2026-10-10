@@ -143,6 +143,7 @@ test('异常长一级标签守住可读字号，省略显示且详情保留全�
 })
 
 test('雷达标签点击和键盘选择联动高亮、详情、指标及刷新后的下钻', async ({ page }) => {
+  await unavailableRevision(page)
   await page.clock.install()
   await mockVoicePlazaAfterDeepLink(page)
   const response = nineMind()

@@ -6,6 +6,10 @@
 # 避免 Windows 文件共享层承担严格 Linux owner/mode 语义。
 
 x-windows-backend-volumes: &windows-backend-volumes
+  - type: volume
+    source: windows_provider_secrets
+    target: /run/provider-secrets
+    read_only: true
   - type: bind
     source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/aima-historical-input/wisersone
     target: /run/wisersone-input

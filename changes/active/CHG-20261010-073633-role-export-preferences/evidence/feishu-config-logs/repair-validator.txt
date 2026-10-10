@@ -1,0 +1,8 @@
+...................................................................      [100%]
+============================== warnings summary ===============================
+tests/unit/fullstack/test_wisersone_fixture_harness.py: 97 warnings
+  D:\test\AIMA_UGC\.venv\Lib\site-packages\pydantic\_internal\_generate_schema.py:325: PydanticDeprecatedSince20: `json_encoders` is deprecated. See https://docs.pydantic.dev/2.13/concepts/serialization/#custom-serializers for alternatives. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+67 passed, 97 warnings in 17.89s

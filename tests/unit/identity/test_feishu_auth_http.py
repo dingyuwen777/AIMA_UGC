@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import pytest
@@ -27,8 +28,8 @@ from aima_ugc.bootstrap.feishu_auth_http import (
     AuthenticationRequired,
     FeishuAuthRoutes,
     FeishuAuthSettings,
+    _build_connector_settings_map,
     _CookieRedactingMiddleware,
-    build_feishu_auth_settings,
     build_feishu_identity,
     is_safe_return_to,
     safe_return_to,
@@ -37,6 +38,33 @@ from aima_ugc.entrypoints.api_main import create_app as create_main_app
 from aima_ugc.modules.identity import AuthorizationDenied, DevelopmentIdentityResolver
 from aima_ugc.platform.config import load_settings
 from pydantic import SecretStr, ValidationError
+
+
+def _login_env(
+    app_id: str = "cli_test_app_id", origin: str = "http://localhost:8000"
+) -> dict[str, str]:
+    """所有登录测试使用同一数组配置入口，一项即可装配单应用。"""
+    return {
+        "AIMA_FEISHU_CONNECTORS": json.dumps(
+            [
+                {
+                    "code": "test",
+                    "display_name": "测试应用",
+                    "app_id": app_id,
+                    "app_secret_ref": "feishu_app_secret",
+                    "admin_group_id": "grp_admin",
+                    "user_group_id": "grp_user",
+                    "redirect_uri": f"{origin}/api/v1/auth/feishu/test/callback",
+                }
+            ]
+        )
+    }
+
+
+def _login_settings(environ: dict[str, str]) -> FeishuAuthSettings:
+    """经生产 Settings 与 Connector 装配获取登录快照。"""
+    return _build_connector_settings_map(load_settings(environ))["test"]
+
 
 # ── D4：必须被拒绝的 `return_to` 形态（每一条都对应一种真实绕过手法）────────────
 UNSAFE_RETURN_TO = [
@@ -159,12 +187,7 @@ def test_d1_configured_deployment_installs_the_three_routes(
 ) -> None:
     """配了飞书时同样注册三个路由（这一步不碰数据库）。"""
 
-    monkeypatch.setenv("AIMA_FEISHU_APP_ID", "cli_test_app_id")
-    monkeypatch.setenv("AIMA_FEISHU_ADMIN_GROUP_ID", "grp_admin")
-    monkeypatch.setenv("AIMA_FEISHU_USER_GROUP_ID", "grp_user")
-    monkeypatch.setenv(
-        "AIMA_FEISHU_REDIRECT_URI", "http://localhost:8000/api/v1/auth/feishu/callback"
-    )
+    monkeypatch.setenv("AIMA_FEISHU_CONNECTORS", _login_env()["AIMA_FEISHU_CONNECTORS"])
 
     application = create_main_app()
     registered = {getattr(route, "path", None) for route in application.routes}
@@ -174,7 +197,7 @@ def test_d1_configured_deployment_installs_the_three_routes(
 
 # ── D13：未配飞书 → 保持开发身份（不破坏现状）────────────────────────────────
 def test_d13_unconfigured_identity_stays_development() -> None:
-    """没有 `AIMA_FEISHU_APP_ID` 时，装配结果必须是开发身份。"""
+    """未配置 CONNECTORS 且使用 development 模式时保持开发身份。"""
 
     resolver, routes = build_feishu_identity(load_settings({}))
 
@@ -266,103 +289,45 @@ def test_d9_non_callback_paths_keep_their_query_string() -> None:
 
 # ── 配置：整组配齐 / 整组不配 ────────────────────────────────────────────────
 def test_feishu_settings_absent_means_disabled() -> None:
-    """一个都不配 → `None`（不启用），而不是"启用了一个没组 ID 的空壳"。"""
-
-    assert build_feishu_auth_settings(load_settings({})) is None
+    """未配置登录数组时不创建空壳 Connector。"""
+    assert _build_connector_settings_map(load_settings({})) == {}
 
 
 def test_feishu_settings_partial_configuration_is_rejected() -> None:
-    """只配 App ID（无组 ID / 回调地址）必须直接报错，不能静默降级。"""
-
-    with pytest.raises(ValidationError) as error:
-        load_settings(
-            {
-                "AIMA_FEISHU_APP_ID": "cli_test_app_id",
-                "AIMA_FEISHU_ADMIN_GROUP_ID": "grp_admin",
-            }
-        )
-
-    message = str(error.value)
-    assert "AIMA_FEISHU_USER_GROUP_ID" in message
-    assert "AIMA_FEISHU_REDIRECT_URI" in message
+    """数组项缺少用户组或回调时在启动前拒绝。"""
+    payload = json.loads(_login_env()["AIMA_FEISHU_CONNECTORS"])
+    del payload[0]["user_group_id"]
+    with pytest.raises(ValidationError, match="user_group_id"):
+        load_settings({"AIMA_FEISHU_CONNECTORS": json.dumps(payload)})
 
 
 def test_feishu_settings_blank_env_is_treated_as_absent() -> None:
-    """`AIMA_FEISHU_APP_ID=`（留空）必须等价于"没配"，否则容器会起不来。"""
-
-    settings = load_settings({"AIMA_FEISHU_APP_ID": ""})
-
-    assert settings.feishu_app_id is None
-    assert build_feishu_auth_settings(settings) is None
+    """空数组配置输入等价于未配置，而不是不完整登录。"""
+    settings = load_settings({"AIMA_FEISHU_CONNECTORS": ""})
+    assert _build_connector_settings_map(settings) == {}
 
 
 def test_feishu_settings_secure_flag_follows_redirect_scheme() -> None:
-    """Cookie 的 `Secure` 按环境：本地 http 关、生产 https 开。"""
-
-    local = build_feishu_auth_settings(
-        load_settings(
-            {
-                "AIMA_FEISHU_APP_ID": "cli_test_app_id",
-                "AIMA_FEISHU_ADMIN_GROUP_ID": "grp_admin",
-                "AIMA_FEISHU_USER_GROUP_ID": "grp_user",
-                "AIMA_FEISHU_REDIRECT_URI": "http://localhost:8000/cb",
-            }
-        )
-    )
-    production = build_feishu_auth_settings(
-        load_settings(
-            {
-                "AIMA_FEISHU_APP_ID": "cli_test_app_id",
-                "AIMA_FEISHU_ADMIN_GROUP_ID": "grp_admin",
-                "AIMA_FEISHU_USER_GROUP_ID": "grp_user",
-                "AIMA_FEISHU_REDIRECT_URI": "https://aima.example/cb",
-            }
-        )
-    )
-
-    assert local is not None and production is not None
-    assert local.cookie_secure is False, "本地 HTTP 必须关掉 Secure，否则 Cookie 写不进去"
-    assert production.cookie_secure is True, "生产 HTTPS 必须开启 Secure"
+    """Cookie Secure 按当前应用的回调协议推断。"""
+    local = _login_settings(_login_env())
+    production = _login_settings(_login_env(origin="https://aima.example"))
+    assert local.cookie_secure is False
+    assert production.cookie_secure is True
 
 
 def test_feishu_settings_explicit_secure_override_wins() -> None:
-    """显式设置的 `AIMA_FEISHU_COOKIE_SECURE` 优先于协议推断。"""
-
-    settings = build_feishu_auth_settings(
-        load_settings(
-            {
-                "AIMA_FEISHU_APP_ID": "cli_test_app_id",
-                "AIMA_FEISHU_ADMIN_GROUP_ID": "grp_admin",
-                "AIMA_FEISHU_USER_GROUP_ID": "grp_user",
-                "AIMA_FEISHU_REDIRECT_URI": "http://localhost:8000/cb",
-                "AIMA_FEISHU_COOKIE_SECURE": "true",
-            }
-        )
-    )
-
-    assert settings is not None
+    """显式 Cookie Secure 设置优先于协议推断。"""
+    settings = _login_settings({**_login_env(), "AIMA_FEISHU_COOKIE_SECURE": "true"})
     assert settings.cookie_secure is True
 
 
 def test_connector_id_is_stable_per_app() -> None:
-    """同一 App 必须派生出同一个 `connector_id`，否则同一个人会被拆成两个身份。"""
-
-    def settings_for(app_id: str) -> FeishuAuthSettings:
-        built = build_feishu_auth_settings(
-            load_settings(
-                {
-                    "AIMA_FEISHU_APP_ID": app_id,
-                    "AIMA_FEISHU_ADMIN_GROUP_ID": "grp_admin",
-                    "AIMA_FEISHU_USER_GROUP_ID": "grp_user",
-                    "AIMA_FEISHU_REDIRECT_URI": "http://localhost:8000/cb",
-                }
-            )
-        )
-        assert built is not None
-        return built
-
-    assert settings_for("cli_a").connector_id == settings_for("cli_a").connector_id
-    assert settings_for("cli_a").connector_id != settings_for("cli_b").connector_id
+    """相同应用稳定映射身份，不同应用拥有独立身份空间。"""
+    first = _login_settings(_login_env("cli_a"))
+    same = _login_settings(_login_env("cli_a"))
+    second = _login_settings(_login_env("cli_b"))
+    assert first.connector_id == same.connector_id
+    assert first.connector_id != second.connector_id
 
 
 def test_auth_routes_require_settings_before_touching_dependencies() -> None:
@@ -448,7 +413,7 @@ def test_explicit_feishu_mode_fails_closed_without_connector_configuration() -> 
 )
 def test_orphan_login_configuration_is_rejected_without_app_id(field: str, value: str) -> None:
     """残缺的认证配置不能被当成未启用认证后退到开发身份。"""
-    with pytest.raises(ValidationError, match="AIMA_FEISHU_APP_ID"):
+    with pytest.raises(ValueError, match="AIMA_FEISHU_CONNECTORS"):
         load_settings({field: value})
 
 
