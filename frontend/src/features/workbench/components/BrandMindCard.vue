@@ -267,6 +267,7 @@ onBeforeUnmount(() => {
       <div
         v-if="selected"
         class="mind-detail aima-scroll-card"
+        :class="{ 'mind-detail--dense': (selected?.secondary_labels.length ?? 0) >= 3 }"
       >
         <small>当前查看 · {{ selected.primary_label }} · {{ metric === 'share' ? '帖子占比' : '正向率' }}</small>
         <div class="detail-title">
@@ -369,6 +370,22 @@ header { display: flex; min-height: 58px; align-items: center; justify-content: 
   .metric-cards div { min-height: 36px; padding: 4px 6px; }
   .metric-cards strong { font-size: 18px; }
   .change-card { padding: 4px 6px; }
+
+  .mind-detail--dense { gap: 2px; padding: 4px 7px; }
+  .mind-detail--dense > small { font-size: 9px; line-height: 12px; }
+  .mind-detail--dense .detail-title { gap: 1px; }
+  .mind-detail--dense .detail-title h3 { font-size: 13px; line-height: 1.25; }
+  .mind-detail--dense .detail-title span { font-size: 10px; }
+  .mind-detail--dense .metric-cards { gap: 4px; }
+  .mind-detail--dense .metric-cards div { min-height: 28px; padding: 3px 5px; gap: 1px; }
+  .mind-detail--dense .metric-cards span { font-size: 10px; }
+  .mind-detail--dense .metric-cards strong { font-size: 16px; }
+  .mind-detail--dense .secondary { grid-template-columns: 1fr 1fr; column-gap: 6px; row-gap: 1px; }
+  .mind-detail--dense .secondary strong { font-size: 10px; }
+  .mind-detail--dense .secondary span { font-size: 10px; line-height: 1.2; }
+  .mind-detail--dense .change-card { padding: 3px 5px; }
+  .mind-detail--dense .change-card strong { font-size: 10px; }
+  .mind-detail--dense .change-card p { margin: 1px 0 0; font-size: 10px; line-height: 1.25; }
 }
 footer { display: flex; min-height: 26px; align-items: center; justify-content: space-between; padding: 5px 12px; border-top: 1px solid var(--aima-border); color: var(--aima-text-disabled); font-size: 9px; }
 </style>

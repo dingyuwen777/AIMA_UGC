@@ -324,7 +324,9 @@ aside { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap:
 .positive-ring strong { color: var(--aima-success); font-size: clamp(16px, 2.4cqw, 24px); }
 .sentiment-list { display: grid; min-height: 0; gap: 3px; overflow: auto; }
 @container (max-height: 400px) {
-  .positive-ring { width: clamp(76px, 13cqw, 100px); }
+  .positive-ring { width: 64px; }
+  aside { gap: 2px; padding: 4px; }
+  .sentiment-list { flex: 1; min-height: 0; }
 }
 .sentiment-list > div { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 5px; color: var(--aima-text); font-size: 11px; }
 .sentiment-list i { width: 5px; height: 5px; border-radius: 50%; }

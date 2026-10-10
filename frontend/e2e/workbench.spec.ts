@@ -760,7 +760,15 @@ test('声音流筛选下拉可操作，选择后只刷新声音流请求', async
 })
 
 test('确认日期后起止日期只进入声音流查询，聚合模块不再重复请求', async ({ page }) => {
+  // 先等待首屏 stream/mind/trend 请求发出，再开始记录请求，
+  // 避免把初始化阶段的聚合模块请求误判为“日期确认后触发的请求”。
+  const initialRequests = Promise.all([
+    page.waitForRequest((request) => request.url().includes('/api/v1/workbench/stream')),
+    page.waitForRequest((request) => request.url().includes('/api/v1/workbench/mind')),
+    page.waitForRequest((request) => request.url().includes('/api/v1/workbench/trend')),
+  ])
   await page.goto('/')
+  await initialRequests
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date())
