@@ -22,6 +22,7 @@ import {
   relevanceReviewDecision,
   type RelevanceReviewDecision,
 } from '../../relevanceReview'
+import { useIdentityStore } from '../../../identity/store'
 import { useVoicePlazaStore } from '../../store'
 import AnalysisSubmitDialog from './components/AnalysisSubmitDialog.vue'
 import CommentSupplementDialog from './components/CommentSupplementDialog.vue'
@@ -30,6 +31,7 @@ import DataExportDialog from './components/DataExportDialog.vue'
 import VoicePlazaFilters from './components/VoicePlazaFilters.vue'
 import VoicePlazaTable from './components/VoicePlazaTable.vue'
 
+const identity = useIdentityStore()
 const store = useVoicePlazaStore()
 const taskCenter = useTaskCenterStore()
 const route = useRoute()
@@ -40,6 +42,7 @@ const commentSupplementOpen = ref(false)
 const { message: notice, show: showNotice } = useTransientNotice()
 /** 复用现有已选 ID；运行终态由本页面现有轮询刷新内容与评论。 */
 async function commentSupplementCreated(created: CollectionRunCreatedResponse): Promise<void> {
+  if (!identity.isAdministrator) return
   commentSupplementOpen.value = false
   store.trackSupplement(created.run_id)
   showNotice(`评论补采任务已创建，共 ${created.supplement_selection?.target_count ?? 0} 条内容。`)
@@ -178,6 +181,7 @@ watch(() => route.query.content_id, (value) => {
 
 let disposed = false
 onMounted(() => {
+  document.addEventListener('visibilitychange', refreshVisiblePage)
   hydrateRouteFilters()
   const contentId = routeValues(route.query.content_id)[0]
   if (contentId && /^[0-9a-f-]{36}$/i.test(contentId)) void store.openDetail(contentId)
@@ -187,7 +191,17 @@ onBeforeUnmount(() => {
   disposed = true
   store.cancelCount()
   store.stopPolling()
+  document.removeEventListener('visibilitychange', refreshVisiblePage)
 })
+
+/** 恢复前台后刷新当前列表窗口，读取更新不依赖管理员任务来源。 */
+function refreshVisiblePage(): void {
+  if (document.visibilityState === 'visible' && identity.principal) {
+    void store.refreshLoadedWindow()
+    void store.refreshFilterOptions()
+    void store.refreshCount('estimated')
+  }
+}
 
 /** 首先展示最新倒序第一页，再在后台加载不会影响首屏的目录与任务资源。 */
 async function refreshPage(): Promise<void> {
@@ -197,8 +211,7 @@ async function refreshPage(): Promise<void> {
     store.refreshTaxonomy(),
     store.refreshFilterOptions(),
     store.refreshExports(),
-    store.refreshAnalysisCapabilities(),
-    store.refreshAnalysisRuns(),
+    ...(identity.isAdministrator ? [store.refreshAnalysisCapabilities(), store.refreshAnalysisRuns()] : []),
   ])
 }
 
@@ -230,12 +243,14 @@ async function reviewSingle(
   contentId: string,
   decision: RelevanceReviewDecision,
 ): Promise<void> {
+  if (!identity.isAdministrator) return
   const result = await store.reviewRelevance([contentId], decision)
   if (result) showNotice(relevanceNotice(decision, result))
 }
 
 /** 对当前选择中具有相同复核决策的内容执行批量复核。 */
 async function reviewSelected(decision: RelevanceReviewDecision): Promise<void> {
+  if (!identity.isAdministrator) return
   const contentIds = selectedReviewIds.value[decision]
   const result = await store.reviewRelevance(contentIds, decision)
   if (result) showNotice(relevanceNotice(decision, result))
@@ -246,6 +261,7 @@ async function reviewDetailVehicles(
   vehicleModelIds: string[],
   unlockExisting: boolean,
 ): Promise<void> {
+  if (!identity.isAdministrator) return
   if (await store.reviewDetailVehicles(vehicleModelIds, unlockExisting)) {
     showNotice('车型人工结论已保存；后续自动识别不会覆盖当前人工结果。')
   }
@@ -255,6 +271,7 @@ async function reviewDetailVehicles(
 async function reviewDetailAnalysis(
   request: Omit<ContentAnalysisManualReviewRequest, 'content_version'>,
 ): Promise<void> {
+  if (!identity.isAdministrator) return
   if (await store.reviewDetailAnalysis(request)) {
     showNotice('分析人工纠正已保存；如需替换已确认结果，请先确认解除当前人工结论。')
   }
@@ -262,6 +279,7 @@ async function reviewDetailAnalysis(
 
 /** 使用预检冻结信息确认创建 Analysis Run，并同步全局任务中心。 */
 async function submitAnalysis(): Promise<void> {
+  if (!identity.isAdministrator) return
   const count = await store.confirmAnalysis()
   if (count === null) return
   analysisOpen.value = false
@@ -270,6 +288,7 @@ async function submitAnalysis(): Promise<void> {
 
 /** 请求取消仍处于可取消状态的 Analysis Run，并同步全局任务中心。 */
 async function cancelAnalysis(runId: string): Promise<void> {
+  if (!identity.isAdministrator) return
   if (await store.cancelRun(runId)) {
     showNotice('已请求取消 AI 分析任务。')
   }
@@ -328,6 +347,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       >
         <template #actions>
           <AimaButton
+            v-if="identity.isAdministrator"
             size="small"
             :disabled="store.analysisConfigured !== true"
             :title="store.analysisConfigured === false ? 'AI 分析尚未配置' : store.analysisConfigured === null ? '正在检查 AI 分析是否可用' : '可选择已选内容、当前筛选结果或全部数据进行分析'"
@@ -336,6 +356,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             AI 分析
           </AimaButton>
           <AimaButton
+            v-if="identity.isAdministrator"
             size="small"
             :disabled="store.selectedIds.length === 0 || store.selectedIds.length > 1000"
             :title="store.selectedIds.length > 1000 ? '每次最多选择 1000 条内容' : '补采已选笔记的详情和评论'"
@@ -383,7 +404,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         aria-label="声音广场状态"
       >
         <AimaFeedbackBanner
-          v-if="store.analysisConfigured === false"
+          v-if="identity.isAdministrator && store.analysisConfigured === false"
           class="capability-warning"
           tone="warning"
         >
@@ -400,7 +421,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
           <span>平台、相关性和状态仍可筛选；情感、标签等动态目录可稍后重试。</span>
         </AimaFeedbackBanner>
         <AimaFeedbackBanner
-          v-if="store.taxonomyError"
+          v-if="identity.isAdministrator && store.taxonomyError"
           class="taxonomy-warning"
           tone="warning"
           role="alert"
@@ -409,7 +430,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
           <span>分析结果人工纠正已暂时停用；内容浏览与筛选仍可使用。</span>
         </AimaFeedbackBanner>
         <AimaFeedbackBanner
-          v-if="reviewNote"
+          v-if="identity.isAdministrator && reviewNote"
           class="review-note"
           tone="info"
         >
@@ -433,7 +454,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </aside>
 
       <section
-        v-if="activeAnalysisRuns.length > 0"
+        v-if="identity.isAdministrator && activeAnalysisRuns.length > 0"
         class="active-analysis-runs"
         aria-label="AI 分析活动任务"
       >
@@ -503,7 +524,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             <span v-else>总数暂不可用</span>
           </div>
           <button
-            v-if="selectedReviewIds.relevant.length"
+            v-if="identity.isAdministrator && selectedReviewIds.relevant.length"
             class="review-selected review-selected--relevant"
             type="button"
             :disabled="store.reviewingRelevance"
@@ -512,7 +533,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             批量标记为相关（{{ selectedReviewIds.relevant.length }}）
           </button>
           <button
-            v-if="selectedReviewIds.irrelevant.length"
+            v-if="identity.isAdministrator && selectedReviewIds.irrelevant.length"
             class="review-selected review-selected--irrelevant"
             type="button"
             :disabled="store.reviewingRelevance"
@@ -521,7 +542,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
             批量标记为不相关（{{ selectedReviewIds.irrelevant.length }}）
           </button>
           <button
-            v-if="selectedReviewIds.inherit_ai.length"
+            v-if="identity.isAdministrator && selectedReviewIds.inherit_ai.length"
             class="review-selected review-selected--undo"
             type="button"
             :disabled="store.reviewingRelevance"
@@ -541,6 +562,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </div>
 
       <VoicePlazaTable
+        :is-administrator="identity.isAdministrator"
         :items="store.items"
         :loading="store.loading"
         :error="store.listError"
@@ -580,6 +602,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </div>
 
       <ContentDetailDrawer
+        :is-administrator="identity.isAdministrator"
         v-model="detailOpen"
         :item="store.detail"
         :loading="store.loadingDetail"
@@ -606,11 +629,15 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         @review-analysis="reviewDetailAnalysis"
       />
       <CommentSupplementDialog
+        v-if="identity.isAdministrator"
+        :is-administrator="identity.isAdministrator"
         v-model="commentSupplementOpen"
         :content-ids="store.selectedIds"
         @created="commentSupplementCreated"
       />
       <AnalysisSubmitDialog
+        v-if="identity.isAdministrator"
+        :is-administrator="identity.isAdministrator"
         v-model="analysisOpen"
         :selected-count="store.selectedIds.length"
         :preview="store.analysisPreview"

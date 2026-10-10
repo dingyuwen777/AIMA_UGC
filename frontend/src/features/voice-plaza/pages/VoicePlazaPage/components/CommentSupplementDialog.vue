@@ -6,22 +6,25 @@ import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import CollectionSupplementOptions from '../../../../collection-supplement/CollectionSupplementOptions.vue'
 import { useCollectionSupplement } from '../../../../collection-supplement/useCollectionSupplement'
-const props = defineProps<{ modelValue: boolean; contentIds: string[] }>()
+const props = defineProps<{ isAdministrator?: boolean; modelValue: boolean; contentIds: string[] }>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]; created: [result: CollectionRunCreatedResponse]
 }>()
 const validSelection = computed(() => props.contentIds.length > 0 && props.contentIds.length <= 1000)
-const active = computed(() => props.modelValue)
+const active = computed(() => props.isAdministrator === true && props.modelValue)
 const targets = computed<CollectionSupplementTargetSelection | null>(() => validSelection.value
   ? { kind: 'selected', content_ids: props.contentIds } : null)
 const state = useCollectionSupplement(active, targets)
+/** 显式角色门禁同时保护 UI 事件和 composable 的预检入口。 */
 async function create(): Promise<void> {
+  if (!props.isAdministrator) return
   const result = await state.create()
   if (result) emit('created', result)
 }
 </script>
 <template>
   <AimaModalContainer
+    v-if="isAdministrator"
     :model-value="modelValue"
     label="评论补采"
     width="840px"

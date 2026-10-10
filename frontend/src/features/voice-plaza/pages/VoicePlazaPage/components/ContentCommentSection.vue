@@ -7,6 +7,7 @@ import { formatDateTime, formatNumber } from '../../../format'
 import type { CommentReplyState } from '../../../store'
 
 const props = defineProps<{
+  isAdministrator?: boolean
   roots: ContentCommentResponse[]
   replies: Record<string, ContentCommentResponse[]>
   replyStates: Record<string, CommentReplyState>
@@ -44,6 +45,9 @@ const emptyStateMessage = computed(() => {
   }
   if (props.providerTotalCount === 0) {
     return '当前数据记录的评论数为 0，这不是采集异常；正文和已有图片仍可正常查看。'
+  }
+  if (!props.isAdministrator && props.ingestedTotalCount === 0) {
+    return '当前暂无可查看的评论正文。帖子正文、媒体和已有分析信息仍可正常查看。'
   }
   if (props.ingestedTotalCount === 0 && props.providerTotalCount != null) {
     return `当前数据记录显示 ${formatNumber(props.providerTotalCount)} 条评论，本地尚未采集评论正文。需要评论分析时，可在采集运行中心发起辅助补采。`

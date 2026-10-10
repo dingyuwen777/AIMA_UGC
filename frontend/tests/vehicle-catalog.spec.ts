@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { setTestPrincipal } from './rolePrincipal'
 
 const api = vi.hoisted(() => ({ listVehicleBrands: vi.fn(), listVehicleModels: vi.fn() }))
 vi.mock('../src/generated/api/client', () => api)
@@ -10,6 +11,24 @@ const response = (items: unknown[]) => ({ items, total: items.length })
 
 describe('shared vehicle catalog', () => {
   beforeEach(() => { setActivePinia(createPinia()); vi.resetAllMocks() })
+
+  it('账号切换清除 active/all 与名称缓存，旧请求不覆盖新账号', async () => {
+    setTestPrincipal('administrator', 'A')
+    let finish!: (value: unknown) => void
+    api.listVehicleBrands.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const store = useVehicleCatalogStore()
+    const old = store.loadBrands('all')
+    const rejected = expect(old).rejects.toMatchObject({ name: 'AbortError' })
+    setTestPrincipal('user', 'B')
+    expect(store.brands.all).toBeNull()
+    expect(store.knownBrands).toEqual({})
+    api.listVehicleBrands.mockResolvedValue(response([{ ...brand, display_name: 'B 名称' }]))
+    await store.loadBrands('active')
+    finish(response([brand]))
+    await rejected
+    expect(store.knownBrands['brand-1']?.display_name).toBe('B 名称')
+    expect(store.brands.all).toBeNull()
+  })
 
   it('deduplicates concurrent readers, separates scopes and preserves equal successful objects', async () => {
     let resolve!: (value: unknown) => void

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter, type LocationQueryRaw } from 'vue-router'
 
 import AppShell from '../../../app/layouts/AppShell.vue'
+import { useContentRevisionStore } from '../../../shared/api/contentRevision'
 import type { WorkbenchLayoutModule, WorkbenchModuleId } from '../../../generated/api/client'
 import { formatDateTime } from '../../../shared/domain/beijingTime'
 import AimaButton from '../../../shared/ui/AimaButton.vue'
@@ -12,9 +13,13 @@ import BrandMindCard from '../components/BrandMindCard.vue'
 import SoundStreamCard from '../components/SoundStreamCard.vue'
 import UgcTrendCard from '../components/UgcTrendCard.vue'
 import { useWorkbenchStore, type WorkbenchFilters } from '../store'
+import { useIdentityStore } from '../../identity/store'
 
 const store = useWorkbenchStore()
+const identity = useIdentityStore()
 const taskCenter = useTaskCenterStore()
+const contentRevision = useContentRevisionStore()
+let contentRevisionHandle: ReturnType<typeof setInterval> | undefined
 const router = useRouter()
 const draggedModule = ref<WorkbenchModuleId | null>(null)
 let filterRefreshHandle: ReturnType<typeof setTimeout> | undefined
@@ -30,7 +35,7 @@ let disposed = false
 let resizeCleanup: (() => void) | null = null
 
 const analysisFingerprint = computed(() =>
-  taskCenter.analysisRuns
+  (identity.isAdministrator ? taskCenter.analysisRuns : [])
     .map((run) => [
       run.id,
       run.status,
@@ -64,7 +69,7 @@ function scheduleFilterRefresh(): void {
   }, 100)
 }
 
-/** Analysis Run 每秒轮询可能连续变化，750ms 内合并成一次 Workbench 刷新。 */
+/** 内容修订号和管理员运行状态可能连续变化，750ms 内合并为一次刷新。 */
 function scheduleAnalysisRefresh(): void {
   if (analysisRefreshHandle) clearTimeout(analysisRefreshHandle)
   analysisRefreshHandle = setTimeout(() => {
@@ -113,6 +118,7 @@ async function refreshPeriodically(): Promise<void> {
 /** 标签页恢复后只补充已经过期的普通刷新，并继续跟进后台计算。 */
 function onVisibilityChange(): void {
   if (document.visibilityState === 'visible') {
+    void contentRevision.refresh()
     void refreshPeriodically()
     schedulePendingRefresh()
   } else {
@@ -245,12 +251,19 @@ function moduleLabel(moduleId: WorkbenchModuleId): string {
 }
 
 watch(analysisFingerprint, (current, previous) => {
-  if (previous && current !== previous) scheduleAnalysisRefresh()
+  if (identity.isAdministrator && previous && current !== previous) scheduleAnalysisRefresh()
+})
+watch(() => contentRevision.revision, (current, previous) => {
+  if (previous !== null && current !== null && current !== previous) scheduleAnalysisRefresh()
 })
 watch([() => store.mind, () => store.trend, () => store.filters], schedulePendingRefresh)
 
 onMounted(() => {
   void store.initialize().finally(schedulePeriodicRefresh)
+  void contentRevision.refresh()
+  contentRevisionHandle = setInterval(() => {
+    if (document.visibilityState === 'visible') void contentRevision.refresh()
+  }, 1000)
   document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
@@ -260,6 +273,7 @@ onBeforeUnmount(() => {
   if (filterRefreshHandle) clearTimeout(filterRefreshHandle)
   if (analysisRefreshHandle) clearTimeout(analysisRefreshHandle)
   if (periodicRefreshHandle) clearTimeout(periodicRefreshHandle)
+  if (contentRevisionHandle) clearInterval(contentRevisionHandle)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   resizeCleanup?.()
 })

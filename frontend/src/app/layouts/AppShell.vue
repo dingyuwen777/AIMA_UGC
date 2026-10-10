@@ -15,10 +15,12 @@ const identity = useIdentityStore()
 const navigation = computed<{ label: string; icon: AimaIconName; to: string }[]>(() => [
   { label: '工作台', icon: 'home', to: '/' },
   { label: '声音广场', icon: 'voice', to: '/voice-plaza' },
-  { label: '采集运行中心', icon: 'runtime', to: '/collection-runtime' },
-  { label: '采集策略', icon: 'strategy', to: '/collection-strategy' },
   ...(identity.isAdministrator
-    ? [{ label: '管理员配置', icon: 'settings' as const, to: '/admin/configuration' }]
+    ? [
+      { label: '采集运行中心', icon: 'runtime' as const, to: '/collection-runtime' },
+      { label: '采集策略', icon: 'strategy' as const, to: '/collection-strategy' },
+      { label: '管理员配置', icon: 'settings' as const, to: '/admin/configuration' },
+    ]
     : []),
 ])
 
@@ -136,7 +138,7 @@ onMounted(() => void identity.ensurePrincipal())
       </div>
 
       <footer class="sidebar-footer">
-        <TaskCenter />
+        <TaskCenter v-if="identity.principal" />
         <div class="account-area">
           <!-- 权限来源用 title 悬浮提示，不占用本就紧张的侧栏横向空间。 -->
           <div
@@ -216,7 +218,7 @@ onMounted(() => void identity.ensurePrincipal())
             >
               退出
             </button>
-            <NotificationInbox compact />
+            <NotificationInbox v-if="identity.principal" compact />
           </div>
         </div>
       </footer>

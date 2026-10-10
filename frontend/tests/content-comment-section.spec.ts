@@ -22,7 +22,7 @@ const root = {
 
 async function render(replies: Record<string, ContentCommentResponse[]>): Promise<string> {
   return renderToString(createSSRApp({
-    render: () => h(ContentCommentSection, {
+    render: () => h(ContentCommentSection, { isAdministrator: true,
       roots: [root],
       replies,
       replyStates: {
@@ -49,7 +49,7 @@ async function render(replies: Record<string, ContentCommentResponse[]>): Promis
 
 async function renderEmpty(providerTotalCount: number | null): Promise<string> {
   return renderToString(createSSRApp({
-    render: () => h(ContentCommentSection, {
+    render: () => h(ContentCommentSection, { isAdministrator: true,
       roots: [],
       replies: {},
       replyStates: {},

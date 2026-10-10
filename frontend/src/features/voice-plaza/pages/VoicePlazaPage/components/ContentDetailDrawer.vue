@@ -26,6 +26,7 @@ import {
 } from '../../../format'
 
 const props = withDefaults(defineProps<{
+  isAdministrator?: boolean
   modelValue: boolean
   item: ContentDetailResponse | null
   loading: boolean
@@ -43,6 +44,7 @@ const props = withDefaults(defineProps<{
   commentsTotalCount?: number
   commentsIngestedTotalCount?: number
 }>(), {
+  isAdministrator: false,
   taxonomy: null,
   saving: false,
   error: null,
@@ -97,9 +99,10 @@ function scrollToDetailSection(section: DetailSection): void {
   targets[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-watch(() => props.item?.id, () => {
+watch(() => [props.item?.id, props.isAdministrator], () => {
   editingVehicles.value = false
   editingAnalysis.value = false
+  unlockTarget.value = null
 })
 
 const vehicleModelIds = ref<string[]>([])
@@ -153,7 +156,9 @@ watch(() => props.saving, (saving, previous) => {
   labels.value = [...(props.item.analysis.labels ?? [])]
 })
 
+/** 管理员才能修改或解除人工结论。 */
 function addLabel(): void {
+  if (!props.isAdministrator) return
   if (!labelPrimary.value || !labelSecondary.value) return
   if (!labels.value.some((item) => item.primary_label === labelPrimary.value && item.secondary_label === labelSecondary.value)) {
     labels.value.push({ primary_label: labelPrimary.value, secondary_label: labelSecondary.value })
@@ -161,15 +166,21 @@ function addLabel(): void {
   labelSecondary.value = ''
 }
 
+/** 管理员才能修改或解除人工结论。 */
 function saveVehicleReview(): void {
+  if (!props.isAdministrator) return
   emit('review-vehicles', vehicleModelIds.value, hasVehicleLock.value && confirmUnlockVehicles.value)
 }
 
+/** 管理员才能修改或解除人工结论。 */
 function unlockVehicleReview(): void {
+  if (!props.isAdministrator) return
   unlockTarget.value = 'vehicles'
 }
 
+/** 管理员才能修改或解除人工结论。 */
 function saveAnalysisReview(): void {
+  if (!props.isAdministrator) return
   if (!voiceType.value || !sentiment.value || labels.value.length === 0) return
   emit('review-analysis', {
     voice_type: voiceType.value,
@@ -179,11 +190,15 @@ function saveAnalysisReview(): void {
   })
 }
 
+/** 管理员才能修改或解除人工结论。 */
 function unlockAnalysisReview(): void {
+  if (!props.isAdministrator) return
   unlockTarget.value = 'analysis'
 }
 
+/** 管理员才能修改或解除人工结论。 */
 function confirmUnlockReview(): void {
+  if (!props.isAdministrator) return
   if (unlockTarget.value === 'vehicles') emit('review-vehicles', [], true)
   else if (unlockTarget.value === 'analysis') {
     emit('review-analysis', { unlock_dimensions: [...lockedDimensions.value] })
@@ -344,7 +359,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       </section>
 
       <section
-        v-if="item.supplement_status && item.supplement_status.status !== 'succeeded'"
+        v-if="isAdministrator && item.supplement_status && item.supplement_status.status !== 'succeeded'"
         class="supplement-status"
         :class="`supplement-status--${item.supplement_status.status}`"
       >
@@ -422,28 +437,30 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         <h4>人工确认</h4>
         <div>
           <strong>相关性</strong><span>{{ item.effective_relevance === 'relevant' ? '相关' : item.effective_relevance === 'irrelevant' ? '不相关' : '未判定' }} · {{ item.relevance_source === 'manual_review' ? '已人工确认' : '人工未覆盖' }}</span><AimaButton
-            v-if="relevanceDecision"
+            v-if="isAdministrator && relevanceDecision"
             size="small"
             :disabled="saving"
-            @click="emit('review', item.id, relevanceDecision)"
+            @click="isAdministrator && emit('review', item.id, relevanceDecision)"
           >
             {{ relevanceReviewActionLabel(relevanceDecision) }}
           </AimaButton>
         </div>
         <div>
           <strong>车型</strong><span>{{ (item.vehicles ?? []).map(vehicle => vehicle.display_name).join('、') || '未识别' }}</span><AimaButton
+            v-if="isAdministrator"
             size="small"
             :aria-expanded="editingVehicles"
-            @click="editingVehicles = !editingVehicles"
+            @click="isAdministrator && (editingVehicles = !editingVehicles)"
           >
             {{ editingVehicles ? '收起修改' : '修改车型' }}
           </AimaButton>
         </div>
         <div>
           <strong>AI 结果</strong><span>{{ item.analysis.voice_type || '未判定' }} · {{ item.analysis.sentiment || '未判定' }}</span><AimaButton
+            v-if="isAdministrator"
             size="small"
             :aria-expanded="editingAnalysis"
-            @click="editingAnalysis = !editingAnalysis"
+            @click="isAdministrator && (editingAnalysis = !editingAnalysis)"
           >
             {{ editingAnalysis ? '收起纠正' : '人工纠正' }}
           </AimaButton>
@@ -453,7 +470,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
 
 
       <section
-        v-if="editingVehicles"
+        v-if="isAdministrator && editingVehicles"
         class="manual-review"
       >
         <header class="section-heading">
@@ -508,7 +525,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
       </section>
 
       <section
-        v-if="editingAnalysis"
+        v-if="isAdministrator && editingAnalysis"
         class="manual-review"
       >
         <header class="section-heading">
@@ -612,6 +629,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         class="detail-anchor comments-anchor"
       >
         <ContentCommentSection
+          :is-administrator="isAdministrator"
           :roots="commentRoots"
           :replies="commentReplies"
           :reply-states="commentReplyStates"
@@ -654,6 +672,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
   </AimaDialog>
 
   <AimaDialog
+    v-if="isAdministrator"
     v-model="unlockDialogOpen"
     label="解除人工结论"
     width="480px"

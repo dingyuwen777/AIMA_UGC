@@ -1,3 +1,4 @@
+import { setTestPrincipal } from './rolePrincipal'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -93,6 +94,7 @@ const exportRun: DataExportResponse = {
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.resetAllMocks()
+  setTestPrincipal()
   api.fetchTaskCenterAnalysisRuns.mockResolvedValue([])
   api.fetchTaskCenterCollectionRuns.mockResolvedValue([])
   api.fetchTaskCenterDataExports.mockResolvedValue([])
@@ -104,6 +106,43 @@ afterEach(() => {
 })
 
 describe('全局任务中心聚合', () => {
+  it('普通用户只请求本人导出源，既有后台轮询也不会读取管理源或取消 AI', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('document', { visibilityState: 'visible' })
+    setTestPrincipal('user', 'ordinary-user')
+    api.fetchTaskCenterDataExports.mockResolvedValue([exportRun])
+    const store = useTaskCenterStore()
+    await store.refresh()
+    store.startPolling()
+    try {
+      await vi.advanceTimersByTimeAsync(15_100)
+      expect(api.fetchTaskCenterDataExports).toHaveBeenCalledTimes(2)
+      expect(api.fetchTaskCenterAnalysisRuns).not.toHaveBeenCalled()
+      expect(api.fetchTaskCenterCollectionRuns).not.toHaveBeenCalled()
+      expect(store.items.map((item) => item.kind)).toEqual(['export'])
+      expect(await store.cancelAnalysisRun('analysis-1')).toBe(false)
+      expect(api.cancelTaskCenterAnalysisRun).not.toHaveBeenCalled()
+    } finally { store.stopPolling() }
+  })
+
+  it('降权清除管理快照，旧账号在途响应不能覆盖新账号导出', async () => {
+    let finish!: (items: DataExportResponse[]) => void
+    api.fetchTaskCenterDataExports.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    api.fetchTaskCenterAnalysisRuns.mockResolvedValue([analysisBase])
+    const store = useTaskCenterStore()
+    const oldRefresh = store.refresh()
+    await Promise.resolve()
+    setTestPrincipal('user', 'B')
+    expect(store.analysisRuns).toEqual([])
+    expect(store.collectionRuns).toEqual([])
+    api.fetchTaskCenterDataExports.mockResolvedValue([{ ...exportRun, id: 'B-export' }])
+    await store.refresh()
+    finish([exportRun])
+    await oldRefresh
+    expect(store.dataExports.map((item) => item.id)).toEqual(['B-export'])
+    expect(store.items.every((item) => item.kind === 'export')).toBe(true)
+  })
+
   it('失败 Run 的在途 Shard 收尾前继续轮询，最后成功统计不会停在旧快照', async () => {
     vi.useFakeTimers()
     vi.stubGlobal('document', { visibilityState: 'visible' })

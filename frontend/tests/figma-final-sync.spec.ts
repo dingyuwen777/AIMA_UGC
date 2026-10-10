@@ -84,7 +84,7 @@ async function renderAdminPage(): Promise<string> {
 describe('Figma 与前端最终交互同步', () => {
   it('详情抽屉提供与正式 Figma 一致的四段快捷导航结构', async () => {
     const app = createSSRApp({
-      render: () => h(ContentDetailDrawer, {
+      render: () => h(ContentDetailDrawer, { isAdministrator: true,
         modelValue: true,
         item: detail,
         loading: false,

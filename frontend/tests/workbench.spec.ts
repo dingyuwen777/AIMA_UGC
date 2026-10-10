@@ -1,3 +1,4 @@
+import { setTestPrincipal } from './rolePrincipal'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { createSSRApp, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -132,6 +133,7 @@ beforeEach(() => {
   })
   setActivePinia(createPinia())
   vi.resetAllMocks()
+  setTestPrincipal()
   api.fetchWorkbenchTaxonomy.mockResolvedValue(taxonomy)
   api.fetchActiveBrands.mockResolvedValue([])
   api.fetchActiveVehicleModels.mockResolvedValue([])
@@ -147,6 +149,22 @@ beforeEach(() => {
   }))
 })
 afterEach(() => vi.unstubAllGlobals())
+
+it('账号切换使工作台模块和布局失效，旧账号模块响应不能覆盖新账号', async () => {
+  let finish!: (value: unknown) => void
+  api.fetchWorkbenchStream.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+  const store = useWorkbenchStore()
+  const old = store.refreshData()
+  store.layout = layout
+  setTestPrincipal('user', 'B')
+  expect(store.stream).toBeNull()
+  expect(store.layout).toBeNull()
+  api.fetchWorkbenchStream.mockResolvedValue({ ...stream, as_of: '2026-09-27T09:10:00+08:00' })
+  await store.refreshData()
+  finish(stream)
+  await old
+  expect(store.stream?.as_of).toBe('2026-09-27T09:10:00+08:00')
+})
 
 it('preserves saved vehicle filters when only the vehicle catalog fails to load', async () => {
   api.fetchActiveBrands.mockResolvedValue([{ id: 'aima', code: 'AIMA', display_name: '爱玛', aliases: [] }])

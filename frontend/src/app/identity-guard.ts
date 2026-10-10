@@ -41,7 +41,7 @@ export async function identityGuard(to: RouteLocationNormalized): Promise<Identi
     return { name: 'no-access' }
   }
   if (to.meta.requiresAdministrator && identity.principal?.role !== 'administrator') {
-    return { name: 'home', query: { access: 'administrator-required' } }
+    return { name: 'no-access', query: { access: 'administrator-required' } }
   }
   return true
 }

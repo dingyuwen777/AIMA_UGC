@@ -8,6 +8,7 @@ import {
   type DataExportResponse,
   type HttpErrorResponse,
 } from '../../generated/api/client'
+import { AimaApiError } from '../../shared/api/http'
 
 const COLLECTION_RUNTIME_PAGE_LIMIT = 100
 const ACTIVE_COLLECTION_STATUSES = ['queued', 'running'] as const
@@ -26,7 +27,7 @@ function isHttpErrorResponse(value: unknown): value is HttpErrorResponse {
 /** 把 generated client 的统一错误投影转换为前端可处理异常。 */
 function unwrap<T>(value: T): T {
   if (isHttpErrorResponse(value)) {
-    throw new Error(`${value.detail}（request_id: ${value.request_id}）`)
+    throw new AimaApiError(value)
   }
   return value
 }
