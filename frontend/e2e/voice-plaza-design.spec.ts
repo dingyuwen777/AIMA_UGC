@@ -264,14 +264,23 @@ test('keeps table-local scrolling as a fallback below the compact desktop width'
 
 test('vehicle groups use catalog data and confirm drafts without losing keyboard focus', async ({ page }) => {
   await stubNormalContents(page)
+  await page.route('**/api/v1/vehicle-brands**', async (route) => route.fulfill({ json: {
+    items: [
+      { id: 'aima', code: 'AIMA', display_name: '爱玛', role: 'owned', aliases: [], version: 1, catalog_version: 1 },
+    ], total: 1, offset: 0, limit: 200, catalog_version: 1,
+  } }))
   await page.route('**/api/v1/vehicle-models**', async (route) => route.fulfill({ json: {
     items: [
-      { id: 'q7', code: 'Q7', display_name: '爱玛 Q7', series_name: 'Q 系列', category_name: '电动两轮车', aliases: [] },
-      { id: 'q8', code: 'Q8', display_name: '爱玛 Q8', series_name: 'Q 系列', category_name: '电动两轮车', aliases: [] },
-      { id: 'luna', code: 'LUNA', display_name: '爱玛露娜', series_name: '时尚系列', category_name: '电动两轮车', aliases: [{ text: '奶油白' }] },
+      { id: 'q7', code: 'Q7', display_name: '爱玛 Q7', series_name: 'Q 系列', category_name: '电动两轮车', brand_id: 'aima', aliases: [] },
+      { id: 'q8', code: 'Q8', display_name: '爱玛 Q8', series_name: 'Q 系列', category_name: '电动两轮车', brand_id: 'aima', aliases: [] },
+      { id: 'luna', code: 'LUNA', display_name: '爱玛露娜', series_name: '时尚系列', category_name: '电动两轮车', brand_id: 'aima', aliases: [{ text: '奶油白' }] },
     ], total: 3, offset: 0, limit: 200, catalog_version: 2,
   } }))
   await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '选择品牌', exact: true }).click()
+  const brandDialog = page.getByRole('dialog', { name: '选择品牌', exact: true })
+  await brandDialog.getByLabel(/爱玛/).check()
+  await brandDialog.getByRole('button', { name: '确定', exact: true }).click()
   const trigger = page.getByRole('button', { name: '选择车型', exact: true })
   await trigger.click()
   const dialog = page.getByRole('dialog', { name: '选择车型', exact: true })

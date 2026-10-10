@@ -59,7 +59,7 @@ from .runtime import PlatformRuntime
 
 _DEFAULT_LAYOUT = (
     WorkbenchLayoutModule(
-        module_id="sound-stream", visible=True, order=0, column_span=6, row_units=48
+        module_id="sound-stream", visible=True, order=0, column_span=12, row_units=48
     ),
     WorkbenchLayoutModule(
         module_id="brand-mind", visible=True, order=1, column_span=6, row_units=48

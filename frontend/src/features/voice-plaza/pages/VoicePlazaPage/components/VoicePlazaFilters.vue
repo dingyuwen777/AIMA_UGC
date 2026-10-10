@@ -7,9 +7,6 @@ import {
   PlatformName,
   type ContentFilterOptionsResponse,
 } from '../../../../../generated/api/client'
-import type {
-  ContentFilterSnapshotCompetitionScopesItem,
-} from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaDateRange from '../../../../../shared/ui/AimaDateRange.vue'
 import AimaMultiSelect, { type AimaSelectOption } from '../../../../../shared/ui/AimaMultiSelect.vue'
@@ -21,7 +18,7 @@ import {
   platformLabel,
   relevanceLabel,
 } from '../../../format'
-import type { LegacyLabelCompatibility } from '../../../store'
+import type { LegacyLabelCompatibility, LegacyVehicleCompatibility } from '../../../store'
 
 const props = withDefaults(defineProps<{
   search: string
@@ -40,17 +37,17 @@ const props = withDefaults(defineProps<{
   sourceIdentifier: string
   brandIds?: string[]
   vehicleModelIds?: string[]
-  competitionScopes?: ContentFilterSnapshotCompetitionScopesItem[]
   filterOptions: ContentFilterOptionsResponse | null
   filterOptionsLoading: boolean
   legacyLabelCompatibility?: LegacyLabelCompatibility | null
+  legacyVehicleCompatibility?: LegacyVehicleCompatibility | null
 }>(), {
   brandIds: () => [],
   vehicleModelIds: () => [],
-  competitionScopes: () => [],
   primaryLabels: () => [],
   secondaryLabels: () => [],
   legacyLabelCompatibility: null,
+  legacyVehicleCompatibility: null,
   platforms: () => [],
   sentiments: () => [],
   voiceTypes: () => [],
@@ -73,21 +70,31 @@ const emit = defineEmits<{
   'update:sourceIdentifier': [value: string]
   'update:brandIds': [value: string[]]
   'update:vehicleModelIds': [value: string[]]
-  'update:competitionScopes': [value: ContentFilterSnapshotCompetitionScopesItem[]]
   search: []
   reset: []
 }>()
 
 const labelOptionsDisabled = computed(() => !props.filterOptions)
+const vehicleOptionsDisabled = computed(() => props.brandIds.length === 0)
+const vehicleDisabledHint = computed(() => {
+  if (props.legacyVehicleCompatibility?.vehicleModelIds.length && props.brandIds.length === 0) {
+    return `已选 ${props.legacyVehicleCompatibility.vehicleModelIds.length} 款车型（旧版兼容）`
+  }
+  return '请先选择品牌'
+})
 const catalog = useVehicleCatalogStore()
 
-/** 品牌确认是用户动作；目录后台变化不会改写正在编辑的草稿。 */
+/** 品牌确认是用户动作；目录未就绪时不提前清空未知车型，目录就绪后收敛到当前品牌。 */
 function updateBrands(ids: string[]): void {
   emit('update:brandIds', ids)
-  if (!ids.length) return
+  if (!ids.length) {
+    emit('update:vehicleModelIds', [])
+    return
+  }
+  if (catalog.vehicles.active === null) return
   emit('update:vehicleModelIds', props.vehicleModelIds.filter((id) => {
     const vehicle = catalog.knownVehicles[id]
-    return !vehicle || (vehicle.brand_id != null && ids.includes(vehicle.brand_id))
+    return Boolean(vehicle && vehicle.brand_id != null && ids.includes(vehicle.brand_id))
   }))
 }
 const secondaryOptionsDisabled = computed(
@@ -139,39 +146,74 @@ const legacyLabelCompatibilityText = computed(() => {
   }
   return `当前保留旧版兼容筛选：${conditions.join(' AND ')}。该组合继续按原查询语义生效；重新选择标签并查询后切换到当前层级规则。`
 })
+const legacyVehicleCompatibilityText = computed(() => {
+  const legacy = props.legacyVehicleCompatibility
+  if (!legacy) return ''
+  const conditions: string[] = []
+  if (legacy.brandIds.length) {
+    const brands = legacy.brandIds.map((id) => catalog.knownBrands[id]?.display_name ?? id).join('、')
+    conditions.push(`品牌「${brands}」`)
+  }
+  if (legacy.vehicleModelIds.length) {
+    const vehicles = legacy.vehicleModelIds.map((id) => catalog.knownVehicles[id]?.display_name ?? id).join('、')
+    conditions.push(`车型「${vehicles}」`)
+  }
+  if (!conditions.length) return ''
+  return `当前保留旧版品牌/车型兼容筛选：${conditions.join(' AND ')}。该组合继续按原查询语义生效；重新选择品牌或车型并查询后切换到当前层级规则。`
+})
 const platformOptions = Object.values(PlatformName)
 const relevanceOptions = Object.values(ContentRelevance)
 const analysisStatusOptions = Object.values(ContentAnalysisStatus)
-const competitionOptions: Array<{ value: ContentFilterSnapshotCompetitionScopesItem, label: string }> = [
-  { value: 'owned_only', label: '仅自有品牌' },
-  { value: 'competitor_only', label: '仅竞品品牌' },
-  { value: 'mixed', label: '自有与竞品混合' },
-  { value: 'other_only', label: '仅其他品牌' },
-  { value: 'none_detected', label: '未识别品牌' },
-]
-const competitionLabel = computed(() => {
-  if (!props.competitionScopes.length) return '全部竞争范围'
-  if (props.competitionScopes.length === 2 && includesCompetitors.value) return '含竞品'
-  if (props.competitionScopes.length === 1) {
-    return competitionOptions.find((item) => item.value === props.competitionScopes[0])?.label ?? '已选 1 项'
-  }
-  return `已选 ${props.competitionScopes.length} 项`
-})
-const includesCompetitors = computed(() =>
-  props.competitionScopes.includes('competitor_only') && props.competitionScopes.includes('mixed'),
+const platformSelectOptions = computed<AimaSelectOption[]>(() =>
+  platformOptions.map((item) => ({ value: item, label: platformLabel(item) })),
+)
+const sentimentSelectOptions = computed<AimaSelectOption[]>(() =>
+  (props.filterOptions?.sentiments ?? []).map((item) => ({
+    value: item.value,
+    label: optionLabel(item.value, item.source),
+  })),
+)
+const voiceTypeSelectOptions = computed<AimaSelectOption[]>(() =>
+  (props.filterOptions?.voice_types ?? []).map((item) => ({
+    value: item.value,
+    label: optionLabel(item.value, item.source),
+  })),
 )
 
-/** 组合当前支持的两个范围，保留“仅竞品”独立选择和已有 API 语义。 */
-function toggleIncludesCompetitors(): void {
-  const next = new Set(props.competitionScopes)
-  if (includesCompetitors.value) {
-    next.delete('competitor_only')
-    next.delete('mixed')
-  } else {
-    next.add('competitor_only')
-    next.add('mixed')
-  }
-  emit('update:competitionScopes', [...next])
+/** 多选只写复数数组；旧单数字段仅用于旧链接/旧会话恢复时的回显。 */
+const platformDisplay = computed<PlatformName[]>(() =>
+  props.platforms.length ? props.platforms : props.platform ? [props.platform] : [],
+)
+const sentimentDisplay = computed<string[]>(() =>
+  props.sentiments.length ? props.sentiments : props.sentiment ? [props.sentiment] : [],
+)
+const voiceTypeDisplay = computed<string[]>(() =>
+  props.voiceTypes.length ? props.voiceTypes : props.voiceType ? [props.voiceType] : [],
+)
+const sentimentPlaceholder = computed(() => {
+  if (props.filterOptionsLoading && !props.filterOptions) return '筛选项加载中'
+  if (!props.filterOptions) return '筛选项暂不可用'
+  return '全部情感'
+})
+const voiceTypePlaceholder = computed(() => {
+  if (props.filterOptionsLoading && !props.filterOptions) return '筛选项加载中'
+  if (!props.filterOptions) return '筛选项暂不可用'
+  return '全部发声类型'
+})
+
+function updatePlatformSelection(value: string[]): void {
+  emit('update:platform', '')
+  emit('update:platforms', value.filter((item): item is PlatformName =>
+    Object.values(PlatformName).includes(item as PlatformName),
+  ))
+}
+function updateSentimentSelection(value: string[]): void {
+  emit('update:sentiment', '')
+  emit('update:sentiments', value)
+}
+function updateVoiceTypeSelection(value: string[]): void {
+  emit('update:voiceType', '')
+  emit('update:voiceTypes', value)
 }
 
 function optionLabel(value: string, source: 'active' | 'historical'): string {
@@ -209,12 +251,6 @@ function updateSecondaryLabels(secondaryLabels: string[]): void {
   )
 }
 
-function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): void {
-  const next = new Set(props.competitionScopes)
-  if (next.has(scope)) next.delete(scope)
-  else next.add(scope)
-  emit('update:competitionScopes', [...next])
-}
 </script>
 
 <template>
@@ -229,19 +265,15 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
         @input="emit('update:search', value($event))"
         @keyup.enter="emit('search')"
       ></label>
-      <label class="field field--platform"><span>平台</span><select
-        aria-label="平台"
-        :value="platforms.length ? '__multiple' : platform"
-        @change="emit('update:platforms', []); emit('update:platform', value($event) as '' | PlatformName)"
-      ><option
-        v-if="platforms.length"
-        value="__multiple"
-        disabled
-      >{{ platforms.map(platformLabel).join('、') }}</option><option value="">全部平台</option><option
-        v-for="item in platformOptions"
-        :key="item"
-        :value="item"
-      >{{ platformLabel(item) }}</option></select></label>
+      <AimaMultiSelect
+        class="field field--platform"
+        appearance="field"
+        label="平台"
+        :model-value="platformDisplay"
+        :options="platformSelectOptions"
+        all-label="全部平台"
+        @update:model-value="updatePlatformSelection"
+      />
       <label class="field field--relevance"><span>相关性</span><select
         aria-label="相关性"
         :value="relevance"
@@ -251,20 +283,16 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
         :key="item"
         :value="item"
       >{{ relevanceLabel(item) }}</option></select></label>
-      <label class="field field--sentiment"><span>情感</span><select
-        aria-label="情感"
-        :value="sentiments.length ? '__multiple' : sentiment"
+      <AimaMultiSelect
+        class="field field--sentiment"
+        appearance="field"
+        label="情感"
+        :model-value="sentimentDisplay"
+        :options="sentimentSelectOptions"
+        :all-label="sentimentPlaceholder"
         :disabled="!filterOptions"
-        @change="emit('update:sentiments', []); emit('update:sentiment', value($event))"
-      ><option
-        v-if="sentiments.length"
-        value="__multiple"
-        disabled
-      >{{ sentiments.join('、') }}</option><option value="">{{ filterOptions ? '全部情感' : filterOptionsLoading ? '筛选项加载中' : '筛选项暂不可用' }}</option><option
-        v-for="item in filterOptions?.sentiments ?? []"
-        :key="item.value"
-        :value="item.value"
-      >{{ optionLabel(item.value, item.source) }}</option></select></label>
+        @update:model-value="updateSentimentSelection"
+      />
       <label class="field field--status"><span>状态</span><select
         aria-label="状态"
         :value="analysisStatus"
@@ -285,7 +313,7 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
     </div>
 
     <p class="filter-hint">
-      可与平台、品牌、车型、竞争范围、AI 分析结果和发布时间组合筛选
+      可与平台、品牌、车型、AI 分析结果和发布时间组合筛选
     </p>
 
     <div class="filter-row filter-row--secondary">
@@ -300,39 +328,20 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
         :brand-ids="brandIds"
         compact
         label="车型"
+        :disabled="vehicleOptionsDisabled"
+        :disabled-hint="vehicleDisabledHint"
         @update:model-value="emit('update:vehicleModelIds', $event)"
       />
-      <div class="field field--competition">
-        <span>竞争范围</span><details class="multi-select">
-          <summary>{{ competitionLabel }}</summary>
-          <label><input
-            type="checkbox"
-            :checked="includesCompetitors"
-            @change="toggleIncludesCompetitors"
-          >含竞品</label><label
-            v-for="item in competitionOptions"
-            :key="item.value"
-          ><input
-            type="checkbox"
-            :checked="competitionScopes.includes(item.value)"
-            @change="toggleCompetition(item.value)"
-          >{{ item.label }}</label>
-        </details>
-      </div>
-      <label class="field field--voice-type"><span>发声类型</span><select
-        aria-label="发声类型"
-        :value="voiceTypes.length ? '__multiple' : voiceType"
+      <AimaMultiSelect
+        class="field field--voice-type"
+        appearance="field"
+        label="发声类型"
+        :model-value="voiceTypeDisplay"
+        :options="voiceTypeSelectOptions"
+        :all-label="voiceTypePlaceholder"
         :disabled="!filterOptions"
-        @change="emit('update:voiceTypes', []); emit('update:voiceType', value($event))"
-      ><option
-        v-if="voiceTypes.length"
-        value="__multiple"
-        disabled
-      >{{ voiceTypes.join('、') }}</option><option value="">{{ filterOptions ? '全部发声类型' : filterOptionsLoading ? '筛选项加载中' : '筛选项暂不可用' }}</option><option
-        v-for="item in filterOptions?.voice_types ?? []"
-        :key="item.value"
-        :value="item.value"
-      >{{ optionLabel(item.value, item.source) }}</option></select></label>
+        @update:model-value="updateVoiceTypeSelection"
+      />
     </div>
 
     <div class="filter-row filter-row--tertiary">
@@ -368,9 +377,17 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
       {{ legacyLabelCompatibilityText }}
     </p>
 
+    <p
+      v-if="legacyVehicleCompatibilityText"
+      class="legacy-label-warning"
+      role="status"
+    >
+      {{ legacyVehicleCompatibilityText }}
+    </p>
+
     <footer class="filter-footer">
       <div class="filter-summary">
-        <span>当前条件：</span><span class="filter-chip filter-chip--primary">{{ platforms.length ? platforms.map(platformLabel).join('、') : platform ? platformLabel(platform) : '全部平台' }}</span><span class="filter-chip">{{ sentiments.length ? sentiments.join('、') : sentiment || '全部情感' }}</span><span class="filter-chip">{{ voiceTypes.length ? voiceTypes.join('、') : voiceType || '全部发声类型' }}</span><span class="filter-chip">{{ brandIds.length ? `已选 ${brandIds.length} 个品牌` : '全部品牌' }}</span><span class="filter-chip">{{ vehicleModelIds.length ? `已选 ${vehicleModelIds.length} 款车型` : '全部车型' }}</span><span class="filter-chip">{{ competitionLabel }}</span><span class="filter-chip">{{ primaryLabels.length ? `已选 ${primaryLabels.length} 个一级标签` : '全部一级标签' }}</span><span class="filter-chip">{{ secondaryLabels.length ? `已选 ${secondaryLabels.length} 个二级标签` : '全部二级标签' }}</span><button
+        <span>当前条件：</span><span class="filter-chip filter-chip--primary">{{ platforms.length ? platforms.map(platformLabel).join('、') : platform ? platformLabel(platform) : '全部平台' }}</span><span class="filter-chip">{{ sentiments.length ? sentiments.join('、') : sentiment || '全部情感' }}</span><span class="filter-chip">{{ voiceTypes.length ? voiceTypes.join('、') : voiceType || '全部发声类型' }}</span><span class="filter-chip">{{ brandIds.length ? `已选 ${brandIds.length} 个品牌` : '全部品牌' }}</span><span class="filter-chip">{{ vehicleModelIds.length ? `已选 ${vehicleModelIds.length} 款车型` : '全部车型' }}</span><span class="filter-chip">{{ primaryLabels.length ? `已选 ${primaryLabels.length} 个一级标签` : '全部一级标签' }}</span><span class="filter-chip">{{ secondaryLabels.length ? `已选 ${secondaryLabels.length} 个二级标签` : '全部二级标签' }}</span><button
           v-if="sourceIdentifier"
           class="filter-chip"
           type="button"
@@ -408,22 +425,14 @@ function toggleCompetition(scope: ContentFilterSnapshotCompetitionScopesItem): v
 .filter-row--primary .field--status { flex: 0 0 130px; }
 .filter-row--primary .field--date { flex: 0 0 200px; }
 .filter-row--secondary > :nth-child(1),
-.filter-row--secondary > :nth-child(2),
-.filter-row--secondary > :nth-child(3) { min-width: 180px; flex: 0 0 180px; }
-.filter-row--secondary > :nth-child(4),
-.filter-row--secondary > :nth-child(5) { min-width: 160px; flex: 0 0 160px; }
+.filter-row--secondary > :nth-child(2) { min-width: 180px; flex: 0 0 180px; }
+.filter-row--secondary > .field--voice-type { min-width: 160px; flex: 0 0 160px; }
 .filter-row--tertiary > .field { min-width: 180px; flex: 1 1 180px; }
 .field { display: grid; min-width: 0; gap: 6px; color: var(--aima-text-muted); font-size: 12px; font-weight: 700; }
 .field input, .field select { width: 100%; height: 40px; min-width: 0; padding: 0 12px; border: 1px solid var(--aima-border-strong); border-radius: 8px; color: var(--aima-text-muted); background: var(--aima-surface); font: inherit; font-size: 13px; font-weight: 400; }
 .field input::placeholder { color: var(--aima-text-disabled); }
 .field select:disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); cursor: not-allowed; }
 .field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--aima-primary); outline-offset: 1px; }
-.multi-select { position: relative; height: 40px; border: 1px solid var(--aima-border-strong); border-radius: 8px; background: var(--aima-surface); font-size: 13px; font-weight: 400; }
-.multi-select summary { height: 38px; padding: 10px 12px; overflow: hidden; cursor: pointer; list-style: none; text-overflow: ellipsis; white-space: nowrap; }
-.multi-select[open] { z-index: 5; }
-.multi-select label { display: flex; width: 100%; align-items: center; gap: 7px; padding: 8px 12px; border-inline: 1px solid var(--aima-border); background: #fff; }
-.multi-select label:last-child { border-bottom: 1px solid var(--aima-border); border-radius: 0 0 8px 8px; }
-.multi-select input { width: 14px; height: 14px; }
 .filter-hint { display: none; margin: 0; color: var(--aima-text-disabled); font-size: 11px; line-height: 16px; }
 .legacy-label-warning { margin: 0; padding: 8px 10px; border-radius: 6px; color: var(--aima-text-muted); background: var(--aima-primary-soft); box-shadow: inset 0 0 0 1px var(--aima-border); font-size: 12px; line-height: 18px; }
 .filter-footer { display: flex; min-width: 0; min-height: 45px; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--aima-border); }

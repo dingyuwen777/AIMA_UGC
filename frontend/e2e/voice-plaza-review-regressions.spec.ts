@@ -106,6 +106,11 @@ test('车型目录响应缺少 items 时显示错误且不中断页面渲染', a
     if (url.pathname !== '/api/v1/analysis/content-runs') return route.fallback()
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
   })
+  await page.route('**/api/v1/vehicle-brands**', async (route) => route.fulfill({ json: {
+    items: [
+      { id: 'aima', code: 'AIMA', display_name: '爱玛', role: 'owned', aliases: [], version: 1, catalog_version: 1 },
+    ], total: 1, offset: 0, limit: 200, catalog_version: 1,
+  } }))
   await page.route('**/api/v1/contents**', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -116,6 +121,10 @@ test('车型目录响应缺少 items 时显示错误且不中断页面渲染', a
   await page.goto('/voice-plaza')
 
   await expect(page.getByLabel('发声类型', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '选择品牌', exact: true }).click()
+  const brandDialog = page.getByRole('dialog', { name: '选择品牌', exact: true })
+  await brandDialog.getByLabel(/爱玛/).check()
+  await brandDialog.getByRole('button', { name: '确定', exact: true }).click()
   await page.getByRole('button', { name: '选择车型', exact: true }).click()
   await expect(page.getByText('车型目录响应无效，请稍后重试。')).toBeVisible()
   await page.keyboard.press('Escape')

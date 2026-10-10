@@ -9,10 +9,11 @@ const props = withDefaults(defineProps<{
   modelValue: string[]
   label?: string
   disabled?: boolean
+  disabledHint?: string
   includeDeprecated?: boolean
   compact?: boolean
   brandIds?: string[]
-}>(), { label: '车型', disabled: false, includeDeprecated: false, compact: false, brandIds: () => [] })
+}>(), { label: '车型', disabled: false, disabledHint: undefined, includeDeprecated: false, compact: false, brandIds: () => [] })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
 const catalog = useVehicleCatalogStore()
@@ -33,6 +34,7 @@ const matching = computed(() => options.value.filter((item) => {
     (!query || [item.display_name, item.code, item.series_name, ...(item.aliases ?? []).map((alias) => alias.text)].some((text) => text?.toLocaleLowerCase().includes(query)))
 }))
 const selectedLabel = computed(() => {
+  if (props.disabled && props.disabledHint) return props.disabledHint
   if (!props.modelValue.length) return '全部车型'
   if (props.modelValue.length === 1) return catalog.knownVehicles[props.modelValue[0] ?? '']?.display_name ?? '已选 1 项'
   return `已选 ${props.modelValue.length} 项`
@@ -268,6 +270,8 @@ function confirm(): void {
 .vehicle-label { color: var(--aima-text-muted); font-size: 12px; font-weight: 700; }
 .vehicle-trigger { display: flex; width: 100%; height: 40px; min-width: 0; align-items: center; justify-content: space-between; gap: 6px; padding: 0 12px; border: 1px solid var(--aima-border-strong); border-radius: 8px; background: var(--aima-surface); color: var(--aima-text-muted); font-size: 13px; cursor: pointer; }
 .vehicle-trigger > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vehicle-trigger:disabled { color: var(--aima-text-disabled); background: var(--aima-surface-disabled); cursor: not-allowed; }
+.vehicle-trigger:disabled > span:first-child { color: var(--aima-text-disabled); }
 .vehicle-picker.aima-dialog { max-width: calc(100vw - 32px); padding: 0; border-radius: 12px; overflow: hidden; --el-color-primary: var(--aima-primary); }
 .vehicle-picker .aima-dialog-header { padding: 16px; margin: 0; border-bottom: 1px solid var(--aima-border); }
 .vehicle-search { width: 100%; height: 34px; padding: 0 12px; border: 1px solid var(--aima-border-strong); border-radius: 6px; font: inherit; font-size: 13px; }

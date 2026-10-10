@@ -12,7 +12,6 @@ import type {
   ContentDetailResponse,
   ContentFilterOptionsResponse,
   ContentFilterSnapshot,
-  ContentFilterSnapshotCompetitionScopesItem,
   ContentListItemResponse,
   ContentListResponse,
   ContentRelevance,
@@ -32,6 +31,7 @@ import {
 } from '../../generated/api/client'
 import { beijingDayBoundary } from '../../shared/domain/beijingTime'
 import { createClientIdempotencyKey } from '../../shared/idempotency'
+import { useVehicleCatalogStore } from '../../shared/domain/vehicleCatalog'
 import { useTaskCenterStore } from '../task-center/store'
 import { fetchSupplementRun } from '../collection-supplement/api'
 import {
@@ -83,7 +83,6 @@ export interface VoicePlazaFilters {
   sourceIdentifier: string
   brandIds: string[]
   vehicleModelIds: string[]
-  competitionScopes: ContentFilterSnapshotCompetitionScopesItem[]
 }
 
 const EMPTY_FILTERS: VoicePlazaFilters = {
@@ -103,7 +102,6 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   sourceIdentifier: '',
   brandIds: [],
   vehicleModelIds: [],
-  competitionScopes: [],
 }
 
 const FILTER_SESSION_KEY = 'aima.voice-plaza.applied-search.v1'
@@ -114,11 +112,17 @@ export interface LegacyLabelCompatibility {
   secondaryLabels: string[]
 }
 
+export interface LegacyVehicleCompatibility {
+  brandIds: string[]
+  vehicleModelIds: string[]
+}
+
 interface PersistedVoicePlazaSearch {
   filters: VoicePlazaFilters
   sortBy: 'published_at' | 'follower_count'
   sortDirection: 'asc' | 'desc'
   legacyLabelCompatibility: LegacyLabelCompatibility | null
+  legacyVehicleCompatibility: LegacyVehicleCompatibility | null
 }
 
 /** 复制筛选数组，避免草稿、已应用条件和默认值共享可变引用。 */
@@ -130,7 +134,6 @@ function copyFilters(source: VoicePlazaFilters): VoicePlazaFilters {
     sentiments: [...source.sentiments],
     brandIds: [...source.brandIds],
     vehicleModelIds: [...source.vehicleModelIds],
-    competitionScopes: [...source.competitionScopes],
     primaryLabels: [...source.primaryLabels],
     secondaryLabels: [...source.secondaryLabels],
   }
@@ -147,6 +150,23 @@ function copyLegacyLabelCompatibility(
     primaryLabels: [...source.primaryLabels],
     secondaryLabels: [...source.secondaryLabels],
   } : null
+}
+
+function copyLegacyVehicleCompatibility(
+  source: LegacyVehicleCompatibility | null,
+): LegacyVehicleCompatibility | null {
+  return source ? {
+    brandIds: [...source.brandIds],
+    vehicleModelIds: [...source.vehicleModelIds],
+  } : null
+}
+
+function sameVehicleSelection(
+  source: Pick<VoicePlazaFilters, 'brandIds' | 'vehicleModelIds'>,
+  legacy: LegacyVehicleCompatibility,
+): boolean {
+  return JSON.stringify(source.brandIds) === JSON.stringify(legacy.brandIds)
+    && JSON.stringify(source.vehicleModelIds) === JSON.stringify(legacy.vehicleModelIds)
 }
 
 function sameLabelSelection(
@@ -205,6 +225,7 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     sortBy: 'published_at',
     sortDirection: 'desc',
     legacyLabelCompatibility: null,
+    legacyVehicleCompatibility: null,
   }
   if (typeof sessionStorage === 'undefined') return fallback
   try {
@@ -225,11 +246,6 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
     const relevance = Object.values(ContentRelevanceValues).includes(
       values.relevance as ContentRelevance,
     ) ? values.relevance as ContentRelevance : ''
-    const competitionScopes = isStringArray(values.competitionScopes)
-      ? values.competitionScopes.filter((item): item is ContentFilterSnapshotCompetitionScopesItem =>
-        ['owned_only', 'competitor_only', 'mixed', 'other_only', 'none_detected'].includes(item),
-      )
-      : []
     const filters: VoicePlazaFilters = {
       search: stringValue('search'),
       platform,
@@ -252,8 +268,26 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
       sourceIdentifier: stringValue('sourceIdentifier'),
       brandIds: isStringArray(values.brandIds) ? values.brandIds : [],
       vehicleModelIds: isStringArray(values.vehicleModelIds) ? values.vehicleModelIds : [],
-      competitionScopes,
     }
+    const savedVehicleCompatibility = record.legacyVehicleCompatibility
+    const parsedVehicleCompatibility = savedVehicleCompatibility && typeof savedVehicleCompatibility === 'object'
+      ? savedVehicleCompatibility as Record<string, unknown>
+      : null
+    const persistedVehicleCompatibility = parsedVehicleCompatibility
+      && isStringArray(parsedVehicleCompatibility.brandIds)
+      && isStringArray(parsedVehicleCompatibility.vehicleModelIds)
+      ? {
+          brandIds: parsedVehicleCompatibility.brandIds,
+          vehicleModelIds: parsedVehicleCompatibility.vehicleModelIds,
+        }
+      : null
+    const restoredVehicleOnly = filters.vehicleModelIds.length > 0 && filters.brandIds.length === 0
+    const legacyVehicleCompatibility = persistedVehicleCompatibility
+      && sameVehicleSelection(filters, persistedVehicleCompatibility)
+      ? copyLegacyVehicleCompatibility(persistedVehicleCompatibility)
+      : restoredVehicleOnly
+        ? { brandIds: [...filters.brandIds], vehicleModelIds: [...filters.vehicleModelIds] }
+        : null
     const savedCompatibility = record.legacyLabelCompatibility
     const parsedCompatibility = savedCompatibility && typeof savedCompatibility === 'object'
       ? savedCompatibility as Record<string, unknown>
@@ -284,6 +318,7 @@ function readPersistedSearch(): PersistedVoicePlazaSearch {
       sortBy: record.sortBy === 'follower_count' ? 'follower_count' : 'published_at',
       sortDirection: record.sortDirection === 'asc' ? 'asc' : 'desc',
       legacyLabelCompatibility,
+      legacyVehicleCompatibility,
     }
     // 已移除的筛选不再恢复，也从旧会话记录中清理，避免后续版本继续传播。
     if ('contentType' in values) sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify(restored))
@@ -304,11 +339,15 @@ function errorMessage(error: unknown): string {
 export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const taskCenter = useTaskCenterStore()
   const { analysisRuns, hasActiveAnalysisRuns, cancellingAnalysisRunId } = storeToRefs(taskCenter)
+  const vehicleCatalog = useVehicleCatalogStore()
   const persistedSearch = readPersistedSearch()
   const filters = reactive<VoicePlazaFilters>(copyFilters(persistedSearch.filters))
   const appliedFilters = reactive<VoicePlazaFilters>(copyFilters(persistedSearch.filters))
   const legacyLabelCompatibility = ref<LegacyLabelCompatibility | null>(
     copyLegacyLabelCompatibility(persistedSearch.legacyLabelCompatibility),
+  )
+  const legacyVehicleCompatibility = ref<LegacyVehicleCompatibility | null>(
+    copyLegacyVehicleCompatibility(persistedSearch.legacyVehicleCompatibility),
   )
   const sortBy = ref<'published_at' | 'follower_count'>(persistedSearch.sortBy)
   const sortDirection = ref<'asc' | 'desc'>(persistedSearch.sortDirection)
@@ -433,6 +472,48 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   )
   const hasActiveJobs = computed(() => hasActiveAnalysisRuns.value || hasActiveExportJobs.value)
 
+  /**
+   * 新交互按品牌→车型父子目录收敛；legacy Route / Session 保持原查询事实。
+   * 品牌或车型目录尚未 ready 时不把“未加载”当“空目录”清理。
+   */
+  function sanitizeVehicleFilters(
+    source: VoicePlazaFilters,
+    legacyCompatibility: LegacyVehicleCompatibility | null = null,
+  ): VoicePlazaFilters {
+    const requestedBrandIds = [...new Set(source.brandIds)]
+    const requestedVehicleModelIds = [...new Set(source.vehicleModelIds)]
+    const compatibilityState = {
+      ...copyFilters(source),
+      brandIds: requestedBrandIds,
+      vehicleModelIds: requestedVehicleModelIds,
+    }
+    if (
+      legacyCompatibility !== null
+      && sameVehicleSelection(compatibilityState, legacyCompatibility)
+    ) {
+      return compatibilityState
+    }
+
+    const brandCatalogReady = vehicleCatalog.brands.active !== null
+    const vehicleCatalogReady = vehicleCatalog.vehicles.active !== null
+    const brandIds = brandCatalogReady
+      ? requestedBrandIds.filter((id) => vehicleCatalog.knownBrands[id])
+      : requestedBrandIds
+    const selectedBrandIds = new Set(brandIds)
+    const vehicleModelIds = brandCatalogReady && vehicleCatalogReady
+      ? requestedVehicleModelIds.filter((id) => {
+          if (selectedBrandIds.size === 0) return false
+          const vehicle = vehicleCatalog.knownVehicles[id]
+          return Boolean(vehicle && vehicle.brand_id != null && selectedBrandIds.has(vehicle.brand_id))
+        })
+      : requestedVehicleModelIds
+    return {
+      ...compatibilityState,
+      brandIds,
+      vehicleModelIds,
+    }
+  }
+
   /** 保存已应用条件而不是输入中的草稿，页面重载后仍从同一查询状态恢复。 */
   function persistAppliedSearch(): void {
     if (typeof sessionStorage === 'undefined') return
@@ -442,6 +523,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
         sortBy: sortBy.value,
         sortDirection: sortDirection.value,
         legacyLabelCompatibility: copyLegacyLabelCompatibility(legacyLabelCompatibility.value),
+        legacyVehicleCompatibility: copyLegacyVehicleCompatibility(legacyVehicleCompatibility.value),
       } satisfies PersistedVoicePlazaSearch))
     } catch {
       // 浏览器禁用会话存储时保留当前 Pinia 状态，不阻断查询。
@@ -465,7 +547,6 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       source_identifier: appliedFilters.sourceIdentifier.trim() || undefined,
       brand_ids: appliedFilters.brandIds.length ? [...appliedFilters.brandIds] : undefined,
       vehicle_model_ids: appliedFilters.vehicleModelIds.length ? [...appliedFilters.vehicleModelIds] : undefined,
-      competition_scopes: appliedFilters.competitionScopes.length ? [...appliedFilters.competitionScopes] : undefined,
     }
   }
 
@@ -524,6 +605,20 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     } : null
   }
 
+  /** 恢复 Route 品牌/车型条件；旧版仅车型条件继续按原查询语义生效。 */
+  function restoreVehicleFilters(
+    brandIds: string[],
+    vehicleModelIds: string[],
+    legacy: boolean,
+  ): void {
+    filters.brandIds = [...new Set(brandIds)]
+    filters.vehicleModelIds = [...new Set(vehicleModelIds)]
+    legacyVehicleCompatibility.value = legacy ? {
+      brandIds: [...filters.brandIds],
+      vehicleModelIds: [...filters.vehicleModelIds],
+    } : null
+  }
+
   /** 提交筛选草稿；用户主动改变 legacy 标签后立即回到当前层级规则。 */
   function applyFilters(): void {
     const previousQuery = JSON.stringify(appliedFilters)
@@ -531,12 +626,20 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     if (legacy && !sameLabelSelection(filters, legacy)) {
       legacyLabelCompatibility.value = null
     }
+    const vehicleLegacy = legacyVehicleCompatibility.value
+    if (vehicleLegacy && !sameVehicleSelection(filters, vehicleLegacy)) {
+      legacyVehicleCompatibility.value = null
+    }
     if (filterOptions.value) {
       Object.assign(
         filters,
         sanitizeLabelFilters(filters, filterOptions.value, legacyLabelCompatibility.value),
       )
     }
+    Object.assign(
+      filters,
+      sanitizeVehicleFilters(filters, legacyVehicleCompatibility.value),
+    )
     Object.assign(appliedFilters, copyFilters(filters))
     if (JSON.stringify(appliedFilters) !== previousQuery) {
       listRevision += 1
@@ -1171,6 +1274,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     Object.assign(filters, copyFilters(EMPTY_FILTERS))
     Object.assign(appliedFilters, copyFilters(EMPTY_FILTERS))
     legacyLabelCompatibility.value = null
+    legacyVehicleCompatibility.value = null
     clearSelection()
     countRevision += 1
     countAbortController?.abort()
@@ -1234,11 +1338,13 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     filters,
     appliedFilters,
     legacyLabelCompatibility,
+    legacyVehicleCompatibility,
     sortBy,
     sortDirection,
     changeSort,
     applyFilters,
     restoreLabelFilters,
+    restoreVehicleFilters,
     detailId,
     detailError,
     commentRoots,
