@@ -10,6 +10,10 @@ export default defineConfig({
       target: 'src/generated/api/client.ts',
       client: 'fetch',
       override: {
+        mutator: {
+          path: './src/shared/api/request.ts',
+          name: 'aimaRequest',
+        },
         formData: {
           arrayHandling: 'serialize',
         },

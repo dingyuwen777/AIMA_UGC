@@ -131,9 +131,12 @@ from aima_ugc.contracts.product import (
     ContentAvailabilityObservationRequest,
     ContentAvailabilityResponse,
     ContentCountResponse,
+    ContentDataRevisionResponse,
     ContentVehicleReviewRequest,
     ContentVehicleReviewResponse,
     ExportColumnCatalogResponse,
+    ExportColumnDefaultResponse,
+    ExportColumnDefaultUpdateRequest,
     NotificationListResponse,
     NotificationMarkReadRequest,
     NotificationMarkReadResponse,
@@ -215,6 +218,8 @@ from aima_ugc.modules.product import ProductHttpService, ProductResourceNotFound
 from aima_ugc.modules.reporting.http import (
     DataExportNotReady,
     DataExportResourceNotFound,
+    ExportColumnDefaultConflict,
+    ExportColumnsInvalid,
     ReportingHttpService,
 )
 from aima_ugc.modules.workbench.http import (
@@ -417,7 +422,11 @@ def create_app(
     """创建 API 应用；默认 runtime 延迟到启动或第一次 readiness 检查。"""
     runtime: PlatformRuntime | None = None
     runtime_failed = False
-    resolved_identity = identity_resolver or DevelopmentIdentityResolver()
+    from aima_ugc.modules.identity.request_identity import RequestCachedIdentityResolver
+
+    resolved_identity = RequestCachedIdentityResolver(
+        identity_resolver or DevelopmentIdentityResolver()
+    )
 
     def get_runtime() -> PlatformRuntime | None:
         nonlocal runtime, runtime_failed
@@ -1123,6 +1132,30 @@ def create_app(
             code="data_export_not_found",
         )
 
+    @application.exception_handler(ExportColumnDefaultConflict)
+    async def export_column_default_conflict(
+        request: Request, _: ExportColumnDefaultConflict
+    ) -> JSONResponse:
+        """并发保存或目录变化不能覆盖另一设备配置。"""
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="默认字段已变化",
+            detail="请重新读取最新配置和列目录后保存。",
+            code="export_column_default_conflict",
+        )
+
+    @application.exception_handler(ExportColumnsInvalid)
+    async def export_columns_invalid(request: Request, _: ExportColumnsInvalid) -> JSONResponse:
+        """列权限与目录校验失败沿用统一 422。"""
+        return _error_response(
+            status_code=422,
+            request_id=_request_id(request),
+            title="导出字段不合法",
+            detail="包含未知或当前账号不可使用的字段。",
+            code="export_columns_invalid",
+        )
+
     @application.exception_handler(DataExportNotReady)
     async def data_export_not_ready(request: Request, _: DataExportNotReady) -> JSONResponse:
         return _error_response(
@@ -1500,8 +1533,34 @@ def create_app(
         response_model=ExportColumnCatalogResponse,
         tags=["exports"],
     )
-    def get_export_column_catalog() -> ExportColumnCatalogResponse:
-        return current_product_service().get_export_column_catalog()
+    def get_export_column_catalog(request: Request) -> ExportColumnCatalogResponse:
+        return current_product_service().get_export_column_catalog(current_principal(request))
+
+    @application.get(
+        "/api/v1/me/export-column-default",
+        operation_id="getMyExportColumnDefault",
+        response_model=ExportColumnDefaultResponse,
+        tags=["exports"],
+    )
+    def get_my_export_column_default(request: Request) -> ExportColumnDefaultResponse:
+        """读取当前 Session 用户配置，不接受客户端目标用户。"""
+        return current_reporting_service().get_column_default(current_principal(request))
+
+    @application.put(
+        "/api/v1/me/export-column-default",
+        operation_id="updateMyExportColumnDefault",
+        response_model=ExportColumnDefaultResponse,
+        tags=["exports"],
+        responses={409: {"model": HttpErrorResponse}, 422: {"model": HttpErrorResponse}},
+    )
+    def update_my_export_column_default(
+        body: ExportColumnDefaultUpdateRequest,
+        request: Request,
+    ) -> ExportColumnDefaultResponse:
+        """以当前身份原子保存或恢复默认列。"""
+        return current_reporting_service().save_column_default(
+            body, principal=current_principal(request)
+        )
 
     @application.get(
         "/api/v1/notifications",
@@ -1682,7 +1741,7 @@ def create_app(
         return current_reporting_service().create_export(
             body,
             request_id=_request_id(request),
-            actor_ref=current_principal(request).principal_id,
+            principal=current_principal(request),
         )
 
     @application.get(
@@ -1692,8 +1751,8 @@ def create_app(
         responses={500: {"model": HttpErrorResponse}},
         tags=["exports"],
     )
-    def list_data_exports() -> DataExportListResponse:
-        return current_reporting_service().list_exports()
+    def list_data_exports(request: Request) -> DataExportListResponse:
+        return current_reporting_service().list_exports(principal=current_principal(request))
 
     @application.get(
         "/api/v1/data-exports/{export_id}",
@@ -1706,8 +1765,10 @@ def create_app(
         },
         tags=["exports"],
     )
-    def get_data_export(export_id: UUID) -> DataExportResponse:
-        return current_reporting_service().get_export(export_id)
+    def get_data_export(export_id: UUID, request: Request) -> DataExportResponse:
+        return current_reporting_service().get_export(
+            export_id, principal=current_principal(request)
+        )
 
     @application.get(
         "/api/v1/data-exports/{export_id}/download",
@@ -1729,8 +1790,10 @@ def create_app(
         },
         tags=["exports"],
     )
-    def download_data_export(export_id: UUID) -> StreamingResponse:
-        download = current_reporting_service().download_export(export_id)
+    def download_data_export(export_id: UUID, request: Request) -> StreamingResponse:
+        download = current_reporting_service().download_export(
+            export_id, principal=current_principal(request)
+        )
         return StreamingResponse(
             download.chunks,
             media_type=download.content_type,
@@ -2552,6 +2615,17 @@ def create_app(
         return current_content_service().get_filter_options()
 
     @application.get(
+        "/api/v1/content-data-revision",
+        operation_id="getContentDataRevision",
+        response_model=ContentDataRevisionResponse,
+        responses={500: {"model": HttpErrorResponse}},
+        tags=["workbench"],
+    )
+    def get_content_data_revision() -> ContentDataRevisionResponse:
+        """普通用户刷新只观察共享业务修订，不读取管理员任务列表。"""
+        return current_workbench_service().get_data_revision()
+
+    @application.get(
         "/api/v1/workbench/stream",
         operation_id="getWorkbenchStream",
         response_model=WorkbenchStreamResponse,
@@ -3194,6 +3268,9 @@ def create_app(
     from .wisersone_routes import register_wisersone_routes
 
     register_wisersone_routes(application, get_runtime, current_principal)
+    from .route_authorization import install_route_authorization
+
+    install_route_authorization(application, identity_resolver=resolved_identity)
     return application
 
 

@@ -199,6 +199,42 @@ class ExportColumnCatalogResponse(BaseModel):
     columns: tuple[ExportColumnResponse, ...] = Field(min_length=1)
 
 
+class ContentDataRevisionResponse(BaseModel):
+    """共享业务数据的匿名化修订标记，不暴露管理任务或配置。"""
+
+    model_config = ConfigDict(extra="forbid")
+    revision: str = Field(min_length=1)
+
+
+class ExportColumnDefaultResponse(BaseModel):
+    """当前账号保存的有效默认列；读取不会改写旧配置。"""
+
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=0)
+    columns: tuple[str, ...] | None
+    saved_catalog_version: int | None
+    updated_at: datetime | None
+
+
+class ExportColumnDefaultUpdateRequest(BaseModel):
+    """以修订号比较并保存个人列；NULL 恢复系统默认。"""
+
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=0)
+    catalog_version: int = Field(gt=0)
+    columns: tuple[str, ...] | None = Field(min_length=1, max_length=100)
+
+    @field_validator("columns")
+    @classmethod
+    def validate_columns(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        """拒绝重复、空白和空字段，保留用户顺序。"""
+        if value is not None and (
+            len(set(value)) != len(value) or any(not key or key.strip() != key for key in value)
+        ):
+            raise ValueError("导出字段必须非空、无重复且不含首尾空白")
+        return value
+
+
 class NotificationItemResponse(BaseModel):
     """Principal Inbox 中的一个通知投影。"""
 
@@ -256,9 +292,12 @@ __all__ = [
     "ContentAvailabilityStatus",
     "ContentCountQuery",
     "ContentCountResponse",
+    "ContentDataRevisionResponse",
     "ContentVehicleReviewRequest",
     "ContentVehicleReviewResponse",
     "ExportColumnCatalogResponse",
+    "ExportColumnDefaultResponse",
+    "ExportColumnDefaultUpdateRequest",
     "ExportColumnResponse",
     "NotificationItemResponse",
     "NotificationListResponse",

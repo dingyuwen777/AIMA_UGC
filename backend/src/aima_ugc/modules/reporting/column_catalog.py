@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-EXPORT_COLUMN_CATALOG_VERSION = 2
+EXPORT_COLUMN_CATALOG_VERSION = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,12 +13,15 @@ class ExportColumnDefinition:
     label: str
     sensitive: bool = False
     default_selected: bool = False
+    administrator_only: bool = False
 
 
 EXPORT_COLUMNS = (
     ExportColumnDefinition("platform", "平台", default_selected=True),
     ExportColumnDefinition("external_content_id", "内容ID", default_selected=True),
-    ExportColumnDefinition("source_item_id", "来源项ID", default_selected=True),
+    ExportColumnDefinition(
+        "source_item_id", "来源项ID", default_selected=True, administrator_only=True
+    ),
     ExportColumnDefinition("content_type", "内容类型", default_selected=True),
     ExportColumnDefinition("title", "标题", default_selected=True),
     ExportColumnDefinition("text", "正文", default_selected=True),
@@ -52,17 +55,23 @@ EXPORT_COLUMNS = (
     ExportColumnDefinition("prompt_version", "Prompt版本", default_selected=True),
     ExportColumnDefinition("taxonomy_version", "Taxonomy版本", default_selected=True),
     ExportColumnDefinition("source_provider", "来源Provider", default_selected=True),
-    ExportColumnDefinition("raw_locator", "Raw/来源定位", default_selected=True),
+    ExportColumnDefinition(
+        "raw_locator", "Raw/来源定位", default_selected=True, administrator_only=True
+    ),
     ExportColumnDefinition("coverage", "评论覆盖", default_selected=True),
     ExportColumnDefinition("availability", "第三方可用状态"),
 )
 
 
-def resolve_export_columns(requested: tuple[str, ...]) -> tuple[str, ...]:
+def resolve_export_columns(
+    requested: tuple[str, ...], *, administrator: bool = True
+) -> tuple[str, ...]:
     """空选择使用默认列；任何未知列都 fail closed。"""
 
-    allowed = {item.key for item in EXPORT_COLUMNS}
-    selected = requested or tuple(item.key for item in EXPORT_COLUMNS if item.default_selected)
+    allowed = {item.key for item in EXPORT_COLUMNS if administrator or not item.administrator_only}
+    selected = requested or tuple(
+        item.key for item in EXPORT_COLUMNS if item.default_selected and item.key in allowed
+    )
     unknown = set(selected) - allowed
     if unknown:
         raise ValueError(f"不支持的导出列: {', '.join(sorted(unknown))}")

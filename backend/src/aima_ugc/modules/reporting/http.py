@@ -13,6 +13,8 @@ from aima_ugc.contracts.http import (
     DataExportResponse,
     DataExportSubmitRequest,
 )
+from aima_ugc.contracts.product import ExportColumnDefaultResponse, ExportColumnDefaultUpdateRequest
+from aima_ugc.modules.identity import Principal
 
 
 class DataExportResourceNotFound(LookupError):
@@ -21,6 +23,14 @@ class DataExportResourceNotFound(LookupError):
 
 class DataExportNotReady(RuntimeError):
     pass
+
+
+class ExportColumnDefaultConflict(RuntimeError):
+    """个人配置或列目录已被其他请求更新。"""
+
+
+class ExportColumnsInvalid(ValueError):
+    """请求包含当前身份不可使用的列。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,14 +47,23 @@ class ReportingHttpService(Protocol):
         request: DataExportSubmitRequest,
         *,
         request_id: str,
-        actor_ref: str,
+        principal: Principal,
     ) -> DataExportCreatedResponse: ...
 
-    def get_export(self, export_id: UUID) -> DataExportResponse: ...
+    def get_export(self, export_id: UUID, *, principal: Principal) -> DataExportResponse: ...
 
-    def list_exports(self) -> DataExportListResponse: ...
+    def list_exports(self, *, principal: Principal) -> DataExportListResponse: ...
 
-    def download_export(self, export_id: UUID) -> ArtifactDownload: ...
+    def download_export(self, export_id: UUID, *, principal: Principal) -> ArtifactDownload: ...
+
+    def get_column_default(self, principal: Principal) -> ExportColumnDefaultResponse: ...
+
+    def save_column_default(
+        self,
+        request: ExportColumnDefaultUpdateRequest,
+        *,
+        principal: Principal,
+    ) -> ExportColumnDefaultResponse: ...
 
 
 __all__ = [

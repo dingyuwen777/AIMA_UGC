@@ -5,6 +5,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Table,
     Text,
@@ -25,6 +26,7 @@ reporting_data_exports_table = Table(
     Column("request_snapshot", JSONB(), nullable=False),
     Column("columns", JSONB(), nullable=False),
     Column("column_catalog_version", Integer(), nullable=False),
+    Column("created_by", Text(), nullable=True),
     Column("stats", JSONB()),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("completed_at", DateTime(timezone=True)),
@@ -47,6 +49,35 @@ reporting_data_exports_table = Table(
 )
 
 
+Index(
+    "ix_reporting_data_exports_owner_recent",
+    reporting_data_exports_table.c.created_by,
+    reporting_data_exports_table.c.created_at.desc(),
+    reporting_data_exports_table.c.id.desc(),
+)
+
+reporting_user_export_column_defaults_table = Table(
+    "reporting_user_export_column_defaults",
+    metadata,
+    Column("principal_id", Text(), primary_key=True),
+    Column("schema_version", Integer(), nullable=False),
+    Column("revision", Integer(), nullable=False),
+    Column("selected_columns", JSONB(none_as_null=True), nullable=True),
+    Column("saved_catalog_version", Integer(), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("length(btrim(principal_id)) > 0", name="principal_nonempty"),
+    CheckConstraint("schema_version = 1", name="schema_version_supported"),
+    CheckConstraint("revision > 0", name="revision_positive"),
+    CheckConstraint("saved_catalog_version > 0", name="catalog_version_positive"),
+    CheckConstraint(
+        "selected_columns IS NULL OR (jsonb_typeof(selected_columns) = 'array' "
+        "AND jsonb_array_length(selected_columns) > 0)",
+        name="selected_columns_nonempty_array",
+    ),
+    info={"owner": "reporting"},
+)
+
 reporting_data_export_items_table = Table(
     "reporting_data_export_items",
     metadata,
@@ -66,4 +97,8 @@ reporting_data_export_items_table = Table(
 )
 
 
-__all__ = ["reporting_data_export_items_table", "reporting_data_exports_table"]
+__all__ = [
+    "reporting_data_export_items_table",
+    "reporting_data_exports_table",
+    "reporting_user_export_column_defaults_table",
+]

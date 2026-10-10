@@ -31,6 +31,7 @@ class PlatformSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     data_dir: Path
+    identity_mode: Literal["development", "feishu"] = "development"
     log_dir: Path
     secret_dir: Path
     external_secret_dir: Path | None = None
@@ -156,6 +157,10 @@ class PlatformSettings(BaseModel):
             return self
 
         if self.feishu_app_id is None:
+            if any(
+                (self.feishu_admin_group_id, self.feishu_user_group_id, self.feishu_redirect_uri)
+            ):
+                raise ValueError("配置飞书登录字段时必须配置 AIMA_FEISHU_APP_ID")
             return self
 
         # 多维表发布只需要 App ID/Token/Secret，不启用网页登录时允许不配置用户组。
@@ -341,6 +346,7 @@ _ENV_TO_FIELD = {
     "AIMA_LLM_TIMEOUT_SECONDS": "llm_timeout_seconds",
     "AIMA_LLM_MAX_CONNECTIONS": "llm_max_connections",
     "AIMA_LLM_VALIDATION_RETRIES": "llm_validation_retries",
+    "AIMA_IDENTITY_MODE": "identity_mode",
     "AIMA_FEISHU_APP_ID": "feishu_app_id",
     "AIMA_FEISHU_BASE_URL": "feishu_base_url",
     "AIMA_FEISHU_APP_TOKEN": "feishu_app_token",

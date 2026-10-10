@@ -459,7 +459,7 @@ Brand/Vehicle 则读取该冻结 Content Version 的有效 Evidence：Brand 名�
 + 来源 Provider/Raw
 ```
 
-Column Catalog v2 提供“品牌、品牌角色、竞品范围、车型”四个可选列；它们未进入默认选择，因此未显式选列的既有导出仍保持原表头。品牌角色和竞品范围在 Excel 中使用中文展示标签，底层 Contract 继续保留稳定英文枚举。
+当前 Column Catalog 提供“品牌、品牌角色、竞品范围、车型”四个可选列；它们未进入默认选择，因此未显式选列的既有导出仍保持原表头。品牌角色和竞品范围在 Excel 中使用中文展示标签，底层 Contract 继续保留稳定英文枚举。
 
 精确投影：
 
@@ -792,3 +792,5 @@ content_columns / label_detail_columns / comment_columns
 - 正式 Export / imports_test 复用同一实现。
 
 目标测试以当前 `tests/unit/` 中 Excel/Reporting/Imports 相关文件为准；最终以 PR 最新 HEAD CI 为准。
+
+正式在线导出的用户归属、管理员追溯列、个人默认字段及历史下载校验由 Reporting Owner 负责，见 [backend/src/aima_ugc/modules/reporting/README.md](../../backend/src/aima_ugc/modules/reporting/README.md#用户归属字段权限与个人默认)。离线统一数据 Contract 和 Renderer 继续保持完整技术字段能力，在线权限不在离线文件协议中复制。

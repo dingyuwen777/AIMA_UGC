@@ -25,7 +25,7 @@ from aima_ugc.modules.reporting.data_export_job import (
     MAX_EXPORT_ARTIFACT_BYTES,
     DataExportJobPayload,
 )
-from aima_ugc.platform.export.excel import export_unified_data_excel
+from aima_ugc.platform.export.excel import _COMMENT_HEADERS, export_unified_data_excel
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 from aima_ugc.platform.storage import ArtifactService, ArtifactSizeLimitError
@@ -75,6 +75,17 @@ class PostgresDataExportJobExecutor:
                     output_path,
                     include_analysis=True,
                     content_columns=export_column_headers(export_definition.columns),
+                    # 复用 Renderer 唯一表头定义与现有列参数，评论页同样不得泄露 Raw 定位。
+                    comment_columns=(
+                        tuple(
+                            header
+                            for header in _COMMENT_HEADERS
+                            if header not in export_column_headers(("raw_locator",))
+                        )
+                        if export_definition.column_catalog_version >= 3
+                        and "raw_locator" not in export_definition.columns
+                        else None
+                    ),
                 )
                 with output_path.open("rb") as source:
                     artifact = ArtifactService(

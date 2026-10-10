@@ -408,6 +408,11 @@ class FeishuLoginRequiredResolver:
 
         self._routes = routes
 
+    @property
+    def trusted_browser_urls(self) -> tuple[str, ...]:
+        """只信任已配置 Connector 的回调来源，不接受客户端转发头扩权。"""
+        return self._routes.trusted_browser_urls
+
     def resolve(self, request: Request) -> Principal:
         """解析 Principal；无有效会话时抛 `AuthenticationRequired`（→ 401）。"""
 
@@ -465,6 +470,14 @@ class FeishuAuthRoutes:
     多企业时把**配置里的第一家**当作默认 —— 这样旧回调地址（已登记进飞书后台）
     不会立刻失效，给迁移留出窗口。
     """
+
+    @property
+    def trusted_browser_urls(self) -> tuple[str, ...]:
+        """反向代理后的浏览器来源由正式回调配置确定。"""
+        settings = tuple(self._connectors.values())
+        if self._settings is not None:
+            settings = (*settings, self._settings)
+        return tuple(item.redirect_uri for item in settings)
 
     def __init__(
         self,
@@ -1369,7 +1382,8 @@ def build_feishu_identity(
         app_secret_reader=read_app_secret,
     )
     if auth_settings is None:
-        # 未配置：既不产生 401 语义，也不改变任何既有路由的行为。
+        if resolved_settings.identity_mode == "feishu":
+            raise ValueError("AIMA_IDENTITY_MODE=feishu 必须配置完整飞书登录 Connector 与用户组")
         return DevelopmentIdentityResolver(), routes
 
     # 配了飞书才启用会话解析（无会话 → 401）；解析器与登录路由共用同一个装配体，

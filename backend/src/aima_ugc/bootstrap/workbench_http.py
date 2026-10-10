@@ -13,6 +13,7 @@ from uuid import UUID
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.analysis_schemes import PostgresAnalysisSchemeRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.workbench import (
     PostgresWorkbenchRepository,
@@ -24,6 +25,7 @@ from aima_ugc.adapters.persistence.postgres.workbench_snapshots import (
     WorkbenchSnapshotRefresh,
 )
 from aima_ugc.bootstrap.analysis_identity import active_analysis_configuration
+from aima_ugc.contracts.product import ContentDataRevisionResponse
 from aima_ugc.contracts.workbench import (
     WorkbenchDailyPointResponse,
     WorkbenchLabelResponse,
@@ -56,6 +58,7 @@ from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.time import BEIJING_TIMEZONE, beijing_now, beijing_today
 
 from .runtime import PlatformRuntime
+from .runtime_config import active_llm_provider
 
 _DEFAULT_LAYOUT = (
     WorkbenchLayoutModule(
@@ -85,6 +88,21 @@ class PostgresWorkbenchHttpService:
         self._runtime = runtime
         self._cursor_signing_secret = cursor_signing_secret
         self._use_snapshot_cache = use_snapshot_cache
+
+    def get_data_revision(self) -> ContentDataRevisionResponse:
+        """复用投影修订和统计身份，不 bootstrap、不创建任务或返回管理事实。"""
+        with self._runtime.database.new_session() as session:
+            revision = PostgresWorkbenchSnapshotRepository(session).current_data_revision()
+            scheme = PostgresAnalysisSchemeRepository(session).get_active_version()
+            provider = active_llm_provider(session, self._runtime.settings)
+            identity = (
+                revision,
+                str(scheme.id) if scheme else None,
+                scheme.taxonomy_sha256 if scheme else None,
+                (provider.provider, provider.model, provider.revision) if provider else None,
+            )
+            digest = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
+            return ContentDataRevisionResponse(revision=digest)
 
     def get_stream(self, query: WorkbenchStreamQuery) -> WorkbenchStreamResponse:
         session = self._runtime.database.new_session()

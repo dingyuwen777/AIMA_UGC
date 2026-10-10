@@ -22,6 +22,17 @@ POSTGRES_USER = "aima_ugc"
 LOCAL_TIKHUB_SECRET_REF = "tikhub_api_key"
 LOCAL_LLM_SECRET_REF = "llm_api_key"
 
+_IDENTITY_ENV_KEYS = (
+    "AIMA_IDENTITY_MODE",
+    "AIMA_FEISHU_ADMIN_GROUP_ID",
+    "AIMA_FEISHU_USER_GROUP_ID",
+    "AIMA_FEISHU_REDIRECT_URI",
+    "AIMA_FEISHU_SCOPE",
+    "AIMA_FEISHU_COOKIE_SECURE",
+    "AIMA_FEISHU_SESSION_TTL_HOURS",
+    "AIMA_FEISHU_STATE_TTL_SECONDS",
+    "AIMA_FEISHU_CONNECTORS",
+)
 _SOURCE_LOCAL_KEYS = frozenset(
     {
         "AIMA_TIKHUB_BASE_URL",
@@ -34,6 +45,7 @@ _SOURCE_LOCAL_KEYS = frozenset(
         "AIMA_HISTORICAL_IMPORT_ROOT",
         "AIMA_HOST_ROOT",
         "AIMA_DEV_ENABLE_SCHEDULER",
+        "AIMA_IDENTITY_MODE",
         "AIMA_FEISHU_BASE_URL",
         "AIMA_FEISHU_APP_ID",
         "AIMA_FEISHU_APP_TOKEN",
@@ -146,6 +158,7 @@ class LocalDevConfig:
     feishu_max_retries: str | None = None
     feishu_dry_run: str | None = None
     host_root: str = "./.runtime/compose"
+    identity_environment: tuple[tuple[str, str], ...] = ()
 
     @property
     def tikhub_configured(self) -> bool:
@@ -296,6 +309,11 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
             key="AIMA_DEV_ENABLE_SCHEDULER",
         ),
         unknown_keys=unknown,
+        identity_environment=tuple(
+            (key, value)
+            for key in _IDENTITY_ENV_KEYS
+            if (value := _clean(values.get(key))) is not None
+        ),
         feishu_base_url=_clean(values.get("AIMA_FEISHU_BASE_URL")),
         feishu_app_id=_clean(values.get("AIMA_FEISHU_APP_ID")),
         feishu_app_token=_clean(values.get("AIMA_FEISHU_APP_TOKEN")),
@@ -395,6 +413,8 @@ def build_runtime_environment(
     environment["AIMA_HOST_ROOT"] = str(wisersone_host_root.resolve())
     environment["AIMA_WISERSONE_AUTH_DIR"] = str(wisersone_auth.resolve())
     environment["AIMA_WISERSONE_INPUT_DIR"] = str(wisersone_input.resolve())
+
+    environment.update(config.identity_environment)
 
     for key, value in (
         ("AIMA_FEISHU_BASE_URL", config.feishu_base_url),

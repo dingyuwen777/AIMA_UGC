@@ -83,6 +83,18 @@ PostgreSQL Repository：
 
 ---
 
+## 用户归属、字段权限与个人默认
+
+Export 的 `created_by` 是稳定业务归属，来源只允许当前 Session 的 Principal；`request_snapshot.requested_by` 继续保留审计意义。普通用户的列表在 SQL 中先按创建者过滤再按时间取最近记录，详情和下载同样先授权，别人的 ID 返回 404。管理员保留全局历史。历史无法可靠回填的创建者保持 NULL。
+
+列目录由 [backend/src/aima_ugc/modules/reporting/column_catalog.py](column_catalog.py) 唯一维护。`raw_locator` 是内部 Artifact 定位，`source_item_id` 来自统一投影的来源文章标识；两项为管理员追溯字段，普通用户目录不返回，伪造创建/默认字段请求返回 422。历史文件在下载前重新检查冻结列。目录版本低于 3 的旧评论工作表固定含内部 Raw 定位，因此即使正文列未选择该字段，普通用户也不能下载；无可验证列清单或含受限列同样拒绝，可以按当前允许字段重新导出。新版本 Worker 根据冻结字段同时限制正文和评论工作表，管理员保留原有完整能力。共享 Renderer 和离线统一数据 Contract 继续支持完整字段。
+
+专用 `reporting_user_export_column_defaults` 每个 Principal 一条配置，不依赖正式 Identity 行，因此明确的开发身份也可使用。NULL 代表跟随系统默认，非空有序数组代表个人选择。GET 只投影当前有效且有权限的列，不改写原记录；全部失效时弹窗提示并采用系统默认。PUT 比较目录版本和 revision，冲突返回 409；恢复默认仍递增 revision。接口的精确结构见 [backend/src/aima_ugc/contracts/product.py](../../contracts/product.py) 和 [contracts/openapi/openapi.json](../../../../../contracts/openapi/openapi.json)。
+
+弹窗等待身份、目录与个人配置一起就绪再显示字段，异步刷新不覆盖已编辑草稿。只有“设为我的默认字段”与“恢复系统默认字段”成功后改变长期配置；“开始导出”仅冻结当前任务的列与顺序，不影响默认，也不受以后默认变更影响。保存失败保留草稿，并发冲突需重新读取后确认。
+
+实现由 [backend/src/aima_ugc/bootstrap/reporting_http.py](../../bootstrap/reporting_http.py) 编排，[backend/src/aima_ugc/adapters/persistence/postgres/export_column_defaults.py](../../adapters/persistence/postgres/export_column_defaults.py) 原子保存 revision。迁移与回滚边界见 [migrations/versions/20261010_0087_export_ownership_defaults.py](../../../../../migrations/versions/20261010_0087_export_ownership_defaults.py)。
+
 ## 2. 为什么 Export 要先冻结 Content Version
 
 假设用户 10:00 点击导出：
@@ -135,6 +147,7 @@ Worker 后续严格按这些版本读取。
 id
 job_id
 artifact_id
+created_by
 format
 request_snapshot
 stats
@@ -248,7 +261,7 @@ ordinal > after_ordinal
 
 这意味着导出同时复用多个 Owner 的**只读事实**，但只由 Reporting Owner 写 `reporting_data_*` 表。
 
-Brand 与 Vehicle 都按 Export Item 冻结的 `content_version` 读取，不在 Worker 执行时改读 Content Current。Brand 名称稳定去重后输出，Brand Role 及 `competition_scope` 由同一批 Evidence 派生；Vehicle 名称仍按当前合并后的有效车型展示。品牌、品牌角色、竞品范围、车型是 Column Catalog v2 的可选列，未选择时不改变既有默认 Excel 表头。
+Brand 与 Vehicle 都按 Export Item 冻结的 `content_version` 读取，不在 Worker 执行时改读 Content Current。Brand 名称稳定去重后输出，Brand Role 及 `competition_scope` 由同一批 Evidence 派生；Vehicle 名称仍按当前合并后的有效车型展示。品牌、品牌角色、竞品范围、车型是 当前 Column Catalog 的可选列，未选择时不改变既有默认 Excel 表头。
 
 ---
 
@@ -327,6 +340,8 @@ POST /api/v1/data-exports
 GET  /api/v1/data-exports
 GET  /api/v1/data-exports/{export_id}
 GET  /api/v1/data-exports/{export_id}/download
+GET  /api/v1/me/export-column-default
+PUT  /api/v1/me/export-column-default
 ```
 
 Route：
