@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20261010-152000-windows-dev-seed
 title: Windows 源码开发安全恢复共享快照
 level: L3
-status: in_progress
+status: ready_for_review
 owner: Codex
 branch: feature/716-windows-dev-seed
 created: 2026-10-10T15:20:00+08:00
-updated: 2026-10-10T17:46:00+08:00
+updated: 2026-10-10T21:11:00+08:00
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -66,7 +66,7 @@ main 7bc3fd3 启动器在 PostgreSQL ready 后直接 Migration；服务器脚本
 
 ## 推断与待确认
 
-远程 LFS 上传配额尚待实际 push；真实包完整校验、隔离恢复、Migration和正式API读取已执行，不把元数据扫描当完整校验。Windows 临时 bind 目录的冷查询耗时较高，不能由此宣称生产性能达标。
+远程 LFS 已正常上传，并由全新 clone 的独立缓存下载、核对大小与 SHA；真实包完整校验、隔离恢复、Migration和正式API读取已执行，不把元数据扫描当完整校验。Windows 临时 bind 目录的冷查询耗时较高，不能由此宣称生产性能达标。
 
 # 目标、成功标准与非目标
 
@@ -135,8 +135,9 @@ Bash/WSL违反用户环境约束；新常驻DB违反固定aima_ugc；完整Schem
 | R6 | 历史Job取消，计划/Provider停用，成功AI结论保持 | #716 / AC6 | satisfied | 真实包queued/running Job=0、enabled/default Provider=0、enabled计划=0；合成PG验证AI/Run不改写；V2/V3 |
 | R7 | 缓存不替代DB事实；跨checkout失败保护；重复启动不展开全包 | #716 / AC7 | satisfied | 共享状态/Artifact根绑定/失败skip拒绝/租约测试；真实包重复初始化通过；V1/V2/V3 |
 | R8 | status/verify/dry-run只读，人工确认reset与中断保护 | #716 / AC8 | satisfied | 真实PG错误确认/活跃连接/外来OID/删库后失败/建库后失败恢复和数据哨兵验证；V2 |
-| R9 | 原包LFS交付、镜像排除、CI合成数据 | #716 / AC9 | not_satisfied | 本地LFS指针与原包SHA匹配、Dockerignore及合成测试已核；远程上传/下载证明尚未取得 |
-| R10 | 必要验证、独立Review、CI与正常Git交付闭环 | #716 / AC10 | not_satisfied | V1–V6及独立Review已取得；API、PR/current-head CI与合并后原生收口尚未完成 |
+| R9 | 原包LFS交付、镜像排除、CI合成数据 | #716 / AC9 | satisfied | V10全新远程clone独立LFS下载，原包大小/SHA一致；Dockerignore、CI隔离与合成测试通过 |
+| R10 | 本施工单元的必要验证与独立Review | #716 / AC10 | satisfied | V1–V10、四项修复及后续专项独立复核；实现SHA保持，全部本地必要层通过 |
+| R11 | 当前HEAD CI、正常合并、main-fresh、原生归档与Issue闭环 | #716 / AC10 | explicitly_deferred | 正式Owner为Implementation PR required checks与仓库原生ci.yml/change-archive.yml；AGENTS.md及docs/blueprint/06_开发约束与分阶段实施.md规定先Active Ready再PR/CI/merge，合并后归档和Closure；仅按依赖顺序后置，不豁免且未声称AC10完成 |
 
 # 计划改动
 
@@ -175,10 +176,10 @@ Bash/WSL违反用户环境约束；新常驻DB违反固定aima_ugc；完整Schem
 
 # 完成审计
 
-- [ ] upstream_re_read：Ready前重读live #716。
-- [ ] change_coverage：逐AC核对。
-- [ ] reverse_audit：CLI→handler→输出/副作用、恢复→Migration→查询、Job安全。
-- [ ] unresolved_cleared：实际证据齐备后清零。
+- [x] upstream_re_read：Ready前重新读取live #716（updatedAt=2026-10-10T07:18:08Z），与原附件及确认范围逐项比较；主分支仍7bc3fd3。
+- [x] change_coverage：AC1–AC9各项对应R1–R9及直接Evidence；AC10实现/验证/Review对应R10，平台依赖部分由R11及正式交付Owner后续证明，Issue保持open。
+- [x] reverse_audit：CLI/flags→parser/handler→状态/退出码与副作用；原命令→租约→恢复→Migration→正式API读取；CSV/Artifact→真实FK/序列/投影→评论、AI、品牌车型和工作台；历史可执行Job=0、计划/Provider停用。前端/Compose不自动恢复，测试分层没有互相冒充。
+- [x] unresolved_cleared：本地施工范围not_satisfied清零；后置平台检查有项目正式顺序和Owner，不以延期冒充任务完成。新增永久单元与PG测试分别证明文件/决策和真实持久化风险，无复制业务实现的冗余验证资产；临时大包/API专项脚本合并后清理。
 
 # 完成证据与状态
 
@@ -196,6 +197,7 @@ Bash/WSL违反用户环境约束；新常驻DB违反固定aima_ugc；完整Schem
 | V7 | 最终源代码 | Ruff check/format；mypy backend/src scripts/dev/seed_data.py scripts/dev/recent_snapshot.py；generate.py --check | Ruff通过，482个源文件类型检查通过，生成Contract一致 | 静态/生成契约一致 |
 | V8 | 当前文档/规则 | check_docs、scan_secrets、check_docs_facts、check_agent_governance、架构/表Owner检查 | exit0 | 文档/Secret与模块边界保持 |
 | V9 | 实际恢复DB；最终entrypoints.api_main.app；未替换Service/Repository | TestClient读取ready、详情、一级评论/回复、人工锁、Taxonomy、筛选目录、数据修订、品牌车型、工作台声音流；先前bootstrap同Service默认/AI筛选列表 | 全部200；人工锁1、品牌6、车型页50、声音流10；旧Job和计划仍0 | 真实数据在正式API装配可读；开发身份用于本地测试，不作为生产飞书授权验收 |
+| V10 | 远程分支实现e2f7d96；2026-10-10T21:10:49+08:00；全新E盘clone、独立.git/lfs缓存 | 正常git push；GIT_LFS_SKIP_SMUDGE clone后git lfs pull，仅指定原包；文件大小与SHA-256核对 | 远程下载1,646,496,154 bytes，SHA d95862f9149f04857d3841c5cd02b46ae01c0add32408f8066da4f9f734ebc6c，与原包一致 | 不是本地缓存副本，团队能从远程获得完整原始包；测试副本按归属清理 |
 
 ### 独立 Review 与失败修复
 
@@ -213,11 +215,11 @@ API专项首段默认和AI筛选列表各5条、详情及AI结果通过；随后
 
 ## 未验证内容与剩余风险
 
-LFS远程证明尚待push；current-head CI、main-fresh及归档/Issue关闭依正常交付顺序执行。正式生产、飞书企业授权与服务器性能不在任务范围；没有运行付费Provider或生产部署。
+LFS远程证明已取得；current-head CI、main-fresh及归档/Issue关闭依正常交付顺序执行，未满足前不合并或关闭Issue。正式生产、飞书企业授权与服务器性能不在任务范围；没有运行付费Provider或生产部署。
 
 ## 交付状态
 
-本地任务分支已建立；尚未提交/PR/CI/合并/归档。用户授权正常合并，禁止绕过保护。
+实现checkpoint e2f7d961829e4ed921d2bf1ce839f4d2a98c2b0d已正常推送任务分支，LFS独立远程下载通过；最终审计记录随后提交并进入PR/current-head CI。Active Change保持ready_for_review，归档由仓库原生Workflow负责。用户授权正常合并，禁止绕过保护；尚未发生的PR/CI/合并/归档不标完成。
 
 ## 备注
 
