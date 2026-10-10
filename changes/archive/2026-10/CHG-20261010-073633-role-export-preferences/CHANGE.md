@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20261010-073633-role-export-preferences
 title: 落实多用户角色权限与个人 Excel 导出配置
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: feat/714-role-export-preferences
 created: 2026-10-10T07:36:33+08:00
