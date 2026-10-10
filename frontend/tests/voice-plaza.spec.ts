@@ -158,14 +158,17 @@ describe('voice plaza', () => {
     await store.refresh()
     store.startPolling()
     try {
+      // 初次列表后发生更新，首次修订号随后保持稳定，也必须追赶一次。
+      generated.listContents.mockResolvedValue({ items: [{ ...item, title: '首次修订前更新' }], has_more: false })
       await vi.advanceTimersByTimeAsync(1000)
       expect(generated.getContentDataRevision).toHaveBeenCalledTimes(1)
-      expect(generated.listContents).toHaveBeenCalledTimes(1)
+      expect(store.items[0]?.title).toBe('首次修订前更新')
+      expect(generated.listContents).toHaveBeenCalledTimes(2)
       generated.getContentDataRevision.mockResolvedValue({ revision: 'new-data' })
       generated.listContents.mockResolvedValue({ items: [{ ...item, title: '更新后正文' }], has_more: false })
       await vi.advanceTimersByTimeAsync(1000)
       expect(store.items[0]?.title).toBe('更新后正文')
-      expect(generated.listContents).toHaveBeenCalledTimes(2)
+      expect(generated.listContents).toHaveBeenCalledTimes(3)
       expect(generated.listContentAnalysisRuns).not.toHaveBeenCalled()
       expect(generated.listCollectionRuntimeRuns).not.toHaveBeenCalled()
       documentState.visibilityState = 'hidden'

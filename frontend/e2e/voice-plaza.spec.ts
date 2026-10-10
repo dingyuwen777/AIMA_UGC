@@ -1,5 +1,6 @@
 import { expect, test } from './fixture'
 import { captureScrollbarEvidence } from './scrollbarEvidence'
+import type { Page } from '@playwright/test'
 
 import {
   stubVoicePlazaTaxonomy,
@@ -14,6 +15,17 @@ const exportId = '72345678-1234-5678-1234-567812345678'
 const exportJobId = '82345678-1234-5678-1234-567812345678'
 const brandId = '92345678-1234-4678-9234-567812345678'
 const vehicleId = 'a2345678-1234-4678-9234-567812345678'
+
+async function personalColumnCatalog(page: Page): Promise<void> {
+  await page.route('**/api/v1/export-columns', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ version: 3, columns: [
+      { key: 'platform', label: '平台', group: '内容', default_selected: true },
+      { key: 'title', label: '标题', group: '内容', default_selected: false },
+      { key: 'text', label: '正文', group: '内容', default_selected: true },
+      { key: 'author', label: '作者', group: '内容', default_selected: false },
+    ] }) })
+  })
+}
 
 const analysisRun = {
   id: analysisRunId,
@@ -453,6 +465,7 @@ test('工作台内容深链跨分页直接定位声音广场真实笔记', async
 
 test('导入记录查看声音时不继承会话中陈旧筛选', async ({ page }) => {
   await page.addInitScript(() => {
+    sessionStorage.setItem('aima.applied-filters.principal.v1', JSON.stringify(['local-administrator', 'administrator', 'development']))
     sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
       filters: { search: '旧关键词', publishedFrom: '2020-01-01', sourceIdentifier: '旧来源' },
       sortBy: 'published_at',
@@ -964,9 +977,12 @@ test('声音广场详情浮层滚动条三状态保持几何', async ({ page }, 
 })
 
 test('完整多选深链替换旧会话，并在筛选摘要显示真实条件', async ({ page }) => {
-  await page.addInitScript(() => sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
-    filters: { search: '旧搜索', sourceIdentifier: '旧来源', platform: 'weibo', analysisStatus: 'pending', relevance: 'irrelevant' },
-  })))
+  await page.addInitScript(() => {
+    sessionStorage.setItem('aima.applied-filters.principal.v1', JSON.stringify(['local-administrator', 'administrator', 'development']))
+    sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
+      filters: { search: '旧搜索', sourceIdentifier: '旧来源', platform: 'weibo', analysisStatus: 'pending', relevance: 'irrelevant' },
+    }))
+  })
   const request = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/contents')
   const query = new URLSearchParams({ published_from: '2026-09-25', published_to: '2026-10-01', brand_ids: brandId,
     vehicle_model_ids: vehicleId, primary_labels: '产品体验', secondary_labels: '续航表现', content_id: contentId })
@@ -1226,6 +1242,7 @@ test('旧内容类型会话及链接不会进入列表、计数、AI 和导出�
   const listRequests: URL[] = []
   const countFilters: Record<string, unknown>[] = []
   await page.addInitScript(() => {
+    sessionStorage.setItem('aima.applied-filters.principal.v1', JSON.stringify(['local-administrator', 'administrator', 'development']))
     sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({
       filters: { contentType: 'video', platform: 'xiaohongshu' },
       sortBy: 'published_at', sortDirection: 'desc',
@@ -1385,4 +1402,159 @@ test('keeps export history visible but disables empty query export creation', as
   await expect(dialog.getByRole('button', { name: /开始导出/ })).toBeDisabled()
   await expect(dialog.getByText('最近导出记录')).toBeVisible()
   await expect(dialog.getByRole('progressbar', { name: '导出 72345678 进度' })).toHaveAttribute('aria-valuenow', '64')
+})
+
+test('普通用户保留选择和详情结果，任务中心不请求管理数据', async ({ page }) => {
+  const management: string[] = []
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (/^\/api\/v1\/(analysis\/content-runs|collection-runtime)/.test(path)) management.push(path)
+  })
+  await page.route('**/api/v1/principal', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      principal_id: 'browser-user-a', display_name: '普通用户甲', role: 'user', source: 'feishu', is_administrator: false,
+    }) })
+  })
+  await page.goto('/voice-plaza')
+  await expect(page.getByRole('navigation', { name: '业务导航' }).getByRole('link')).toHaveCount(2)
+  await page.getByRole('checkbox', { name: '选择当前已加载内容' }).check()
+  await expect(page.getByText('已选 1 条', { exact: false })).toBeVisible()
+  await expect(page.getByRole('button', { name: /AI 分析|评论补采|标记相关|标记不相关|撤销人工判断/ })).toHaveCount(0)
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const detail = page.getByRole('dialog', { name: '内容详情' })
+  await expect(detail).toContainText('小满的通勤日记')
+  await expect(detail).toContainText('负面')
+  await expect(detail.getByRole('button', { name: /修改|纠正|解除人工/ })).toHaveCount(0)
+  await detail.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByRole('button', { name: '任务中心', exact: true }).click()
+  await expect(page.getByRole('button', { name: '取消任务', exact: true })).toHaveCount(0)
+  expect(management).toEqual([])
+})
+
+test('个人默认字段加载完成前不展示错误勾选，临时导出不保存默认', async ({ page }) => {
+  await personalColumnCatalog(page)
+  let release!: () => void
+  const gate = new Promise<void>((done) => { release = done })
+  let preferenceReads = 0
+  let preferenceWrites = 0
+  await page.route('**/api/v1/me/export-column-default', async (route) => {
+    if (route.request().method() === 'PUT') preferenceWrites += 1
+    preferenceReads += 1
+    await gate
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      revision: 4, columns: ['title'], saved_catalog_version: 3, updated_at: '2026-10-10T08:00:00+08:00',
+    }) })
+  })
+  await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '导出记录', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '导出声音记录' })
+  await expect.poll(() => preferenceReads).toBe(1)
+  await expect(dialog.locator('.column-picker input')).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: /开始导出/ })).toBeDisabled()
+  release()
+  await expect(dialog.getByLabel('标题', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('平台', { exact: true })).not.toBeChecked()
+  await dialog.getByLabel('作者', { exact: true }).check()
+  await dialog.getByText('当前页内容', { exact: true }).click()
+  await dialog.getByRole('button', { name: /开始导出/ }).click()
+  await expect(page.getByText(/已创建 Excel 导出任务/)).toBeVisible()
+  expect(preferenceWrites).toBe(0)
+})
+
+test('默认字段并发冲突保留草稿，重新读取后显式保存新 revision', async ({ page }) => {
+  await personalColumnCatalog(page)
+  let reads = 0
+  const writes: Record<string, unknown>[] = []
+  await page.route('**/api/v1/me/export-column-default', async (route) => {
+    if (route.request().method() === 'PUT') {
+      writes.push(route.request().postDataJSON())
+      if (writes.length === 1) {
+        await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({
+          status: 409, title: 'Conflict', detail: 'revision conflict', request_id: 'browser-default-conflict',
+        }) })
+        return
+      }
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+        revision: 6, columns: ['title', 'author'], saved_catalog_version: 3, updated_at: '2026-10-10T08:00:00+08:00',
+      }) })
+      return
+    }
+    reads += 1
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      revision: reads === 1 ? 4 : 5, columns: reads === 1 ? ['title'] : ['text'], saved_catalog_version: 3, updated_at: null,
+    }) })
+  })
+  await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '导出记录', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '导出声音记录' })
+  await expect(dialog.getByLabel('标题', { exact: true })).toBeChecked()
+  await dialog.getByLabel('作者', { exact: true }).check()
+  const save = dialog.getByRole('button', { name: '设为我的默认字段', exact: true })
+  await save.click()
+  await expect(dialog.getByRole('alert')).toContainText('当前草稿已保留')
+  await expect(save).toBeDisabled()
+  await expect(dialog.getByLabel('作者', { exact: true })).toBeChecked()
+  await dialog.getByRole('button', { name: '重新读取', exact: true }).click()
+  await expect(save).toBeEnabled()
+  await expect(dialog.getByLabel('标题', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('正文', { exact: true })).not.toBeChecked()
+  await save.click()
+  await expect(dialog.getByText('已保存为我的默认字段。')).toBeVisible()
+  expect(writes).toEqual([
+    { revision: 4, catalog_version: 3, columns: ['title', 'author'] },
+    { revision: 5, catalog_version: 3, columns: ['title', 'author'] },
+  ])
+})
+
+test('失效个人字段安全回退，恢复系统默认显式提交 null 并保留 revision', async ({ page }) => {
+  await personalColumnCatalog(page)
+  const writes: Record<string, unknown>[] = []
+  await page.route('**/api/v1/me/export-column-default', async (route) => {
+    const saving = route.request().method() === 'PUT'
+    if (saving) writes.push(route.request().postDataJSON())
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      revision: saving ? 8 : 7, columns: saving ? null : [], saved_catalog_version: 2, updated_at: null,
+    }) })
+  })
+  await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '导出记录', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '导出声音记录' })
+  await expect(dialog.getByText('原默认字段已失效或当前账号无权使用，已采用系统默认字段。')).toBeVisible()
+  await expect(dialog.getByLabel('平台', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('正文', { exact: true })).toBeChecked()
+  expect(writes).toEqual([])
+  await dialog.getByRole('button', { name: '恢复系统默认字段', exact: true }).click()
+  await expect(dialog.getByText('已恢复系统默认字段。')).toBeVisible()
+  expect(writes).toEqual([{ revision: 7, catalog_version: 3, columns: null }])
+})
+
+test('恢复默认等待期间锁定字段，失败后原草稿仍可继续编辑', async ({ page }) => {
+  await personalColumnCatalog(page)
+  let release!: () => void
+  const pending = new Promise<void>((done) => { release = done })
+  await page.route('**/api/v1/me/export-column-default', async (route) => {
+    if (route.request().method() === 'PUT') {
+      await pending
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
+        status: 503, title: 'Service unavailable', detail: 'temporary', request_id: 'browser-default-save',
+      }) })
+      return
+    }
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      revision: 2, columns: ['title'], saved_catalog_version: 3, updated_at: null,
+    }) })
+  })
+  await page.goto('/voice-plaza')
+  await page.getByRole('button', { name: '导出记录', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '导出声音记录' })
+  const title = dialog.getByLabel('标题', { exact: true })
+  await expect(title).toBeChecked()
+  await dialog.getByRole('button', { name: '恢复系统默认字段', exact: true }).click()
+  await expect(title).toBeDisabled()
+  await expect(dialog.getByLabel('作者', { exact: true })).toBeDisabled()
+  release()
+  await expect(dialog.getByRole('alert')).toContainText('当前草稿已保留')
+  await expect(title).toBeEnabled()
+  await expect(title).toBeChecked()
+  await dialog.getByLabel('作者', { exact: true }).check()
 })

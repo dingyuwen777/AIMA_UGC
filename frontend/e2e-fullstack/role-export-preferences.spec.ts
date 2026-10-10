@@ -19,7 +19,9 @@ test.beforeAll(async () => {
   test.setTimeout(120_000)
   directory = await mkdtemp(join(tmpdir(), 'aima-role-browser-'))
   const tokenFile = join(directory, 'sessions.json')
-  server = spawn('uv', ['run', 'python', 'tests/fullstack/role_sessions_api.py', '--token-file', tokenFile], {
+  const windows = process.platform === 'win32'
+  server = spawn(windows ? join(repository, '.venv', 'Scripts', 'python.exe') : 'uv',
+    [...(windows ? [] : ['run', 'python']), 'tests/fullstack/role_sessions_api.py', '--token-file', tokenFile], {
     cwd: repository,
     env: { ...process.env, AIMA_FULLSTACK_SEED: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -63,6 +65,16 @@ test('真实 Session 双用户的只读 UI、默认字段、导出归属和账�
   const b = await accountContext(browser, sessions.user_b)
   const admin = await accountContext(browser, sessions.admin)
   try {
+    const candidates = await (await admin.request.get(`${api}/api/v1/contents?relevance=irrelevant`)).json()
+    const sharedContent = candidates.items[0] as { id: string; title: string }
+    expect(sharedContent, '正式 Fixture 必须包含已分析内容').toBeTruthy()
+    const review = async (decision: 'relevant' | 'irrelevant') => {
+      const response = await admin.request.post(`${api}/api/v1/content-relevance-reviews`, {
+        headers: { Origin: origin }, data: { content_ids: [sharedContent.id], decision },
+      })
+      expect(response.status()).toBe(200)
+    }
+    await review('relevant')
     const page = await a.newPage()
     const managementRequests: string[] = []
     page.on('request', (request) => {
@@ -74,6 +86,12 @@ test('真实 Session 双用户的只读 UI、默认字段、导出归属和账�
     await expect(page.getByRole('button', { name: /AI 分析/ })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /评论补采/ })).toHaveCount(0)
     await expect(page.getByRole('checkbox', { name: '选择当前已加载内容' })).toBeVisible()
+    await expect(page.getByText(sharedContent.title, { exact: true })).toBeVisible()
+    // 管理员真实写入后，已打开的普通用户页面依靠只读修订刷新结果。
+    await review('irrelevant')
+    await expect(page.getByText(sharedContent.title, { exact: true })).toHaveCount(0)
+    await review('relevant')
+    await expect(page.getByText(sharedContent.title, { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '任务中心', exact: true }).click()
     await expect(page.getByRole('button', { name: '取消任务', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: '关闭任务中心', exact: true }).last().click()
@@ -123,10 +141,14 @@ test('真实 Session 双用户的只读 UI、默认字段、导出归属和账�
     await page.evaluate(() => sessionStorage.setItem('aima.voice-plaza.applied-search.v1', JSON.stringify({ filters: { search: '甲的条件' }, sortBy: 'published_at', sortDirection: 'desc' })))
     await page.reload()
     expect(await page.evaluate(() => sessionStorage.getItem('aima.voice-plaza.applied-search.v1'))).toContain('甲的条件')
+    const anotherTab = await a.newPage()
+    await anotherTab.goto(`${origin}/voice-plaza`)
     await a.addCookies([{ name: sessions.cookie_name, value: sessions.user_b.token, url: origin }])
-    await page.reload()
+    await page.bringToFront()
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
     await expect(page.locator('.principal-name')).toContainText('全栈用户乙')
     expect(await page.evaluate(() => sessionStorage.getItem('aima.voice-plaza.applied-search.v1'))).not.toContain('甲的条件')
+    await anotherTab.close()
     await page.goto(`${origin}/collection-runtime`)
     await expect(page.getByText('当前账号无管理员权限')).toBeVisible()
     expect(managementRequests).toEqual([])

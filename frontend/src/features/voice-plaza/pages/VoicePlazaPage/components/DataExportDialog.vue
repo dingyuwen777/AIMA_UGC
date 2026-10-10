@@ -152,6 +152,7 @@ const canSubmit = computed(() => {
 })
 
 function toggleColumn(key: string): void {
+  if (preferenceSaving.value) return
   columnsEdited.value = true
   const typedKey = key as ExportColumnKey
   selectedColumns.value = selectedColumns.value.includes(typedKey)
@@ -256,6 +257,7 @@ function canDownload(item: DataExportResponse): boolean {
           >
             <input
               type="checkbox"
+              :disabled="preferenceSaving"
               :checked="selectedColumns.includes(column.key as ExportColumnKey)"
               @change="toggleColumn(column.key)"
             >

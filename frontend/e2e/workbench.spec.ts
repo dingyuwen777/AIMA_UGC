@@ -1313,3 +1313,32 @@ test('Analysis Run 新结果及终态分别触发工作台合并刷新', async (
   await expect.poll(() => streamReads).toBeGreaterThanOrEqual(3)
   expect(streamReads).toBeLessThanOrEqual(4)
 })
+
+test('普通用户初始数据完成后才收到首个稳定修订，也会追赶聚合且不读管理任务', async ({ page }) => {
+  let release!: () => void
+  const baseline = new Promise<void>((done) => { release = done })
+  let streamReads = 0
+  let mindReads = 0
+  const management: string[] = []
+  await page.route('**/api/v1/principal', (route) => route.fulfill({ json: {
+    principal_id: 'workbench-user', display_name: '工作台普通用户', role: 'user', source: 'feishu', is_administrator: false,
+  } }))
+  await page.route('**/api/v1/content-data-revision', async (route) => {
+    await baseline
+    await route.fulfill({ json: { revision: 'updated-before-first-revision' } })
+  })
+  await page.route('**/api/v1/workbench/stream**', async (route) => { streamReads += 1; await route.fallback() })
+  await page.route('**/api/v1/workbench/mind**', async (route) => { mindReads += 1; await route.fallback() })
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (/^\/api\/v1\/(analysis\/content-runs|collection-runtime)/.test(path)) management.push(path)
+  })
+  await page.goto('/')
+  await expect.poll(() => streamReads).toBe(1)
+  await expect.poll(() => mindReads).toBe(1)
+  await expect(page.locator('.mind-card')).toBeVisible()
+  release()
+  await expect.poll(() => streamReads).toBeGreaterThanOrEqual(2)
+  await expect.poll(() => mindReads).toBeGreaterThanOrEqual(2)
+  expect(management).toEqual([])
+})

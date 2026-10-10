@@ -42,6 +42,7 @@ from aima_ugc.bootstrap.feishu_auth_http import (
     _build_connector_settings_map,
     install_feishu_auth_routes,
 )
+from aima_ugc.bootstrap.route_authorization import install_route_authorization
 from aima_ugc.modules.identity.feishu import HttpxFeishuClient
 from aima_ugc.modules.identity.tables import identity_external_identities_table
 from aima_ugc.platform.config import PlatformSettings
@@ -168,8 +169,10 @@ def _build_e2e_client(
             base_url=base_url,
             max_attempts=1,  # 测试不重试，失败即失败
         )
-    application = create_app(identity_resolver=FeishuLoginRequiredResolver(routes))
+    resolver = FeishuLoginRequiredResolver(routes)
+    application = create_app(identity_resolver=resolver)
     install_feishu_auth_routes(application, auth_routes=routes)
+    install_route_authorization(application, identity_resolver=resolver)
     return TestClient(application, raise_server_exceptions=False), routes
 
 

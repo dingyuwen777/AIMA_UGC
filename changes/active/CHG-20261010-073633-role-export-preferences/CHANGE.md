@@ -45,11 +45,11 @@ Requirement-Source: #714。管理员负责生产和治理，普通用户查看�
 | E1 | 扩展安装在主工厂之后 | backend/src/aima_ugc/entrypoints/api_main.py | 最终 assembly 后完整授权检查 |
 | E2 | Export 快照有 requested_by，读取无 Principal | backend/src/aima_ugc/bootstrap/reporting_http.py | 明确 created_by 与对象授权 |
 | E3 | 视频 prepare 可以创建采集 Job | backend/src/aima_ugc/bootstrap/content_playback_service.py | 观看保留，收费刷新管理授权 |
-| E4 | 用户已免本地验证并授权 merge/任务清理 | #714 验证要求及本轮用户开头指令 | epoch 2 本地验证 required；不 merge；独立 Review 保留 |
+| E4 | 最新用户指令要求本地验证，先不合并远程 main | #714 与用户“修改完本地验证没问题之后，先不要合并到远程主分支” | epoch 2 本地验证 required；不 merge；保留开发分支供验收 |
 
 ## 推断与待确认
 
-正式飞书企业授权及生产环境不在本轮执行范围，最终报告明确未验证；远程 CI 结果取得后补直接 Evidence。
+正式飞书企业授权及生产环境不在本轮执行范围，最终报告明确未验证；当前先完成本地交付，远程 CI 在后续获准的 PR 阶段取得。
 
 # 目标、成功标准与非目标
 
@@ -88,10 +88,10 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 
 ## 最小充分方案
 
-1. 最终路由清单及 Principal 请求缓存、Cookie 同源检查 → Identity/bootstrap → 每实际路由显式归类，无未知匿名入口 → 远程 API 拒绝与无副作用回归。
-2. Export created_by/索引/角色列与默认表/API → Reporting/persistence/Contract/Migration → 所有读取先 owner 过滤，默认 revision 原子并发 → 远程 PostgreSQL、Contract、XLSX 回归。
-3. Shell/声音广场/任务源/刷新/会话隔离及导出弹窗 → frontend → 普通用户保留只读与导出，无管理请求，草稿稳定 → 远程 Unit/Browser/真实 Full-stack。
-4. 文档、独立 Review、上游 Completion、当前 main/HEAD CI、guarded merge、原生归档与任务临时清理 → 对应交付证据回写。
+1. 最终路由清单及 Principal 请求缓存、Cookie 同源检查 → Identity/bootstrap → 每实际路由显式归类，无未知匿名入口 → 本地 API 拒绝与无副作用回归。
+2. Export created_by/索引/角色列与默认表/API → Reporting/persistence/Contract/Migration → 所有读取先 owner 过滤，默认 revision 原子并发 → 本地 PostgreSQL、Contract、XLSX 回归。
+3. Shell/声音广场/任务源/刷新/会话隔离及导出弹窗 → frontend → 普通用户保留只读与导出，无管理请求，草稿稳定 → 本地 Unit/Browser/真实 Full-stack。
+4. 文档、独立 Review、上游 Completion、保留本地提交与开发分支、任务测试资源清理 → 对应交付证据回写；Human Local Acceptance PENDING，不执行 push/PR/merge。
 
 ## 证据到决策
 
@@ -128,9 +128,9 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 | R17 | 默认弹窗与冻结 | #714 / AC17 | not_satisfied | 等待实现与远程回归 |
 | R18 | 会话隔离 | #714 / AC18 | not_satisfied | 等待实现与远程回归 |
 | R19 | Migration/Contract/回滚 | #714 / AC19 | not_satisfied | 等待实现与远程回归 |
-| R20 | 远程分层验证 | #714 / AC20 | not_satisfied | 本地 USER_WAIVED；远程 CI 尚未执行 |
+| R20 | 本地分层验证 | #714 / AC20 | not_satisfied | epoch 2 本地 required；验证进行中 |
 | R21 | 独立 Review/文档/兼容 | #714 / AC21 | not_satisfied | 等待实现与远程回归 |
-| R22 | 合并和任务清理 | #714 / AC22 | not_satisfied | 交付阶段执行 |
+| R22 | 保留分支、不合并与任务清理 | #714 / AC22 | not_satisfied | 交付阶段清理本任务临时资源；保留开发分支 |
 
 # 计划改动
 
@@ -144,18 +144,18 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | required | 权限、默认列、身份换代、任务源；远程 pytest/Vitest |
-| 接口 / 契约 | required | OpenAPI/Orval 正式生成及远程漂移检查 |
+| 行为 / 单元 / 组件 | required | 权限、默认列、身份换代、任务源；本地 pytest/Vitest |
+| 接口 / 契约 | required | OpenAPI/Orval 正式生成及本地漂移检查 |
 | 集成 / 持久化 / 运行依赖 | required | PostgreSQL 归属、revision 并发、Job 无副作用、XLSX 重读 |
-| 用户 / 工作流验收 | required | 远程 Playwright 角色/默认字段/会话；人工本地验收 PENDING |
-| 跨组件关键路径 | required | 远程真实双角色 API/DB/Worker/Browser 关键链 |
+| 用户 / 工作流验收 | required | 本地 Playwright 角色/默认字段/会话；人工本地验收 PENDING |
+| 跨组件关键路径 | required | 本地真实双角色 API/DB/Worker/Browser 关键链 |
 | 外部依赖 / 供应方探测 | not_applicable | 本次不变更飞书远端协议；正式企业/生产验收留待候选环境，不冒充已通过 |
-| 构建 / 打包 / 运行 | required | 远程 typecheck/build/适用 CI |
+| 构建 / 打包 / 运行 | required | 本地 typecheck/build；远程 CI 在后续 PR 阶段 |
 | 文档 / 治理 / 其他 | required | 正式文档、Route 清单、Completion/独立 Review/CI；写入 Contract preflight |
 
 ## 验证计划
 
-epoch 2 本地验证 required。复用 `scripts/dev/validate_changed.py --base origin/main` 对应 CI 分类，pytest/PostgreSQL、Vitest/Playwright/fullstack、typecheck/build、Generated Contract/Change Gate。补测试不假报 Red。只有生成产物和 Issue/PR 写入 Contract 在本地执行。
+epoch 2 本地验证 required。复用 `scripts/dev/validate_changed.py --base origin/main` 对应 CI 分类，pytest/PostgreSQL、Vitest/Playwright/fullstack、typecheck/build、Generated Contract/Change Gate。测试失败和修复后结果分别保留，不将自动测试冒充人工验收。
 
 # 风险、兼容性、迁移与回滚
 
@@ -182,7 +182,7 @@ epoch 2 本地验证 required。复用 `scripts/dev/validate_changed.py --base o
 
 ## 新鲜证据
 
-起点 fetch main 成功；Issue candidate create Contract PASS，平台创建 #714，live 重读与 candidate 字节相同。未运行本地测试。
+起点 fetch main 成功；Issue candidate create Contract PASS，平台创建 #714，epoch 2 candidate pre-write PASS、平台更新后 live 重读与 candidate 字节相同。本地后端、前端、PostgreSQL 与迁移验证证据正在收口。
 
 ## 未验证内容与剩余风险
 

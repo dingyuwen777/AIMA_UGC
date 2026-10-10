@@ -32,6 +32,7 @@ let pendingRefreshRunning = false
 let pendingAttempts = 0
 let pendingQuery = ''
 let disposed = false
+let initialized = false
 let resizeCleanup: (() => void) | null = null
 
 const analysisFingerprint = computed(() =>
@@ -254,12 +255,17 @@ watch(analysisFingerprint, (current, previous) => {
   if (identity.isAdministrator && previous && current !== previous) scheduleAnalysisRefresh()
 })
 watch(() => contentRevision.revision, (current, previous) => {
-  if (previous !== null && current !== null && current !== previous) scheduleAnalysisRefresh()
+  if (initialized && current !== null && current !== previous) scheduleAnalysisRefresh()
 })
 watch([() => store.mind, () => store.trend, () => store.filters], schedulePendingRefresh)
 
 onMounted(() => {
-  void store.initialize().finally(schedulePeriodicRefresh)
+  void store.initialize().finally(() => {
+    initialized = true
+    // 初次模块与修订并行读取，取得首个修订后追赶一次以闭合初始化窗口。
+    if (!disposed && contentRevision.revision !== null) scheduleAnalysisRefresh()
+    schedulePeriodicRefresh()
+  })
   void contentRevision.refresh()
   contentRevisionHandle = setInterval(() => {
     if (document.visibilityState === 'visible') void contentRevision.refresh()

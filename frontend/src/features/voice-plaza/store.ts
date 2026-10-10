@@ -1233,18 +1233,6 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     await contentRevision.refresh()
     if (revision !== pollRevision || pageIsHidden()) return
     const observedContentRevision = contentRevision.revision
-    // 首次取得修订号建立基线，后续变化使用原每秒检查触发内容更新。
-    if (displayedContentRevision === null) displayedContentRevision = observedContentRevision
-    else if (observedContentRevision !== displayedContentRevision && !loading.value && !loadingNext.value) {
-      if (await refreshLoadedWindow()) {
-        if (revision !== pollRevision) return
-        await refreshFilterOptions()
-        if (revision !== pollRevision) return
-        void refreshCount('estimated')
-        displayedContentRevision = observedContentRevision
-        displayedAnalysisSignature = analysisSignature.value
-      }
-    }
     if (hasActiveExportJobs.value && Date.now() - lastExportPollAt >= 5000) {
       lastExportPollAt = Date.now()
       void refreshExports()
@@ -1262,9 +1250,15 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     await pollSupplements()
     if (revision !== pollRevision || pageIsHidden()) return
     const signature = analysisSignature.value
-    if (signature !== displayedAnalysisSignature && !loading.value && !loadingNext.value &&
+    // 首次修订也要追赶；与管理员运行变化合并，单次轮询最多刷新一个已加载窗口。
+    const contentChanged = observedContentRevision !== null && observedContentRevision !== displayedContentRevision
+    if ((contentChanged || signature !== displayedAnalysisSignature) && !loading.value && !loadingNext.value &&
       !filterOptionsLoading.value && await refreshLoadedWindow()) {
+      if (revision !== pollRevision) return
       await refreshFilterOptions()
+      if (revision !== pollRevision) return
+      void refreshCount('estimated')
+      displayedContentRevision = observedContentRevision
       displayedAnalysisSignature = signature
     }
     if (identity.isAdministrator && taskCenter.analysisError) error.value = taskCenter.analysisError

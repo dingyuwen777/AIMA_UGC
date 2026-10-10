@@ -723,7 +723,6 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
     started_at: '2026-08-21T10:00:01+08:00',
     finished_at: '2026-08-21T10:00:02+08:00',
   }
-  await page.unroute('**/api/v1/**')
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === '/api/v1/collection-runtime/summary') {
@@ -755,7 +754,7 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
     if (url.pathname === `/api/v1/collection-runs/${runId}`) {
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(failedRun) })
     }
-    return route.fulfill({ status: 404, body: 'not mocked' })
+    return route.fallback()
   })
 
   await page.goto('/collection-runtime')
@@ -814,11 +813,13 @@ test('shows frozen account dates and confirms retry before using the shared run 
 })
 
 test('keeps unified Error Contract technical ids out of the product list error state', async ({ page }) => {
-  await page.unroute('**/api/v1/**')
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === '/api/v1/collection-runtime/summary') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ processing_count: 0, completed_today_count: 0, contents_ingested_today: 0, as_of: '2026-08-21T02:00:00Z' }) })
-    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ title: '分页服务暂不可用', status: 503, detail: '分页服务配置不可用，请使用 request_id 联系管理员。', request_id: 'req_stage8e_error', errors: [] }) })
+    if (url.pathname === '/api/v1/collection-runtime/runs') {
+      return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ title: '分页服务暂不可用', status: 503, detail: '分页服务配置不可用，请使用 request_id 联系管理员。', request_id: 'req_stage8e_error', errors: [] }) })
+    }
+    await route.fallback()
   })
   await page.goto('/collection-runtime')
   const runtimeTable = page.getByRole('region', { name: '采集运行记录', exact: true })

@@ -375,6 +375,7 @@ function competitionScopeLabel(scope?: ContentDetailResponse['competition_scope'
         :content-type="item.content_type"
         :original-url="item.content_url"
         :open="modelValue"
+        :can-recover="isAdministrator"
         @terminal="emit('media-terminal')"
       />
       <section
