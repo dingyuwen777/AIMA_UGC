@@ -602,8 +602,8 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </div>
 
       <ContentDetailDrawer
-        :is-administrator="identity.isAdministrator"
         v-model="detailOpen"
+        :is-administrator="identity.isAdministrator"
         :item="store.detail"
         :loading="store.loadingDetail"
         :error="store.detailError"
@@ -630,15 +630,15 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       />
       <CommentSupplementDialog
         v-if="identity.isAdministrator"
-        :is-administrator="identity.isAdministrator"
         v-model="commentSupplementOpen"
+        :is-administrator="identity.isAdministrator"
         :content-ids="store.selectedIds"
         @created="commentSupplementCreated"
       />
       <AnalysisSubmitDialog
         v-if="identity.isAdministrator"
-        :is-administrator="identity.isAdministrator"
         v-model="analysisOpen"
+        :is-administrator="identity.isAdministrator"
         :selected-count="store.selectedIds.length"
         :preview="store.analysisPreview"
         :previewing="store.previewingAnalysis"

@@ -218,7 +218,10 @@ onMounted(() => void identity.ensurePrincipal())
             >
               退出
             </button>
-            <NotificationInbox v-if="identity.principal" compact />
+            <NotificationInbox
+              v-if="identity.principal"
+              compact
+            />
           </div>
         </div>
       </footer>

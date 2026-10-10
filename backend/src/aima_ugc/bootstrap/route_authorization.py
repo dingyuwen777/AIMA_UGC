@@ -144,7 +144,7 @@ def install_route_authorization(
         permission = next(iter(permissions))
         if not getattr(checked, "aima_authorized", False):
             checked.app = _guard(checked.app, permission, identity_resolver)
-            setattr(checked, "aima_authorized", True)
+            cast(Any, checked).aima_authorized = True
         if isinstance(checked, APIRoute):
             checked.openapi_extra = {
                 **(checked.openapi_extra or {}),

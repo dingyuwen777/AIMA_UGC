@@ -24,7 +24,7 @@ Requirement-Source: #714。管理员负责生产和治理，普通用户查看�
 
 ## 背景
 
-用户已批准完整任务及合并远程 main；明确跳过本地验证与本地人工验收。
+用户已批准完整实现。decision epoch 2：2026-10-10 最新指令要求完成修改并执行本地验证，先不要合并远程 main；撤销此前本地验证豁免，保留开发分支供验收。
 
 ## 当前现状
 
@@ -45,7 +45,7 @@ Requirement-Source: #714。管理员负责生产和治理，普通用户查看�
 | E1 | 扩展安装在主工厂之后 | backend/src/aima_ugc/entrypoints/api_main.py | 最终 assembly 后完整授权检查 |
 | E2 | Export 快照有 requested_by，读取无 Principal | backend/src/aima_ugc/bootstrap/reporting_http.py | 明确 created_by 与对象授权 |
 | E3 | 视频 prepare 可以创建采集 Job | backend/src/aima_ugc/bootstrap/content_playback_service.py | 观看保留，收费刷新管理授权 |
-| E4 | 用户已免本地验证并授权 merge/任务清理 | #714 验证要求及本轮用户开头指令 | 本地 USER_WAIVED，远程 CI/独立 Review 保留 |
+| E4 | 用户已免本地验证并授权 merge/任务清理 | #714 验证要求及本轮用户开头指令 | epoch 2 本地验证 required；不 merge；独立 Review 保留 |
 
 ## 推断与待确认
 
@@ -67,7 +67,7 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 
 ## 非目标
 
-不增加角色/RBAC/通用偏好/依赖；不部署、发布或操作生产；不执行本地测试构建及付费 Probe。
+不增加角色/RBAC/通用偏好/依赖；不部署、发布或操作生产；不执行付费 Probe，不合并远程 main。
 
 ## 必须保持不变
 
@@ -77,7 +77,7 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 
 | 决策维度 | 当前决定 | 依据 | 影响 |
 | --- | --- | --- | --- |
-| 范围与负责人边界 | Parent 单 Writer，独立只读路由调查与最终 Review | AGENTS.md、E1 | 避免共享 checkout 写冲突 |
+| 范围与负责人边界 | Parent 根 checkout 单 Writer；前端和测试分别在隔离 worktree 实现后提交整合，独立只读 Review | AGENTS.md、E1 | 避免共享 checkout 写冲突 |
 | 接口与契约 | 显式 route policy，Reporting 专用个人默认 API | #714 / AC2、AC16 | Pydantic→OpenAPI→Orval |
 | 数据与迁移 | nullable created_by、可靠回填、个人配置无 Identity FK | #714 / AC12、AC15 | Reporting 唯一 Owner |
 | 错误与失败语义 | 401/403/私有 Export 404/422/409 | #714 / AC3、AC13、AC16 | 副作用之前拒绝 |
@@ -147,7 +147,7 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 | 行为 / 单元 / 组件 | required | 权限、默认列、身份换代、任务源；远程 pytest/Vitest |
 | 接口 / 契约 | required | OpenAPI/Orval 正式生成及远程漂移检查 |
 | 集成 / 持久化 / 运行依赖 | required | PostgreSQL 归属、revision 并发、Job 无副作用、XLSX 重读 |
-| 用户 / 工作流验收 | required | 远程 Playwright 角色/默认字段/会话；本地人工 USER_WAIVED |
+| 用户 / 工作流验收 | required | 远程 Playwright 角色/默认字段/会话；人工本地验收 PENDING |
 | 跨组件关键路径 | required | 远程真实双角色 API/DB/Worker/Browser 关键链 |
 | 外部依赖 / 供应方探测 | not_applicable | 本次不变更飞书远端协议；正式企业/生产验收留待候选环境，不冒充已通过 |
 | 构建 / 打包 / 运行 | required | 远程 typecheck/build/适用 CI |
@@ -155,7 +155,7 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 
 ## 验证计划
 
-本地验证 USER_WAIVED。远程复用 `scripts/dev/validate_changed.py --base origin/main` 对应 CI 分类，pytest/PostgreSQL、Vitest/Playwright/fullstack、typecheck/build、Generated Contract/Change Gate。补测试不假报 Red。只有生成产物和 Issue/PR 写入 Contract 在本地执行。
+epoch 2 本地验证 required。复用 `scripts/dev/validate_changed.py --base origin/main` 对应 CI 分类，pytest/PostgreSQL、Vitest/Playwright/fullstack、typecheck/build、Generated Contract/Change Gate。补测试不假报 Red。只有生成产物和 Issue/PR 写入 Contract 在本地执行。
 
 # 风险、兼容性、迁移与回滚
 
@@ -186,11 +186,11 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 
 ## 未验证内容与剩余风险
 
-本地验证用户豁免。正式飞书/生产候选环境未执行，不能宣称生产可发布。
+本地验证进行中。正式飞书/生产候选环境未执行，不能宣称生产可发布。
 
 ## 交付状态
 
-本地任务分支开发中；尚无 commit/push/PR/CI/merge。Human Local Acceptance USER_WAIVED。
+本地任务分支开发中；已提交后端、测试、前端 checkpoint，尚无 push/PR/CI/merge。Human Local Acceptance PENDING；远程 main 合并暂停。
 
 ## 备注
 

@@ -63,7 +63,7 @@ describe('Principal 筛选归属和正式请求隔离', () => {
     let finish!: () => void
     const validation = new Promise<void>((resolve) => { finish = resolve })
     suspendPrincipalRequests(validation)
-    const fetch = vi.fn().mockResolvedValue(Response.json({ ok: true }))
+    const fetch = vi.fn().mockImplementation(async () => Response.json({ ok: true }))
     vi.stubGlobal('fetch', fetch)
     const business = aimaRequest('/api/v1/contents')
     await Promise.resolve()

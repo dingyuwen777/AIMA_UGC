@@ -22,14 +22,25 @@ function handleLogout(): void {
   <div class="no-access-page">
     <div class="no-access-card">
       <h1>无访问权限</h1>
-      <p v-if="route.query.access === 'administrator-required'" class="detail">
+      <p
+        v-if="route.query.access === 'administrator-required'"
+        class="detail"
+      >
         当前账号无管理员权限。采集运行中心、采集策略和管理员配置仅管理员可访问。
       </p>
-      <p v-else class="detail">
+      <p
+        v-else
+        class="detail"
+      >
         当前账号（{{ identity.principal?.display_name ?? '未知用户' }}）不在允许使用本系统的用户组内。
         请联系管理员将你加入相应的飞书用户组。
       </p>
-      <RouterLink v-if="identity.principal" to="/">返回工作台</RouterLink>
+      <RouterLink
+        v-if="identity.principal"
+        to="/"
+      >
+        返回工作台
+      </RouterLink>
       <button
         type="button"
         class="logout-action"

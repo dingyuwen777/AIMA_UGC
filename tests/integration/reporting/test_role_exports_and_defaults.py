@@ -30,12 +30,12 @@ from aima_ugc.bootstrap.product_http import PostgresProductHttpService
 from aima_ugc.bootstrap.reporting_http import PostgresReportingHttpService
 from aima_ugc.bootstrap.route_authorization import install_route_authorization
 from aima_ugc.bootstrap.runtime import PlatformRuntime
+from aima_ugc.bootstrap.workbench_http import PostgresWorkbenchHttpService
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
     create_job_worker,
     create_worker_runtime,
 )
-from aima_ugc.bootstrap.workbench_http import PostgresWorkbenchHttpService
 from aima_ugc.entrypoints.api_main import create_app
 from aima_ugc.modules.analysis.scheme_tables import (
     analysis_scheme_versions_table,

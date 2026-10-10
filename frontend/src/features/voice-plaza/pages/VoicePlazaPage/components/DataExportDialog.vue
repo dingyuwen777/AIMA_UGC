@@ -264,13 +264,50 @@ function canDownload(item: DataExportResponse): boolean {
           </label>
         </div>
         <em v-else>正在加载导出字段…</em>
-        <nav class="column-default-actions" aria-label="个人默认导出字段">
-          <AimaButton size="small" variant="text" :disabled="!fieldsReady || !selectedColumns.length || preferenceLoading || preferenceSaving || preferenceConflict" @click="savePreference(false)">设为我的默认字段</AimaButton>
-          <AimaButton size="small" variant="text" :disabled="!fieldsReady || preferenceLoading || preferenceSaving || preferenceConflict" @click="savePreference(true)">恢复系统默认字段</AimaButton>
-          <AimaButton v-if="preferenceError" size="small" variant="text" :disabled="preferenceLoading || preferenceSaving" @click="loadPreference">重新读取</AimaButton>
+        <nav
+          class="column-default-actions"
+          aria-label="个人默认导出字段"
+        >
+          <AimaButton
+            size="small"
+            variant="text"
+            :disabled="!fieldsReady || !selectedColumns.length || preferenceLoading || preferenceSaving || preferenceConflict"
+            @click="savePreference(false)"
+          >
+            设为我的默认字段
+          </AimaButton>
+          <AimaButton
+            size="small"
+            variant="text"
+            :disabled="!fieldsReady || preferenceLoading || preferenceSaving || preferenceConflict"
+            @click="savePreference(true)"
+          >
+            恢复系统默认字段
+          </AimaButton>
+          <AimaButton
+            v-if="preferenceError"
+            size="small"
+            variant="text"
+            :disabled="preferenceLoading || preferenceSaving"
+            @click="loadPreference"
+          >
+            重新读取
+          </AimaButton>
         </nav>
-        <p v-if="preferenceError" class="request-error" role="alert">{{ preferenceError }}</p>
-        <p v-else-if="preferenceNotice" class="preference-notice" role="status">{{ preferenceNotice }}</p>
+        <p
+          v-if="preferenceError"
+          class="request-error"
+          role="alert"
+        >
+          {{ preferenceError }}
+        </p>
+        <p
+          v-else-if="preferenceNotice"
+          class="preference-notice"
+          role="status"
+        >
+          {{ preferenceNotice }}
+        </p>
       </section>
       <p class="analysis-note">
         未完成 AI 分析的内容不会被丢弃：仍会导出，AI 情感和标签列留空，并在结果统计中提示。

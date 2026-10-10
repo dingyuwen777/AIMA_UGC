@@ -37,13 +37,13 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint("length(btrim(principal_id)) > 0", name="principal_nonempty"),
-        sa.CheckConstraint("schema_version = 1", name="schema_version_supported"),
+        sa.CheckConstraint("schema_version = 1", name="schema_supported"),
         sa.CheckConstraint("revision > 0", name="revision_positive"),
-        sa.CheckConstraint("saved_catalog_version > 0", name="catalog_version_positive"),
+        sa.CheckConstraint("saved_catalog_version > 0", name="catalog_positive"),
         sa.CheckConstraint(
             "selected_columns IS NULL OR (jsonb_typeof(selected_columns) = 'array' "
             "AND jsonb_array_length(selected_columns) > 0)",
-            name="selected_columns_nonempty_array",
+            name="columns_nonempty",
         ),
     )
 

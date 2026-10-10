@@ -67,13 +67,13 @@ reporting_user_export_column_defaults_table = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     CheckConstraint("length(btrim(principal_id)) > 0", name="principal_nonempty"),
-    CheckConstraint("schema_version = 1", name="schema_version_supported"),
+    CheckConstraint("schema_version = 1", name="schema_supported"),
     CheckConstraint("revision > 0", name="revision_positive"),
-    CheckConstraint("saved_catalog_version > 0", name="catalog_version_positive"),
+    CheckConstraint("saved_catalog_version > 0", name="catalog_positive"),
     CheckConstraint(
         "selected_columns IS NULL OR (jsonb_typeof(selected_columns) = 'array' "
         "AND jsonb_array_length(selected_columns) > 0)",
-        name="selected_columns_nonempty_array",
+        name="columns_nonempty",
     ),
     info={"owner": "reporting"},
 )

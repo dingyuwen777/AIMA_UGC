@@ -138,7 +138,8 @@ def test_schema_downgrade_refuses_to_destroy_user_data_or_export_ownership(
                 export_id = _seed_export(connection, {"requested_by": "user:rollback"})
                 connection.execute(
                     text(
-                        "UPDATE reporting_data_exports SET created_by = 'user:rollback' WHERE id = :id"
+                        "UPDATE reporting_data_exports SET created_by = 'user:rollback' "
+                        "WHERE id = :id"
                     ),
                     {"id": export_id},
                 )
@@ -151,7 +152,8 @@ def test_schema_downgrade_refuses_to_destroy_user_data_or_export_ownership(
             if data_kind == "personal_default":
                 row = connection.execute(
                     text(
-                        "SELECT revision, selected_columns FROM reporting_user_export_column_defaults "
+                        "SELECT revision, selected_columns "
+                        "FROM reporting_user_export_column_defaults "
                         "WHERE principal_id = 'development:rollback'"
                     )
                 ).one()
