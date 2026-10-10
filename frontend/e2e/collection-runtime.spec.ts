@@ -701,6 +701,20 @@ test('explains failed Import terminal state without inventing pending stages', a
 })
 
 test('shows a safe actionable error when the Worker cannot read the Provider Secret', async ({ page }) => {
+  // 结果深链进入声音广场后仍使用正式只读入口，不能依赖未声明请求。
+  await page.route('**/api/v1/contents?**', (route) => route.fulfill({ json: { items: [], next_cursor: null, has_more: false } }))
+  await page.route('**/api/v1/contents/count', (route) => route.fulfill({ json: {
+    count_mode: 'estimated', count: 0, count_kind: 'exact', as_of: '2026-08-21T10:00:00+08:00', truncated: false,
+  } }))
+  await page.route('**/api/v1/content-analysis-capabilities', (route) => route.fulfill({ json: { configured: false } }))
+  await page.route('**/api/v1/content-analysis-taxonomy', (route) => route.fulfill({ json: {
+    prompt_version: 'content-labeling.v3.0', prompt_sha256: 'a'.repeat(64), schema_version: 'aima-content-taxonomy.v2',
+    taxonomy_sha256: 'b'.repeat(64), sentiments: [], voice_types: [], labels: [],
+  } }))
+  await page.route('**/api/v1/content-filter-options', (route) => route.fulfill({ json: {
+    platforms: [], relevances: ['relevant', 'irrelevant'], analysis_statuses: [], content_types: [],
+    sentiments: [], voice_types: [], labels: [], catalog_status: 'ready',
+  } }))
   const failedRun = {
     ...runDetail,
     mode: 'batch_supplement',

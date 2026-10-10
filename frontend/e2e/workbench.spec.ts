@@ -11,6 +11,11 @@ const temporaryError = {
   detail: 'temporary',
   request_id: 'req-workbench-temporary',
 }
+
+/** 原定时路径必须在修订服务暂不可用时仍成立，修订追赶另有专门验收。 */
+async function unavailableRevision(page: Page): Promise<void> {
+  await page.route('**/api/v1/content-data-revision', (route) => route.fulfill({ status: 503, json: temporaryError }))
+}
 const taxonomy = {
   prompt_version: 'content-labeling.v3.0',
   prompt_sha256: 'b'.repeat(64),
@@ -94,6 +99,7 @@ for (const [columnSpan, rowUnits] of [[6, 48], [6, 80], [8, 48], [8, 80], [12, 4
 }
 
 test('首次后台聚合独立跟进，不等待一小时，失败状态可以重试', async ({ page }) => {
+  await unavailableRevision(page)
   await page.clock.install()
   let requests = 0
   await page.route('**/api/v1/workbench/mind**', (route) => {
@@ -221,6 +227,7 @@ test('已应用日期及其它筛选在刷新后的首个模块请求中恢复�
 })
 
 test('后台聚合请求及失败保留成功图表、日期和几何', async ({ page }) => {
+  await unavailableRevision(page)
   await page.clock.install()
   let release!: () => void
   const delayed = new Promise<void>((resolve) => { release = resolve })
@@ -1046,6 +1053,7 @@ test('短声音流按 Figma 连续滚动，平台标识复用声音广场样式'
 })
 
 test('普通刷新一小时一次，隐藏时暂停且恢复仅补过期聚合，不重置声音流', async ({ page }) => {
+  await unavailableRevision(page)
   await page.clock.install()
   const requests: string[] = []
   page.on('request', (request) => {
@@ -1084,6 +1092,7 @@ test('普通刷新一小时一次，隐藏时暂停且恢复仅补过期聚合�
 })
 
 test('请求耗时后连续两轮仍在完成后一小时刷新', async ({ page }) => {
+  await unavailableRevision(page)
   const hour = 60 * 60 * 1000
   await page.clock.install()
   let mindRequests = 0
@@ -1341,4 +1350,30 @@ test('普通用户初始数据完成后才收到首个稳定修订，也会追�
   await expect.poll(() => streamReads).toBeGreaterThanOrEqual(2)
   await expect.poll(() => mindReads).toBeGreaterThanOrEqual(2)
   expect(management).toEqual([])
+})
+
+test('修订追赶与后台聚合跟进等待同一慢请求，不叠加覆盖当前结果', async ({ page }) => {
+  await page.clock.install()
+  let revision = 'first-revision'
+  let reads = 0
+  let release!: () => void
+  const delayed = new Promise<void>((done) => { release = done })
+  await page.route('**/api/v1/content-data-revision', (route) => route.fulfill({ json: { revision } }))
+  await page.route('**/api/v1/workbench/mind**', async (route) => {
+    reads += 1
+    if (reads === 2) await delayed
+    await route.fulfill({ json: nineMind(reads === 1 ? 'preparing' : 'fresh') })
+  })
+  await page.goto('/')
+  await expect(page.getByText('首次聚合正在后台准备，完成后会自动显示…').first()).toBeVisible()
+  await page.clock.runFor(1000)
+  await expect.poll(() => reads).toBe(2)
+  revision = 'second-revision'
+  await page.clock.runFor(3500)
+  expect(reads).toBe(2)
+  release()
+  await expect(page.locator('.radar-label')).toHaveCount(9)
+  await page.clock.runFor(1000)
+  await expect.poll(() => reads).toBe(3)
+  await expect(page.locator('.radar-label')).toHaveCount(9)
 })

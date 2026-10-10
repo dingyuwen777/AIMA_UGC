@@ -24,6 +24,7 @@ const router = useRouter()
 const draggedModule = ref<WorkbenchModuleId | null>(null)
 let filterRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let analysisRefreshHandle: ReturnType<typeof setTimeout> | undefined
+let analysisRefreshRunning = false
 let periodicRefreshHandle: ReturnType<typeof setTimeout> | undefined
 let periodicRefreshPending = false
 const AUTO_REFRESH_INTERVAL = 60 * 60 * 1000
@@ -70,12 +71,20 @@ function scheduleFilterRefresh(): void {
   }, 100)
 }
 
-/** 内容修订号和管理员运行状态可能连续变化，750ms 内合并为一次刷新。 */
+/** 连续修订在 750ms 内合并；等待已有读取结束，避免与聚合跟进相互覆盖。 */
 function scheduleAnalysisRefresh(): void {
   if (analysisRefreshHandle) clearTimeout(analysisRefreshHandle)
-  analysisRefreshHandle = setTimeout(() => {
+  analysisRefreshHandle = setTimeout(async () => {
     analysisRefreshHandle = undefined
-    void store.refreshData(true)
+    if (disposed) return
+    if (analysisRefreshRunning || pendingRefreshRunning || periodicRefreshPending
+      || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend) {
+      scheduleAnalysisRefresh()
+      return
+    }
+    analysisRefreshRunning = true
+    try { await store.refreshData(true) }
+    finally { analysisRefreshRunning = false }
   }, 750)
 }
 
@@ -102,7 +111,7 @@ function schedulePeriodicRefresh(): void {
 async function refreshPeriodically(): Promise<void> {
   if (disposed || periodicRefreshPending) return
   if (document.visibilityState !== 'visible'
-    || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend
+    || analysisRefreshRunning || store.moduleLoading.stream || store.moduleLoading.mind || store.moduleLoading.trend
     || (store.lastAutoRefreshAt !== null && Date.now() - store.lastAutoRefreshAt < AUTO_REFRESH_INTERVAL)) {
     schedulePeriodicRefresh()
     return
@@ -139,6 +148,7 @@ function schedulePendingRefresh(): void {
   pendingRefreshHandle = setTimeout(async () => {
     pendingRefreshHandle = undefined
     if (disposed || document.visibilityState !== 'visible') { schedulePendingRefresh(); return }
+    if (analysisRefreshRunning || store.moduleLoading.mind || store.moduleLoading.trend) { schedulePendingRefresh(); return }
     pendingRefreshRunning = true
     pendingAttempts += 1
     try {
