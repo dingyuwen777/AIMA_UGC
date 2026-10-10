@@ -1,0 +1,22 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_runtime_ci_declares_isolated_development_identity ____________
+
+    def test_runtime_ci_declares_isolated_development_identity() -> None:
+        """真实 Compose 验收无企业凭据，必须显式开发模式而不降低生产默认。"""
+        workflow = (ROOT / ".github/workflows/runtime.yml").read_text(encoding="utf-8")
+        blocks = re.findall(
+            r'cat > "\$\{(?:LOCAL_)?ENV_FILE\}" <<EOF\n(.*?)^\s*EOF$',
+            workflow,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        assert len(blocks) == 3
+        for index, block in enumerate(blocks):
+>           assert "AIMA_IDENTITY_MODE=development" in block, index
+E           AssertionError: 1
+E           assert 'AIMA_IDENTITY_MODE=development' in '          AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}\n          AIMA_HTTP_BIND_IP=127.0.0.1\n          AIMA_HTTP_PORT...         AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple\n          AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org\n'
+
+tests\unit\test_env_compose_config_contract.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_env_compose_config_contract.py::test_runtime_ci_declares_isolated_development_identity
+1 failed, 13 deselected in 0.12s

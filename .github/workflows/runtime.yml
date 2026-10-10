@@ -179,6 +179,7 @@ jobs:
           echo "AIMA_RUNTIME_ROOT=${ROOT}" >> "${GITHUB_ENV}"
           echo "AIMA_RUNTIME_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
           cat > "${ENV_FILE}" <<EOF
+          AIMA_IDENTITY_MODE=development
           AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18080
@@ -518,6 +519,7 @@ jobs:
           LOCAL_ENV_FILE="${RUNNER_TEMP}/aima-local-compose.env"
           mkdir -p "${LOCAL_ROOT_ABS}/historical-input"
           cat > "${LOCAL_ENV_FILE}" <<EOF
+          AIMA_IDENTITY_MODE=development
           AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18081
@@ -603,6 +605,7 @@ jobs:
           echo "AIMA_WINDOWS_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
           echo "AIMA_WINDOWS_HOST_ROOT=${HOST_ROOT}" >> "${GITHUB_ENV}"
           cat > "${ENV_FILE}" <<EOF
+          AIMA_IDENTITY_MODE=development
           AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18082

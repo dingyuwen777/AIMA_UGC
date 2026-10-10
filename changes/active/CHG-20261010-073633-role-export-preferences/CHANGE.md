@@ -27,6 +27,7 @@ affected_paths:
   - compose.windows.yaml
   - env.local.example
   - env.production.example
+  - .github/workflows/runtime.yml
 contracts:
   - HTTP
   - ExportColumnCatalogResponse
@@ -66,11 +67,11 @@ Requirement-Source: #714。管理员负责生产和治理，普通用户查看�
 | E1 | 扩展安装在主工厂之后 | backend/src/aima_ugc/entrypoints/api_main.py | 最终 assembly 后完整授权检查 |
 | E2 | Export 快照有 requested_by，读取无 Principal | backend/src/aima_ugc/bootstrap/reporting_http.py | 明确 created_by 与对象授权 |
 | E3 | 视频 prepare 可以创建采集 Job | backend/src/aima_ugc/bootstrap/content_playback_service.py | 观看保留，收费刷新管理授权 |
-| E4 | 最新用户指令要求本地验证，先不合并远程 main | #714 与用户“修改完本地验证没问题之后，先不要合并到远程主分支” | epoch 2 本地验证 required；不 merge；保留开发分支供验收 |
+| E4 | 用户要求本地验证，并在 epoch 4 明确授权全部修改合并远程 main | #714 与用户最新“然后把本地所有修改合并到远程主分支吧” | 本地验证、独立 Review 与 current-head/current-base CI 后合并，额外人工等待 USER_WAIVED |
 
 ## 推断与待确认
 
-正式飞书企业授权及生产环境不在本轮执行范围，最终报告明确未验证；当前先完成本地交付，远程 CI 在后续获准的 PR 阶段取得。
+正式飞书企业授权及生产环境不在本轮执行范围，最终报告明确未验证；远程交付使用已关联 #714 的 PR #715 与当前提交 CI。
 
 # 目标、成功标准与非目标
 
@@ -88,7 +89,7 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 
 ## 非目标
 
-不增加角色/RBAC/通用偏好/依赖；不部署、发布或操作生产；不执行付费 Probe，不合并远程 main。
+不增加角色/RBAC/通用偏好/依赖；不部署、发布或操作生产；不执行付费 Probe。
 
 ## 必须保持不变
 
@@ -154,7 +155,7 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 | R22 | 交付边界、远程门禁与任务清理 | #714 / AC22 | satisfied | epoch 4 明确授权 merge，额外人工等待 USER_WAIVED；原临时资源清理见历史记录，本轮本地准备及远程门禁见 [飞书补充验收](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config.md)。PR/CI/merge/main-fresh/原生归档与最后清理由平台 Owner 持有直接事实，合并前不冒充完成 |
 | R23 | 登录唯一数组、分应用凭据自动落盘与模板精简 | #714 / AC23 | satisfied | [飞书配置补充验收](https://github.com/dingyuwen777/AIMA_UGC/blob/main/changes/active/CHG-20261010-073633-role-export-preferences/evidence/feishu-config.md) epoch 4：删除旧扁平登录字段/装配回退，误用旧变量启动拒绝；单项数组与独立报告应用回归70PASS、源码/配置组308PASS/8SKIP；独立配置F1/F2/F3均CLOSED。前轮实际Compose/正式wheel Linux凭据读取证据按未变边界复用，真实企业 OAuth 未验证 |
 
-## epoch 3 飞书配置补充计划
+## epoch 3 飞书配置补充历史计划
 
 用户明确要求各应用凭据在 CONNECTORS 中独立配置并同步精简两份模板。L3 安全/启动配置变化，单 Writer 实现，独立只读 Review required（MAY_SPLIT / REQUIRED）。不改 OAuth 协议、业务身份或数据库，不重启用户正在使用的进程，不执行远程合并。
 
@@ -173,6 +174,8 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 
 验证先执行身份/启动/Compose targeted pytest、Ruff/mypy、生成 Contract 与配置/文档门禁，再由正式 changed-scope preflight 和 PR CI 提供适用当前组合验证；完整原始输出保留。本地完成后恢复最新 main、审查提交、首次 push 建同名分支，按平台 Contract 创建 Draft PR；current-head/current-base required CI 与阻塞 Findings 清零后 Ready/合并、原生归档和任务清理。
 
+PR #715 首轮 CI 暴露两处相邻缺口：Runtime 三份无企业凭据的隔离 env 应显式 development；真实双用户明细导出遇到合法无标签分析时，Renderer 不能构造空标签对。先取得失败用例，再仅补 fixture 与空标签转换，完整打标要求和生产 feishu 默认保持；独立复核与修后证据补入飞书验收记录，重新取得当前提交 CI。不改变 Requirement、公共 Contract 或数据库。
+
 | 文件 / 模块 / 资产 | 计划修改 | 原因 | 对应要求 / 证据 |
 | --- | --- | --- | --- |
 | backend/src/aima_ugc | Identity/Reporting/Route policy | 服务端权限和个人配置 | R1–R5、R11–R16 |
@@ -186,7 +189,7 @@ Identity、最终 API assembly、Reporting/persistence/Contract/Migration、前�
 | 行为 / 单元 / 组件 | required | 权限、默认列、身份换代、任务源；本地 pytest/Vitest |
 | 接口 / 契约 | required | OpenAPI/Orval 正式生成及本地漂移检查 |
 | 集成 / 持久化 / 运行依赖 | required | PostgreSQL 归属、revision 并发、Job 无副作用、XLSX 重读 |
-| 用户 / 工作流验收 | required | 本地 Playwright 角色/默认字段/会话；人工本地验收 PENDING |
+| 用户 / 工作流验收 | required | 本地 Playwright 角色/默认字段/会话；额外人工等待 USER_WAIVED |
 | 跨组件关键路径 | required | 本地真实双角色 API/DB/Worker/Browser 关键链 |
 | 外部依赖 / 供应方探测 | not_applicable | 本次不变更飞书远端协议；正式企业/生产验收留待候选环境，不冒充已通过 |
 | 构建 / 打包 / 运行 | required | 本地 typecheck/build；远程 CI 在后续 PR 阶段 |

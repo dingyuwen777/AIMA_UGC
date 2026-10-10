@@ -27,6 +27,19 @@ CODE_OWNED_RUNTIME_KEYS = (
 )
 
 
+def test_runtime_ci_declares_isolated_development_identity() -> None:
+    """真实 Compose 验收无企业凭据，必须显式开发模式而不降低生产默认。"""
+    workflow = (ROOT / ".github/workflows/runtime.yml").read_text(encoding="utf-8")
+    blocks = re.findall(
+        r'cat > "\$\{(?:LOCAL_)?ENV_FILE\}" <<EOF\n(.*?)^\s*EOF$',
+        workflow,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert len(blocks) == 3
+    for index, block in enumerate(blocks):
+        assert "AIMA_IDENTITY_MODE=development" in block, index
+
+
 def _load_local_runtime() -> ModuleType:
     """按真实脚本路径加载 local_runtime，避免测试修改全局 import path。"""
 

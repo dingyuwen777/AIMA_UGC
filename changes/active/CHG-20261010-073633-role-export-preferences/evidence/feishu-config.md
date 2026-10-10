@@ -25,6 +25,16 @@
 
 交付改为通过 current-head/current-base required CI 后 guarded REST merge，随后验证 main fresh CI、原生 Change Archive 与Issue Closure，清理任务分支和临时资源；平台操作事实以PR/Commit/Actions为Owner，不提前冒充。保留用户真实env、Secret、数据库与依赖，不发布、不部署、不操作生产数据。
 
+## PR #715 首轮 CI 修复
+
+本节基于提交 `be70a8d38547c259b61e347eaa365eb396747afd` 上的修复。唯一 Requirement 与 epoch 4 决定未改变；[PR #715](https://github.com/dingyuwen777/AIMA_UGC/pull/715) 已明确关联 #714。
+
+- [Runtime 首轮失败](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/38027619137)：隔离 env 未声明身份模式，正确触发正式 feishu 默认缺 Connector 的启动保护。三份实际 env（canonical、repository-relative、Windows overlay）现在均显式 development。扩展契约测试先在第二份 env 取得 1 failed / 13 deselected，再全部修正；原生产默认、真实启动与安全断言保持。独立 Reviewer F4 CLOSED。
+- [Full-stack 首轮](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/38027619156)：20 passed / 1 failed；双用户 Export Worker 返回 export_data_invalid。合法无标签分析经 Renderer 构造空标签对的最小生产输入，分别以 irrelevant 和人工纳入后的 relevant 取得 2 failed；修复只让无标签结果不生成标签明细，内容分析与评论保留，严格完整打标仍拒绝。前序人工纳入 fixture 与该输入一致，但原失败 Export 具体冻结条目未读取，不把它冒充直接数据库根因证据。正式 Contract、字段权限与数据库均未改变。
+- 修复后六个 Excel/Job/环境配置测试文件 **52 passed**，Ruff check/format、正式 mypy backend/src **480 files**、Contract 生成与兼容检查 PASS。真实 XLSX 已重开检查内容/评论/空标签/标签明细及严格模式拒绝。独立 Reviewer 对生产输入矩阵、相邻数据路径与文档复核 NO_FINDINGS_WITHIN_SCOPE。
+
+原始日志：[Runtime Red](feishu-config-logs/ci-runtime-red.txt)、[无标签导出 Red](feishu-config-logs/ci-export-labels-red.txt)、[修后回归](feishu-config-logs/ci-repair-green.txt)。远程旧提交 Developer Tooling 与 Release 离线候选回放已成功，但不替代修复后当前提交 CI；Release publish 未执行。修复提交 push 后重新取得 required checks，再合并。
+
 ## epoch 3 历史记录
 
 以下为已完成前轮的原始配置补充记录；其中“旧单应用兼容”“暂停合并”和人工PENDING已被上方epoch4决定取代，不作为当前配置或交付边界。
