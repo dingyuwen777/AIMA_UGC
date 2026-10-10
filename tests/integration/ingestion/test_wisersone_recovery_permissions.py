@@ -1,4 +1,4 @@
-"""下载写操作的 Principal 守卫与未知提交回执恢复。"""
+"""下载管理操作的 Principal 守卫与未知提交回执恢复。"""
 
 from uuid import UUID, uuid4
 
@@ -70,12 +70,12 @@ def test_download_write_guards_reject_without_jobs_or_sends_and_keep_read_gate(
             "/api/v1/wisersone-downloads",
             f"/api/v1/wisersone-downloads/{download_id}",
         ):
+            # 下载运行记录属于管理员管理数据，读取同样在业务入口前拒绝。
             response = client.get(path)
-            if authenticated:
-                assert response.status_code == 200, response.text
-            else:
-                assert response.status_code == 401, response.text
-                assert response.json()["errors"][0]["code"] == "authentication_required"
+            assert response.status_code == write_status, response.text
+            error = HttpErrorResponse.model_validate(response.json())
+            assert error.status == write_status and error.request_id
+            assert error.errors[0].code == write_code
         unchanged = administrator_client.get(f"/api/v1/wisersone-downloads/{download_id}").json()
         assert unchanged["status"] == "queued" and unchanged["send_state"] == "not_sent"
         assert unchanged["cancel_requested_at"] is None
