@@ -429,3 +429,44 @@ def test_multi_connector_clients_use_their_own_app_and_secret(
     assert first_client.app_secret == "value-for-first_secret"  # type: ignore[attr-defined]
     assert second_client.app_secret == "value-for-second_secret"  # type: ignore[attr-defined]
     assert read_refs == ["first_secret", "second_secret"]
+
+
+def test_explicit_feishu_mode_fails_closed_without_connector_configuration() -> None:
+    """正式模式缺少认证配置时不能启动开发管理员身份。"""
+    settings = load_settings({"AIMA_IDENTITY_MODE": "feishu"})
+    with pytest.raises(ValueError, match="AIMA_IDENTITY_MODE=feishu"):
+        build_feishu_identity(settings)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("AIMA_FEISHU_ADMIN_GROUP_ID", "grp_admin"),
+        ("AIMA_FEISHU_USER_GROUP_ID", "grp_user"),
+        ("AIMA_FEISHU_REDIRECT_URI", "https://aima.example/callback"),
+    ],
+)
+def test_orphan_login_configuration_is_rejected_without_app_id(field: str, value: str) -> None:
+    """残缺的认证配置不能被当成未启用认证后退到开发身份。"""
+    with pytest.raises(ValidationError, match="AIMA_FEISHU_APP_ID"):
+        load_settings({field: value})
+
+
+def test_explicit_development_mode_keeps_local_identity() -> None:
+    """本地/隔离测试仍可明确选择开发身份，不读取客户端伪造角色。"""
+    resolver, _ = build_feishu_identity(load_settings({"AIMA_IDENTITY_MODE": "development"}))
+    assert isinstance(resolver, DevelopmentIdentityResolver)
+
+
+def test_bitable_publication_configuration_does_not_satisfy_formal_login_mode() -> None:
+    """发布 Connector 可独立存在；正式网页登录仍必须配置用户组与回调。"""
+    settings = load_settings(
+        {
+            "AIMA_IDENTITY_MODE": "feishu",
+            "AIMA_FEISHU_APP_ID": "cli_bitable_only",
+            "AIMA_FEISHU_APP_TOKEN": "isolated-test-bitable",
+            "AIMA_FEISHU_TABLE_ID": "isolated-test-table",
+        }
+    )
+    with pytest.raises(ValueError, match="AIMA_IDENTITY_MODE=feishu"):
+        build_feishu_identity(settings)

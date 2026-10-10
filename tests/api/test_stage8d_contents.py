@@ -27,6 +27,7 @@ from aima_ugc.contracts.http import (
 )
 from aima_ugc.modules.content.content_cursor import InvalidContentCursor
 from aima_ugc.modules.content.http import ContentResourceNotFound
+from aima_ugc.modules.identity import Principal
 from aima_ugc.modules.reporting.http import ArtifactDownload, DataExportNotReady
 from aima_ugc.platform.health import ReadinessReport
 from fastapi.testclient import TestClient
@@ -167,16 +168,17 @@ class _ReportingService:
         request,
         *,
         request_id,
-        actor_ref,  # type: ignore[no-untyped-def]
+        principal,  # type: ignore[no-untyped-def]
     ):
-        del actor_ref
+        del principal
         return DataExportCreatedResponse(
             export_id=self.export_id,
             job_id=self.job_id,
             target_count=len(request.targets.content_ids) or 1,
         )
 
-    def get_export(self, export_id: UUID) -> DataExportResponse:
+    def get_export(self, export_id: UUID, *, principal: Principal) -> DataExportResponse:
+        del principal
         if export_id != self.export_id:
             raise DataExportNotReady
         return DataExportResponse(
@@ -201,10 +203,11 @@ class _ReportingService:
             created_at=datetime(2026, 8, 21, tzinfo=UTC),
         )
 
-    def list_exports(self) -> DataExportListResponse:
-        return DataExportListResponse(items=(self.get_export(self.export_id),))
+    def list_exports(self, *, principal: Principal) -> DataExportListResponse:
+        return DataExportListResponse(items=(self.get_export(self.export_id, principal=principal),))
 
-    def download_export(self, export_id: UUID) -> ArtifactDownload:
+    def download_export(self, export_id: UUID, *, principal: Principal) -> ArtifactDownload:
+        del principal
         if export_id != self.export_id:
             raise DataExportNotReady
         return ArtifactDownload(

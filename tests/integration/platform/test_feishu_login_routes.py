@@ -15,8 +15,8 @@
 数据库约束（一次性 state 的原子消费、会话只存 hash）是数据库自己的行为，
 用内存替身测等于没测；而真实飞书属于外部付费/限流资源，禁止在测试里真调（任务书 §六）。
 
-⚠️ 测试**不导入** `entrypoints/api_main`（那会在导入时用**进程环境**建一个 app），
-而是直接调用 `create_app` + `install_feishu_auth_routes`，装配方式与入口完全一致。
+测试使用最终 `entrypoints/api_main.create_app`，注入真实 Session 工厂和假飞书，
+全部扩展与认证路由注册后再次安装同一授权策略，不跳过生产守卫。
 """
 
 from __future__ import annotations
@@ -31,7 +31,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.feishu_auth_http import (
     CALLBACK_PATH,
     LOGIN_PATH,
@@ -41,6 +40,8 @@ from aima_ugc.bootstrap.feishu_auth_http import (
     FeishuLoginRequiredResolver,
     install_feishu_auth_routes,
 )
+from aima_ugc.bootstrap.route_authorization import install_route_authorization
+from aima_ugc.entrypoints.api_main import create_app
 from aima_ugc.modules.identity import DevelopmentIdentityResolver
 from aima_ugc.modules.identity.feishu import (
     FeishuDepartment,
@@ -312,6 +313,10 @@ def _build_client(
         identity_resolver=FeishuLoginRequiredResolver(routes),
     )
     install_feishu_auth_routes(application, auth_routes=routes)
+    install_route_authorization(
+        application,
+        identity_resolver=FeishuLoginRequiredResolver(routes),
+    )
     return TestClient(application, raise_server_exceptions=False), routes
 
 
@@ -765,7 +770,7 @@ def test_d10_logout_revokes_the_session_server_side(
     )
     assert client.get("/api/v1/principal").status_code == 200
 
-    logout = client.post(LOGOUT_PATH)
+    logout = client.post(LOGOUT_PATH, headers={"Origin": "http://localhost:8000"})
 
     assert logout.status_code == 204
     assert client.get("/api/v1/principal").status_code == 401
@@ -774,14 +779,14 @@ def test_d10_logout_revokes_the_session_server_side(
     assert revoked is not None, "登出必须在服务端留下撤销时间"
 
 
-def test_d10_logout_without_session_is_idempotent(
+def test_d10_logout_without_session_requires_authentication(
     session_factory: sessionmaker[Session],
 ) -> None:
-    """没有会话时登出也是 204（幂等），不能报错。"""
+    """统一授权策略要求有效会话；重复登出明确返回 401。"""
 
     client, _ = _build_client(session_factory)
-    assert client.post(LOGOUT_PATH).status_code == 204
-    assert client.post(LOGOUT_PATH).status_code == 204
+    assert client.post(LOGOUT_PATH, headers={"Origin": "http://localhost:8000"}).status_code == 401
+    assert client.post(LOGOUT_PATH, headers={"Origin": "http://localhost:8000"}).status_code == 401
 
 
 def test_d10_logout_clears_the_cookie(
@@ -795,7 +800,7 @@ def test_d10_logout_clears_the_cookie(
         CALLBACK_PATH, params={"code": AUTHORIZATION_CODE, "state": state}, follow_redirects=False
     )
 
-    logout = client.post(LOGOUT_PATH)
+    logout = client.post(LOGOUT_PATH, headers={"Origin": "http://localhost:8000"})
     cookie = logout.headers["set-cookie"]
 
     assert f"{SESSION_COOKIE_NAME}=" in cookie
@@ -828,7 +833,7 @@ def test_d9_credentials_never_enter_logs(
                 params={"code": AUTHORIZATION_CODE, "state": state},
                 follow_redirects=False,
             )
-            client.post(LOGOUT_PATH)
+            client.post(LOGOUT_PATH, headers={"Origin": "http://localhost:8000"})
     finally:
         httpx_logger.setLevel(previous_level)
 
