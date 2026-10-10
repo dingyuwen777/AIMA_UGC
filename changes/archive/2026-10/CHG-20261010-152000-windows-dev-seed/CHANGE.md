@@ -3,11 +3,11 @@ schema: coding-change/v1
 id: CHG-20261010-152000-windows-dev-seed
 title: Windows 源码开发安全恢复共享快照
 level: L3
-status: ready_for_review
+status: done
 owner: Codex
 branch: feature/716-windows-dev-seed
 created: 2026-10-10T15:20:00+08:00
-updated: 2026-10-10T21:23:00+08:00
+updated: 2026-10-10
 completion_gate: required
 depends_on: []
 affected_areas:
