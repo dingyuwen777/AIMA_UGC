@@ -35,6 +35,12 @@
 
 原始日志：[Runtime Red](feishu-config-logs/ci-runtime-red.txt)、[无标签导出 Red](feishu-config-logs/ci-export-labels-red.txt)、[修后回归](feishu-config-logs/ci-repair-green.txt)。远程旧提交 Developer Tooling 与 Release 离线候选回放已成功，但不替代修复后当前提交 CI；Release publish 未执行。修复提交 push 后重新取得 required checks，再合并。
 
+后续完整日志补充：首轮 PostgreSQL 其他分层通过，Reporting 3 failed / 15 passed / 1 skipped。新增角色夹具未注入内容 Cursor Secret，而 CI 仅提供 PostgreSQL Secret；生产正确返回 503。专用本地 Docker PostgreSQL（loopback 55437、aima_report_test）先带本地测试密钥 9 PASS，没有复现；移除该任务测试密钥、对齐 CI 边界后准确取得同三项 503（3 failed / 6 passed），不是读模型问题。只在测试构造的两处 Content Service 显式注入固定测试密钥，真实 Session/Worker/XLSX 全文件 9 PASS。生产 Secret 读取规则未变。原始输出：[Cursor Red](feishu-config-logs/ci-pg-cursor-red.txt)、[Cursor Green](feishu-config-logs/ci-pg-cursor-green.txt)。
+
+[第二轮 Runtime](https://github.com/dingyuwen777/AIMA_UGC/actions/runs/38028825957) 已通过正常启动、安全和持久化步骤，故意丢失数据库 Secret 时 bootstrap 实际 Exited(1)、固定错误文案正确，但后台 `compose up --wait` 先返回0，使原退出码断言失败。该一步改为同步 `compose run --rm --no-deps bootstrap`，保留非0断言、错误文案、无新 Secret、恢复启动和持久化检查；不改变生产 Compose/初始化实现。修复后当前提交远程结果仍以 Actions 为准。
+
+独立 Reviewer 对上述两处夹具修复 NO_FINDINGS_WITHIN_SCOPE，直接复核 PG Red/Green、生产 Cursor 错误路径和完整恢复断言；没有写库或改文件。测试密钥为36字节，符合至少32字节约束。修后环境契约14 PASS、Ruff及文档/Secret/Completion检查 PASS；当前完整 Full-stack 已在第二轮 CI 的真实 API/Worker/DB 环境通过，无标签导出缺陷没有再复现。第三轮仅夹具/证据增量，仍重新取得当前提交 required CI，不用旧提交通过结果替代。
+
 ## epoch 3 历史记录
 
 以下为已完成前轮的原始配置补充记录；其中“旧单应用兼容”“暂停合并”和人工PENDING已被上方epoch4决定取代，不作为当前配置或交付边界。

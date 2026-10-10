@@ -478,11 +478,11 @@ jobs:
           compose down --remove-orphans
           sudo mv "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password" "${RUNNER_TEMP}/postgres_password.backup"
           set +e
-          compose up -d --no-build --wait --wait-timeout 15 bootstrap
+          # 一次性进程必须等到真实退出；后台 --wait 可能在进程退出前返回成功。
+          compose run --rm --no-deps bootstrap > "${RUNNER_TEMP}/bootstrap-missing-secret.log" 2>&1
           LOST_SECRET_STATUS=$?
           set -e
           test "${LOST_SECRET_STATUS}" -ne 0
-          compose logs --no-color bootstrap > "${RUNNER_TEMP}/bootstrap-missing-secret.log" || true
           grep -Fq '已有 PostgreSQL 18 数据' "${RUNNER_TEMP}/bootstrap-missing-secret.log"
           grep -Fq 'postgres_password' "${RUNNER_TEMP}/bootstrap-missing-secret.log"
           sudo test ! -e "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password"

@@ -65,6 +65,7 @@ from tests.integration.content.test_stage8d_voice_plaza_runtime import _seed_imp
 
 _ORIGIN = "http://testserver"
 _DEFAULT_PATH = "/api/v1/me/export-column-default"
+_CURSOR_SECRET = b"role-export-test-cursor-key-32-bytes"
 
 
 @pytest.fixture
@@ -107,7 +108,7 @@ def _clients(runtime: PlatformRuntime) -> tuple[dict[str, TestClient], dict[str,
     resolver = FeishuLoginRequiredResolver(routes)
     application = create_app(
         identity_resolver=resolver,
-        content_service=PostgresContentHttpService(runtime),
+        content_service=PostgresContentHttpService(runtime, cursor_signing_secret=_CURSOR_SECRET),
         product_service=PostgresProductHttpService(runtime),
         reporting_service=PostgresReportingHttpService(runtime),
     )
@@ -141,7 +142,9 @@ def _seed_contents(runtime: PlatformRuntime) -> list[str]:
         create_app(
             identity_resolver=DevelopmentIdentityResolver(),
             import_service=PostgresImportHttpService(runtime),
-            content_service=PostgresContentHttpService(runtime),
+            content_service=PostgresContentHttpService(
+                runtime, cursor_signing_secret=_CURSOR_SECRET
+            ),
         )
     )
     batch_id = _seed_import(client, runtime)
@@ -161,7 +164,7 @@ def _seed_contents(runtime: PlatformRuntime) -> list[str]:
     else:
         pytest.fail("正式导入没有在测试预算内完成")
     result = client.get("/api/v1/contents")
-    assert result.status_code == 200
+    assert result.status_code == 200, result.text
     ids = [item["id"] for item in result.json()["items"]]
     assert len(ids) == 2
     return ids
