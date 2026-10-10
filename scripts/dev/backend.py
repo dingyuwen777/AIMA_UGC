@@ -10,9 +10,11 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 from http.client import HTTPConnection, HTTPException
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
@@ -36,6 +38,9 @@ from local_runtime import (
 _READY_URL = "http://127.0.0.1:8090/health/ready"
 _LOCAL_TIKHUB_CONFIG_ID = uuid5(NAMESPACE_URL, "https://aima.local/provider/tikhub")
 
+if TYPE_CHECKING:
+    from seed_data import SeedSession
+
 
 class ChildProcess(NamedTuple):
     name: str
@@ -54,6 +59,9 @@ def main() -> int:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--skip-seed", action="store_true", help="跳过共享开发快照；不绕过失败现场保护"
+    )
     args = parser.parse_args()
 
     root = repository_root()
@@ -63,7 +71,13 @@ def main() -> int:
         if args.validate_only:
             print(f"Local dev config valid: {env_path}")
             return 0
-        return _run(root=root, config=config, env_created=created, prepare_only=args.prepare_only)
+        return _run(
+            root=root,
+            config=config,
+            env_created=created,
+            prepare_only=args.prepare_only,
+            skip_seed=args.skip_seed,
+        )
     except LocalDevError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
@@ -75,6 +89,7 @@ def _run(
     config: LocalDevConfig,
     env_created: bool,
     prepare_only: bool,
+    skip_seed: bool = False,
 ) -> int:
     print("AIMA_UGC Local Backend")
     print("=" * 56)
@@ -94,6 +109,8 @@ def _run(
     previous_sigterm = signal.getsignal(signal.SIGTERM)
     signal_installed = False
     postgres_ready = False
+    startup_authorized = False
+    lifecycle = ExitStack()
     postgres_cleanup_error: LocalDevError | None = None
 
     def request_stop(_signum: int, _frame: object) -> None:
@@ -105,6 +122,9 @@ def _run(
         print("[OK] PostgreSQL 18.4: aima-ugc-postgres-dev @ 127.0.0.1:5432")
 
         runtime_environment = build_runtime_environment(paths=paths, config=config)
+        session = lifecycle.enter_context(_seed_lifecycle(paths))
+        _initialize_seed(paths, skip=skip_seed or prepare_only, session=session)
+        startup_authorized = True
         _run_migration(root=root, environment=runtime_environment)
         print("[OK] Database migration: head")
 
@@ -194,20 +214,52 @@ def _run(
     except KeyboardInterrupt:
         print("\n[INFO] Stopping local backend...")
     finally:
-        if signal_installed:
-            signal.signal(signal.SIGTERM, previous_sigterm)
-        for child in reversed(children):
-            _stop_child(child)
-        if postgres_ready and not prepare_only:
-            try:
-                _stop_postgres_for_backend()
-            except LocalDevError as exc:
-                print(f"[ERROR] PostgreSQL Docker container cleanup failed: {exc}", file=sys.stderr)
-                postgres_cleanup_error = exc
+        try:
+            if signal_installed:
+                signal.signal(signal.SIGTERM, previous_sigterm)
+            for child in reversed(children):
+                _stop_child(child)
+            if postgres_ready and startup_authorized and not prepare_only:
+                try:
+                    _stop_postgres_for_backend()
+                except LocalDevError as exc:
+                    print(
+                        f"[ERROR] PostgreSQL Docker container cleanup failed: {exc}",
+                        file=sys.stderr,
+                    )
+                    postgres_cleanup_error = exc
+        finally:
+            lifecycle.close()
 
     if postgres_cleanup_error is not None:
         raise postgres_cleanup_error
     return 0
+
+
+@contextmanager
+def _seed_lifecycle(paths: RuntimePaths) -> Iterator[SeedSession]:
+    """运行租约跨过Migration与子进程生命周期，reset不能穿过启动后的连接空隙。"""
+    from recent_snapshot import SnapshotError
+    from seed_data import startup_session
+
+    try:
+        with startup_session(paths) as session:
+            yield session
+    except SnapshotError as exc:
+        raise LocalDevError(str(exc)) from exc
+
+
+def _initialize_seed(paths: RuntimePaths, *, skip: bool, session: SeedSession) -> None:
+    """仅源码开发入口检查快照，拒绝恢复时不得停止另一启动器使用的数据库。"""
+    from recent_snapshot import SnapshotError
+    from seed_data import initialize
+
+    try:
+        print("[OK] " + initialize(paths, skip=skip, session=session))
+    except (SnapshotError, KeyboardInterrupt) as exc:
+        raise LocalDevError(
+            str(exc) or "快照恢复被中断；后端未启动，请检查 seed_data.py status"
+        ) from exc
 
 
 def _run_migration(*, root: Path, environment: dict[str, str]) -> None:

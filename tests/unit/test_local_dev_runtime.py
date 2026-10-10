@@ -24,6 +24,8 @@ def _load_script_module(name: str, relative_path: str) -> ModuleType:
 
 local_runtime = _load_script_module("aima_local_runtime_test", "scripts/dev/local_runtime.py")
 sys.modules["local_runtime"] = local_runtime
+_load_script_module("recent_snapshot", "scripts/dev/recent_snapshot.py")
+_load_script_module("seed_data", "scripts/dev/seed_data.py")
 backend = _load_script_module("aima_backend_test", "scripts/dev/backend.py")
 
 
@@ -142,13 +144,37 @@ def test_backend_ctrl_c_stops_children_then_postgres(
     monkeypatch.setattr(backend, "prepare_cursor_secrets", lambda _paths: None)
     monkeypatch.setattr(backend, "ensure_postgres_container", lambda _paths: None)
     monkeypatch.setattr(backend, "build_runtime_environment", lambda **_kwargs: {})
-    monkeypatch.setattr(backend, "_run_migration", lambda **_kwargs: None)
+    from contextlib import contextmanager
+
+    lease_active = False
+
+    @contextmanager
+    def lease(_):
+        """确定性检查租约覆盖迁移、子进程启动与退出清理。"""
+        nonlocal lease_active
+        lease_active = True
+        try:
+            yield None
+        finally:
+            lease_active = False
+            cleanup_order.append("lease")
+
+    def migration(**_kwargs):
+        assert lease_active
+
+    def start_child(name, *_args, **_kwargs):
+        assert lease_active
+        return backend.ChildProcess(name, object())
+
+    monkeypatch.setattr(backend, "_seed_lifecycle", lease)
+    monkeypatch.setattr(backend, "_initialize_seed", lambda *_, **__: None)
+    monkeypatch.setattr(backend, "_run_migration", migration)
     monkeypatch.setattr(backend, "_provision_tikhub", lambda **_kwargs: False)
     monkeypatch.setattr(backend, "_print_feature_status", lambda **_kwargs: None)
     monkeypatch.setattr(
         backend,
         "_start_child",
-        lambda name, *_args, **_kwargs: backend.ChildProcess(name, object()),
+        start_child,
     )
     monkeypatch.setattr(
         backend,
@@ -179,4 +205,32 @@ def test_backend_ctrl_c_stops_children_then_postgres(
         "child:Feishu Bitable Mirror",
         "child:Worker",
         "postgres",
+        "lease",
     ]
+    assert not lease_active
+
+
+def test_backend_rejected_lease_never_migrates_or_stops_postgres(monkeypatch, tmp_path):
+    """第二启动被租约拒绝，不启动业务也不停止正在服务的固定容器。"""
+    from contextlib import contextmanager
+
+    config_path = tmp_path / "env.local"
+    config_path.write_text("# isolated launcher test\n", encoding="utf-8")
+    config = local_runtime.load_local_dev_config(config_path)
+    actions = []
+    monkeypatch.setattr(backend, "prepare_runtime_directories", lambda _: None)
+    monkeypatch.setattr(backend, "prepare_cursor_secrets", lambda _: None)
+    monkeypatch.setattr(backend, "ensure_postgres_container", lambda _: None)
+    monkeypatch.setattr(backend, "build_runtime_environment", lambda **_: {})
+
+    @contextmanager
+    def rejected(_):
+        raise local_runtime.LocalDevError("另一个开发快照操作正在进行")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(backend, "_seed_lifecycle", rejected)
+    monkeypatch.setattr(backend, "_run_migration", lambda **_: actions.append("migration"))
+    monkeypatch.setattr(backend, "_stop_postgres_for_backend", lambda: actions.append("stop"))
+    with pytest.raises(local_runtime.LocalDevError, match="正在进行"):
+        backend._run(root=tmp_path, config=config, env_created=False, prepare_only=False)
+    assert actions == []
