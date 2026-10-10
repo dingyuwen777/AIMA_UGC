@@ -58,8 +58,8 @@ test('从页面提交两条内容并通过真实 Worker 保存两份合法打标
   // 同一作者的两条帖子必须分别进入心智分子与分母；通过真实后台快照完成 UI 闭环。
   const params = { date_from: '2026-09-04', date_to: '2026-09-04', brand_ids: brand.id }
   await page.goto('/')
-  await page.getByRole('button', { name: '声音流时间范围' }).click()
-  const range = page.getByRole('dialog', { name: '选择声音流时间范围' })
+  await page.getByRole('button', { name: '品牌用户心智时间范围' }).click()
+  const range = page.getByRole('dialog', { name: '选择品牌用户心智时间范围' })
   // 日期面板从已确认范围的结束月份打开，使用正式月份导航到 Fixture 日期。
   for (let month = 0; month < 36 && await range.getByRole('button', { name: '2026-09-04', exact: true }).count() === 0; month += 1) {
     await range.getByRole('button', { name: '上个月', exact: true }).click()

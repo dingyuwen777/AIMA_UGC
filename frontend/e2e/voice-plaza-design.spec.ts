@@ -217,8 +217,8 @@ for (const width of [1180, 1280, 1440, 1600, 1920, 2560]) {
       const primaryWidths = await filter.locator('.filter-row--primary > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
       ;[352 - (width - usableWidth), 140, 150, 120, 130, 200].forEach((size, index) => expectNear(primaryWidths[index], size))
       const secondaryWidths = await filter.locator('.filter-row--secondary > *').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().width))
-      expect(secondaryWidths).toHaveLength(4)
-      ;[180, 180, 180, 160].forEach((size, index) => expectNear(secondaryWidths[index], size))
+      expect(secondaryWidths).toHaveLength(3)
+      ;[180, 180, 160].forEach((size, index) => expectNear(secondaryWidths[index], size))
     }
 
     if (width <= 1280) {
