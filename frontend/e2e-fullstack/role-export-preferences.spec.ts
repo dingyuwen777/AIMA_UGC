@@ -70,10 +70,15 @@ test('真实 Session 双用户的只读 UI、默认字段、导出归属和账�
     const sharedContent = [...relevant.items, ...irrelevant.items].find((item) => item.analysis.status === 'completed') as { id: string; title: string }
     expect(sharedContent, '正式 Fixture 必须包含已分析内容').toBeTruthy()
     const review = async (decision: 'relevant' | 'irrelevant') => {
+      // 正式人工复核要求先解除已有结论，再建立相反结论。
+      const reset = await admin.request.post(`${api}/api/v1/content-relevance-reviews`, {
+        headers: { Origin: origin }, data: { content_ids: [sharedContent.id], decision: 'inherit_ai' },
+      })
+      expect(reset.status(), await reset.text()).toBe(200)
       const response = await admin.request.post(`${api}/api/v1/content-relevance-reviews`, {
         headers: { Origin: origin }, data: { content_ids: [sharedContent.id], decision },
       })
-      expect(response.status()).toBe(200)
+      expect(response.status(), await response.text()).toBe(200)
     }
     await review('relevant')
     const page = await a.newPage()
@@ -148,7 +153,7 @@ test('真实 Session 双用户的只读 UI、默认字段、导出归属和账�
     await page.bringToFront()
     await page.evaluate(() => window.dispatchEvent(new Event('focus')))
     await expect(page.locator('.principal-name')).toContainText('全栈用户乙')
-    expect(await page.evaluate(() => sessionStorage.getItem('aima.voice-plaza.applied-search.v1'))).not.toContain('甲的条件')
+    expect(await page.evaluate(() => sessionStorage.getItem('aima.voice-plaza.applied-search.v1'))).toBeNull()
     await anotherTab.close()
     await page.goto(`${origin}/collection-runtime`)
     await expect(page.getByText('当前账号无管理员权限')).toBeVisible()
